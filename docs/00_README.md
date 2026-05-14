@@ -1,0 +1,55 @@
+# Construction Internal Portal — Documentation Index
+
+## Project Overview
+
+Internal portal for a construction company to manage daily site reporting, project monitoring, material tracking, approvals, and cross-department communication. Designed as a scalable, modular, mobile-responsive web application.
+
+## Technology Stack
+
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| **Frontend** | React 18 + TypeScript | Component reusability, strong typing, large ecosystem |
+| **Styling** | Tailwind CSS | Utility-first, rapid UI development |
+| **Backend** | FastAPI (Python 3.12+) | Async performance, auto OpenAPI docs, Pydantic V2 validation |
+| **Database** | PostgreSQL 16 | ACID compliance, JSONB for flexible report fields, mature GIS support |
+| **ORM** | SQLAlchemy 2.0 (async) | Full async support, Alembic for migrations |
+| **Auth** | OAuth2 + JWT (python-jose) | Stateless auth with refresh tokens |
+| **File Storage** | MinIO (S3-compatible) | Open source, self-hosted object storage |
+| **Cache** | Redis | Session cache, rate limiting, background task queues |
+| **Task Queue** | Celery + Redis broker | Async tasks (email, image processing, backups) |
+| **Reverse Proxy** | Nginx | Static files, SSL termination, load balancing |
+| **Container Runtime** | Docker + Docker Compose | Consistent dev/prod environments |
+| **CI/CD** | GitHub Actions | Automated testing and deployment |
+| **Monitoring** | Prometheus + Grafana (optional) | Health metrics and dashboards |
+
+## Document Index
+
+| # | Document | Description |
+|---|----------|-------------|
+| 1 | [Technical Specification](01_Technical_Specification.md) | Full system architecture, project structure, security model, deployment strategy |
+| 2 | [Database Schema](02_Database_Schema.md) | PostgreSQL schema design, table definitions, indexes, relationships |
+| 3 | [API Specification](03_API_Specification.md) | FastAPI endpoint catalog, request/response schemas, auth flows |
+| 4 | [Work Breakdown Structure](04_Work_Breakdown_Structure.md) | Phase-based task breakdown with estimates and dependencies |
+| 5 | [UI Component Tree](05_UI_Component_Tree.md) | React component hierarchy, state management, routing |
+
+## Quick Start (Development)
+
+```bash
+# Clone repo
+git clone <repo-url> && cd garrison-investments
+
+# Start all services
+docker-compose up -d
+
+# Run migrations
+docker-compose exec backend alembic upgrade head
+
+# Seed sample data
+docker-compose exec backend python scripts/seed.py
+
+# Frontend dev server (localhost:3000)
+cd frontend && npm install && npm run dev
+
+# API docs (localhost:8000/docs)
+open http://localhost:8000/docs
+```

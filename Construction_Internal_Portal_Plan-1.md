@@ -73,15 +73,7 @@ This document outlines the proposed internal portal system for a construction co
 - Offline draft saving
 - Fast loading performance
 
-## 8. Recommended Technology Stack
-
-- **Frontend:** React.js / Next.js
-- **Backend:** Laravel or Node.js
-- **Database:** PostgreSQL or MySQL
-- **Cloud Storage:** AWS S3 or Cloudflare R2
-- **Hosting:** AWS / Azure / DigitalOcean
-
-## 9. Security Requirements
+## 8. Security Requirements
 
 - Role-based access control
 - Secure login system
@@ -89,13 +81,13 @@ This document outlines the proposed internal portal system for a construction co
 - Daily backup system
 - File access permissions
 
-## 10. Development Phases
+## 9. Development Phases
 
 - **Phase 1** — Login system, dashboard, daily reports, photo uploads
 - **Phase 2** — Material management, approvals, notifications
-- **Phase 3** — Accounts integration, analytics, mobile app
+- **Phase 3** — Accounts integration, analytics, mobile responsive web app
 
-## 11. Future Expansion
+## 10. Future Expansion
 
 - Payroll management
 - GPS attendance
