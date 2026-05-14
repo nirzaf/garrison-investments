@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Construction Portal Blueprint</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // Custom Icon wrapper to use FontAwesome instead of Lucide in standalone HTML
+        const Icon = ({ name, size = 18, className = '' }) => {
+            return <i className={`fa-solid fa-${name} ${className}`} style={{ fontSize: `${size}px` }}></i>;
+        };
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('architecture');
+
+            const tabs = [
+                { id: 'architecture', label: 'System Architecture', icon: 'layer-group' },
+                { id: 'modules', label: 'Core Modules', icon: 'box' },
+                { id: 'rbac', label: 'Role Hierarchy (RBAC)', icon: 'users' },
+                { id: 'timeline', label: 'Phased Rollout', icon: 'clock' },
+            ];
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto space-y-8">
+                        
+                        {/* Header */}
+                        <header className="border-b border-slate-700 pb-6">
+                            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                                <Icon name="hard-hat" className="text-amber-500" size={36} />
+                                Construction Portal Blueprint
+                            </h1>
+                            <p className="text-slate-400 mt-2 text-lg">
+                                High-level visual architecture, module mapping, and deployment strategy.
+                            </p>
+                        </header>
+
+                        {/* Navigation */}
+                        <nav className="flex flex-wrap gap-2 border-b border-slate-800 pb-4">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        activeTab === tab.id 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    <Icon name={tab.icon} size={18} />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </nav>
+
+                        {/* Content Area */}
+                        <main className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 min-h-[500px]">
+                            {activeTab === 'architecture' && <ArchitectureMap />}
+                            {activeTab === 'modules' && <ModulesGrid />}
+                            {activeTab === 'rbac' && <RoleHierarchy />}
+                            {activeTab === 'timeline' && <PhaseTimeline />}
+                        </main>
+                    </div>
+                </div>
+            );
+        }
+
+        function ArchitectureMap() {
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="mb-6">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <Icon name="server" className="text-blue-400" size={24} /> System Architecture & Data Flow
+                        </h2>
+                        <p className="text-slate-400">Conceptual topology based on project requirements (Offline-first Mobile + Web Admin).</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                        
+                        {/* Client Layer */}
+                        <div className="space-y-4">
+                            <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg relative">
+                                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Icon name="laptop" className="text-blue-400" size={18} /> Web Frontend
+                                </h3>
+                                <ul className="text-sm space-y-2 text-slate-300">
+                                    <li>• React.js / Next.js Admin Panel</li>
+                                    <li>• Complex Data Grids & Analytics</li>
+                                    <li>• Document Version Control UI</li>
+                                </ul>
+                            </div>
+                            
+                            <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg relative">
+                                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Icon name="mobile-screen" className="text-green-400" size={18} /> Mobile Client
+                                </h3>
+                                <ul className="text-sm space-y-2 text-slate-300">
+                                    <li>• Responsive PWA / Native App</li>
+                                    <li>• <span className="text-amber-400 font-semibold border-b border-amber-400 border-dashed">Offline Draft Saving</span></li>
+                                    <li>• Direct Camera Integration</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* API / Business Logic Layer */}
+                        <div className="relative flex flex-col items-center justify-center space-y-4">
+                            <div className="hidden md:block absolute top-1/2 left-0 w-full h-0.5 bg-slate-600 -z-10"></div>
+                            
+                            <div className="bg-indigo-900/50 border border-indigo-500 p-6 rounded-xl shadow-lg w-full z-10">
+                                <h3 className="font-semibold text-white mb-4 flex items-center gap-2 justify-center">
+                                    <Icon name="bolt" className="text-indigo-400" size={20} /> API & App Services
+                                </h3>
+                                <div className="space-y-3 text-sm text-slate-300">
+                                    <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
+                                        <Icon name="lock" className="text-red-400" size={14} /> Role-Based Access Control
+                                    </div>
+                                    <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
+                                        <Icon name="chart-line" className="text-blue-400" size={14} /> Workflow Engine (Approvals)
+                                    </div>
+                                    <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
+                                        <Icon name="file-arrow-up" className="text-green-400" size={14} /> Media & Document Processor
+                                    </div>
+                                </div>
+                                <p className="text-xs text-center mt-4 text-indigo-300 bg-indigo-950/50 p-1 rounded">
+                                    Suggested: .NET Core API or Node.js
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Data Persistence Layer */}
+                        <div className="space-y-4">
+                            <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg">
+                                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Icon name="database" className="text-blue-500" size={18} /> Relational Database
+                                </h3>
+                                <ul className="text-sm space-y-2 text-slate-300">
+                                    <li>• PostgreSQL / Azure SQL</li>
+                                    <li>• User Profiles & Roles</li>
+                                    <li>• Daily Site Reports (Structured)</li>
+                                    <li>• Material Inventories</li>
+                                </ul>
+                            </div>
+                            
+                            <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg">
+                                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                                    <Icon name="cloud" className="text-sky-400" size={18} /> Object Storage
+                                </h3>
+                                <ul className="text-sm space-y-2 text-slate-300">
+                                    <li>• AWS S3 / Azure Blob Storage</li>
+                                    <li>• High-Res Site Photos</li>
+                                    <li>• PDF Drawings & BOQs</li>
+                                    <li>• Invoices & Contracts</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ModulesGrid() {
+            const modules = [
+                { title: 'Daily Site Reports', icon: 'file-lines', color: 'text-blue-400', desc: 'Progress %, Manpower, Equipment usage, Issues & delays tracking.' },
+                { title: 'Photo Gallery', icon: 'camera', color: 'text-amber-400', desc: 'Direct camera uploads, visual progress archives.' },
+                { title: 'Material Management', icon: 'box', color: 'text-purple-400', desc: 'Stock tracking, incoming/outgoing logs, supplier management.' },
+                { title: 'Document Control', icon: 'box-archive', color: 'text-emerald-400', desc: 'Drawings, BOQs, contracts with version control.' },
+                { title: 'Approval Workflows', icon: 'circle-check', color: 'text-green-400', desc: 'Multi-tiered authorization for materials and reports.' },
+                { title: 'Alerts & Notifications', icon: 'triangle-exclamation', color: 'text-red-400', desc: 'Low stock alerts, pending approval nudges.' },
+            ];
+
+            return (
+                <div className="animate-fade-in">
+                    <div className="mb-6">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <Icon name="box" className="text-purple-400" size={24} /> Core Platform Modules
+                        </h2>
+                        <p className="text-slate-400">The functional building blocks of the portal.</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {modules.map((mod, i) => (
+                            <div key={i} className="bg-slate-700/30 border border-slate-600 p-5 rounded-xl hover:bg-slate-700/50 transition-colors">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <Icon name={mod.icon} className={mod.color} size={24} />
+                                    <h3 className="font-semibold text-white">{mod.title}</h3>
+                                </div>
+                                <p className="text-sm text-slate-300">{mod.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function RoleHierarchy() {
+            const roles = [
+                { role: 'Admin', scope: 'Full system control & configuration', level: 1 },
+                { role: 'Operation Manager', scope: 'Monitor all projects & top-level approvals', level: 2 },
+                { role: 'Project Manager', scope: 'Manage assigned projects & report reviews', level: 3 },
+                { role: 'Accounts Dept.', scope: 'Track invoices and payments (Parallel Access)', level: 3 },
+                { role: 'Civil Engineer', scope: 'Submit daily reports & progress updates', level: 4 },
+                { role: 'Civil Supervisor', scope: 'Update site activities & manpower (Mobile heavy)', level: 5 },
+                { role: 'Store Keeper', scope: 'Manage stock & material movement (Inventory UI)', level: 5 },
+            ];
+
+            return (
+                <div className="animate-fade-in max-w-4xl mx-auto">
+                    <div className="mb-8">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <Icon name="shield-halved" className="text-red-400" size={24} /> Role-Based Access Matrix
+                        </h2>
+                        <p className="text-slate-400">Hierarchical data isolation and access permissions.</p>
+                    </div>
+
+                    <div className="space-y-3 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-600 before:to-transparent">
+                        {roles.map((r, i) => (
+                            <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                {/* Timeline dot */}
+                                <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-slate-900 bg-slate-700 text-slate-300 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                                    <Icon name="users" size={16} />
+                                </div>
+                                {/* Card */}
+                                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h4 className="font-bold text-white">{r.role}</h4>
+                                        <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Tier {r.level}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-400">{r.scope}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function PhaseTimeline() {
+            const phases = [
+                {
+                    phase: 'Phase 1',
+                    title: 'Foundation & Reporting',
+                    status: 'Current Focus',
+                    items: ['Secure login system', 'Main Dashboard', 'Daily reports submission', 'Photo uploads & storage'],
+                    color: 'border-blue-500'
+                },
+                {
+                    phase: 'Phase 2',
+                    title: 'Supply Chain & Logic',
+                    status: 'Next',
+                    items: ['Material management', 'Approval workflows', 'Automated Notifications', 'Document Control (Drawings, BOQ)'],
+                    color: 'border-amber-500'
+                },
+                {
+                    phase: 'Phase 3',
+                    title: 'Financials & Mobility',
+                    status: 'Future',
+                    items: ['Accounts integration', 'Advanced Analytics', 'Dedicated Mobile App Release'],
+                    color: 'border-purple-500'
+                },
+                {
+                    phase: 'Expansion',
+                    title: 'Enterprise Integrations',
+                    status: 'Roadmap',
+                    items: ['Payroll & GPS Attendance', 'QR material & Vehicle tracking', 'AI-based reporting', 'External Client Portal'],
+                    color: 'border-emerald-500'
+                }
+            ];
+
+            return (
+                <div className="animate-fade-in">
+                    <div className="mb-8">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <Icon name="clock" className="text-amber-400" size={24} /> Development Timeline
+                        </h2>
+                        <p className="text-slate-400">Iterative delivery strategy to ensure immediate ROI.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {phases.map((phase, i) => (
+                            <div key={i} className={`bg-slate-800/80 rounded-xl p-5 border-t-4 ${phase.color} shadow-lg flex flex-col h-full`}>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{phase.phase}</h3>
+                                        <h4 className="text-lg font-bold text-white">{phase.title}</h4>
+                                    </div>
+                                </div>
+                                <ul className="space-y-3 flex-grow">
+                                    {phase.items.map((item, idx) => (
+                                        <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
+                                            <Icon name="circle-check" className="text-slate-500 shrink-0 mt-1" size={14} />
+                                            <span>{item}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <div className="mt-4 pt-4 border-t border-slate-700">
+                                 <span className="text-xs font-medium bg-slate-700 px-2 py-1 rounded text-slate-300">
+                                     {phase.status}
+                                 </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the React application
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
