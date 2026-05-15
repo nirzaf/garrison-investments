@@ -94,14 +94,6 @@ export type PortalNavItem = {
 
 export type PortalNavGroup = "core" | "management" | "phase2" | "delivery";
 
-export type GuidedTourStep = {
-  label: string;
-  screen: ScreenKey;
-  persona: string;
-  trigger: string;
-  outcome: string;
-};
-
 export type ProductTourStep = {
   title: string;
   screen: ScreenKey;
@@ -150,8 +142,6 @@ export const requirementCoverage: RequirementCoverage[] = requirementCoverageDat
 export const dashboardPanels = dashboardData.dashboardPanels;
 
 export const businessFlow = overviewData.businessFlow;
-
-export const guidedTourSteps: GuidedTourStep[] = tourData.guidedTourSteps as GuidedTourStep[];
 
 export const productTourSteps: ProductTourStep[] = tourData.productTourSteps as ProductTourStep[];
 

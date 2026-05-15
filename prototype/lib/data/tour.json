@@ -1,62 +1,4 @@
 {
-  "guidedTourSteps": [
-    {
-      "label": "Platform overview",
-      "screen": "overview",
-      "persona": "General Manager",
-      "trigger": "Open the portal for the first time",
-      "outcome": "See the operating flow, module scope, capabilities, and phased rollout plan."
-    },
-    {
-      "label": "Secure onboarding",
-      "screen": "auth",
-      "persona": "Admin",
-      "trigger": "Create users and send first-login access",
-      "outcome": "Each employee enters through role-based access, 2FA, and audit-friendly sessions."
-    },
-    {
-      "label": "Project setup",
-      "screen": "projects",
-      "persona": "Operation Manager",
-      "trigger": "A new construction job is awarded",
-      "outcome": "The portal creates one source of truth for BOQ, phases, deadlines, team members, and progress."
-    },
-    {
-      "label": "Daily field capture",
-      "screen": "reports",
-      "persona": "Supervisor and Civil Engineer",
-      "trigger": "Work is completed on site today",
-      "outcome": "Supervisor input becomes an engineer-verified official report with photos and attachments."
-    },
-    {
-      "label": "Management approval",
-      "screen": "approvals",
-      "persona": "Project Manager",
-      "trigger": "A report, document, material request, or invoice needs sign-off",
-      "outcome": "Approvals move through the correct chain with comments, reminders, escalation, and audit records."
-    },
-    {
-      "label": "Inventory & Stores",
-      "screen": "materials",
-      "persona": "Store Keeper / Accounts / Manager",
-      "trigger": "Materials or tools move between warehouse and project site stores",
-      "outcome": "Warehouse and site stock, tagged tool locations, supplier context, and governed movement workflows."
-    },
-    {
-      "label": "Mobile execution",
-      "screen": "mobile",
-      "persona": "Field team",
-      "trigger": "Users work from site on low bandwidth",
-      "outcome": "A PWA-friendly flow keeps drafts, photos, approvals, and notifications usable on phones."
-    },
-    {
-      "label": "Launch path",
-      "screen": "delivery",
-      "persona": "Delivery team",
-      "trigger": "Stakeholders approve build funding",
-      "outcome": "MVP scope, acceptance scenarios, migration inputs, and deployment model are defined."
-    }
-  ],
   "productTourSteps": [
     {
       "title": "Start with the daily operating story",
@@ -111,24 +53,6 @@
       "body": "Documents, revisions, photos, and attachments preserve the official project record after field work is submitted and approved.",
       "instruction": "Use this as the proof layer for daily work, WIRs, MARs, MIRs, delivery notes, and photo evidence.",
       "position": "top"
-    },
-    {
-      "title": "Phase 2 operational depth",
-      "screen": "materials",
-      "target": "storage-locations",
-      "eyebrow": "Future expansion",
-      "body": "Inventory, stores, tool location, suppliers, accounts, and mobile/offline behavior remain visible without distracting from the MVP story.",
-      "instruction": "Position these modules as the next layer after the core field-to-management workflow is understood.",
-      "position": "bottom"
-    },
-    {
-      "title": "Delivery path",
-      "screen": "delivery",
-      "target": "delivery-plan",
-      "eyebrow": "Implementation readiness",
-      "body": "The delivery screen summarizes hosting, environments, deployment, backups, testing, migration, and launch acceptance scenarios.",
-      "instruction": "Close by showing how the prototype maps to a build plan and acceptance checklist.",
-      "position": "bottom"
     }
   ],
   "walkthroughSteps": [
