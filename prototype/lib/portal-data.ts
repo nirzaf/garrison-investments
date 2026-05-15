@@ -1,230 +1,481 @@
 import {
   Archive,
   Bell,
+  BookOpenCheck,
   BriefcaseBusiness,
+  CalendarClock,
+  Camera,
   ClipboardCheck,
-  Clock3,
+  Cloud,
+  Database,
   FileStack,
+  Gauge,
   HardHat,
-  LayoutDashboard,
+  KeyRound,
+  Layers3,
+  ListChecks,
   PackageCheck,
+  Route,
   ShieldCheck,
   Smartphone,
+  Truck,
   UsersRound,
+  WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type PortalModule = {
-  title: string;
-  status: "MVP" | "Phase 2" | "Phase 3" | "Future";
-  summary: string;
-  metric: string;
+export type ScreenKey =
+  | "overview"
+  | "auth"
+  | "dashboard"
+  | "projects"
+  | "reports"
+  | "approvals"
+  | "materials"
+  | "documents"
+  | "photos"
+  | "accounts"
+  | "notifications"
+  | "admin"
+  | "mobile"
+  | "security"
+  | "delivery";
+
+export type PortalNavItem = {
+  key: ScreenKey;
+  label: string;
   icon: LucideIcon;
-  accent: string;
+  phase: "MVP" | "Phase 2" | "Phase 3" | "Ops";
 };
 
-export type WorkflowStep = {
-  title: string;
-  owner: string;
-  description: string;
-  time: string;
-};
+export const navItems: PortalNavItem[] = [
+  { key: "overview", label: "Overview", icon: Gauge, phase: "MVP" },
+  { key: "auth", label: "Login & Roles", icon: KeyRound, phase: "MVP" },
+  { key: "dashboard", label: "Dashboard", icon: Layers3, phase: "MVP" },
+  { key: "projects", label: "Projects", icon: BriefcaseBusiness, phase: "MVP" },
+  { key: "reports", label: "Daily Reports", icon: ClipboardCheck, phase: "MVP" },
+  { key: "approvals", label: "Approvals", icon: ShieldCheck, phase: "MVP" },
+  { key: "materials", label: "Materials", icon: PackageCheck, phase: "Phase 2" },
+  { key: "documents", label: "Documents", icon: FileStack, phase: "MVP" },
+  { key: "photos", label: "Photos", icon: Camera, phase: "MVP" },
+  { key: "accounts", label: "Accounts", icon: WalletCards, phase: "Phase 2" },
+  { key: "notifications", label: "Notifications", icon: Bell, phase: "MVP" },
+  { key: "admin", label: "Admin", icon: UsersRound, phase: "MVP" },
+  { key: "mobile", label: "Mobile/PWA", icon: Smartphone, phase: "Phase 3" },
+  { key: "security", label: "Security", icon: ShieldCheck, phase: "MVP" },
+  { key: "delivery", label: "Delivery Plan", icon: Cloud, phase: "Ops" },
+];
 
-export type RoleCard = {
-  role: string;
-  scope: string;
-  canDo: string[];
-};
+export const kpis = [
+  { label: "Active projects", value: "4", detail: "company-wide", tone: "blue" },
+  { label: "Pending approvals", value: "12", detail: "8 due today", tone: "orange" },
+  { label: "Late updates", value: "3", detail: "PM notified", tone: "red" },
+  { label: "Documents pending", value: "8", detail: "MAR/MIR/WIR", tone: "green" },
+  { label: "Low stock", value: "5", detail: "2 critical", tone: "purple" },
+  { label: "Unread alerts", value: "17", detail: "90-day history", tone: "teal" },
+];
 
-export const modules: PortalModule[] = [
+export const launchModules = [
   {
-    title: "Task & Daily Updates",
-    status: "MVP",
-    summary: "Supervisor updates feed the engineer report and final PM approval.",
-    metric: "Core launch flow",
+    title: "Task/report updates",
+    phase: "MVP",
+    summary: "Supervisor field updates, engineer verification, PM final approval.",
     icon: ClipboardCheck,
-    accent: "orange",
   },
   {
-    title: "Project Tracking",
-    status: "MVP",
-    summary: "Projects use BOQ, milestones, Gantt tasks, and discipline progress.",
-    metric: "4 active projects",
-    icon: BriefcaseBusiness,
-    accent: "blue",
-  },
-  {
-    title: "Photo Evidence",
-    status: "MVP",
-    summary: "Five site photos per report, compressed, thumbnailed, and watermarked.",
-    metric: "5/report",
-    icon: HardHat,
-    accent: "yellow",
-  },
-  {
-    title: "Document Control",
-    status: "MVP",
-    summary: "MAR, MIR, WIR, and delivery notes with versions and active approval.",
-    metric: "60 MB max",
+    title: "Documents/versioning",
+    phase: "MVP",
+    summary: "MAR, MIR, WIR, delivery notes, active versions, superseded warnings.",
     icon: FileStack,
-    accent: "green",
   },
   {
-    title: "Approvals",
-    status: "MVP",
-    summary: "Automatic routing, 24h reminders, 48h escalations, full audit trail.",
-    metric: "2-stage flows",
-    icon: ShieldCheck,
-    accent: "red",
+    title: "Photo evidence",
+    phase: "MVP",
+    summary: "5 photos/report, compression, thumbnails, company watermark.",
+    icon: Camera,
   },
   {
-    title: "Materials",
-    status: "Phase 2",
-    summary: "Requests, reservations, multi-location stock, transfers, and low-stock alerts.",
-    metric: "> $1k escalates",
+    title: "Materials workflow",
+    phase: "Phase 2",
+    summary: "Requests, reservations, multi-location stock, transfers, low stock.",
     icon: PackageCheck,
-    accent: "teal",
   },
   {
     title: "Accounts",
-    status: "Phase 2",
-    summary: "Structured invoices, payment status, budgets, manpower cost, P&L reports.",
-    metric: "OM approval",
-    icon: Archive,
-    accent: "purple",
+    phase: "Phase 2",
+    summary: "Budgets, invoices, manpower cost, payment status, P&L, salary sheets.",
+    icon: WalletCards,
   },
   {
     title: "Offline PWA",
-    status: "Phase 3",
-    summary: "Offline drafts and photo sync queue with autosave every 30 seconds.",
-    metric: "H+ tolerant",
+    phase: "Phase 3",
+    summary: "Offline drafts, photo queue, autosave, H+ tolerant mobile flows.",
     icon: Smartphone,
-    accent: "pink",
   },
 ];
 
-export const reportFlow: WorkflowStep[] = [
-  {
-    title: "Supervisor Update",
-    owner: "Civil Supervisor",
-    description: "Attendance, work location, overtime, progress, and photo evidence.",
-    time: "Site entry",
-  },
-  {
-    title: "Quality Verification",
-    owner: "Civil Engineer",
-    description: "Engineer checks site quality, confirms target coverage, and adds report.",
-    time: "Same day",
-  },
-  {
-    title: "Project Approval",
-    owner: "Project Manager",
-    description: "PM approves final official report or rejects with mandatory comments.",
-    time: "24h SLA",
-  },
-  {
-    title: "PDF & Alerts",
-    owner: "System",
-    description: "Approved report is numbered, emailed, archived, and visible in dashboard.",
-    time: "Automatic",
-  },
-];
-
-export const roleCards: RoleCard[] = [
+export const roleMatrix = [
   {
     role: "General Manager",
-    scope: "Executive visibility and selected approvals",
-    canDo: ["Review company-wide progress", "See escalations", "Approve scope changes"],
+    access: "Executive visibility",
+    permissions: ["Company-wide dashboard", "Escalation view", "Scope-change approval"],
   },
   {
     role: "Operation Manager",
-    scope: "Operational control and escalations",
-    canDo: ["Approve high-value materials", "Approve invoices", "Receive critical alerts"],
+    access: "Operations control",
+    permissions: ["Escalated report review", "Invoices/payments approval", ">$1k material approval"],
   },
   {
     role: "Project Manager",
-    scope: "Project delivery owner",
-    canDo: ["Approve reports", "Review WIR progress", "Manage project tasks"],
+    access: "All projects now, project-wise later",
+    permissions: ["Approve reports", "Approve active documents", "Review WIR progress"],
   },
   {
     role: "Civil Engineer",
-    scope: "Official reporting owner",
-    canDo: ["Verify supervisor update", "Submit official report", "Upload documents"],
+    access: "Official reporting",
+    permissions: ["Verify supervisor update", "Submit official report", "Upload docs"],
   },
   {
     role: "Civil Supervisor",
-    scope: "Field update owner",
-    canDo: ["Update attendance", "Record work location", "Upload site photos"],
+    access: "Field updates",
+    permissions: ["Attendance", "Work location", "Overtime", "Photos", "Progress input"],
+  },
+  {
+    role: "Store Keeper",
+    access: "Materials only",
+    permissions: ["Inventory screens", "Stock movement", "Supplier records"],
   },
   {
     role: "Accounts",
-    scope: "Financial visibility",
-    canDo: ["Track invoices", "Track budget vs actual", "Prepare P&L and salary sheets"],
+    access: "All financial/project data",
+    permissions: ["Invoices", "Budgets", "Manpower cost", "P&L", "Salary sheets"],
+  },
+  {
+    role: "Admin",
+    access: "Configuration and audit",
+    permissions: ["Users", "Permissions later", "Audit logs", "Override with reason"],
   },
 ];
 
-export const dummyProjects = [
+export const projects = [
   {
     code: "GIP-2401",
     name: "Al Rayyan Villa Compound",
-    progress: 68,
+    location: "Al Rayyan",
     phase: "Finishing",
+    manager: "N. Rahman",
+    progress: 68,
+    budget: "QAR 4.8M",
+    deadline: "2026-07-30",
     reports: 18,
     delayed: 2,
+    disciplines: [
+      { name: "Civil", value: 82 },
+      { name: "MEP", value: 57 },
+      { name: "Finishing", value: 44 },
+    ],
   },
   {
     code: "GIP-2402",
     name: "Industrial Store Extension",
-    progress: 42,
+    location: "Industrial Area",
     phase: "MEP",
+    manager: "S. Kumar",
+    progress: 42,
+    budget: "QAR 2.1M",
+    deadline: "2026-08-15",
     reports: 11,
     delayed: 1,
+    disciplines: [
+      { name: "Civil", value: 65 },
+      { name: "MEP", value: 34 },
+      { name: "Finishing", value: 12 },
+    ],
   },
   {
     code: "GIP-2403",
     name: "Doha Office Fit-Out",
-    progress: 81,
+    location: "West Bay",
     phase: "Civil",
+    manager: "A. Hassan",
+    progress: 81,
+    budget: "QAR 1.6M",
+    deadline: "2026-06-12",
     reports: 27,
     delayed: 0,
+    disciplines: [
+      { name: "Civil", value: 91 },
+      { name: "MEP", value: 79 },
+      { name: "Finishing", value: 66 },
+    ],
   },
 ];
 
-export const decisionCards = [
+export const ganttTasks = [
+  { task: "BOQ baseline", owner: "PM", start: 5, span: 12, status: "Done" },
+  { task: "Civil works", owner: "Engineer", start: 18, span: 30, status: "On track" },
+  { task: "MEP rough-in", owner: "MEP Lead", start: 42, span: 24, status: "Risk" },
+  { task: "WIR inspection", owner: "PM", start: 61, span: 12, status: "Pending" },
+  { task: "Finishing handover", owner: "Supervisor", start: 73, span: 20, status: "Upcoming" },
+];
+
+export const reportFlow = [
   {
-    title: "MVP Shape",
-    value: "Real operational portal",
-    detail: "Launch around task/report update, document control, approvals, and essentials.",
+    title: "Supervisor update",
+    owner: "Civil Supervisor",
+    detail: "Attendance, work location, overtime, progress, safety incidents, site photos.",
+    status: "Submitted",
   },
   {
-    title: "Daily Report Number",
-    value: "PROJECTCODE-DR-YYYYMMDD-###",
-    detail: "Final report is the engineer report approved by the Project Manager.",
+    title: "Engineer verification",
+    owner: "Civil Engineer",
+    detail: "Checks work quality, confirms WIR/inspection status, adds official report.",
+    status: "In review",
   },
   {
-    title: "Browser Support",
-    value: "Chrome, Edge, Safari iOS, Android Chrome",
-    detail: "Edge replaces Internet Explorer due to IE end-of-life.",
+    title: "PM approval",
+    owner: "Project Manager",
+    detail: "Approves target coverage or rejects with mandatory comments.",
+    status: "Pending",
   },
   {
-    title: "Security",
-    value: "2FA + 1-day session",
-    detail: "Email OTP for MVP, download logging, 3 failed attempts lockout.",
+    title: "PDF/email/archive",
+    owner: "System",
+    detail: "Generates numbered PDF, emails it, and updates dashboard.",
+    status: "Automatic",
   },
 ];
 
-export const openItems = [
-  "Collect company logo, colors, typography, and paper forms.",
-  "Confirm final first-release module list and material placeholder needs.",
-  "Confirm General Manager visibility/approval authority.",
-  "Collect BOQ, report, and document numbering templates.",
-  "Confirm hosting provider, backup location, and internal server owner.",
-  "Collect spreadsheet data for users, projects, suppliers, materials, BOQ, and stock.",
+export const reportRows = [
+  {
+    no: "GIP-2401-DR-20260515-001",
+    project: "Al Rayyan Villa Compound",
+    owner: "Civil Engineer",
+    status: "Pending PM",
+    progress: "68%",
+    photos: 5,
+    due: "10:00 AM",
+  },
+  {
+    no: "GIP-2402-DR-20260515-001",
+    project: "Industrial Store Extension",
+    owner: "Civil Engineer",
+    status: "Draft",
+    progress: "42%",
+    photos: 3,
+    due: "10:00 AM",
+  },
+  {
+    no: "GIP-2403-DR-20260514-002",
+    project: "Doha Office Fit-Out",
+    owner: "Civil Engineer",
+    status: "Approved",
+    progress: "81%",
+    photos: 5,
+    due: "Complete",
+  },
 ];
 
-export const navItems = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "flow", label: "Report Flow", icon: Clock3 },
-  { id: "roles", label: "Roles", icon: UsersRound },
-  { id: "decisions", label: "Decisions", icon: Bell },
+export const formSections = [
+  "Project/date/weather",
+  "Work area/location",
+  "Manpower and OT",
+  "Equipment usage",
+  "Material consumption",
+  "Safety incidents",
+  "Visitors/subcontractors",
+  "WIR/inspection status",
+  "Delays and next-day plan",
+  "Photos and attachments",
+];
+
+export const approvalItems = [
+  {
+    type: "Daily Report",
+    title: "Al Rayyan Villa Compound - DR 001",
+    route: "Supervisor -> Engineer -> PM",
+    sla: "6h left",
+    status: "PM pending",
+  },
+  {
+    type: "Material Request",
+    title: "Steel bundle request - USD 1,420",
+    route: "Requester -> Engineer -> PM -> OM",
+    sla: "Escalates at 48h",
+    status: "OM required",
+  },
+  {
+    type: "Document",
+    title: "MIR-2026-014 revision B",
+    route: "Uploader -> PM -> Active",
+    sla: "22h left",
+    status: "PM pending",
+  },
+  {
+    type: "Invoice",
+    title: "Supplier invoice INV-8842",
+    route: "Accounts -> OM",
+    sla: "1 day left",
+    status: "Accounts checked",
+  },
+];
+
+export const materials = [
+  {
+    code: "MAT-CEM-001",
+    name: "Cement OPC 43",
+    location: "Central warehouse",
+    stock: 820,
+    unit: "Bags",
+    min: 500,
+    status: "Healthy",
+  },
+  {
+    code: "MAT-STL-012",
+    name: "Steel rebar 12mm",
+    location: "Al Rayyan site",
+    stock: 18,
+    unit: "TON",
+    min: 25,
+    status: "Low",
+  },
+  {
+    code: "TOOL-DRL-004",
+    name: "Rotary drill",
+    location: "Industrial store",
+    stock: 4,
+    unit: "Nos",
+    min: 3,
+    status: "Reserved",
+  },
+];
+
+export const materialLifecycle = [
+  "Requested",
+  "Engineer reviewed",
+  "PM approved",
+  "Reserved",
+  "Issued / partially issued / cancelled",
+];
+
+export const suppliers = [
+  { name: "Qatar Build Supplies", category: "Cement", terms: "30 days", tds: "Valid" },
+  { name: "Doha Steel Trading", category: "Steel", terms: "45 days", tds: "Expiring" },
+  { name: "Site Tools WLL", category: "Tools", terms: "COD", tds: "Valid" },
+];
+
+export const documents = [
+  {
+    number: "GIP-2401-WIR-CIV-2026-014-B",
+    type: "WIR",
+    project: "Al Rayyan Villa Compound",
+    status: "Pending approval",
+    version: "Rev B",
+    size: "18 MB",
+  },
+  {
+    number: "GIP-2402-MIR-MEP-2026-006-A",
+    type: "MIR",
+    project: "Industrial Store Extension",
+    status: "Active",
+    version: "Rev A",
+    size: "7 MB",
+  },
+  {
+    number: "GIP-2403-DN-CIV-2026-021-A",
+    type: "Delivery Note",
+    project: "Doha Office Fit-Out",
+    status: "Superseded",
+    version: "Rev A",
+    size: "2 MB",
+  },
+];
+
+export const photoCards = [
+  { label: "Supervisor upload", project: "Al Rayyan", meta: "5/5 photos, watermark applied", tone: "orange" },
+  { label: "Compressed display", project: "Doha Office", meta: "1920px display version", tone: "blue" },
+  { label: "Offline queue", project: "Industrial Store", meta: "2 waiting for network", tone: "purple" },
+  { label: "Admin recoverable", project: "Archive", meta: "soft deleted, 30-day restore", tone: "green" },
+];
+
+export const invoices = [
+  { no: "INV-8842", supplier: "Doha Steel Trading", amount: "QAR 18,200", status: "OM approval" },
+  { no: "INV-8811", supplier: "Qatar Build Supplies", amount: "QAR 9,760", status: "Paid" },
+  { no: "INV-8794", supplier: "Site Tools WLL", amount: "QAR 2,450", status: "Accounts review" },
+];
+
+export const financeCards = [
+  { label: "Budget vs actual", value: "72%", icon: WalletCards },
+  { label: "Manpower cost", value: "QAR 42k", icon: HardHat },
+  { label: "Pending payment", value: "QAR 20.6k", icon: CalendarClock },
+  { label: "Project P&L", value: "Phase 2", icon: Archive },
+];
+
+export const notifications = [
+  { label: "Approval pending", target: "Assigned approver", timing: "Immediate + 24h reminder" },
+  { label: "Late report", target: "Submitter, then PM", timing: "10:00 AM next day" },
+  { label: "Low stock", target: "Store Keeper, PM, OM", timing: "Threshold crossed" },
+  { label: "Active document", target: "Project team", timing: "After approval" },
+];
+
+export const users = [
+  { name: "Mohamed Admin", role: "Admin", status: "Active", last: "Today" },
+  { name: "N. Rahman", role: "Project Manager", status: "Active", last: "Today" },
+  { name: "A. Thomas", role: "Civil Engineer", status: "Active", last: "Yesterday" },
+  { name: "K. Ali", role: "Civil Supervisor", status: "Inactive", last: "2026-04-21" },
+];
+
+export const auditRows = [
+  { event: "Report approved", actor: "N. Rahman", target: "GIP-2401-DR-20260515-001" },
+  { event: "Download logged", actor: "Accounts", target: "INV-8842.pdf" },
+  { event: "Admin override", actor: "Admin", target: "Delegated PM approval" },
+  { event: "User deactivated", actor: "Admin", target: "K. Ali" },
+];
+
+export const mobileFeatures = [
+  "Supervisor update flow",
+  "Engineer report/update",
+  "Photo upload and queue",
+  "Document view",
+  "Approvals and notifications",
+  "30-second autosave",
+];
+
+export const securityItems = [
+  { label: "2FA", detail: "Email OTP for MVP, authenticator app later" },
+  { label: "Session", detail: "1-day session with short access token and silent refresh" },
+  { label: "Lockout", detail: "3 failed attempts" },
+  { label: "Blocked files", detail: ".exe, .sh, .bat, .cmd, .js, .php, .html, unknown binaries" },
+  { label: "Audit", detail: "View, download, create, update, delete, login, approve" },
+  { label: "Retention", detail: "Audit logs 7 years, deleted records recoverable 30 days" },
+];
+
+export const deliveryItems = [
+  { label: "Hosting", detail: "Cloud VPS with Docker Compose for MVP", icon: Cloud },
+  { label: "Environments", detail: "Staging and production", icon: Route },
+  { label: "Deployment", detail: "GitHub Actions to staging, production approval by OM", icon: Truck },
+  { label: "Backups", detail: "Daily 30 days, monthly 12 months, monthly restore test", icon: Database },
+  { label: "Testing", detail: "Chrome, Edge, Safari iOS, Android Chrome, low-speed network", icon: BookOpenCheck },
+  { label: "Migration", detail: "Import users, projects, suppliers, materials, BOQ, opening stock", icon: Archive },
+];
+
+export const apiEndpoints = [
+  "/auth/login",
+  "/projects/{id}/timeline",
+  "/reports/{id}/submit",
+  "/photos/upload",
+  "/materials/low-stock",
+  "/documents/{id}/versions",
+  "/approvals/inbox",
+  "/notifications/unread-count",
+  "/dashboard/summary",
+];
+
+export const remainingInputs = [
+  "Company logo, colors, typography, and paper forms",
+  "Final first-release module sign-off",
+  "General Manager approval/read-only authority",
+  "BOQ, report, and document numbering templates",
+  "Hosting provider, backup location, and server owner",
+  "Source spreadsheets for users, projects, suppliers, materials, BOQ, and stock",
 ];
