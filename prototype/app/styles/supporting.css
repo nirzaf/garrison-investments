@@ -1,0 +1,78 @@
+/* ── Decision cards ── */
+
+.decisionCard > div {
+  margin-bottom: 6px;
+}
+
+.decisionCard span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.decisionCard p {
+  margin: 0;
+}
+
+/* ── Animated counter for hero pulse ── */
+
+.pulseValue {
+  display: inline-block;
+  animation: countUp 600ms ease both;
+}
+
+/* ── Keyframes ── */
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.75);
+  }
+}
+
+@keyframes grow {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tourPop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

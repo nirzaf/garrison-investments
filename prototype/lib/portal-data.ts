@@ -30,7 +30,7 @@ import dashboardData from "@/lib/data/dashboard.json";
 import projectsData from "@/lib/data/projects.json";
 import reportsData from "@/lib/data/reports.json";
 import approvalsData from "@/lib/data/approvals.json";
-import materialsData from "@/lib/data/materials.json";
+import inventoryStoresData from "@/lib/data/inventory-stores.json";
 import documentsData from "@/lib/data/documents.json";
 import photosData from "@/lib/data/photos.json";
 import accountsData from "@/lib/data/accounts.json";
@@ -38,7 +38,7 @@ import notificationsData from "@/lib/data/notifications.json";
 import adminData from "@/lib/data/admin.json";
 import mobileData from "@/lib/data/mobile.json";
 import securityData from "@/lib/data/security.json";
-import deliveryData from "@/lib/data/delivery.json";
+import rolloutPlanData from "@/lib/data/rollout-plan.json";
 import tourData from "@/lib/data/tour.json";
 import featureGuidesData from "@/lib/data/feature-guides.json";
 import sampleAttachmentsData from "@/lib/data/sample-attachments.json";
@@ -89,7 +89,10 @@ export type PortalNavItem = {
   label: string;
   icon: LucideIcon;
   phase: "MVP" | "Phase 2" | "Phase 3" | "Ops";
+  group: PortalNavGroup;
 };
+
+export type PortalNavGroup = "core" | "management" | "phase2" | "delivery";
 
 export type GuidedTourStep = {
   label: string;
@@ -174,21 +177,21 @@ export const reportOutcomeCards = reportsData.reportOutcomeCards;
 
 export const approvalItems = approvalsData.approvalItems;
 
-export const storageLocations = materialsData.storageLocations;
+export const storageLocations = inventoryStoresData.storageLocations;
 
-export const inventoryItems = materialsData.inventoryItems;
+export const inventoryItems = inventoryStoresData.inventoryItems;
 
-export const toolAssets = materialsData.toolAssets;
+export const toolAssets = inventoryStoresData.toolAssets;
 
-export const materialLifecycle = materialsData.materialLifecycle;
+export const materialLifecycle = inventoryStoresData.materialLifecycle;
 
-export const inventoryMovementFlow = materialsData.inventoryMovementFlow;
+export const inventoryMovementFlow = inventoryStoresData.inventoryMovementFlow;
 
-export const materialTransactions = materialsData.materialTransactions;
+export const materialTransactions = inventoryStoresData.materialTransactions;
 
-export const lowStockByLocation = materialsData.lowStockByLocation;
+export const lowStockByLocation = inventoryStoresData.lowStockByLocation;
 
-export const suppliers = materialsData.suppliers;
+export const suppliers = inventoryStoresData.suppliers;
 
 export const documents = documentsData.documents;
 
@@ -219,14 +222,14 @@ export const mobileFieldStates = mobileData.mobileFieldStates;
 
 export const securityItems = securityData.securityItems;
 
-export const deliveryItems = deliveryData.deliveryItems.map((item) => ({
+export const deliveryItems = rolloutPlanData.deliveryItems.map((item) => ({
   ...item,
   icon: iconMap[item.icon],
 }));
 
-export const apiEndpoints = deliveryData.apiEndpoints;
+export const apiEndpoints = rolloutPlanData.apiEndpoints;
 
-export const remainingInputs = deliveryData.remainingInputs;
+export const remainingInputs = rolloutPlanData.remainingInputs;
 
 export const walkthroughSteps = tourData.walkthroughSteps;
 

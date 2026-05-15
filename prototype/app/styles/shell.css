@@ -1,0 +1,246 @@
+/* ── Side rail ── */
+
+.sideRail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 14px;
+  background: linear-gradient(180deg, #112331 0%, #0c1924 100%);
+  color: #eef2f6;
+  overflow: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.brandBlock {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 0 4px;
+}
+
+.brandIcon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--orange), #c45d26);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 2px 8px rgba(216, 109, 47, 0.25);
+}
+
+.brandBlock strong {
+  display: block;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.brandBlock span {
+  display: block;
+  color: rgba(238, 242, 246, 0.52);
+  font-size: 11px;
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
+
+.moduleNav {
+  display: grid;
+  gap: 14px;
+}
+
+.moduleGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.moduleGroup h2 {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: rgba(238, 242, 246, 0.46);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.moduleNav button {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  color: rgba(238, 242, 246, 0.7);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 13.5px;
+  transition: 150ms ease;
+}
+
+.moduleNav button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.moduleNav button.isActive {
+  color: #fff;
+  background: rgba(216, 109, 47, 0.15);
+  border-color: rgba(216, 109, 47, 0.25);
+}
+
+.moduleNav button.isTourTarget {
+  border-color: rgba(216, 109, 47, 0.5);
+  box-shadow: inset 3px 0 0 var(--orange), 0 0 20px rgba(216, 109, 47, 0.12);
+}
+
+.moduleNav small {
+  color: rgba(238, 242, 246, 0.4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prototypeStatus {
+  margin-top: auto;
+  padding: 13px 14px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prototypeStatus span {
+  color: rgba(238, 242, 246, 0.48);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prototypeStatus strong {
+  display: block;
+  margin: 4px 0 2px;
+  font-size: 13px;
+}
+
+.prototypeStatus p {
+  margin: 0;
+  color: rgba(238, 242, 246, 0.52);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Workspace ── */
+
+.workspace {
+  min-width: 0;
+  padding: 20px 24px 40px;
+}
+
+.topBar {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.mobileMenu {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.topBar h1 {
+  margin: 4px 0 0;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topActions button,
+.heroActions button,
+.toolbarMock button,
+.buttonRow button,
+.loginMock button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--rail);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  transition: 150ms ease;
+}
+
+.topActions button {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  color: var(--ink);
+  border-color: rgba(31, 34, 38, 0.12);
+}
+
+.topActions .tourButton {
+  background: linear-gradient(135deg, var(--orange), #c45d26);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(216, 109, 47, 0.2);
+}
+
+.topActions button:hover,
+.heroActions button:hover,
+.toolbarMock button:hover,
+.buttonRow button:hover,
+.loginMock button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.searchBox {
+  min-height: 38px;
+  min-width: 250px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(31, 34, 38, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  color: var(--muted);
+  font-size: 13px;
+}
