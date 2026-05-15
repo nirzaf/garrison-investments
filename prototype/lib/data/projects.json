@@ -1,0 +1,68 @@
+{
+  "projects": [
+    {
+      "code": "GIP-2401",
+      "name": "Al Rayyan Villa Compound",
+      "location": "Al Rayyan",
+      "phase": "Finishing",
+      "manager": "N. Rahman",
+      "progress": 68,
+      "budget": "QAR 4.8M",
+      "deadline": "2026-07-30",
+      "reports": 18,
+      "delayed": 2,
+      "disciplines": [
+        { "name": "Civil", "value": 82 },
+        { "name": "MEP", "value": 57 },
+        { "name": "Finishing", "value": 44 }
+      ]
+    },
+    {
+      "code": "GIP-2402",
+      "name": "Industrial Store Extension",
+      "location": "Industrial Area",
+      "phase": "MEP",
+      "manager": "S. Kumar",
+      "progress": 42,
+      "budget": "QAR 2.1M",
+      "deadline": "2026-08-15",
+      "reports": 11,
+      "delayed": 1,
+      "disciplines": [
+        { "name": "Civil", "value": 65 },
+        { "name": "MEP", "value": 34 },
+        { "name": "Finishing", "value": 12 }
+      ]
+    },
+    {
+      "code": "GIP-2403",
+      "name": "Doha Office Fit-Out",
+      "location": "West Bay",
+      "phase": "Civil",
+      "manager": "A. Hassan",
+      "progress": 81,
+      "budget": "QAR 1.6M",
+      "deadline": "2026-06-12",
+      "reports": 27,
+      "delayed": 0,
+      "disciplines": [
+        { "name": "Civil", "value": 91 },
+        { "name": "MEP", "value": 79 },
+        { "name": "Finishing", "value": 66 }
+      ]
+    }
+  ],
+  "ganttTasks": [
+    { "task": "BOQ baseline", "owner": "PM", "start": 5, "span": 12, "status": "Done" },
+    { "task": "Civil works", "owner": "Engineer", "start": 18, "span": 30, "status": "On track" },
+    { "task": "MEP rough-in", "owner": "MEP Lead", "start": 42, "span": 24, "status": "Risk" },
+    { "task": "WIR inspection", "owner": "PM", "start": 61, "span": 12, "status": "Pending" },
+    { "task": "Finishing handover", "owner": "Supervisor", "start": 73, "span": 20, "status": "Upcoming" }
+  ],
+  "projectSetupPreview": [
+    { "label": "Project code", "value": "GIP-2401", "detail": "Auto-generated from company standard" },
+    { "label": "BOQ import", "value": "248 lines", "detail": "Item code, unit, quantity, rate, discipline, milestone" },
+    { "label": "Milestones", "value": "14 active", "detail": "Baseline, actual dates, dependencies, delay reason" },
+    { "label": "Progress formula", "value": "Weighted BOQ", "detail": "Approved quantity divided by planned quantity" }
+  ]
+}

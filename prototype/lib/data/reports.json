@@ -1,0 +1,39 @@
+{
+  "reportFlow": [
+    { "title": "Supervisor update", "owner": "Civil Supervisor", "detail": "Attendance, work location, overtime, progress, safety incidents, site photos.", "status": "Submitted" },
+    { "title": "Engineer verification", "owner": "Civil Engineer", "detail": "Checks work quality, confirms WIR/inspection status, adds official report.", "status": "In review" },
+    { "title": "PM approval", "owner": "Project Manager", "detail": "Approves target coverage or rejects with mandatory comments.", "status": "Pending" },
+    { "title": "PDF/email/archive", "owner": "System", "detail": "Generates numbered PDF, emails it, and updates dashboard.", "status": "Automatic" }
+  ],
+  "reportRows": [
+    { "no": "GIP-2401-DR-20260515-001", "project": "Al Rayyan Villa Compound", "owner": "Civil Engineer", "status": "Pending PM", "progress": "68%", "photos": 5, "due": "10:00 AM" },
+    { "no": "GIP-2402-DR-20260515-001", "project": "Industrial Store Extension", "owner": "Civil Engineer", "status": "Draft", "progress": "42%", "photos": 3, "due": "10:00 AM" },
+    { "no": "GIP-2403-DR-20260514-002", "project": "Doha Office Fit-Out", "owner": "Civil Engineer", "status": "Approved", "progress": "81%", "photos": 5, "due": "Complete" }
+  ],
+  "formSections": [
+    "Project/date/weather",
+    "Work area/location",
+    "Manpower and OT",
+    "Equipment usage",
+    "Material consumption",
+    "Safety incidents",
+    "Visitors/subcontractors",
+    "WIR/inspection status",
+    "Delays and next-day plan",
+    "Photos and attachments"
+  ],
+  "reportFormPreview": [
+    { "label": "Weather", "value": "Sunny, 34.5 C", "status": "Auto + manual" },
+    { "label": "Manpower", "value": "12 masons, 20 helpers", "status": "8h + OT" },
+    { "label": "Equipment", "value": "2 mixers, 1 pump", "status": "6h used" },
+    { "label": "Materials", "value": "150 cement bags", "status": "stock linked" },
+    { "label": "Safety", "value": "0 incidents", "status": "mandatory" },
+    { "label": "WIR", "value": "WIR-CIV-014-B", "status": "pending PM" }
+  ],
+  "reportOutcomeCards": [
+    { "label": "Draft saved", "value": "30 sec autosave", "detail": "Field user never loses work" },
+    { "label": "Submit", "value": "Engineer verified", "detail": "Mandatory sections complete" },
+    { "label": "Approve", "value": "PM decision", "detail": "Reject reason stays in history" },
+    { "label": "Export", "value": "PDF + email", "detail": "Archive, audit, dashboard update" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "notifications": [
+    { "label": "Approval pending", "target": "Assigned approver", "timing": "Immediate + 24h reminder" },
+    { "label": "Late report", "target": "Submitter, then PM", "timing": "10:00 AM next day" },
+    { "label": "Low stock", "target": "Store Keeper, PM, OM", "timing": "Threshold crossed" },
+    { "label": "Active document", "target": "Project team", "timing": "After approval" }
+  ]
+}

@@ -1,0 +1,8 @@
+[
+  { "name": "GIP-2401-DR-20260515-001.pdf", "type": "Daily Report PDF", "owner": "Civil Engineer", "size": "1.8 MB", "linkedTo": "Approved daily report" },
+  { "name": "site-progress-west-wing-01.jpg", "type": "Watermarked Photo", "owner": "Civil Supervisor", "size": "820 KB", "linkedTo": "Photo evidence" },
+  { "name": "GIP-2401-WIR-CIV-2026-014-B.pdf", "type": "WIR Document", "owner": "Project Manager", "size": "18 MB", "linkedTo": "Document control" },
+  { "name": "boq-import-template.xlsx", "type": "BOQ Import", "owner": "Operation Manager", "size": "240 KB", "linkedTo": "Project baseline" },
+  { "name": "supplier-tds-certificate.pdf", "type": "Supplier Compliance", "owner": "Store Keeper", "size": "950 KB", "linkedTo": "Supplier record" },
+  { "name": "INV-8842-steel-supply.pdf", "type": "Invoice", "owner": "Accounts", "size": "1.1 MB", "linkedTo": "Payment approval" }
+]

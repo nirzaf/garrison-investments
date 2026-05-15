@@ -169,26 +169,37 @@ Returns current user profile with permissions.
 
 ---
 
-## Materials & Inventory
+## Inventory & Stores
 
 | Method | Endpoint | Description | Permission |
 |--------|----------|-------------|------------|
-| `GET` | `/materials` | List materials (paginated, filterable) | All |
-| `GET` | `/materials/{id}` | Material detail + transaction history | All |
-| `POST` | `/materials` | Create material item | StoreKeeper, Admin |
-| `PATCH` | `/materials/{id}` | Update material | StoreKeeper, Admin |
-| `POST` | `/materials/transactions` | Record stock in/out | StoreKeeper |
-| `GET` | `/materials/low-stock` | Get items at or below reorder point | StoreKeeper, ProjManager |
+| `GET` | `/inventory/locations` | List active warehouse/site storage locations | All |
+| `POST` | `/inventory/locations` | Create warehouse/site storage location | StoreKeeper, Admin |
+| `GET` | `/inventory/items` | List consumable materials and tools/items | All |
+| `GET` | `/inventory/items/{id}` | Item detail with stock by location and movement history | All |
+| `POST` | `/inventory/items` | Create inventory item catalog record | StoreKeeper, Admin |
+| `PATCH` | `/inventory/items/{id}` | Update inventory item metadata | StoreKeeper, Admin |
+| `GET` | `/inventory/items/{id}/stock` | Get on-hand/reserved/available quantities by location | All |
+| `GET` | `/inventory/assets` | List asset-tagged tools/items with current location | StoreKeeper, Manager |
+| `GET` | `/inventory/assets/{id}` | Tool/item detail, current location, condition, movement history | StoreKeeper, Manager |
+| `GET` | `/inventory/low-stock` | Get low-stock items by storage location | StoreKeeper, ProjManager |
+| `POST` | `/inventory/requests` | Request issue or transfer; creates approval workflow | Supervisor, Engineer, StoreKeeper |
+| `POST` | `/inventory/movements` | Record approved receive/reserve/issue/transfer/return/consume/adjustment | StoreKeeper |
+| `GET` | `/inventory/movements` | Filter movement history by item, asset, project, or location | StoreKeeper, Manager |
 
-### POST `/materials/transactions`
+### POST `/inventory/requests`
 
 ```json
 {
-  "material_id": "uuid",
-  "transaction_type": "in",
-  "quantity": 500,
-  "reference_type": "purchase",
-  "notes": "Purchase Order #PO-2026-0451"
+  "item_id": "uuid",
+  "asset_id": "uuid-or-null",
+  "request_type": "issue",
+  "quantity": 2,
+  "from_location_id": "uuid",
+  "to_location_id": "uuid",
+  "project_id": "uuid",
+  "required_date": "2026-05-18",
+  "reason": "Tools required for site installation team"
 }
 ```
 

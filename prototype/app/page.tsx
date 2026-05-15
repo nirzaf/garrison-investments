@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -8,28 +8,33 @@ import {
   BookOpenCheck,
   BriefcaseBusiness,
   Building2,
+  Camera,
   CheckCircle2,
   ChevronRight,
   CircleDashed,
   ClipboardList,
+  Cloud as CloudIcon,
   Eye,
   FileCheck2,
   FileText,
   Filter,
   HardHat,
+  Image,
   ListChecks,
   LogOut,
   Map,
   Menu,
   MousePointer2,
-  Plus,
   Play,
+  Plus,
   Rocket,
   Search,
   Send,
   ShieldCheck,
   Upload,
   UsersRound,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import {
@@ -51,10 +56,11 @@ import {
   invoices,
   kpis,
   launchModules,
+  inventoryItems,
+  inventoryMovementFlow,
+  lowStockByLocation,
   materialLifecycle,
-  materialRequestFlow,
   materialTransactions,
-  materials,
   mobileFieldStates,
   mobileFeatures,
   navItems,
@@ -73,7 +79,9 @@ import {
   roleMatrix,
   sampleAttachments,
   securityItems,
+  storageLocations,
   suppliers,
+  toolAssets,
   users,
   walkthroughSteps,
   type ScreenKey,
@@ -98,7 +106,7 @@ const screenTitles: Record<ScreenKey, string> = {
   projects: "Projects and Gantt timeline",
   reports: "Daily reports and field update flow",
   approvals: "Approval inbox and routing",
-  materials: "Materials, inventory, and suppliers",
+  materials: "Inventory & Stores",
   documents: "Document control and versioning",
   photos: "Photo evidence and media handling",
   accounts: "Accounts and financial controls",
@@ -249,7 +257,7 @@ export default function Home() {
           <div className="brandIcon">GI</div>
           <div>
             <strong>Garrisons</strong>
-            <span>Internal Portal Prototype</span>
+            <span>Investor Demo Portal</span>
           </div>
         </div>
 
@@ -264,7 +272,7 @@ export default function Home() {
               onClick={() => selectScreen(item.key)}
               type="button"
             >
-              <item.icon size={18} />
+              <item.icon size={17} />
               <span>{item.label}</span>
               <small>{item.phase}</small>
             </button>
@@ -297,18 +305,18 @@ export default function Home() {
           <div className="topActions">
             <div className="searchBox">
               <Search size={16} />
-              <span>Search reports, docs, materials</span>
+              <span>Search reports, docs, inventory</span>
             </div>
             <button data-tour-target="notification-bell" type="button">
-              <Bell size={17} />
+              <Bell size={16} />
               17
             </button>
             <button className="tourButton" onClick={startTour} type="button">
-              <Play size={17} />
+              <Play size={16} />
               Walkthrough
             </button>
             <button type="button">
-              <LogOut size={17} />
+              <LogOut size={16} />
             </button>
           </div>
         </header>
@@ -326,7 +334,7 @@ export default function Home() {
           />
         ) : (
           <button className="floatingTourButton" onClick={startTour} type="button">
-            <Rocket size={18} />
+            <Rocket size={17} />
             Investor walkthrough
           </button>
         )}
@@ -386,6 +394,12 @@ function getTourModalPosition(
   return { top: clampTop(rect.top - modalHeight - gap), left: clampLeft(centeredLeft) };
 }
 
+function StatusPill({ status }: { status: string }) {
+  const normalized = status.toLowerCase().replace(/\s+/g, "-");
+  const label = status;
+  return <span className={`statusPill ${normalized}`}>{label}</span>;
+}
+
 function OverviewScreen({
   onOpen,
   onStartTour,
@@ -406,7 +420,7 @@ function OverviewScreen({
           </p>
           <div className="heroActions">
             <button onClick={onStartTour} type="button">
-              Start investor demo <Play size={18} />
+              Start investor demo <Play size={17} />
             </button>
             <button className="ghostButton" onClick={() => onOpen("dashboard")} type="button">
               Skip tour / explore modules
@@ -425,7 +439,7 @@ function OverviewScreen({
           </div>
           <div className="liveTimeline">
             <span />
-            <p>Supervisor update submitted</p>
+            <p>Supervisor update submitted — 3 sites</p>
             <span />
             <p>Engineer quality verification pending</p>
             <span />
@@ -443,7 +457,7 @@ function OverviewScreen({
               <p>{item.before}</p>
             </div>
             <div>
-              <strong>After</strong>
+              <strong>After — with Garrisons</strong>
               <p>{item.after}</p>
             </div>
             <em>{item.impact}</em>
@@ -461,11 +475,11 @@ function OverviewScreen({
         ))}
       </section>
 
-      <Panel title="Business flow investors should understand" icon={<Map size={19} />}>
+      <Panel title="Business flow investors should understand" icon={<Map size={18} />}>
         <BusinessFlowMap onOpen={onOpen} />
       </Panel>
 
-      <Panel title="Requirements coverage mapped to the prototype" icon={<BookOpenCheck size={19} />}>
+      <Panel title="Requirements coverage mapped to the prototype" icon={<BookOpenCheck size={18} />}>
         <CoverageMatrix onOpen={onOpen} />
       </Panel>
 
@@ -481,10 +495,10 @@ function OverviewScreen({
       </section>
 
       <section className="dualGrid wideLeft">
-        <Panel title="End-to-end user journey" icon={<ArrowRight size={19} />}>
+        <Panel title="End-to-end user journey" icon={<ArrowRight size={18} />}>
           <WalkthroughTimeline />
         </Panel>
-        <Panel title="What the first demo proves" icon={<Eye size={19} />}>
+        <Panel title="What the first demo proves" icon={<Eye size={18} />}>
           <Checklist
             items={[
               "The product has a clear daily workflow, not only disconnected screens",
@@ -497,17 +511,17 @@ function OverviewScreen({
       </section>
 
       <section className="dualGrid">
-        <Panel title="Sample files used across the prototype" icon={<Upload size={19} />}>
+        <Panel title="Sample files used across the prototype" icon={<Upload size={18} />}>
           <AttachmentList compact />
         </Panel>
-        <Panel title="API surfaces represented" icon={<FileText size={19} />}>
+        <Panel title="API surfaces represented" icon={<FileText size={18} />}>
           <div className="apiList">
             {apiEndpoints.map((endpoint) => (
               <code key={endpoint}>{endpoint}</code>
             ))}
           </div>
         </Panel>
-        <Panel title="Remaining stakeholder inputs" icon={<AlertCircle size={19} />}>
+        <Panel title="Remaining stakeholder inputs" icon={<AlertCircle size={18} />}>
           <Checklist items={remainingInputs} />
         </Panel>
       </section>
@@ -602,7 +616,7 @@ function ProductTourOverlay({
           onPointerDown={(event) => runTourAction(event, onClose)}
           type="button"
         >
-          <X size={18} />
+          <X size={16} />
         </button>
         <div className="tourModalBody">
           <span className="tourEyebrow">{activeStep.eyebrow}</span>
@@ -660,18 +674,18 @@ function FeatureGuideCard({ screen }: { screen: ScreenKey }) {
   return (
     <section className="featureGuide" aria-label="Feature guide" data-tour-target="feature-guide">
       <div className="guideIntro">
-        <BookOpenCheck size={21} />
+        <BookOpenCheck size={20} />
         <div>
           <span>Feature walkthrough</span>
           <h2>{screenTitles[screen]}</h2>
         </div>
       </div>
       <div className="guideGrid">
-        <GuidePoint icon={<UsersRound size={18} />} label="Owner" value={guide.owner} />
-        <GuidePoint icon={<MousePointer2 size={18} />} label="Starts when" value={guide.startsWhen} />
-        <GuidePoint icon={<ClipboardList size={18} />} label="User action" value={guide.userAction} />
-        <GuidePoint icon={<Building2 size={18} />} label="System action" value={guide.systemAction} />
-        <GuidePoint icon={<FileCheck2 size={18} />} label="Business result" value={guide.businessResult} />
+        <GuidePoint icon={<UsersRound size={17} />} label="Owner" value={guide.owner} />
+        <GuidePoint icon={<MousePointer2 size={17} />} label="Starts when" value={guide.startsWhen} />
+        <GuidePoint icon={<ClipboardList size={17} />} label="User action" value={guide.userAction} />
+        <GuidePoint icon={<Building2 size={17} />} label="System action" value={guide.systemAction} />
+        <GuidePoint icon={<FileCheck2 size={17} />} label="Business result" value={guide.businessResult} />
       </div>
     </section>
   );
@@ -713,7 +727,7 @@ function BusinessFlowMap({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
           <p>{item.detail}</p>
           <button onClick={() => onOpen(flowScreens[item.screen] ?? "overview")} type="button">
             Open {item.screen}
-            <Send size={15} />
+            <Send size={14} />
           </button>
         </article>
       ))}
@@ -740,7 +754,7 @@ function CoverageMatrix({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
             <b>End product:</b> {item.finalBehavior}
           </p>
           <button onClick={() => onOpen(item.screen)} type="button">
-            Open module <ArrowRight size={15} />
+            Open module <ArrowRight size={14} />
           </button>
         </article>
       ))}
@@ -797,19 +811,19 @@ function AuthScreen() {
     <div className="screenStack">
       <div className="dualGrid">
         <div data-tour-target="auth-login">
-          <Panel title="Login experience" icon={<ShieldCheck size={19} />}>
-          <div className="loginMock">
-            <label>Email</label>
-            <div>engineer@garrisons.example</div>
-            <label>Password</label>
-            <div>••••••••••••</div>
-            <label>2FA code</label>
-            <div>184 902</div>
-            <button type="button">Sign in securely</button>
-          </div>
+          <Panel title="Login experience" icon={<ShieldCheck size={18} />}>
+            <div className="loginMock">
+              <label>Email</label>
+              <div>engineer@garrisons.example</div>
+              <label>Password</label>
+              <div>••••••••••••</div>
+              <label>2FA code</label>
+              <div>184 902</div>
+              <button type="button">Sign in securely</button>
+            </div>
           </Panel>
         </div>
-        <Panel title="Session and security decisions" icon={<CheckCircle2 size={19} />}>
+        <Panel title="Session and security decisions" icon={<CheckCircle2 size={18} />}>
           <Checklist
             items={[
               "Email OTP for MVP two-factor authentication",
@@ -843,7 +857,7 @@ function DashboardScreen() {
       </div>
       <MiniFactGrid rows={dashboardPanels} target="dashboard-risk-panels" />
       <section className="dualGrid">
-        <Panel title="Project progress chart" icon={<CircleDashed size={19} />}>
+        <Panel title="Project progress chart" icon={<CircleDashed size={18} />}>
           <BarList
             rows={projects.map((project) => ({
               label: project.name,
@@ -852,7 +866,7 @@ function DashboardScreen() {
             }))}
           />
         </Panel>
-        <Panel title="Pending approvals widget" icon={<ShieldCheck size={19} />}>
+        <Panel title="Pending approvals widget" icon={<ShieldCheck size={18} />}>
           <CardList
             rows={approvalItems.slice(0, 3).map((item) => ({
               title: item.title,
@@ -889,14 +903,17 @@ function ProjectsScreen({
         ))}
       </div>
       <section className="dualGrid wideLeft">
-        <Panel title={`${selectedProject.name} details`} icon={<HardHat size={19} />}>
+        <Panel title={`${selectedProject.name} details`} icon={<HardHat size={18} />}>
           <div className="detailGrid">
             <Detail label="Location" value={selectedProject.location} />
             <Detail label="Manager" value={selectedProject.manager} />
             <Detail label="Deadline" value={selectedProject.deadline} />
             <Detail label="Budget" value={selectedProject.budget} />
-            <Detail label="Reports" value={`${selectedProject.reports}`} />
-            <Detail label="Delayed" value={`${selectedProject.delayed}`} />
+            <Detail
+              label="Reports"
+              value={`${selectedProject.reports} (${selectedProject.delayed} delayed)`}
+            />
+            <Detail label="Phase" value={selectedProject.phase} />
           </div>
           <BarList
             rows={selectedProject.disciplines.map((item) => ({
@@ -906,7 +923,7 @@ function ProjectsScreen({
             }))}
           />
         </Panel>
-        <Panel title="BOQ and progress rules" icon={<ListChecks size={19} />}>
+        <Panel title="BOQ and progress rules" icon={<ListChecks size={18} />}>
           <Checklist
             items={[
               "BOQ supports manual entry and spreadsheet import",
@@ -917,38 +934,53 @@ function ProjectsScreen({
           />
         </Panel>
       </section>
-      <Panel title="Project setup preview" icon={<BriefcaseBusiness size={19} />}>
+      <Panel title="Project setup preview" icon={<BriefcaseBusiness size={18} />}>
         <MiniFactGrid rows={projectSetupPreview} target="project-setup-preview" />
       </Panel>
       <div data-tour-target="gantt-timeline">
-      <Panel title="Gantt-style timeline" icon={<CircleDashed size={19} />}>
-        <div className="gantt">
-          {ganttTasks.map((task) => (
-            <div className="ganttRow" key={task.task}>
-              <span>{task.task}</span>
-              <div className="ganttTrack">
-                <div style={{ marginLeft: `${task.start}%`, width: `${task.span}%` }}>
-                  {task.status}
+        <Panel title="Gantt-style timeline" icon={<CircleDashed size={18} />}>
+          <div className="gantt">
+            {ganttTasks.map((task) => {
+              const statusClass = `status-${task.status.toLowerCase().replace(/\s+/g, "-")}`;
+              return (
+                <div className="ganttRow" key={task.task}>
+                  <span>{task.task}</span>
+                  <div className="ganttTrack">
+                    <div
+                      className={statusClass}
+                      style={{ marginLeft: `${task.start}%`, width: `${task.span}%` }}
+                    >
+                      {task.status}
+                    </div>
+                  </div>
+                  <small>{task.owner}</small>
                 </div>
-              </div>
-              <small>{task.owner}</small>
-            </div>
-          ))}
-        </div>
-      </Panel>
+              );
+            })}
+          </div>
+        </Panel>
       </div>
     </div>
   );
 }
 
 function ReportsScreen() {
+  const statusLabels: Record<string, string> = {
+    Submitted: "active",
+    "In review": "pending",
+    Pending: "pending",
+    Automatic: "draft",
+  };
+
   return (
     <div className="screenStack">
       <section className="flowGrid" data-tour-target="report-flow">
         {reportFlow.map((step, index) => (
           <article className="flowCard" key={step.title}>
             <span>{index + 1}</span>
-            <small>{step.status}</small>
+            <small>
+              <StatusPill status={statusLabels[step.status] ?? step.status} />
+            </small>
             <h3>{step.title}</h3>
             <strong>{step.owner}</strong>
             <p>{step.detail}</p>
@@ -956,7 +988,7 @@ function ReportsScreen() {
         ))}
       </section>
       <section className="dualGrid wideLeft">
-        <Panel title="Daily report list" icon={<Filter size={19} />}>
+        <Panel title="Daily report list" icon={<Filter size={18} />}>
           <DataTable
             columns={["Report no.", "Project", "Status", "Progress", "Photos", "Due"]}
             rows={reportRows.map((row) => [
@@ -970,20 +1002,20 @@ function ReportsScreen() {
           />
         </Panel>
         <div data-tour-target="report-form-preview">
-          <Panel title="Live report form preview" icon={<Plus size={19} />}>
+          <Panel title="Live report form preview" icon={<Plus size={18} />}>
             <MiniFactGrid rows={reportFormPreview} />
           </Panel>
         </div>
       </section>
       <section className="dualGrid">
-        <Panel title="Required form sections" icon={<ListChecks size={19} />}>
+        <Panel title="Required form sections" icon={<ListChecks size={18} />}>
           <Checklist items={formSections} />
         </Panel>
-        <Panel title="What happens after submit" icon={<FileCheck2 size={19} />}>
+        <Panel title="What happens after submit" icon={<FileCheck2 size={18} />}>
           <MiniFactGrid rows={reportOutcomeCards} target="report-outcomes" />
         </Panel>
       </section>
-      <Panel title="Sample report attachments" icon={<Upload size={19} />}>
+      <Panel title="Sample report attachments" icon={<Upload size={18} />}>
         <AttachmentList filter={["Daily Report PDF", "Watermarked Photo", "WIR Document"]} />
       </Panel>
     </div>
@@ -991,6 +1023,12 @@ function ReportsScreen() {
 }
 
 function ApprovalsScreen() {
+  const approvalStatusMap: Record<string, string> = {
+    "PM pending": "Pending",
+    "OM required": "Pending",
+    "Accounts checked": "Approved",
+  };
+
   return (
     <div className="screenStack">
       <section className="contentGrid two" data-tour-target="approval-cards">
@@ -1001,7 +1039,7 @@ function ApprovalsScreen() {
             <p>{item.route}</p>
             <div>
               <strong>{item.sla}</strong>
-              <em>{item.status}</em>
+              <StatusPill status={approvalStatusMap[item.status] ?? item.status} />
             </div>
             <div className="buttonRow">
               <button type="button">Approve</button>
@@ -1010,7 +1048,7 @@ function ApprovalsScreen() {
           </article>
         ))}
       </section>
-      <Panel title="Approval rules" icon={<ShieldCheck size={19} />}>
+      <Panel title="Approval rules" icon={<ShieldCheck size={18} />}>
         <Checklist
           items={[
             "Approver is selected automatically by project/role",
@@ -1028,28 +1066,107 @@ function ApprovalsScreen() {
 function MaterialsScreen() {
   return (
     <div className="screenStack">
+      <Panel title="Warehouse and site stores" icon={<PackageIcon />}>
+        <section className="locationCardGrid" data-tour-target="storage-locations">
+          {storageLocations.map((location) => (
+            <article key={location.code}>
+              <div>
+                <span>{location.code}</span>
+                <StatusPill status={location.status} />
+              </div>
+              <h3>{location.name}</h3>
+              <p>{location.project}</p>
+              <div className="locationMeta">
+                <strong>{location.type}</strong>
+                <span>{location.items}</span>
+                <em>{location.lowStock} low-stock</em>
+              </div>
+            </article>
+          ))}
+        </section>
+      </Panel>
+
       <section className="dualGrid wideLeft">
         <div data-tour-target="materials-inventory">
-        <Panel title="Inventory by location" icon={<PackageIcon />}>
-          <DataTable
-            columns={["Code", "Material", "Location", "Stock", "Min", "Status"]}
-            rows={materials.map((item) => [
-              item.code,
-              item.name,
-              item.location,
-              `${item.stock} ${item.unit}`,
-              `${item.min}`,
-              item.status,
-            ])}
-          />
-        </Panel>
+          <Panel title="Inventory stock matrix" icon={<PackageIcon />}>
+            <DataTable
+              columns={["Code", "Item", "Type", "Total", "Reserved", "Available", "Current location", "Status"]}
+              rows={inventoryItems.map((item) => [
+                item.code,
+                item.name,
+                item.type,
+                `${item.totalStock} ${item.unit}`,
+                `${item.reserved} ${item.unit}`,
+                `${item.available} ${item.unit}`,
+                item.currentLocation,
+                <StatusPill key={item.status} status={item.status} />,
+              ])}
+            />
+          </Panel>
         </div>
         <Panel title="Request lifecycle" icon={<RouteIcon />}>
           <Checklist items={materialLifecycle} />
         </Panel>
       </section>
+
       <section className="dualGrid">
-        <Panel title="Supplier management" icon={<Upload size={19} />}>
+        <Panel title="Stock by warehouse/site" icon={<ListChecks size={18} />}>
+          <DataTable
+            columns={["Item", "Location", "On hand", "Reserved", "Available", "Status"]}
+            rows={inventoryItems.flatMap((item) =>
+              item.locations.map((location) => [
+                item.name,
+                location.location,
+                `${location.onHand} ${item.unit}`,
+                `${location.reserved} ${item.unit}`,
+                `${location.available} ${item.unit}`,
+                <StatusPill key={`${item.code}-${location.location}`} status={location.status} />,
+              ]),
+            )}
+          />
+        </Panel>
+        <Panel title="Low stock by location" icon={<AlertCircle size={18} />}>
+          <DataTable
+            columns={["Location", "Item", "Available", "Minimum", "Status"]}
+            rows={lowStockByLocation.map((item) => [
+              item.location,
+              item.item,
+              item.available,
+              item.minimum,
+              <StatusPill key={`${item.location}-${item.item}`} status={item.status} />,
+            ])}
+          />
+        </Panel>
+      </section>
+
+      <Panel title="Current tool/item location tracker" icon={<Map size={18} />}>
+        <section className="assetTrackerGrid" data-tour-target="tool-location-tracker">
+          {toolAssets.map((asset) => (
+            <article key={asset.tag}>
+              <div>
+                <strong>{asset.tag}</strong>
+                <StatusPill status={asset.status} />
+              </div>
+              <h3>{asset.item}</h3>
+              <p>{asset.currentLocation}</p>
+              <dl>
+                <div>
+                  <dt>Project</dt>
+                  <dd>{asset.project}</dd>
+                </div>
+                <div>
+                  <dt>Condition</dt>
+                  <dd>{asset.condition}</dd>
+                </div>
+              </dl>
+              <small>{asset.lastMovement}</small>
+            </article>
+          ))}
+        </section>
+      </Panel>
+
+      <section className="dualGrid">
+        <Panel title="Supplier management" icon={<Upload size={18} />}>
           <DataTable
             columns={["Supplier", "Category", "Terms", "TDS"]}
             rows={suppliers.map((supplier) => [
@@ -1060,36 +1177,38 @@ function MaterialsScreen() {
             ])}
           />
         </Panel>
-        <Panel title="Material rules" icon={<CheckCircle2 size={19} />}>
+        <Panel title="Material rules" icon={<CheckCircle2 size={18} />}>
           <Checklist
             items={[
               "No negative stock",
-              "Requests above USD 1,000 escalate to Operation Manager",
+              "Issue and transfer require approval before stock moves",
+              "Warehouse/site location is mandatory for every movement",
+              "Asset-tagged tools keep current warehouse/site location",
               "Unit conversion configured per material",
-              "Transfers between warehouse, store, and project/site",
               "Pricing restricted to allowed finance/management roles",
             ]}
           />
         </Panel>
       </section>
       <section className="dualGrid wideLeft">
-        <Panel title="Material request to issue workflow" icon={<RouteIcon />}>
-          <ProcessStrip rows={materialRequestFlow} target="material-flow" />
+        <Panel title="Approved issue and transfer workflow" icon={<RouteIcon />}>
+          <ProcessStrip rows={inventoryMovementFlow} target="material-flow" />
         </Panel>
-        <Panel title="Recent stock movements" icon={<FileText size={19} />}>
+        <Panel title="Recent inventory movements" icon={<FileText size={18} />}>
           <DataTable
-            columns={["Type", "Item", "Qty", "From", "To"]}
+            columns={["Type", "Item", "Qty", "From", "To", "Approval"]}
             rows={materialTransactions.map((item) => [
               item.type,
               item.item,
               item.qty,
               item.from,
               item.to,
+              item.approval,
             ])}
           />
         </Panel>
       </section>
-      <Panel title="Sample material and supplier attachments" icon={<Upload size={19} />}>
+      <Panel title="Sample inventory and supplier attachments" icon={<Upload size={18} />}>
         <AttachmentList filter={["Supplier Compliance", "BOQ Import"]} />
       </Panel>
     </div>
@@ -1100,32 +1219,41 @@ function DocumentsScreen() {
   return (
     <div className="screenStack">
       <section className="toolbarMock">
-        <button type="button"><Upload size={16} /> Upload document</button>
-        <button type="button"><Search size={16} /> Search contents</button>
-        <button type="button"><Filter size={16} /> Type/project filters</button>
+        <button type="button"><Upload size={15} /> Upload document</button>
+        <button type="button"><Search size={15} /> Search contents</button>
+        <button type="button"><Filter size={15} /> Type/project filters</button>
       </section>
       <div data-tour-target="documents-table">
-      <DataTable
-        columns={["Document no.", "Type", "Project", "Version", "Status", "Size"]}
-        rows={documents.map((doc) => [
-          doc.number,
-          doc.type,
-          doc.project,
-          doc.version,
-          doc.status,
-          doc.size,
-        ])}
-      />
+        <DataTable
+          columns={["Document no.", "Type", "Project", "Version", "Status", "Size"]}
+          rows={documents.map((doc) => [
+            doc.number,
+            doc.type,
+            doc.project,
+            doc.version,
+            doc.status,
+            doc.size,
+          ])}
+        />
       </div>
       <section className="dualGrid">
-        <Panel title="Version control preview" icon={<FileText size={19} />}>
+        <Panel title="Version control preview" icon={<FileText size={18} />}>
           <div className="versionStack">
-            <div><strong>Rev C</strong><span>Pending PM approval</span></div>
-            <div><strong>Rev B</strong><span>Active for field team</span></div>
-            <div><strong>Rev A</strong><span>Superseded warning before view</span></div>
+            <div>
+              <strong>Rev C</strong>
+              <StatusPill status="pending" />
+            </div>
+            <div>
+              <strong>Rev B</strong>
+              <StatusPill status="active" />
+            </div>
+            <div>
+              <strong>Rev A</strong>
+              <StatusPill status="superseded" />
+            </div>
           </div>
         </Panel>
-        <Panel title="Document decisions" icon={<CheckCircle2 size={19} />}>
+        <Panel title="Document decisions" icon={<CheckCircle2 size={18} />}>
           <Checklist
             items={[
               "First release: MAR, MIR, WIR, delivery notes",
@@ -1137,10 +1265,10 @@ function DocumentsScreen() {
           />
         </Panel>
       </section>
-      <Panel title="Document governance flow" icon={<ShieldCheck size={19} />}>
+      <Panel title="Document governance flow" icon={<ShieldCheck size={18} />}>
         <ProcessStrip rows={documentControlStates} target="document-flow" />
       </Panel>
-      <Panel title="Sample controlled documents" icon={<Upload size={19} />}>
+      <Panel title="Sample controlled documents" icon={<Upload size={18} />}>
         <AttachmentList filter={["WIR Document", "BOQ Import", "Daily Report PDF"]} />
       </Panel>
     </div>
@@ -1160,7 +1288,7 @@ function PhotosScreen() {
           </article>
         ))}
       </section>
-      <Panel title="Media handling rules" icon={<CameraIcon />}>
+      <Panel title="Media handling rules" icon={<Camera size={18} />}>
         <Checklist
           items={[
             "Maximum 5 photos per report",
@@ -1172,7 +1300,7 @@ function PhotosScreen() {
           ]}
         />
       </Panel>
-      <Panel title="Sample media attachment" icon={<Upload size={19} />}>
+      <Panel title="Sample media attachment" icon={<Upload size={18} />}>
         <AttachmentList filter={["Watermarked Photo"]} />
       </Panel>
     </div>
@@ -1200,10 +1328,10 @@ function AccountsScreen() {
           invoice.status,
         ])}
       />
-      <Panel title="Invoice to project P&L workflow" icon={<FileCheck2 size={19} />}>
+      <Panel title="Invoice to project P&L workflow" icon={<FileCheck2 size={18} />}>
         <MiniFactGrid rows={financeWorkflow} target="finance-workflow" />
       </Panel>
-      <Panel title="Finance requirements" icon={<CheckCircle2 size={19} />}>
+      <Panel title="Finance requirements" icon={<CheckCircle2 size={18} />}>
         <Checklist
           items={[
             "Structured invoice fields, not only document upload",
@@ -1215,7 +1343,7 @@ function AccountsScreen() {
           ]}
         />
       </Panel>
-      <Panel title="Sample finance attachment" icon={<Upload size={19} />}>
+      <Panel title="Sample finance attachment" icon={<Upload size={18} />}>
         <AttachmentList filter={["Invoice"]} />
       </Panel>
     </div>
@@ -1228,14 +1356,14 @@ function NotificationsScreen() {
       <section className="contentGrid two" data-tour-target="notification-cards">
         {notifications.map((item) => (
           <article className="notificationCard" key={item.label}>
-            <Bell size={19} />
+            <Bell size={18} />
             <h3>{item.label}</h3>
-            <p>{item.target}</p>
-            <strong>{item.timing}</strong>
+            <strong>{item.target}</strong>
+            <p>{item.timing}</p>
           </article>
         ))}
       </section>
-      <Panel title="Notification behavior" icon={<Bell size={19} />}>
+      <Panel title="Notification behavior" icon={<Bell size={18} />}>
         <Checklist
           items={[
             "In-app and email notifications",
@@ -1254,20 +1382,20 @@ function AdminScreen() {
   return (
     <div className="screenStack">
       <section className="dualGrid" data-tour-target="admin-grid">
-        <Panel title="User management" icon={<Plus size={19} />}>
+        <Panel title="User management" icon={<Plus size={18} />}>
           <DataTable
             columns={["Name", "Role", "Status", "Last login"]}
             rows={users.map((user) => [user.name, user.role, user.status, user.last])}
           />
         </Panel>
-        <Panel title="Audit log" icon={<FileText size={19} />}>
+        <Panel title="Audit log" icon={<FileText size={18} />}>
           <DataTable
             columns={["Event", "Actor", "Target"]}
             rows={auditRows.map((row) => [row.event, row.actor, row.target])}
           />
         </Panel>
       </section>
-      <Panel title="Admin rules" icon={<ShieldCheck size={19} />}>
+      <Panel title="Admin rules" icon={<ShieldCheck size={18} />}>
         <Checklist
           items={[
             "Deactivate old users; never overwrite historical identity",
@@ -1278,7 +1406,7 @@ function AdminScreen() {
           ]}
         />
       </Panel>
-      <Panel title="Enterprise governance controls" icon={<ShieldCheck size={19} />}>
+      <Panel title="Enterprise governance controls" icon={<ShieldCheck size={18} />}>
         <MiniFactGrid rows={adminSecurityControls} target="admin-security-controls" />
       </Panel>
     </div>
@@ -1289,17 +1417,36 @@ function MobileScreen() {
   return (
     <div className="dualGrid wideLeft">
       <div data-tour-target="phone-preview">
-      <Panel title="Mobile field app preview" icon={<SmartphoneIcon />}>
-        <div className="phoneMock">
-          <div className="phoneTop">Al Rayyan Villa Compound</div>
-          <div className="phoneStep active">Supervisor update saved</div>
-          <div className="phoneStep">5 photos queued</div>
-          <div className="phoneStep">Engineer verification pending</div>
-          <button type="button">Sync when online</button>
-        </div>
-      </Panel>
+        <Panel title="Mobile field app preview" icon={<SmartphoneIcon />}>
+          <div className="phoneMock">
+            <div className="phoneTop">
+              <HardHat size={16} />
+              Al Rayyan Villa Compound
+            </div>
+            <div className="phoneStep active">
+              <span className="phoneStepDot success" />
+              Supervisor update saved
+            </div>
+            <div className="phoneStep">
+              <span className="phoneStepDot pending" />
+              Engineer verification pending
+            </div>
+            <div className="phoneStep">
+              <span className="phoneStepDot queue" />
+              <span>5 photos queued for upload</span>
+            </div>
+            <div className="phoneProgressBar">
+              <span style={{ width: "65%" }} />
+            </div>
+            <div className="phoneSyncStatus">
+              <WifiOff size={14} />
+              <span>2 items waiting for network</span>
+            </div>
+            <button type="button">Sync when online</button>
+          </div>
+        </Panel>
       </div>
-      <Panel title="Mobile/PWA scope" icon={<CheckCircle2 size={19} />}>
+      <Panel title="Mobile/PWA scope" icon={<CheckCircle2 size={18} />}>
         <Checklist items={mobileFeatures} />
         <div className="noteBox">
           Offline draft saving can wait until Phase 3. Photo upload queue is represented here so the final UX is clear.
@@ -1321,7 +1468,7 @@ function SecurityScreen() {
           </article>
         ))}
       </section>
-      <Panel title="Compliance posture" icon={<ShieldCheck size={19} />}>
+      <Panel title="Compliance posture" icon={<ShieldCheck size={18} />}>
         <Checklist
           items={[
             "Downloads are logged",
@@ -1349,7 +1496,7 @@ function DeliveryScreen() {
           </article>
         ))}
       </section>
-      <Panel title="Launch acceptance scenarios" icon={<CheckCircle2 size={19} />}>
+      <Panel title="Launch acceptance scenarios" icon={<CheckCircle2 size={18} />}>
         <Checklist
           items={[
             "Login and 2FA",
@@ -1364,7 +1511,7 @@ function DeliveryScreen() {
           ]}
         />
       </Panel>
-      <Panel title="Sample import and launch attachments" icon={<Upload size={19} />}>
+      <Panel title="Sample import and launch attachments" icon={<Upload size={18} />}>
         <AttachmentList filter={["BOQ Import", "Supplier Compliance"]} />
       </Panel>
     </div>
@@ -1411,7 +1558,7 @@ function MetricCard({
   );
 }
 
-function DataTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
+function DataTable({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) {
   return (
     <div className="tableWrap">
       <table>
@@ -1423,10 +1570,10 @@ function DataTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.join("-")}>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
               {row.map((cell, index) => (
-                <td key={`${cell}-${index}`}>{cell}</td>
+                <td key={index}>{cell}</td>
               ))}
             </tr>
           ))}
@@ -1441,7 +1588,7 @@ function Checklist({ items }: { items: string[] }) {
     <ul className="checkList">
       {items.map((item) => (
         <li key={item}>
-          <CheckCircle2 size={15} />
+          <CheckCircle2 size={14} />
           <span>{item}</span>
         </li>
       ))}
@@ -1477,7 +1624,7 @@ function CardList({ rows }: { rows: { title: string; meta: string; badge: string
             <strong>{row.title}</strong>
             <span>{row.meta}</span>
           </div>
-          <em>{row.badge}</em>
+          <StatusPill status={row.badge} />
         </article>
       ))}
     </div>
@@ -1516,7 +1663,7 @@ function AttachmentList({
     <div className={compact ? "attachmentList compact" : "attachmentList"}>
       {rows.map((item) => (
         <article key={item.name}>
-          <FileText size={18} />
+          <FileText size={17} />
           <div>
             <strong>{item.name}</strong>
             <span>
@@ -1540,17 +1687,13 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 function PackageIcon() {
-  return <Upload size={19} />;
+  return <Upload size={18} />;
 }
 
 function RouteIcon() {
-  return <ArrowRight size={19} />;
-}
-
-function CameraIcon() {
-  return <Upload size={19} />;
+  return <ArrowRight size={18} />;
 }
 
 function SmartphoneIcon() {
-  return <ShieldCheck size={19} />;
+  return <HardHat size={18} />;
 }

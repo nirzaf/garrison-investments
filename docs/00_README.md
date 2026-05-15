@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-Internal portal for a construction company to manage daily site reporting, project monitoring, material tracking, approvals, and cross-department communication. Designed as a scalable, modular, mobile-responsive web application.
+Internal portal for a construction company to manage daily site reporting, project monitoring, inventory and stores, approvals, and cross-department communication. Designed as a scalable, modular, mobile-responsive web application.
+
+Inventory & Stores is a Phase 2 capability for consumable materials and trackable tools/items. It supports multiple physical storage locations such as warehouses and project site stores, current-location visibility for asset-tagged tools, approval-controlled issue/transfer workflows, low-stock alerts by location, supplier context, and full movement history.
 
 ## Technology Stack
 

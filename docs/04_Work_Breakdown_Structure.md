@@ -102,22 +102,23 @@
 
 ## Phase 2: Supply Chain & Workflows
 
-**Goal**: Material management, approval workflows, notifications, document control.
+**Goal**: Inventory & Stores, approval workflows, notifications, document control.
 
-### 2.1 Material Management
+### 2.1 Inventory & Stores
 
 | # | Task | Est. (days) | Depends On |
 |---|------|-------------|------------|
-| 2.1.1 | Materials + Suppliers + Transactions models | 0.5 | Phase 1 |
-| 2.1.2 | Material CRUD API | 1.0 | 2.1.1 |
-| 2.1.3 | Transaction API (stock in/out) + auto stock update | 1.0 | 2.1.2 |
-| 2.1.4 | Low-stock alert detection + API | 0.5 | 2.1.3 |
-| 2.1.5 | Material list page with stock status badges | 1.0 | 2.1.2 |
-| 2.1.6 | Material detail page with transaction history | 0.5 | 2.1.3 |
-| 2.1.7 | Stock in/out form with validation | 0.5 | 2.1.3 |
-| 2.1.8 | Supplier management page | 1.0 | 2.1.2 |
+| 2.1.1 | Storage locations model (warehouse/site) + seed data | 0.5 | Phase 1 |
+| 2.1.2 | Inventory catalog for consumable materials and tools/items | 1.0 | 2.1.1 |
+| 2.1.3 | Stock by location matrix with on-hand/reserved/available quantities | 1.0 | 2.1.2 |
+| 2.1.4 | Asset-tagged tool/item tracking with current warehouse/site location | 1.0 | 2.1.2 |
+| 2.1.5 | Approval-controlled issue/transfer request workflow | 1.0 | 2.1.3, 2.2.2 |
+| 2.1.6 | Store Keeper receive/reserve/issue/transfer/return/consume forms | 1.0 | 2.1.5 |
+| 2.1.7 | Movement history and current-location UI | 0.75 | 2.1.6 |
+| 2.1.8 | Low-stock by location alerts + API | 0.5 | 2.1.3 |
+| 2.1.9 | Supplier management page retained for purchasing context | 0.75 | 2.1.2 |
 
-**Subtotal: 6 days**
+**Subtotal: 7.5 days**
 
 ### 2.2 Approval Workflow Engine
 

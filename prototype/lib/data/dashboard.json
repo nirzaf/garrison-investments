@@ -1,0 +1,8 @@
+{
+  "dashboardPanels": [
+    { "label": "Missing reports", "value": "3", "detail": "submitter notified, PM next", "tone": "red" },
+    { "label": "Manpower today", "value": "186", "detail": "across active sites", "tone": "blue" },
+    { "label": "Approval SLA", "value": "82%", "detail": "closed within target", "tone": "green" },
+    { "label": "Low stock exposure", "value": "QAR 64k", "detail": "materials below reorder point", "tone": "orange" }
+  ]
+}

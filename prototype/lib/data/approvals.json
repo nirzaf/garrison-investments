@@ -1,0 +1,8 @@
+{
+  "approvalItems": [
+    { "type": "Daily Report", "title": "Al Rayyan Villa Compound - DR 001", "route": "Supervisor -> Engineer -> PM", "sla": "6h left", "status": "PM pending" },
+    { "type": "Inventory Request", "title": "Steel transfer request - USD 1,420", "route": "Requester -> Engineer -> PM -> OM", "sla": "Escalates at 48h", "status": "OM required" },
+    { "type": "Document", "title": "MIR-2026-014 revision B", "route": "Uploader -> PM -> Active", "sla": "22h left", "status": "PM pending" },
+    { "type": "Invoice", "title": "Supplier invoice INV-8842", "route": "Accounts -> OM", "sla": "1 day left", "status": "Accounts checked" }
+  ]
+}

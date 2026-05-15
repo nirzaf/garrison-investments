@@ -1,0 +1,16 @@
+{
+  "mobileFeatures": [
+    "Supervisor update flow",
+    "Engineer report/update",
+    "Photo upload and queue",
+    "Document view",
+    "Approvals and notifications",
+    "30-second autosave"
+  ],
+  "mobileFieldStates": [
+    { "label": "Offline draft", "value": "Saved locally", "detail": "Report remains editable until network returns." },
+    { "label": "Camera capture", "value": "5 photos", "detail": "Watermark, compress, thumbnail, queue." },
+    { "label": "Sync", "value": "2 waiting", "detail": "Uploads resume when online." },
+    { "label": "Document view", "value": "Rev B active", "detail": "Field team sees the approved version." }
+  ]
+}

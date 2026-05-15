@@ -31,10 +31,12 @@ PostgreSQL 16 schema designed for a construction company's internal operations. 
       │              ├──▶ project_members
       │              └──▶ project_photos
       │
-      ├────▶┌────────────────┐
-      │     │  materials      │◀── material_transactions
-      │     └────────┬───────┘
-      │              └── material_suppliers
+      ├────▶┌────────────────────┐
+      │     │  inventory_items    │◀── inventory_movements
+      │     └─────────┬──────────┘
+      │               ├──▶ inventory_location_stock
+      │               ├──▶ inventory_assets
+      │               └──▶ storage_locations
       │
       ├────▶┌────────────────┐
       │     │  documents      │◀── document_versions
@@ -213,7 +215,7 @@ CREATE INDEX idx_equipment_report ON report_equipment(report_id);
 CREATE TABLE report_material_consumption (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     report_id UUID NOT NULL REFERENCES daily_reports(id) ON DELETE CASCADE,
-    material_id UUID REFERENCES materials(id),
+    inventory_item_id UUID REFERENCES inventory_items(id),
     material_name VARCHAR(150) NOT NULL,
     quantity DECIMAL(10,3) NOT NULL,
     unit VARCHAR(20) NOT NULL,
@@ -224,16 +226,37 @@ CREATE TABLE report_material_consumption (
 CREATE INDEX idx_consumption_report ON report_material_consumption(report_id);
 ```
 
-### 8. materials
+### 8. storage_locations
 
 ```sql
-CREATE TABLE materials (
+CREATE TABLE storage_locations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(30) UNIQUE,
+    name VARCHAR(150) NOT NULL,
+    location_type VARCHAR(20) NOT NULL CHECK (location_type IN ('warehouse', 'site')),
+    project_id UUID REFERENCES projects(id),
+    address TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_storage_locations_type ON storage_locations(location_type)
+    WHERE deleted_at IS NULL AND is_active = TRUE;
+```
+
+### 9. inventory_items
+
+```sql
+CREATE TABLE inventory_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(150) NOT NULL,
     code VARCHAR(30) UNIQUE,
-    category VARCHAR(50) NOT NULL,       -- 'cement', 'steel', 'aggregate', 'electrical', 'plumbing'
-    unit VARCHAR(20) NOT NULL,           -- 'kg', 'ton', 'm3', 'pcs', 'bags'
-    current_stock DECIMAL(12,3) DEFAULT 0,
+    item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('consumable', 'tool')),
+    category VARCHAR(50) NOT NULL,       -- 'cement', 'steel', 'tools', 'electrical', 'plumbing'
+    unit VARCHAR(20) NOT NULL,           -- 'kg', 'ton', 'm3', 'pcs', 'bags', 'nos'
+    track_assets BOOLEAN DEFAULT FALSE,
     minimum_stock DECIMAL(12,3) DEFAULT 0,
     reorder_point DECIMAL(12,3),
     unit_price DECIMAL(12,2),
@@ -243,31 +266,80 @@ CREATE TABLE materials (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_materials_category ON materials(category) WHERE deleted_at IS NULL;
-CREATE INDEX idx_materials_low_stock ON materials(current_stock, minimum_stock)
-    WHERE deleted_at IS NULL AND current_stock <= minimum_stock;
+CREATE INDEX idx_inventory_items_category ON inventory_items(category) WHERE deleted_at IS NULL;
+CREATE INDEX idx_inventory_items_type ON inventory_items(item_type) WHERE deleted_at IS NULL;
 ```
 
-### 9. material_transactions
+### 10. inventory_location_stock
 
 ```sql
-CREATE TABLE material_transactions (
+CREATE TABLE inventory_location_stock (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    material_id UUID NOT NULL REFERENCES materials(id),
-    transaction_type VARCHAR(10) NOT NULL CHECK (transaction_type IN ('in', 'out')),
+    item_id UUID NOT NULL REFERENCES inventory_items(id),
+    location_id UUID NOT NULL REFERENCES storage_locations(id),
+    on_hand_qty DECIMAL(12,3) DEFAULT 0 CHECK (on_hand_qty >= 0),
+    reserved_qty DECIMAL(12,3) DEFAULT 0 CHECK (reserved_qty >= 0),
+    available_qty DECIMAL(12,3) GENERATED ALWAYS AS (on_hand_qty - reserved_qty) STORED,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (item_id, location_id)
+);
+
+CREATE INDEX idx_inventory_stock_item ON inventory_location_stock(item_id);
+CREATE INDEX idx_inventory_stock_location ON inventory_location_stock(location_id);
+CREATE INDEX idx_inventory_stock_low ON inventory_location_stock(item_id, location_id)
+    WHERE available_qty <= 0 OR reserved_qty > 0;
+```
+
+### 11. inventory_assets
+
+```sql
+CREATE TABLE inventory_assets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    item_id UUID NOT NULL REFERENCES inventory_items(id),
+    asset_tag VARCHAR(50) UNIQUE NOT NULL,
+    serial_number VARCHAR(100),
+    current_location_id UUID NOT NULL REFERENCES storage_locations(id),
+    project_id UUID REFERENCES projects(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'reserved', 'issued', 'in_repair', 'retired')),
+    condition VARCHAR(30) DEFAULT 'good',
+    last_movement_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_assets_current_location ON inventory_assets(current_location_id)
+    WHERE deleted_at IS NULL;
+CREATE INDEX idx_assets_status ON inventory_assets(status) WHERE deleted_at IS NULL;
+```
+
+### 12. inventory_movements
+
+```sql
+CREATE TABLE inventory_movements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    item_id UUID NOT NULL REFERENCES inventory_items(id),
+    asset_id UUID REFERENCES inventory_assets(id),
+    movement_type VARCHAR(20) NOT NULL
+        CHECK (movement_type IN ('receive', 'request', 'reserve', 'issue', 'transfer', 'return', 'consume', 'adjustment')),
     quantity DECIMAL(10,3) NOT NULL CHECK (quantity > 0),
-    reference_type VARCHAR(30),         -- 'purchase', 'consumption', 'return', 'transfer', 'adjustment'
+    from_location_id UUID REFERENCES storage_locations(id),
+    to_location_id UUID REFERENCES storage_locations(id),
+    approval_id UUID REFERENCES approvals(id),
+    reference_type VARCHAR(30),         -- 'purchase', 'daily_report', 'material_request', 'tool_transfer', 'adjustment'
     reference_id UUID,                   -- ID from related table (PO, report, etc.)
     performed_by UUID NOT NULL REFERENCES users(id),
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_transactions_material ON material_transactions(material_id);
-CREATE INDEX idx_transactions_date ON material_transactions(created_at DESC);
+CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id);
+CREATE INDEX idx_inventory_movements_asset ON inventory_movements(asset_id);
+CREATE INDEX idx_inventory_movements_date ON inventory_movements(created_at DESC);
 ```
 
-### 10. suppliers
+### 13. suppliers
 
 ```sql
 CREATE TABLE suppliers (
@@ -434,7 +506,9 @@ CREATE INDEX idx_audit_date ON activity_log(created_at DESC);
 | `daily_reports` | `project_id, report_date` | Composite unique | One report per project per day |
 | `daily_reports` | `extra_fields` | GIN | Querying JSONB custom fields |
 | `documents` | `title` | GIN (tsvector) | Full-text search |
-| `materials` | `current_stock, minimum_stock` | B-tree (partial) | Low-stock alerts query |
+| `inventory_location_stock` | `item_id, location_id` | Composite | Stock lookup by warehouse/site |
+| `inventory_assets` | `current_location_id, status` | B-tree (partial) | Tool/item current-location lookup |
+| `inventory_movements` | `item_id, created_at` | Composite | Movement history and audit trail |
 | `activity_log` | `created_at` | B-tree (DESC) | Time-range audit queries |
 | `notifications` | `user_id, is_read, created_at` | Composite | Unread notification count |
 | `approvals` | `approver_id, status` | Composite | Pending approvals inbox |
@@ -457,7 +531,7 @@ $$ LANGUAGE plpgsql;
 -- Applied to all tables with updated_at column
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_timestamp();
--- (repeat for projects, daily_reports, materials, documents)
+-- (repeat for projects, daily_reports, inventory_items, storage_locations, documents)
 ```
 
 ### audit_trigger

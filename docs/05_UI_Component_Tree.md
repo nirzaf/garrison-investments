@@ -86,16 +86,22 @@
 │   │   │               │       ├── <PhotoGallery />
 │   │   │               │       └── <ApprovalHistoryTimeline />
 │   │   │               │
-│   │   │               ├── Materials/
-│   │   │               │   ├── <MaterialListPage>
-│   │   │               │   │   └── <DataTable>
-│   │   │               │   │       └── <StockLevelBadge />  // Green/Yellow/Red
-│   │   │               │   ├── <MaterialDetailPage>
-│   │   │               │   │   ├── <MaterialInfoCard />
-│   │   │               │   │   ├── <StockChart />
-│   │   │               │   │   └── <TransactionHistoryTable />
-│   │   │               │   ├── <MaterialRequestPage>
-│   │   │               │   │   └── <MaterialRequestForm />
+│   │   │               ├── Materials / Inventory & Stores/
+│   │   │               │   ├── <InventoryDashboardPage>
+│   │   │               │   │   ├── <StorageLocationCards />       // warehouse/site stores
+│   │   │               │   │   ├── <InventoryStockMatrix />       // item x location
+│   │   │               │   │   ├── <LowStockByLocationPanel />
+│   │   │               │   │   └── <CurrentToolLocationPanel />
+│   │   │               │   ├── <InventoryItemDetailPage>
+│   │   │               │   │   ├── <InventoryItemInfoCard />
+│   │   │               │   │   ├── <LocationStockBreakdown />
+│   │   │               │   │   └── <MovementTimeline />
+│   │   │               │   ├── <ToolAssetDetailPage>
+│   │   │               │   │   ├── <CurrentLocationBanner />
+│   │   │               │   │   ├── <ConditionStatusCard />
+│   │   │               │   │   └── <AssetMovementHistoryTable />
+│   │   │               │   ├── <InventoryRequestPage>
+│   │   │               │   │   └── <IssueTransferRequestForm />   // approval required
 │   │   │               │   └── <SupplierListPage>
 │   │   │               │
 │   │   │               ├── Documents/

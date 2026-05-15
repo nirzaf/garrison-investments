@@ -329,7 +329,7 @@ Every request:
 
 ### 4.2 RBAC Matrix
 
-| Role | Dashboard | Reports (CRUD) | Materials | Approvals | Docs | Users | Audit |
+| Role | Dashboard | Reports (CRUD) | Inventory & Stores | Approvals | Docs | Users | Audit |
 |------|-----------|----------------|-----------|-----------|------|-------|-------|
 | **Admin** | Full | Full | Full | Full | Full | Full | Full |
 | **Operation Manager** | Full | Read All | Read All | Approve | Read All | Read | Read |
@@ -351,6 +351,17 @@ Every request:
 - **CSRF**: SameSite=Strict cookies + token-based for state-changing operations
 - **File upload**: Type whitelist, size limits (10 MB per file), virus scan via ClamAV (optional)
 - **Audit log**: Every CREATE/UPDATE/DELETE recorded with user_id, timestamp, old_value, new_value
+
+### 4.4 Inventory & Stores Control
+
+Inventory extends the materials module into location-aware stores management for consumable materials and asset-tagged tools/items.
+
+- **Storage locations**: central warehouse, industrial store, and project site stores are first-class records with active/inactive status.
+- **Stock by location**: consumables keep on-hand, reserved, and available quantities per warehouse/site.
+- **Tool/item current location**: serialized tools use asset tags and show current warehouse/site, condition, status, and last movement.
+- **Approval-linked movement**: issue and transfer requests require approval before the Store Keeper records movement.
+- **Alerts**: low-stock checks run per item and storage location, not only at company-wide total level.
+- **Auditability**: receive, reserve, issue, transfer, return, consume, and adjustment movements preserve actor, reference, approval, from/to location, and notes.
 
 ## 5. Offline-First Mobile Strategy
 

@@ -1,0 +1,14 @@
+{
+  "documents": [
+    { "number": "GIP-2401-WIR-CIV-2026-014-B", "type": "WIR", "project": "Al Rayyan Villa Compound", "status": "Pending approval", "version": "Rev B", "size": "18 MB" },
+    { "number": "GIP-2402-MIR-MEP-2026-006-A", "type": "MIR", "project": "Industrial Store Extension", "status": "Active", "version": "Rev A", "size": "7 MB" },
+    { "number": "GIP-2403-DN-CIV-2026-021-A", "type": "Delivery Note", "project": "Doha Office Fit-Out", "status": "Superseded", "version": "Rev A", "size": "2 MB" }
+  ],
+  "documentControlStates": [
+    { "state": "Upload", "detail": "Civil Engineer uploads WIR/MIR/MAR/delivery note with project metadata." },
+    { "state": "Review", "detail": "Project Manager approves before the version becomes active for the field team." },
+    { "state": "Active", "detail": "Current revision is previewable in browser and visible to permitted roles." },
+    { "state": "Superseded", "detail": "Old versions remain downloadable for managers with a strong warning." },
+    { "state": "Renew", "detail": "Expiry dates trigger reminders before compliance documents lapse." }
+  ]
+}

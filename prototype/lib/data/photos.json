@@ -1,0 +1,8 @@
+{
+  "photoCards": [
+    { "label": "Supervisor upload", "project": "Al Rayyan", "meta": "5/5 photos, watermark applied", "tone": "orange" },
+    { "label": "Compressed display", "project": "Doha Office", "meta": "1920px display version", "tone": "blue" },
+    { "label": "Offline queue", "project": "Industrial Store", "meta": "2 waiting for network", "tone": "purple" },
+    { "label": "Admin recoverable", "project": "Archive", "meta": "soft deleted, 30-day restore", "tone": "green" }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "kpis": [
+    { "label": "Active projects", "value": "4", "detail": "company-wide", "tone": "blue" },
+    { "label": "Pending approvals", "value": "12", "detail": "8 due today", "tone": "orange" },
+    { "label": "Late updates", "value": "3", "detail": "PM notified", "tone": "red" },
+    { "label": "Documents pending", "value": "8", "detail": "MAR/MIR/WIR", "tone": "green" },
+    { "label": "Low stock", "value": "5", "detail": "2 critical", "tone": "purple" },
+    { "label": "Unread alerts", "value": "17", "detail": "90-day history", "tone": "teal" }
+  ],
+  "launchModules": [
+    { "title": "Task/report updates", "phase": "MVP", "summary": "Supervisor field updates, engineer verification, PM final approval.", "icon": "ClipboardCheck" },
+    { "title": "Documents/versioning", "phase": "MVP", "summary": "MAR, MIR, WIR, delivery notes, active versions, superseded warnings.", "icon": "FileStack" },
+    { "title": "Photo evidence", "phase": "MVP", "summary": "5 photos/report, compression, thumbnails, company watermark.", "icon": "Camera" },
+    { "title": "Inventory & Stores", "phase": "Phase 2", "summary": "Materials, tools, warehouse/site stock, current location, approved transfers.", "icon": "PackageCheck" },
+    { "title": "Accounts", "phase": "Phase 2", "summary": "Budgets, invoices, manpower cost, payment status, P&L, salary sheets.", "icon": "WalletCards" },
+    { "title": "Offline PWA", "phase": "Phase 3", "summary": "Offline drafts, photo queue, autosave, H+ tolerant mobile flows.", "icon": "Smartphone" }
+  ],
+  "investorHighlights": [
+    { "label": "Reporting speed", "value": "Same-day control", "detail": "Site updates become engineer-verified reports, approval tasks, PDFs, and management KPIs." },
+    { "label": "Approval discipline", "value": "No silent work", "detail": "Every report, material request, document, invoice, payment, and change has a visible route." },
+    { "label": "Document trust", "value": "Active version only", "detail": "Field staff see the approved version while managers keep revision history and superseded warnings." },
+    { "label": "Cost visibility", "value": "Project-level finance", "detail": "Manpower, material consumption, tool movements, supplier invoices, payments, and P&L connect to field activity." },
+    { "label": "Mobile adoption", "value": "Built for site teams", "detail": "Phone-first updates, autosave, photo queue, and offline drafts make the process practical on site." }
+  ],
+  "painPointComparisons": [
+    { "area": "Daily site updates", "before": "Supervisors share WhatsApp photos and notes that managers manually chase later.", "after": "A guided report captures attendance, OT, materials, safety, WIR, delays, photos, and attachments.", "impact": "Fewer missing reports, faster PM approval, and a reliable contractual record." },
+    { "area": "Approvals", "before": "Approvals sit in chat threads or email inboxes with unclear ownership and no SLA.", "after": "The portal assigns approvers by role/project, tracks SLA, reminds at 24h, and escalates at 48h.", "impact": "Decisions are visible, reject reasons are retained, and overrides are audited." },
+    { "area": "Documents", "before": "Drawings, WIRs, MIRs, delivery notes, and invoices live in folders with version confusion.", "after": "Each document has metadata, approval status, revision history, active/superseded state, and search.", "impact": "Field teams stop using outdated files while management keeps complete history." },
+    { "area": "Inventory and stores", "before": "Store ledgers, tool locations, stock requests, supplier terms, and consumption are split across spreadsheets and WhatsApp follow-ups.", "after": "Materials and tagged tools move through request, approval, reserve, issue/transfer, return/consume, and current-location tracking.", "impact": "Teams can locate tools, protect warehouse/site stock, and see low-stock or cost exposure earlier." }
+  ],
+  "businessFlow": [
+    { "title": "1. Project baseline", "screen": "Projects", "owner": "Admin / Operation Manager", "detail": "Create project code, BOQ, milestones, members, and target dates." },
+    { "title": "2. Site update", "screen": "Daily Reports", "owner": "Civil Supervisor", "detail": "Capture attendance, overtime, location, progress, safety, materials, and photos." },
+    { "title": "3. Technical verification", "screen": "Daily Reports", "owner": "Civil Engineer", "detail": "Validate work quality, WIR status, quantities, blockers, and next-day plan." },
+    { "title": "4. Approval control", "screen": "Approvals", "owner": "Project Manager", "detail": "Approve, reject with reason, or trigger escalation based on role and SLA." },
+    { "title": "5. Company record", "screen": "Dashboard", "owner": "System", "detail": "Update KPIs, generate PDF, email stakeholders, log audit trail, and refresh documents/costs." }
+  ]
+}
