@@ -315,7 +315,7 @@ button {
 .panel,
 .featureGuide,
 .featureCard,
-.investorCard,
+.capabilityCard,
 .metricCard,
 .flowCard,
 .approvalCard,
@@ -323,7 +323,7 @@ button {
 .decisionCard,
 .phoneMock,
 .photoCard,
-.comparisonCard {
+.domainCard {
   border: 1px solid rgba(31, 34, 38, 0.08);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.78);
@@ -638,10 +638,10 @@ button {
   grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
 }
 
-/* ── Feature / investor / card components ── */
+/* ── Feature / capability / card components ── */
 
 .featureCard,
-.investorCard,
+.capabilityCard,
 .approvalCard,
 .notificationCard,
 .decisionCard,
@@ -651,7 +651,7 @@ button {
 }
 
 .featureCard:hover,
-.investorCard:hover,
+.capabilityCard:hover,
 .approvalCard:hover,
 .notificationCard:hover {
   transform: translateY(-2px);
@@ -663,7 +663,7 @@ button {
 }
 
 .featureCard span,
-.investorCard span,
+.capabilityCard span,
 .approvalCard > span,
 .decisionCard > span {
   display: inline-flex;
@@ -681,7 +681,7 @@ button {
 }
 
 .featureCard h3,
-.investorCard > strong,
+.capabilityCard > strong,
 .approvalCard h3,
 .notificationCard h3 {
   margin: 0 0 8px;
@@ -690,7 +690,7 @@ button {
 }
 
 .featureCard p,
-.investorCard p,
+.capabilityCard p,
 .approvalCard p,
 .notificationCard p,
 .decisionCard p,
@@ -700,80 +700,70 @@ button {
   font-size: 13.5px;
 }
 
-.investorCard > strong {
+.capabilityCard > strong {
   display: block;
   font-size: 22px;
   color: var(--ink);
 }
 
-/* ── Before / After ── */
+/* ── Operating domains ── */
 
-.beforeAfterGrid {
+.domainGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.comparisonCard {
-  display: grid;
-  gap: 8px;
-  min-height: 270px;
-  padding: 16px;
+.domainCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
   transition: 160ms ease;
 }
 
-.comparisonCard:hover {
+.domainCard:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
-.comparisonCard > span {
-  display: inline-flex;
-  width: fit-content;
-  min-height: 22px;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+.domainCard h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--ink);
 }
 
-.comparisonCard > div {
-  padding: 11px 12px;
-  border: 1px solid var(--line-light);
-  border-radius: var(--radius-sm);
-  background: #fafbfc;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.comparisonCard > div:last-of-type {
-  background: var(--green-soft);
-  border-color: rgba(77, 126, 84, 0.15);
-}
-
-.comparisonCard strong {
-  display: block;
-  margin-bottom: 3px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.comparisonCard p {
+.domainCard > p {
   margin: 0;
   color: var(--ink-secondary);
+  font-size: 13.5px;
+  line-height: 1.55;
+  flex: 1;
 }
 
-.comparisonCard em {
-  color: var(--green);
+.domainSections {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-light);
+}
+
+.domainSections span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.domainSections em {
+  display: block;
+  color: var(--blue);
   font-style: normal;
-  font-weight: 700;
   font-size: 12.5px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 /* ── Status pills ── */
@@ -2270,7 +2260,7 @@ tr:hover td {
   .businessFlow,
   .locationCardGrid,
   .assetTrackerGrid,
-  .beforeAfterGrid,
+  .domainGrid,
   .coverageMatrix,
   .guideGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2317,7 +2307,7 @@ tr:hover td {
   .businessFlow,
   .locationCardGrid,
   .assetTrackerGrid,
-  .beforeAfterGrid,
+  .domainGrid,
   .coverageMatrix,
   .guideGrid,
   .miniFactGrid,
@@ -2353,7 +2343,7 @@ tr:hover td {
   }
 
   .businessFlow article,
-  .comparisonCard,
+  .domainCard,
   .guideGrid article,
   .coverageMatrix article {
     min-height: auto;

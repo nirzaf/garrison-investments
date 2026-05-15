@@ -52,7 +52,7 @@ import {
   financeWorkflow,
   formSections,
   ganttTasks,
-  investorHighlights,
+  operatingCapabilities,
   invoices,
   kpis,
   launchModules,
@@ -65,7 +65,7 @@ import {
   mobileFeatures,
   navItems,
   notifications,
-  painPointComparisons,
+  operatingDomains,
   photoCards,
   productTourSteps,
   projectSetupPreview,
@@ -100,7 +100,7 @@ type TourModalPosition = {
 };
 
 const screenTitles: Record<ScreenKey, string> = {
-  overview: "Executive overview",
+  overview: "Platform overview",
   auth: "Login, roles, and permission model",
   dashboard: "Operational dashboard",
   projects: "Projects and Gantt timeline",
@@ -412,15 +412,15 @@ function OverviewScreen({
       <section className="heroPanel" data-tour-target="hero-overview">
         <div>
           <span className="eyebrow">Construction operations platform</span>
-          <h2>One portal turns site activity into management control.</h2>
+          <h2>Site activity connected to management visibility.</h2>
           <p>
-            Garrisons replaces scattered WhatsApp updates, spreadsheets, document folders, and
-            manual approval chasing with one guided operating flow for field teams, managers,
-            accounts, and executives.
+            A guided operating flow for field teams, managers, accounts, and leadership
+            covering daily reports, approvals, document control, and inventory across
+            all construction projects.
           </p>
           <div className="heroActions">
             <button onClick={onStartTour} type="button">
-              Guided product walkthrough <Play size={17} />
+              Guided walkthrough <Play size={17} />
             </button>
             <button className="ghostButton" onClick={() => onOpen("dashboard")} type="button">
               Skip tour / explore modules
@@ -448,26 +448,22 @@ function OverviewScreen({
         </div>
       </section>
 
-      <section className="beforeAfterGrid" data-tour-target="before-after">
-        {painPointComparisons.map((item) => (
-          <article className="comparisonCard" key={item.area}>
-            <span>{item.area}</span>
-            <div>
-              <strong>Before</strong>
-              <p>{item.before}</p>
+      <section className="domainGrid" data-tour-target="before-after">
+        {operatingDomains.map((item) => (
+          <article className="domainCard" key={item.area}>
+            <h3>{item.area}</h3>
+            <p>{item.description}</p>
+            <div className="domainSections">
+              <span>Covers</span>
+              <em>{item.sections}</em>
             </div>
-            <div>
-              <strong>After — with Garrisons</strong>
-              <p>{item.after}</p>
-            </div>
-            <em>{item.impact}</em>
           </article>
         ))}
       </section>
 
       <section className="contentGrid five" data-tour-target="executive-value">
-        {investorHighlights.map((item) => (
-          <article className="investorCard" key={item.label}>
+        {operatingCapabilities.map((item) => (
+          <article className="capabilityCard" key={item.label}>
             <span>{item.label}</span>
             <strong>{item.value}</strong>
             <p>{item.detail}</p>

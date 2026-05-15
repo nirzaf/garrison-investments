@@ -138,9 +138,9 @@ export const launchModules = overviewData.launchModules.map((item) => ({
   icon: iconMap[item.icon],
 }));
 
-export const investorHighlights = overviewData.investorHighlights;
+export const operatingCapabilities = overviewData.operatingCapabilities;
 
-export const painPointComparisons = overviewData.painPointComparisons;
+export const operatingDomains = overviewData.operatingDomains;
 
 export const requirementCoverage: RequirementCoverage[] = requirementCoverageData as RequirementCoverage[];
 
