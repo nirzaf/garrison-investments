@@ -74,6 +74,15 @@ export type FeatureGuide = {
   businessResult: string;
 };
 
+export type RequirementCoverage = {
+  module: string;
+  phase: PortalNavItem["phase"];
+  screen: ScreenKey;
+  source: string;
+  covered: string;
+  finalBehavior: string;
+};
+
 export const navItems: PortalNavItem[] = [
   { key: "overview", label: "Overview", icon: Gauge, phase: "MVP" },
   { key: "auth", label: "Login & Roles", icon: KeyRound, phase: "MVP" },
@@ -142,25 +151,171 @@ export const launchModules = [
 
 export const investorHighlights = [
   {
-    label: "First-minute clarity",
-    value: "One guided tour",
-    detail: "A stakeholder can understand the full product without reading the specification.",
+    label: "Reporting speed",
+    value: "Same-day control",
+    detail: "Site updates become engineer-verified reports, approval tasks, PDFs, and management KPIs.",
   },
   {
-    label: "Core revenue workflow",
-    value: "Report to approval",
-    detail: "The prototype follows the highest-value construction operations path end to end.",
+    label: "Approval discipline",
+    value: "No silent work",
+    detail: "Every report, material request, document, invoice, payment, and change has a visible route.",
   },
   {
-    label: "Operational control",
-    value: "Role + audit first",
-    detail: "Every action shows who owns it, who approves it, and what record is created.",
+    label: "Document trust",
+    value: "Active version only",
+    detail: "Field staff see the approved version while managers keep revision history and superseded warnings.",
   },
   {
-    label: "Scalable roadmap",
-    value: "MVP to Phase 3",
-    detail: "Materials, accounts, mobile, and offline behavior are previewed without hiding the launch scope.",
+    label: "Cost visibility",
+    value: "Project-level finance",
+    detail: "Manpower, material consumption, supplier invoices, payments, and P&L connect to field activity.",
   },
+  {
+    label: "Mobile adoption",
+    value: "Built for site teams",
+    detail: "Phone-first updates, autosave, photo queue, and offline drafts make the process practical on site.",
+  },
+];
+
+export const painPointComparisons = [
+  {
+    area: "Daily site updates",
+    before: "Supervisors share WhatsApp photos and notes that managers manually chase later.",
+    after: "A guided report captures attendance, OT, materials, safety, WIR, delays, photos, and attachments.",
+    impact: "Fewer missing reports, faster PM approval, and a reliable contractual record.",
+  },
+  {
+    area: "Approvals",
+    before: "Approvals sit in chat threads or email inboxes with unclear ownership and no SLA.",
+    after: "The portal assigns approvers by role/project, tracks SLA, reminds at 24h, and escalates at 48h.",
+    impact: "Decisions are visible, reject reasons are retained, and overrides are audited.",
+  },
+  {
+    area: "Documents",
+    before: "Drawings, WIRs, MIRs, delivery notes, and invoices live in folders with version confusion.",
+    after: "Each document has metadata, approval status, revision history, active/superseded state, and search.",
+    impact: "Field teams stop using outdated files while management keeps complete history.",
+  },
+  {
+    area: "Materials and cost",
+    before: "Stock, requests, supplier terms, consumption, invoices, and budgets are split across spreadsheets.",
+    after: "Materials move through request, approval, reserve, issue, transaction, and finance visibility.",
+    impact: "Low stock, over-budget work, and payment exposure become visible earlier.",
+  },
+];
+
+export const requirementCoverage: RequirementCoverage[] = [
+  {
+    module: "Authentication and RBAC",
+    phase: "MVP",
+    screen: "auth",
+    source: "Technical spec, API auth, UI login",
+    covered: "Login mock, 2FA, first-login decisions, role matrix, session/security rules.",
+    finalBehavior: "JWT auth, refresh rotation, fixed MVP roles, protected routes, audit middleware.",
+  },
+  {
+    module: "Projects and BOQ",
+    phase: "MVP",
+    screen: "projects",
+    source: "WBS 1.3, API projects, UI routes",
+    covered: "Project selector, budget/deadline/progress cards, BOQ fields, discipline progress, Gantt.",
+    finalBehavior: "Project CRUD, project members, BOQ import/manual entry, milestones, weighted progress.",
+  },
+  {
+    module: "Daily reports",
+    phase: "MVP",
+    screen: "reports",
+    source: "WBS 1.4, API reports, database schema",
+    covered: "Supervisor -> engineer -> PM workflow, report list, required form sections, attachments.",
+    finalBehavior: "Draft/update/submit/approve/reject reports with manpower, equipment, materials, photos, PDF export.",
+  },
+  {
+    module: "Photo evidence",
+    phase: "MVP",
+    screen: "photos",
+    source: "WBS 1.5, API photos, database photos",
+    covered: "5-photo rule, watermark, thumbnail/display/original handling, offline queue, recoverable delete.",
+    finalBehavior: "Multipart upload to object storage, thumbnail generation, metadata, download and soft delete.",
+  },
+  {
+    module: "Dashboard and analytics",
+    phase: "MVP",
+    screen: "dashboard",
+    source: "WBS 1.6, API dashboard",
+    covered: "Operational KPIs, project progress chart, approval widget, live risk story.",
+    finalBehavior: "Role-scoped summaries, recent activity, project progress, material usage, approval stats.",
+  },
+  {
+    module: "Materials and suppliers",
+    phase: "Phase 2",
+    screen: "materials",
+    source: "WBS 2.1, API materials/suppliers",
+    covered: "Inventory by location, request lifecycle, supplier terms, low-stock and pricing rules.",
+    finalBehavior: "CRUD, stock transactions, reservations, transfers, reorder alerts, supplier management.",
+  },
+  {
+    module: "Approval workflow",
+    phase: "Phase 2",
+    screen: "approvals",
+    source: "WBS 2.2, API approvals",
+    covered: "Approval inbox cards for reports, materials, documents, invoices, SLA and reject actions.",
+    finalBehavior: "Generic multi-level approval engine with delegation, comments, escalation, and audit trail.",
+  },
+  {
+    module: "Notifications",
+    phase: "MVP",
+    screen: "notifications",
+    source: "WBS 2.3, API notifications",
+    covered: "In-app/email triggers, unread count, 90-day history, mute behavior, audit separation.",
+    finalBehavior: "Notification API, unread count, mark read, email tasks for approvals, late reports, low stock.",
+  },
+  {
+    module: "Document control",
+    phase: "MVP",
+    screen: "documents",
+    source: "WBS 2.4, API documents, UI library",
+    covered: "Upload/search/filter toolbar, document list, version preview, active/superseded decision rules.",
+    finalBehavior: "Upload/download, metadata, full-text search, version history, active status after approval.",
+  },
+  {
+    module: "Accounts and finance",
+    phase: "Phase 2",
+    screen: "accounts",
+    source: "WBS 3.1, export API, requirements",
+    covered: "Budget-vs-actual, manpower cost, pending payment, invoices, P&L and approval path.",
+    finalBehavior: "Invoice tracking, payment status, manpower/material cost, budget reports, project P&L.",
+  },
+  {
+    module: "Mobile/PWA field use",
+    phase: "Phase 3",
+    screen: "mobile",
+    source: "Technical spec offline-first, WBS 3.3",
+    covered: "Phone mock, offline draft, photo queue, sync, autosave, document view scope.",
+    finalBehavior: "Service worker, IndexedDB drafts, background sync, camera capture, optimistic UI.",
+  },
+  {
+    module: "Security and audit",
+    phase: "MVP",
+    screen: "security",
+    source: "Technical security, database activity_log",
+    covered: "2FA, session, lockout, blocked files, retention, downloads, encrypted backups.",
+    finalBehavior: "Secure headers, RBAC, rate limiting, type whitelist, audit log, recovery windows.",
+  },
+  {
+    module: "Delivery and migration",
+    phase: "Ops",
+    screen: "delivery",
+    source: "Technical deployment, WBS launch tasks",
+    covered: "Hosting, staging/production, deployment approval, backups, testing, migration imports.",
+    finalBehavior: "Docker/VPS MVP, GitHub Actions, restore tests, browser/device QA, launch data import.",
+  },
+];
+
+export const dashboardPanels = [
+  { label: "Missing reports", value: "3", detail: "submitter notified, PM next", tone: "red" },
+  { label: "Manpower today", value: "186", detail: "across active sites", tone: "blue" },
+  { label: "Approval SLA", value: "82%", detail: "closed within target", tone: "green" },
+  { label: "Low stock exposure", value: "QAR 64k", detail: "materials below reorder point", tone: "orange" },
 ];
 
 export const businessFlow = [
@@ -275,12 +430,39 @@ export const productTourSteps: ProductTourStep[] = [
     position: "left",
   },
   {
+    title: "Show the business problem",
+    screen: "overview",
+    target: "before-after",
+    eyebrow: "Why it matters",
+    body: "The proposal explains what the company is replacing: chat follow-ups, spreadsheet tracking, unclear approvals, and document confusion.",
+    instruction: "Use this section to make non-technical viewers feel the pain before showing the product solution.",
+    position: "top",
+  },
+  {
+    title: "Prove executive value",
+    screen: "overview",
+    target: "executive-value",
+    eyebrow: "Investor value",
+    body: "The value cards translate features into measurable operating outcomes: speed, control, trust, cost, and field adoption.",
+    instruction: "Frame the product as a management operating layer, not only a reporting app.",
+    position: "top",
+  },
+  {
     title: "Follow the business flow",
     screen: "overview",
     target: "business-flow",
     eyebrow: "End-to-end workflow",
     body: "This map connects project setup, field update, engineer verification, approval, and final business record.",
     instruction: "Walk stakeholders through this first so every later feature feels connected to the operating flow.",
+    position: "top",
+  },
+  {
+    title: "Confirm requirements coverage",
+    screen: "overview",
+    target: "coverage-matrix",
+    eyebrow: "Docs-backed coverage",
+    body: "Every documented module is mapped to prototype coverage and final-product behavior so stakeholders can see nothing important is missing.",
+    instruction: "Use this when technical and non-technical reviewers ask whether the prototype reflects the documentation.",
     position: "top",
   },
   {
@@ -320,6 +502,15 @@ export const productTourSteps: ProductTourStep[] = [
     position: "bottom",
   },
   {
+    title: "Create the project baseline",
+    screen: "projects",
+    target: "project-setup-preview",
+    eyebrow: "Project setup",
+    body: "The final product starts each job with project code, BOQ import/manual entry, milestones, members, deadlines, and progress rules.",
+    instruction: "Explain that all later reports, WIRs, costs, documents, and approvals connect back to this baseline.",
+    position: "top",
+  },
+  {
     title: "Explain BOQ and Gantt logic",
     screen: "projects",
     target: "gantt-timeline",
@@ -340,11 +531,20 @@ export const productTourSteps: ProductTourStep[] = [
   {
     title: "Show required report inputs",
     screen: "reports",
-    target: "report-form-sections",
+    target: "report-form-preview",
     eyebrow: "Form guidance",
     body: "The report form guides users through mandatory operational sections such as manpower, equipment, materials, safety, WIR, delays, photos, and attachments.",
     instruction: "Explain that this standardizes reporting and prevents incomplete daily records.",
     position: "left",
+  },
+  {
+    title: "Show report outcomes",
+    screen: "reports",
+    target: "report-outcomes",
+    eyebrow: "Business record",
+    body: "A completed report does more than save a form: it updates approval tasks, PDF/email export, audit, dashboard, and archive.",
+    instruction: "This is the investor-grade story: the product turns field work into management evidence.",
+    position: "top",
   },
   {
     title: "Manage approval decisions",
@@ -365,12 +565,30 @@ export const productTourSteps: ProductTourStep[] = [
     position: "right",
   },
   {
+    title: "Follow material movement",
+    screen: "materials",
+    target: "material-flow",
+    eyebrow: "Material workflow",
+    body: "Requests move through review, approval, reservation, issue, transfer, consumption, return, or adjustment with stock protection.",
+    instruction: "Connect this directly to low-stock risk and cost visibility.",
+    position: "top",
+  },
+  {
     title: "Handle controlled documents",
     screen: "documents",
     target: "documents-table",
     eyebrow: "Document control",
     body: "Documents include type, project, revision, approval status, active/superseded versioning, and searchable metadata.",
     instruction: "Explain that field teams use active documents while managers retain version history and approval evidence.",
+    position: "top",
+  },
+  {
+    title: "Preview document governance",
+    screen: "documents",
+    target: "document-flow",
+    eyebrow: "Version control",
+    body: "The prototype explains upload, review, active release, superseded warnings, and expiry reminders.",
+    instruction: "Use this to reassure stakeholders that document control is not just file upload.",
     position: "top",
   },
   {
@@ -392,6 +610,15 @@ export const productTourSteps: ProductTourStep[] = [
     position: "bottom",
   },
   {
+    title: "Trace invoice to P&L",
+    screen: "accounts",
+    target: "finance-workflow",
+    eyebrow: "Financial workflow",
+    body: "Invoices move from capture to accounts check, Operation Manager approval, payment status, and project cost rollup.",
+    instruction: "This gives investors the finance expansion path without pretending OCR or full accounting is in the MVP.",
+    position: "top",
+  },
+  {
     title: "Explain alerts and reminders",
     screen: "notifications",
     target: "notification-cards",
@@ -410,6 +637,15 @@ export const productTourSteps: ProductTourStep[] = [
     position: "bottom",
   },
   {
+    title: "Show governance controls",
+    screen: "admin",
+    target: "admin-security-controls",
+    eyebrow: "Audit and control",
+    body: "The portal preserves identity history, controls overrides, and keeps queryable audit evidence for sensitive actions.",
+    instruction: "This is where technical reviewers see the product has real enterprise governance thinking.",
+    position: "top",
+  },
+  {
     title: "Show the field mobile flow",
     screen: "mobile",
     target: "phone-preview",
@@ -417,6 +653,15 @@ export const productTourSteps: ProductTourStep[] = [
     body: "The phone preview shows site users saving updates, queueing photos, and syncing when the connection allows.",
     instruction: "Use this to make the end product feel practical for construction sites, not only desktop offices.",
     position: "right",
+  },
+  {
+    title: "Explain offline execution",
+    screen: "mobile",
+    target: "mobile-field-states",
+    eyebrow: "Offline field work",
+    body: "Mobile behavior covers offline drafts, camera capture, photo queue, sync, autosave, approvals, and active document view.",
+    instruction: "Close the adoption concern: the people on site can actually use it.",
+    position: "top",
   },
   {
     title: "Close with delivery confidence",
@@ -642,6 +887,13 @@ export const ganttTasks = [
   { task: "Finishing handover", owner: "Supervisor", start: 73, span: 20, status: "Upcoming" },
 ];
 
+export const projectSetupPreview = [
+  { label: "Project code", value: "GIP-2401", detail: "Auto-generated from company standard" },
+  { label: "BOQ import", value: "248 lines", detail: "Item code, unit, quantity, rate, discipline, milestone" },
+  { label: "Milestones", value: "14 active", detail: "Baseline, actual dates, dependencies, delay reason" },
+  { label: "Progress formula", value: "Weighted BOQ", detail: "Approved quantity divided by planned quantity" },
+];
+
 export const reportFlow = [
   {
     title: "Supervisor update",
@@ -710,6 +962,22 @@ export const formSections = [
   "WIR/inspection status",
   "Delays and next-day plan",
   "Photos and attachments",
+];
+
+export const reportFormPreview = [
+  { label: "Weather", value: "Sunny, 34.5 C", status: "Auto + manual" },
+  { label: "Manpower", value: "12 masons, 20 helpers", status: "8h + OT" },
+  { label: "Equipment", value: "2 mixers, 1 pump", status: "6h used" },
+  { label: "Materials", value: "150 cement bags", status: "stock linked" },
+  { label: "Safety", value: "0 incidents", status: "mandatory" },
+  { label: "WIR", value: "WIR-CIV-014-B", status: "pending PM" },
+];
+
+export const reportOutcomeCards = [
+  { label: "Draft saved", value: "30 sec autosave", detail: "Field user never loses work" },
+  { label: "Submit", value: "Engineer verified", detail: "Mandatory sections complete" },
+  { label: "Approve", value: "PM decision", detail: "Reject reason stays in history" },
+  { label: "Export", value: "PDF + email", detail: "Archive, audit, dashboard update" },
 ];
 
 export const approvalItems = [
@@ -781,6 +1049,19 @@ export const materialLifecycle = [
   "Issued / partially issued / cancelled",
 ];
 
+export const materialRequestFlow = [
+  { step: "Request", owner: "Supervisor / Engineer", detail: "Select material, location, quantity, project, and required date." },
+  { step: "Approve", owner: "Engineer -> PM -> OM", detail: "High-value requests above USD 1,000 route to Operation Manager." },
+  { step: "Reserve", owner: "System / Store Keeper", detail: "Approved quantity is reserved to prevent double issue." },
+  { step: "Issue", owner: "Store Keeper", detail: "Stock movement records handler, reference, project, and partial issue state." },
+];
+
+export const materialTransactions = [
+  { type: "Transfer", item: "Steel rebar 12mm", qty: "7 TON", from: "Central warehouse", to: "Al Rayyan site" },
+  { type: "Consumption", item: "Cement OPC 43", qty: "150 Bags", from: "Al Rayyan site", to: "DR-20260515" },
+  { type: "Return", item: "Rotary drill", qty: "1 Nos", from: "Doha Office", to: "Industrial store" },
+];
+
 export const suppliers = [
   { name: "Qatar Build Supplies", category: "Cement", terms: "30 days", tds: "Valid" },
   { name: "Doha Steel Trading", category: "Steel", terms: "45 days", tds: "Expiring" },
@@ -814,6 +1095,14 @@ export const documents = [
   },
 ];
 
+export const documentControlStates = [
+  { state: "Upload", detail: "Civil Engineer uploads WIR/MIR/MAR/delivery note with project metadata." },
+  { state: "Review", detail: "Project Manager approves before the version becomes active for the field team." },
+  { state: "Active", detail: "Current revision is previewable in browser and visible to permitted roles." },
+  { state: "Superseded", detail: "Old versions remain downloadable for managers with a strong warning." },
+  { state: "Renew", detail: "Expiry dates trigger reminders before compliance documents lapse." },
+];
+
 export const photoCards = [
   { label: "Supervisor upload", project: "Al Rayyan", meta: "5/5 photos, watermark applied", tone: "orange" },
   { label: "Compressed display", project: "Doha Office", meta: "1920px display version", tone: "blue" },
@@ -832,6 +1121,13 @@ export const financeCards = [
   { label: "Manpower cost", value: "QAR 42k", icon: HardHat },
   { label: "Pending payment", value: "QAR 20.6k", icon: CalendarClock },
   { label: "Project P&L", value: "Phase 2", icon: Archive },
+];
+
+export const financeWorkflow = [
+  { label: "Invoice captured", value: "INV-8842", detail: "Supplier, project, amount, due date, attachment" },
+  { label: "Accounts checked", value: "QAR 18.2k", detail: "Linked to steel supply and project budget" },
+  { label: "OM approval", value: "Pending", detail: "Payment cannot proceed without decision" },
+  { label: "Cost rollup", value: "Budget impact", detail: "Manpower + material + invoice feeds project P&L" },
 ];
 
 export const notifications = [
@@ -855,6 +1151,13 @@ export const auditRows = [
   { event: "User deactivated", actor: "Admin", target: "K. Ali" },
 ];
 
+export const adminSecurityControls = [
+  { label: "RBAC", detail: "Fixed MVP roles with future customizable permissions in database design." },
+  { label: "Identity history", detail: "Deactivate users instead of overwriting names, preserving historical reports." },
+  { label: "Override control", detail: "Delegation or Admin override requires reason, timestamp, original approver, acting user." },
+  { label: "Audit evidence", detail: "Create, update, delete, login, download, and approve actions stay queryable." },
+];
+
 export const mobileFeatures = [
   "Supervisor update flow",
   "Engineer report/update",
@@ -862,6 +1165,13 @@ export const mobileFeatures = [
   "Document view",
   "Approvals and notifications",
   "30-second autosave",
+];
+
+export const mobileFieldStates = [
+  { label: "Offline draft", value: "Saved locally", detail: "Report remains editable until network returns." },
+  { label: "Camera capture", value: "5 photos", detail: "Watermark, compress, thumbnail, queue." },
+  { label: "Sync", value: "2 waiting", detail: "Uploads resume when online." },
+  { label: "Document view", value: "Rev B active", detail: "Field team sees the approved version." },
 ];
 
 export const securityItems = [

@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bell,
   BookOpenCheck,
+  BriefcaseBusiness,
   Building2,
   CheckCircle2,
   ChevronRight,
@@ -33,13 +34,17 @@ import {
 } from "lucide-react";
 import {
   apiEndpoints,
+  adminSecurityControls,
   approvalItems,
   auditRows,
   businessFlow,
+  dashboardPanels,
   deliveryItems,
+  documentControlStates,
   documents,
   featureGuides,
   financeCards,
+  financeWorkflow,
   formSections,
   ganttTasks,
   investorHighlights,
@@ -47,16 +52,24 @@ import {
   kpis,
   launchModules,
   materialLifecycle,
+  materialRequestFlow,
+  materialTransactions,
   materials,
+  mobileFieldStates,
   mobileFeatures,
   navItems,
   notifications,
+  painPointComparisons,
   photoCards,
   productTourSteps,
+  projectSetupPreview,
   projects,
   remainingInputs,
+  reportFormPreview,
   reportFlow,
+  reportOutcomeCards,
   reportRows,
+  requirementCoverage,
   roleMatrix,
   sampleAttachments,
   securityItems,
@@ -320,7 +333,7 @@ export default function Home() {
 
         <section className="screenCard" key={activeScreen}>
           {activeScreen !== "overview" ? <FeatureGuideCard screen={activeScreen} /> : null}
-          {activeScreen === "overview" ? <OverviewScreen onOpen={selectScreen} /> : null}
+          {activeScreen === "overview" ? <OverviewScreen onOpen={selectScreen} onStartTour={startTour} /> : null}
           {activeScreen === "auth" ? <AuthScreen /> : null}
           {activeScreen === "dashboard" ? <DashboardScreen /> : null}
           {activeScreen === "projects" ? (
@@ -349,7 +362,7 @@ function getTourModalPosition(
 ): TourModalPosition {
   const gap = 14;
   const modalWidth = Math.min(390, window.innerWidth - 28);
-  const modalHeight = 260;
+  const modalHeight = Math.min(430, window.innerHeight - 28);
   const centeredLeft = rect.left + rect.width / 2 - modalWidth / 2;
   const clampLeft = (value: number) => Math.min(Math.max(value, 14), window.innerWidth - modalWidth - 14);
   const clampTop = (value: number) => Math.min(Math.max(value, 14), window.innerHeight - modalHeight - 14);
@@ -373,24 +386,30 @@ function getTourModalPosition(
   return { top: clampTop(rect.top - modalHeight - gap), left: clampLeft(centeredLeft) };
 }
 
-function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
+function OverviewScreen({
+  onOpen,
+  onStartTour,
+}: {
+  onOpen: (screen: ScreenKey) => void;
+  onStartTour: () => void;
+}) {
   return (
     <div className="screenStack">
       <section className="heroPanel" data-tour-target="hero-overview">
         <div>
           <span className="eyebrow">Investor-ready SaaS walkthrough</span>
-          <h2>Site updates become approved business records.</h2>
+          <h2>One portal turns site activity into management control.</h2>
           <p>
-            This prototype shows how Garrisons can run construction reporting, approvals,
-            documents, materials, finance, mobile field work, and launch governance from one
-            internal portal.
+            Garrisons replaces scattered WhatsApp updates, spreadsheets, document folders, and
+            manual approval chasing with one guided operating flow for field teams, managers,
+            accounts, and executives.
           </p>
           <div className="heroActions">
-            <button onClick={() => onOpen("reports")} type="button">
-              Walk the core business flow <ArrowRight size={18} />
+            <button onClick={onStartTour} type="button">
+              Start investor demo <Play size={18} />
             </button>
-            <button className="ghostButton" onClick={() => onOpen("delivery")} type="button">
-              Review launch plan
+            <button className="ghostButton" onClick={() => onOpen("dashboard")} type="button">
+              Skip tour / explore modules
             </button>
           </div>
         </div>
@@ -415,7 +434,24 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
         </div>
       </section>
 
-      <section className="contentGrid four" data-tour-target="investor-highlights">
+      <section className="beforeAfterGrid" data-tour-target="before-after">
+        {painPointComparisons.map((item) => (
+          <article className="comparisonCard" key={item.area}>
+            <span>{item.area}</span>
+            <div>
+              <strong>Before</strong>
+              <p>{item.before}</p>
+            </div>
+            <div>
+              <strong>After</strong>
+              <p>{item.after}</p>
+            </div>
+            <em>{item.impact}</em>
+          </article>
+        ))}
+      </section>
+
+      <section className="contentGrid five" data-tour-target="executive-value">
         {investorHighlights.map((item) => (
           <article className="investorCard" key={item.label}>
             <span>{item.label}</span>
@@ -427,6 +463,10 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
 
       <Panel title="Business flow investors should understand" icon={<Map size={19} />}>
         <BusinessFlowMap onOpen={onOpen} />
+      </Panel>
+
+      <Panel title="Requirements coverage mapped to the prototype" icon={<BookOpenCheck size={19} />}>
+        <CoverageMatrix onOpen={onOpen} />
       </Panel>
 
       <section className="contentGrid three" data-tour-target="launch-modules">
@@ -564,29 +604,31 @@ function ProductTourOverlay({
         >
           <X size={18} />
         </button>
-        <span className="tourEyebrow">{activeStep.eyebrow}</span>
-        <h2>{activeStep.title}</h2>
-        <p>{activeStep.body}</p>
-        <div className="tourInstruction">
-          <strong>How to present it</strong>
-          <span>{activeStep.instruction}</span>
-        </div>
-        <div className="tourProgress">
-          <span>
-            {index + 1} / {productTourSteps.length}
-          </span>
-          <div>
-            {productTourSteps.map((step, stepIndex) => (
-              <button
-                aria-label={`Go to ${step.title}`}
-                className={stepIndex === index ? "isActive" : ""}
-                data-tour-action="step"
-                data-tour-step={stepIndex}
-                key={step.title}
-                onPointerDown={(event) => runTourAction(event, () => onStep(stepIndex))}
-                type="button"
-              />
-            ))}
+        <div className="tourModalBody">
+          <span className="tourEyebrow">{activeStep.eyebrow}</span>
+          <h2>{activeStep.title}</h2>
+          <p>{activeStep.body}</p>
+          <div className="tourInstruction">
+            <strong>How to present it</strong>
+            <span>{activeStep.instruction}</span>
+          </div>
+          <div className="tourProgress">
+            <span>
+              {index + 1} / {productTourSteps.length}
+            </span>
+            <div>
+              {productTourSteps.map((step, stepIndex) => (
+                <button
+                  aria-label={`Go to ${step.title}`}
+                  className={stepIndex === index ? "isActive" : ""}
+                  data-tour-action="step"
+                  data-tour-step={stepIndex}
+                  key={step.title}
+                  onPointerDown={(event) => runTourAction(event, () => onStep(stepIndex))}
+                  type="button"
+                />
+              ))}
+            </div>
           </div>
         </div>
         <div className="tourButtons">
@@ -679,6 +721,77 @@ function BusinessFlowMap({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
   );
 }
 
+function CoverageMatrix({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
+  return (
+    <div className="coverageMatrix" data-tour-target="coverage-matrix">
+      {requirementCoverage.map((item) => (
+        <article key={item.module}>
+          <div>
+            <span className={`phaseBadge phase-${item.phase.replace(" ", "-").toLowerCase()}`}>
+              {item.phase}
+            </span>
+            <strong>{item.module}</strong>
+          </div>
+          <small>{item.source}</small>
+          <p>
+            <b>Prototype:</b> {item.covered}
+          </p>
+          <p>
+            <b>End product:</b> {item.finalBehavior}
+          </p>
+          <button onClick={() => onOpen(item.screen)} type="button">
+            Open module <ArrowRight size={15} />
+          </button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function MiniFactGrid({
+  rows,
+  target,
+}: {
+  rows: { label: string; value?: string; detail?: string; status?: string }[];
+  target?: string;
+}) {
+  return (
+    <div className="miniFactGrid" data-tour-target={target}>
+      {rows.map((row) => (
+        <article key={`${row.label}-${row.value}`}>
+          <span>{row.label}</span>
+          {row.value ? <strong>{row.value}</strong> : null}
+          {row.status ? <em>{row.status}</em> : null}
+          {row.detail ? <p>{row.detail}</p> : null}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ProcessStrip({
+  rows,
+  target,
+}: {
+  rows: { step?: string; state?: string; owner?: string; detail: string }[];
+  target?: string;
+}) {
+  return (
+    <div className="processStrip" data-tour-target={target}>
+      {rows.map((row, index) => (
+        <article key={`${row.step ?? row.state}-${index}`}>
+          <span>{index + 1}</span>
+          <div>
+            <strong>{row.step ?? row.state}</strong>
+            {row.owner ? <small>{row.owner}</small> : null}
+            <p>{row.detail}</p>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function AuthScreen() {
   return (
     <div className="screenStack">
@@ -728,6 +841,7 @@ function DashboardScreen() {
           <MetricCard key={item.label} {...item} />
         ))}
       </div>
+      <MiniFactGrid rows={dashboardPanels} target="dashboard-risk-panels" />
       <section className="dualGrid">
         <Panel title="Project progress chart" icon={<CircleDashed size={19} />}>
           <BarList
@@ -803,6 +917,9 @@ function ProjectsScreen({
           />
         </Panel>
       </section>
+      <Panel title="Project setup preview" icon={<BriefcaseBusiness size={19} />}>
+        <MiniFactGrid rows={projectSetupPreview} target="project-setup-preview" />
+      </Panel>
       <div data-tour-target="gantt-timeline">
       <Panel title="Gantt-style timeline" icon={<CircleDashed size={19} />}>
         <div className="gantt">
@@ -852,11 +969,19 @@ function ReportsScreen() {
             ])}
           />
         </Panel>
-        <div data-tour-target="report-form-sections">
-        <Panel title="Report form sections" icon={<Plus size={19} />}>
+        <div data-tour-target="report-form-preview">
+          <Panel title="Live report form preview" icon={<Plus size={19} />}>
+            <MiniFactGrid rows={reportFormPreview} />
+          </Panel>
+        </div>
+      </section>
+      <section className="dualGrid">
+        <Panel title="Required form sections" icon={<ListChecks size={19} />}>
           <Checklist items={formSections} />
         </Panel>
-        </div>
+        <Panel title="What happens after submit" icon={<FileCheck2 size={19} />}>
+          <MiniFactGrid rows={reportOutcomeCards} target="report-outcomes" />
+        </Panel>
       </section>
       <Panel title="Sample report attachments" icon={<Upload size={19} />}>
         <AttachmentList filter={["Daily Report PDF", "Watermarked Photo", "WIR Document"]} />
@@ -947,6 +1072,23 @@ function MaterialsScreen() {
           />
         </Panel>
       </section>
+      <section className="dualGrid wideLeft">
+        <Panel title="Material request to issue workflow" icon={<RouteIcon />}>
+          <ProcessStrip rows={materialRequestFlow} target="material-flow" />
+        </Panel>
+        <Panel title="Recent stock movements" icon={<FileText size={19} />}>
+          <DataTable
+            columns={["Type", "Item", "Qty", "From", "To"]}
+            rows={materialTransactions.map((item) => [
+              item.type,
+              item.item,
+              item.qty,
+              item.from,
+              item.to,
+            ])}
+          />
+        </Panel>
+      </section>
       <Panel title="Sample material and supplier attachments" icon={<Upload size={19} />}>
         <AttachmentList filter={["Supplier Compliance", "BOQ Import"]} />
       </Panel>
@@ -995,6 +1137,9 @@ function DocumentsScreen() {
           />
         </Panel>
       </section>
+      <Panel title="Document governance flow" icon={<ShieldCheck size={19} />}>
+        <ProcessStrip rows={documentControlStates} target="document-flow" />
+      </Panel>
       <Panel title="Sample controlled documents" icon={<Upload size={19} />}>
         <AttachmentList filter={["WIR Document", "BOQ Import", "Daily Report PDF"]} />
       </Panel>
@@ -1055,6 +1200,9 @@ function AccountsScreen() {
           invoice.status,
         ])}
       />
+      <Panel title="Invoice to project P&L workflow" icon={<FileCheck2 size={19} />}>
+        <MiniFactGrid rows={financeWorkflow} target="finance-workflow" />
+      </Panel>
       <Panel title="Finance requirements" icon={<CheckCircle2 size={19} />}>
         <Checklist
           items={[
@@ -1130,6 +1278,9 @@ function AdminScreen() {
           ]}
         />
       </Panel>
+      <Panel title="Enterprise governance controls" icon={<ShieldCheck size={19} />}>
+        <MiniFactGrid rows={adminSecurityControls} target="admin-security-controls" />
+      </Panel>
     </div>
   );
 }
@@ -1153,6 +1304,7 @@ function MobileScreen() {
         <div className="noteBox">
           Offline draft saving can wait until Phase 3. Photo upload queue is represented here so the final UX is clear.
         </div>
+        <MiniFactGrid rows={mobileFieldStates} target="mobile-field-states" />
       </Panel>
     </div>
   );
