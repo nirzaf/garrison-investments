@@ -5,29 +5,45 @@ import {
   AlertCircle,
   ArrowRight,
   Bell,
+  BookOpenCheck,
+  Building2,
   CheckCircle2,
   ChevronRight,
   CircleDashed,
+  ClipboardList,
+  Eye,
+  FileCheck2,
   FileText,
   Filter,
   HardHat,
   ListChecks,
   LogOut,
+  Map,
   Menu,
+  MousePointer2,
   Plus,
+  Play,
+  Rocket,
   Search,
+  Send,
   ShieldCheck,
   Upload,
+  UsersRound,
+  X,
 } from "lucide-react";
 import {
   apiEndpoints,
   approvalItems,
   auditRows,
+  businessFlow,
   deliveryItems,
   documents,
+  featureGuides,
   financeCards,
   formSections,
   ganttTasks,
+  guidedTourSteps,
+  investorHighlights,
   invoices,
   kpis,
   launchModules,
@@ -72,15 +88,32 @@ export default function Home() {
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("overview");
   const [selectedProject, setSelectedProject] = useState(projects[0]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(true);
+  const [tourIndex, setTourIndex] = useState(0);
 
   const activeNav = useMemo(
     () => navItems.find((item) => item.key === activeScreen),
     [activeScreen],
   );
 
+  const activeTourStep = guidedTourSteps[tourIndex];
+
   const selectScreen = (screen: ScreenKey) => {
     setActiveScreen(screen);
     setMobileNavOpen(false);
+  };
+
+  const startTour = () => {
+    setTourOpen(true);
+    setTourIndex(0);
+    selectScreen(guidedTourSteps[0].screen);
+  };
+
+  const goToTourStep = (nextIndex: number) => {
+    const boundedIndex = (nextIndex + guidedTourSteps.length) % guidedTourSteps.length;
+    setTourIndex(boundedIndex);
+    selectScreen(guidedTourSteps[boundedIndex].screen);
+    setTourOpen(true);
   };
 
   return (
@@ -97,7 +130,10 @@ export default function Home() {
         <nav className="moduleNav">
           {navItems.map((item) => (
             <button
-              className={item.key === activeScreen ? "isActive" : ""}
+              className={[
+                item.key === activeScreen ? "isActive" : "",
+                tourOpen && item.key === activeTourStep.screen ? "isTourTarget" : "",
+              ].join(" ")}
               key={item.key}
               onClick={() => selectScreen(item.key)}
               type="button"
@@ -141,13 +177,34 @@ export default function Home() {
               <Bell size={17} />
               17
             </button>
+            <button className="tourButton" onClick={startTour} type="button">
+              <Play size={17} />
+              Walkthrough
+            </button>
             <button type="button">
               <LogOut size={17} />
             </button>
           </div>
         </header>
 
+        {tourOpen ? (
+          <GuidedTourDock
+            activeStep={activeTourStep}
+            index={tourIndex}
+            onClose={() => setTourOpen(false)}
+            onNext={() => goToTourStep(tourIndex + 1)}
+            onPrev={() => goToTourStep(tourIndex - 1)}
+            onStep={goToTourStep}
+          />
+        ) : (
+          <button className="floatingTourButton" onClick={startTour} type="button">
+            <Rocket size={18} />
+            Investor walkthrough
+          </button>
+        )}
+
         <section className="screenCard" key={activeScreen}>
+          {activeScreen !== "overview" ? <FeatureGuideCard screen={activeScreen} /> : null}
           {activeScreen === "overview" ? <OverviewScreen onOpen={selectScreen} /> : null}
           {activeScreen === "auth" ? <AuthScreen /> : null}
           {activeScreen === "dashboard" ? <DashboardScreen /> : null}
@@ -176,18 +233,19 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
     <div className="screenStack">
       <section className="heroPanel">
         <div>
-          <span className="eyebrow">Animated full-feature prototype</span>
-          <h2>See how the final portal will work before implementation starts.</h2>
+          <span className="eyebrow">Investor-ready SaaS walkthrough</span>
+          <h2>Site updates become approved business records.</h2>
           <p>
-            This clickable prototype translates the technical docs, stakeholder answers, API
-            specification, and UI component tree into a concrete product experience.
+            This prototype shows how Garrisons can run construction reporting, approvals,
+            documents, materials, finance, mobile field work, and launch governance from one
+            internal portal.
           </p>
           <div className="heroActions">
             <button onClick={() => onOpen("reports")} type="button">
-              Walk daily report flow <ArrowRight size={18} />
+              Walk the core business flow <ArrowRight size={18} />
             </button>
-            <button className="ghostButton" onClick={() => onOpen("projects")} type="button">
-              View project tracking
+            <button className="ghostButton" onClick={() => onOpen("delivery")} type="button">
+              Review launch plan
             </button>
           </div>
         </div>
@@ -212,6 +270,20 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
         </div>
       </section>
 
+      <section className="contentGrid four">
+        {investorHighlights.map((item) => (
+          <article className="investorCard" key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </section>
+
+      <Panel title="Business flow investors should understand" icon={<Map size={19} />}>
+        <BusinessFlowMap onOpen={onOpen} />
+      </Panel>
+
       <section className="contentGrid three">
         {launchModules.map((item) => (
           <article className="featureCard" key={item.title}>
@@ -224,15 +296,25 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
       </section>
 
       <section className="dualGrid wideLeft">
-        <Panel title="Guided end-to-end sample journey" icon={<ArrowRight size={19} />}>
+        <Panel title="End-to-end user journey" icon={<ArrowRight size={19} />}>
           <WalkthroughTimeline />
         </Panel>
-        <Panel title="Sample files used across the prototype" icon={<Upload size={19} />}>
-          <AttachmentList compact />
+        <Panel title="What the first demo proves" icon={<Eye size={19} />}>
+          <Checklist
+            items={[
+              "The product has a clear daily workflow, not only disconnected screens",
+              "Every role sees why the portal replaces chats, folders, and spreadsheets",
+              "Approvals, documents, photos, and audit records are connected to business outcomes",
+              "Phase 2 and Phase 3 modules are visible without confusing the MVP scope",
+            ]}
+          />
         </Panel>
       </section>
 
       <section className="dualGrid">
+        <Panel title="Sample files used across the prototype" icon={<Upload size={19} />}>
+          <AttachmentList compact />
+        </Panel>
         <Panel title="API surfaces represented" icon={<FileText size={19} />}>
           <div className="apiList">
             {apiEndpoints.map((endpoint) => (
@@ -244,6 +326,130 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
           <Checklist items={remainingInputs} />
         </Panel>
       </section>
+    </div>
+  );
+}
+
+function GuidedTourDock({
+  activeStep,
+  index,
+  onClose,
+  onNext,
+  onPrev,
+  onStep,
+}: {
+  activeStep: (typeof guidedTourSteps)[number];
+  index: number;
+  onClose: () => void;
+  onNext: () => void;
+  onPrev: () => void;
+  onStep: (index: number) => void;
+}) {
+  return (
+    <section className="guidedTourDock" aria-label="Investor walkthrough">
+      <div className="tourCopy">
+        <span>
+          Step {index + 1} of {guidedTourSteps.length} · {activeStep.label}
+        </span>
+        <h2>{activeStep.persona}</h2>
+        <p>
+          <strong>Trigger:</strong> {activeStep.trigger}
+        </p>
+        <p>
+          <strong>Outcome:</strong> {activeStep.outcome}
+        </p>
+      </div>
+      <div className="tourControls">
+        <div className="tourDots" aria-label="Walkthrough steps">
+          {guidedTourSteps.map((step, stepIndex) => (
+            <button
+              aria-label={`Go to ${step.label}`}
+              className={stepIndex === index ? "isActive" : ""}
+              key={step.label}
+              onClick={() => onStep(stepIndex)}
+              type="button"
+            />
+          ))}
+        </div>
+        <div className="tourButtons">
+          <button className="ghostButton" onClick={onPrev} type="button">
+            Previous
+          </button>
+          <button onClick={onNext} type="button">
+            Next screen <ArrowRight size={17} />
+          </button>
+          <button aria-label="Close walkthrough" className="iconButton" onClick={onClose} type="button">
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureGuideCard({ screen }: { screen: ScreenKey }) {
+  const guide = featureGuides[screen];
+
+  return (
+    <section className="featureGuide" aria-label="Feature guide">
+      <div className="guideIntro">
+        <BookOpenCheck size={21} />
+        <div>
+          <span>Feature walkthrough</span>
+          <h2>{screenTitles[screen]}</h2>
+        </div>
+      </div>
+      <div className="guideGrid">
+        <GuidePoint icon={<UsersRound size={18} />} label="Owner" value={guide.owner} />
+        <GuidePoint icon={<MousePointer2 size={18} />} label="Starts when" value={guide.startsWhen} />
+        <GuidePoint icon={<ClipboardList size={18} />} label="User action" value={guide.userAction} />
+        <GuidePoint icon={<Building2 size={18} />} label="System action" value={guide.systemAction} />
+        <GuidePoint icon={<FileCheck2 size={18} />} label="Business result" value={guide.businessResult} />
+      </div>
+    </section>
+  );
+}
+
+function GuidePoint({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <article>
+      <div>{icon}</div>
+      <span>{label}</span>
+      <p>{value}</p>
+    </article>
+  );
+}
+
+function BusinessFlowMap({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
+  const flowScreens: Record<string, ScreenKey> = {
+    Projects: "projects",
+    "Daily Reports": "reports",
+    Approvals: "approvals",
+    Dashboard: "dashboard",
+  };
+
+  return (
+    <div className="businessFlow">
+      {businessFlow.map((item, index) => (
+        <article key={item.title}>
+          <div className="flowNumber">{index + 1}</div>
+          <span>{item.owner}</span>
+          <h3>{item.title}</h3>
+          <p>{item.detail}</p>
+          <button onClick={() => onOpen(flowScreens[item.screen] ?? "overview")} type="button">
+            Open {item.screen}
+            <Send size={15} />
+          </button>
+        </article>
+      ))}
     </div>
   );
 }

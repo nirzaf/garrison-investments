@@ -1,12 +1,12 @@
 :root {
-  --bg: #f5f2eb;
-  --surface: #fffaf2;
+  --bg: #f4f6f8;
+  --surface: #ffffff;
   --surface-2: #ffffff;
   --ink: #1e2226;
-  --muted: #6f6b62;
+  --muted: #65707c;
   --line: rgba(31, 34, 38, 0.12);
-  --rail: #24282c;
-  --orange: #e2682a;
+  --rail: #18323b;
+  --orange: #d86d2f;
   --blue: #2d719d;
   --green: #4d7e54;
   --red: #b24734;
@@ -25,9 +25,7 @@ html {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(226, 104, 42, 0.16), transparent 30rem),
-    linear-gradient(135deg, #f7f2e9 0%, #ebe4d8 100%);
+  background: linear-gradient(135deg, #f7f9fb 0%, #e7edf2 100%);
   color: var(--ink);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -116,6 +114,11 @@ button {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+.moduleNav button.isTourTarget {
+  border-color: rgba(216, 109, 47, 0.72);
+  box-shadow: inset 3px 0 0 var(--orange);
 }
 
 .moduleNav small {
@@ -216,6 +219,11 @@ button {
   color: var(--ink);
 }
 
+.topActions .tourButton {
+  background: var(--orange);
+  color: #fff;
+}
+
 .topActions button:hover,
 .heroActions button:hover,
 .toolbarMock button:hover,
@@ -249,7 +257,10 @@ button {
 
 .heroPanel,
 .panel,
+.featureGuide,
+.guidedTourDock,
 .featureCard,
+.investorCard,
 .metricCard,
 .flowCard,
 .approvalCard,
@@ -259,9 +270,182 @@ button {
 .photoCard {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 250, 242, 0.82);
+  background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 42px rgba(31, 34, 38, 0.06);
+}
+
+.guidedTourDock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: #1f3a44;
+  color: #f7fbff;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.tourCopy span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: var(--radius);
+  background: rgba(216, 109, 47, 0.2);
+  color: #ffc7a4;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tourCopy h2 {
+  margin: 10px 0 8px;
+  font-size: 24px;
+}
+
+.tourCopy p {
+  margin: 4px 0;
+  color: rgba(247, 251, 255, 0.78);
+  line-height: 1.45;
+}
+
+.tourCopy strong {
+  color: #fff;
+}
+
+.tourControls {
+  min-width: 290px;
+  display: grid;
+  justify-items: end;
+  gap: 14px;
+}
+
+.tourDots {
+  display: flex;
+  gap: 7px;
+}
+
+.tourDots button {
+  width: 28px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.tourDots button.isActive {
+  background: var(--orange);
+}
+
+.tourButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tourButtons button,
+.floatingTourButton {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius);
+  background: var(--orange);
+  color: #fff;
+  font-weight: 800;
+}
+
+.tourButtons .ghostButton {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tourButtons .iconButton {
+  width: 40px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.floatingTourButton {
+  margin: 0 0 18px auto;
+  background: var(--rail);
+}
+
+.featureGuide {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.guideIntro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.guideIntro svg {
+  color: var(--orange);
+}
+
+.guideIntro span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.guideIntro h2 {
+  margin: 3px 0 0;
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.guideGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.guideGrid article {
+  min-height: 138px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.guideGrid article > div {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: rgba(45, 113, 157, 0.1);
+  color: var(--blue);
+}
+
+.guideGrid span {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.guideGrid p {
+  margin: 6px 0 0;
+  color: #39434c;
+  font-size: 13px;
+  line-height: 1.42;
 }
 
 .heroPanel {
@@ -289,8 +473,8 @@ button {
 .heroPanel h2 {
   max-width: 760px;
   margin: 18px 0 16px;
-  font-size: clamp(42px, 5vw, 76px);
-  line-height: 0.95;
+  font-size: clamp(38px, 4.4vw, 64px);
+  line-height: 1.02;
   letter-spacing: 0;
 }
 
@@ -320,18 +504,6 @@ button {
   border-radius: var(--radius);
   background: #292d31;
   color: #fff8ec;
-}
-
-.pulsePanel::before {
-  content: "";
-  position: absolute;
-  inset: -60px auto auto -60px;
-  width: 220px;
-  height: 220px;
-  background: conic-gradient(from 20deg, var(--orange), var(--blue), var(--green), var(--orange));
-  opacity: 0.24;
-  filter: blur(18px);
-  animation: spin 12s linear infinite;
 }
 
 .pulseHeader,
@@ -447,6 +619,10 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.contentGrid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .contentGrid.two,
 .dualGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -462,6 +638,7 @@ button {
 }
 
 .featureCard,
+.investorCard,
 .approvalCard,
 .notificationCard,
 .decisionCard,
@@ -471,6 +648,7 @@ button {
 }
 
 .featureCard:hover,
+.investorCard:hover,
 .approvalCard:hover,
 .notificationCard:hover,
 .decisionCard:hover,
@@ -483,6 +661,7 @@ button {
 }
 
 .featureCard span,
+.investorCard span,
 .approvalCard > span,
 .decisionCard span {
   display: inline-flex;
@@ -498,6 +677,7 @@ button {
 }
 
 .featureCard h3,
+.investorCard strong,
 .approvalCard h3,
 .notificationCard h3,
 .decisionCard h3 {
@@ -505,12 +685,89 @@ button {
 }
 
 .featureCard p,
+.investorCard p,
 .approvalCard p,
 .notificationCard p,
 .decisionCard p,
 .panel p {
   color: var(--muted);
   line-height: 1.5;
+}
+
+.investorCard strong {
+  display: block;
+  font-size: 24px;
+}
+
+.businessFlow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.businessFlow article {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 260px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.businessFlow article:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 34px;
+  right: -15px;
+  width: 20px;
+  height: 2px;
+  background: var(--orange);
+  z-index: 1;
+}
+
+.flowNumber {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--rail);
+  color: #fff;
+  font-weight: 800;
+}
+
+.businessFlow span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.businessFlow h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.businessFlow p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.businessFlow button {
+  align-self: end;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(45, 113, 157, 0.08);
+  color: var(--blue);
+  font-weight: 800;
 }
 
 .panel {
@@ -1090,16 +1347,30 @@ tr:last-child td {
 
   .heroPanel,
   .dualGrid,
-  .dualGrid.wideLeft {
+  .dualGrid.wideLeft,
+  .guidedTourDock,
+  .featureGuide {
     grid-template-columns: 1fr;
+  }
+
+  .tourControls {
+    min-width: 0;
+    justify-items: start;
   }
 
   .kpiGrid,
   .kpiGrid.compact,
   .contentGrid.three,
+  .contentGrid.four,
   .photoGrid,
-  .flowGrid {
+  .flowGrid,
+  .businessFlow,
+  .guideGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .businessFlow article:not(:last-child)::after {
+    display: none;
   }
 }
 
@@ -1131,9 +1402,12 @@ tr:last-child td {
   .kpiGrid.compact,
   .contentGrid.two,
   .contentGrid.three,
+  .contentGrid.four,
   .projectSelector,
   .photoGrid,
   .flowGrid,
+  .businessFlow,
+  .guideGrid,
   .detailGrid,
   .attachmentList {
     grid-template-columns: 1fr;
@@ -1141,6 +1415,20 @@ tr:last-child td {
 
   .ganttRow {
     grid-template-columns: 1fr;
+  }
+
+  .tourButtons {
+    justify-content: stretch;
+  }
+
+  .tourButtons button:not(.iconButton),
+  .floatingTourButton {
+    width: 100%;
+  }
+
+  .businessFlow article,
+  .guideGrid article {
+    min-height: auto;
   }
 }
 
