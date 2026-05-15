@@ -376,6 +376,188 @@ button {
   background: var(--rail);
 }
 
+.productTourLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tourShade {
+  position: fixed;
+  z-index: 100;
+  background: rgba(8, 22, 28, 0.68);
+  pointer-events: auto;
+}
+
+.tourShade.top {
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.tourShade.left {
+  left: 0;
+}
+
+.tourShade.right {
+  right: 0;
+}
+
+.tourShade.bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.tourShade.full {
+  inset: 0;
+}
+
+.tourSpotlight {
+  position: fixed;
+  z-index: 101;
+  border: 2px solid #ff8b4b;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 5px rgba(255, 139, 75, 0.18),
+    0 18px 52px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+  transition: top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease;
+}
+
+.tourInstructionModal {
+  position: fixed;
+  z-index: 102;
+  width: min(390px, calc(100vw - 28px));
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  animation: tourPop 180ms ease both;
+}
+
+.tourCloseButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f5f7f8;
+  color: var(--ink);
+}
+
+.tourEyebrow {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  max-width: calc(100% - 44px);
+  padding: 0 9px;
+  border-radius: var(--radius);
+  background: rgba(216, 109, 47, 0.12);
+  color: #9e421d;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tourInstructionModal h2 {
+  margin: 14px 38px 8px 0;
+  font-size: 25px;
+  line-height: 1.08;
+}
+
+.tourInstructionModal p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tourInstruction {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: rgba(45, 113, 157, 0.08);
+  border: 1px solid rgba(45, 113, 157, 0.18);
+}
+
+.tourInstruction strong {
+  color: var(--blue);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.tourInstruction span {
+  color: #39434c;
+  line-height: 1.45;
+}
+
+.tourProgress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 15px 0;
+}
+
+.tourProgress > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tourProgress > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.tourProgress button {
+  width: 18px;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(31, 34, 38, 0.16);
+}
+
+.tourProgress button.isActive {
+  background: var(--orange);
+}
+
+.tourInstructionModal .tourButtons {
+  justify-content: space-between;
+}
+
+.tourInstructionModal .tourButtons button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--orange);
+  color: #fff;
+  font-weight: 800;
+}
+
+.tourInstructionModal .tourButtons .ghostButton {
+  background: #f5f7f8;
+  color: var(--ink);
+}
+
 .featureGuide {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -1314,6 +1496,17 @@ tr:last-child td {
   }
 }
 
+@keyframes tourPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (max-width: 1180px) {
   .appShell {
     grid-template-columns: 1fr;
@@ -1424,6 +1617,25 @@ tr:last-child td {
   .tourButtons button:not(.iconButton),
   .floatingTourButton {
     width: 100%;
+  }
+
+  .tourInstructionModal {
+    top: auto !important;
+    right: 14px;
+    bottom: 14px;
+    left: 14px !important;
+    width: auto;
+    max-height: min(68vh, 560px);
+    overflow: auto;
+  }
+
+  .tourProgress {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tourProgress > div {
+    justify-content: flex-start;
   }
 
   .businessFlow article,

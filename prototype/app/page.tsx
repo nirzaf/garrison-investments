@@ -170,15 +170,18 @@ export default function Home() {
       }, 220);
     };
 
+    const handleResize = () => updateTourTarget(false);
+    const handleScroll = () => updateTourTarget(false);
+
     frameId = window.requestAnimationFrame(() => updateTourTarget(true));
-    window.addEventListener("resize", () => updateTourTarget(false));
-    window.addEventListener("scroll", () => updateTourTarget(false), true);
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("scroll", handleScroll, true);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(timeoutId);
-      window.removeEventListener("resize", updateTourTarget);
-      window.removeEventListener("scroll", updateTourTarget, true);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("scroll", handleScroll, true);
     };
   }, [activeTourStep, activeScreen, tourOpen]);
 
