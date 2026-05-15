@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -129,6 +129,42 @@ export default function Home() {
     selectScreen(productTourSteps[boundedIndex].screen);
     setTourOpen(true);
   };
+
+  useEffect(() => {
+    const handleTourPointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      const control = event.target.closest<HTMLElement>("[data-tour-action]");
+      if (!control) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const action = control.dataset.tourAction;
+      if (action === "next") {
+        goToTourStep(tourIndex + 1);
+      }
+      if (action === "prev") {
+        goToTourStep(tourIndex - 1);
+      }
+      if (action === "close") {
+        setTourOpen(false);
+      }
+      if (action === "step" && control.dataset.tourStep) {
+        goToTourStep(Number(control.dataset.tourStep));
+      }
+    };
+
+    document.addEventListener("pointerdown", handleTourPointer, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleTourPointer, true);
+    };
+  }, [tourIndex]);
 
   useEffect(() => {
     if (!tourOpen) {
@@ -451,6 +487,14 @@ function ProductTourOverlay({
   onStep: (index: number) => void;
 }) {
   const isFinalStep = index === productTourSteps.length - 1;
+  const runTourAction = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    action: () => void,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  };
 
   return (
     <div className="productTourLayer" aria-label="Interactive product tour" aria-modal="true" role="dialog">
@@ -499,7 +543,13 @@ function ProductTourOverlay({
             : undefined
         }
       >
-        <button aria-label="Close walkthrough" className="tourCloseButton" onClick={onClose} type="button">
+        <button
+          aria-label="Close walkthrough"
+          className="tourCloseButton"
+          data-tour-action="close"
+          onPointerDown={(event) => runTourAction(event, onClose)}
+          type="button"
+        >
           <X size={18} />
         </button>
         <span className="tourEyebrow">{activeStep.eyebrow}</span>
@@ -518,18 +568,29 @@ function ProductTourOverlay({
               <button
                 aria-label={`Go to ${step.title}`}
                 className={stepIndex === index ? "isActive" : ""}
+                data-tour-action="step"
+                data-tour-step={stepIndex}
                 key={step.title}
-                onClick={() => onStep(stepIndex)}
+                onPointerDown={(event) => runTourAction(event, () => onStep(stepIndex))}
                 type="button"
               />
             ))}
           </div>
         </div>
         <div className="tourButtons">
-          <button className="ghostButton" onClick={onPrev} type="button">
+          <button
+            className="ghostButton"
+            data-tour-action="prev"
+            onPointerDown={(event) => runTourAction(event, onPrev)}
+            type="button"
+          >
             Previous
           </button>
-          <button onClick={onNext} type="button">
+          <button
+            data-tour-action="next"
+            onPointerDown={(event) => runTourAction(event, onNext)}
+            type="button"
+          >
             {isFinalStep ? "Restart tour" : "Next"}
             <ArrowRight size={17} />
           </button>

@@ -380,7 +380,7 @@ button {
   position: fixed;
   inset: 0;
   z-index: 100;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .tourShade {
@@ -516,14 +516,14 @@ button {
 }
 
 .tourProgress > div {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  width: 190px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6px, 1fr));
   gap: 5px;
 }
 
 .tourProgress button {
-  width: 18px;
+  width: 100%;
   height: 6px;
   padding: 0;
   border: 0;
@@ -1635,7 +1635,7 @@ tr:last-child td {
   }
 
   .tourProgress > div {
-    justify-content: flex-start;
+    width: 100%;
   }
 
   .businessFlow article,
