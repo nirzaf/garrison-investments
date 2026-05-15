@@ -76,8 +76,11 @@
 ```
 1. Client sends HTTPS request with Authorization: Bearer <access_token>
 
-2. Nginx terminates TLS, applies gzip, enforces security headers,
-   routes /api/* to FastAPI, serves /static/* and /media/* directly
+2. Nginx terminates TLS, applies gzip, enforces security headers:
+   - Routes `/api/*` to FastAPI
+   - Serves `/assets/*` and built frontend static files directly
+   - Private files (photos, documents, reports, invoices) are NEVER
+     served directly by Nginx — they go through FastAPI authorization
 
 3. FastAPI middleware executes in order:
    a. CORSMiddleware          — validates origin against allowlist
@@ -188,7 +191,7 @@ THIS IS FORBIDDEN:
 |  SERVICES NEVER:                                                  |
 |  - Import FastAPI Request, Response, or HTTPException             |
 |  - Call HTTP-related functions                                    |
-|  - Return SQLAlchemy ORM objects (return domain/Pydantic objects) |
+|  - Return Pydantic schemas (that's the route layer's job)         |
 +------------------------------------------------------------------+
         |                               ^
         | calls                         | returns ORM models
@@ -201,7 +204,6 @@ THIS IS FORBIDDEN:
 |  - CRUD operations with soft-delete awareness                     |
 |  - Query building (filtering, sorting, pagination)                |
 |  - Eager loading configuration (selectinload, joinedload)         |
-|  - Cache integration (Redis get/set through repository)           |
 |                                                                   |
 |  REPOSITORIES NEVER:                                              |
 |  - Contain business rules (that's the service layer)              |
@@ -330,6 +332,7 @@ Rules:
 - Services may call other services for cross-domain operations
 - Services commit transactions explicitly
 - Services never touch HTTP concerns (request, response, status codes)
+- **Return-type convention**: Services return SQLAlchemy ORM models. Routes declare Pydantic `response_model` with `from_attributes=True` to handle serialization. This is the pragmatic FastAPI pattern — it keeps the code simple and avoids an unnecessary mapping layer for MVP. If a domain grows complex enough to warrant separate internal DTOs, that refactor is scoped to the service layer without changing routes.
 
 ### 2.5 Repository Layer (Example)
 
@@ -393,6 +396,11 @@ Rules:
 - Use `await self.db.flush()` in create to get generated UUID
 - Return SQLAlchemy ORM models, never dicts
 - Never call `await self.db.commit()` — the service layer owns transaction boundaries
+- Repositories are data-access only — no caching, no business rules, no external calls.
+  Caching decisions belong in the service layer, using a dedicated cache module that
+  encapsulates Redis get/set/invalidate. Cache aggressively for low-risk reads
+  (user permission cache, dashboard summaries, reference data) but avoid caching
+  inventory stock quantities, approval inboxes, audit logs, or financial records.
 
 ### 2.6 Model Mixins
 
@@ -407,19 +415,33 @@ class SoftDeleteMixin:
     deleted_at = Column(TIMESTAMPTZ, nullable=True)
 ```
 
-### 2.7 Middleware Stack
+### 2.7 Middleware & Dependencies
 
-Middleware executes in this order for every API request:
+The request pipeline uses two distinct mechanisms — global Starlette middleware and FastAPI route dependencies — applied at different scopes for different purposes.
+
+**Global middleware** (applies to every request, including health checks and static fallback):
 
 | Order | Middleware | Responsibility | Library / Module |
 |-------|-----------|---------------|-----------------|
 | 1 | CORS | Validate origin against allowlist | `fastapi.middleware.cors` |
-| 2 | Auth | Decode JWT, fetch user, attach to `request.state.user` | `app/middleware/auth.py` |
-| 3 | RBAC | Check user role against endpoint permission | `app/middleware/rbac.py` |
-| 4 | Rate Limit | Check Redis counters per IP/user/endpoint | `slowapi` (Redis-backed) |
-| 5 | Audit | Log request metadata to `activity_log` | `app/middleware/audit.py` |
+| 2 | Request ID | Attach `X-Request-ID` to request state and response header | `app/middleware/request_id.py` |
+| 3 | Timing | Record request duration; expose to Prometheus (optional) | `app/middleware/timing.py` |
 
-Auth, RBAC, and Audit are applied as router-level dependencies, not global Starlette middleware, so they only execute on API routes (not static file requests).
+**Route-level dependencies** (applied via `Depends()` on API routers only — do not execute on static files or health checks):
+
+| Order | Dependency | Responsibility | Implementation |
+|-------|-----------|---------------|----------------|
+| 4 | `get_current_user` | Decode JWT, fetch user, attach to `request.state.user` | `app/api/dependencies.py` |
+| 5 | `require_permission(...)` | Check user role against endpoint permission | `app/api/dependencies.py` |
+| 6 | Rate limit | Check Redis counters per IP/user/endpoint | `slowapi` (Redis-backed), applied per sensitive route |
+
+**Custom APIRoute for audit logging** (wraps route execution to capture request + response):
+
+| Layer | Responsibility | Implementation |
+|-------|---------------|----------------|
+| Audit route | Log `user_id`, `action`, `entity_type`, `entity_id`, `old_values`, `new_values`, response status | Custom `APIRoute` subclass in `app/middleware/audit.py` |
+
+Audit logging uses a custom `APIRoute` rather than a simple dependency because it needs to know the response status code — whether the operation succeeded, failed validation, or was rejected by RBAC. A dependency that runs before the route handler cannot capture the response outcome.
 
 ### 2.8 Task Layer (Celery Workers)
 
@@ -628,6 +650,34 @@ api/admin.ts       — users, audit-log
 | Form Autosave | Auto-save every 30s and on field blur | Phase 1 |
 | Optimistic Updates | TanStack Query `onMutate` for instant UI feedback | Phase 1 |
 
+#### Idempotency and Conflict Prevention
+
+Offline submissions over weak mobile networks risk duplicate records when retries are triggered before the client receives the server's response. Every offline-originated create operation (daily reports, photo uploads) must be idempotent.
+
+**Client-generated IDs**: Each draft created offline receives a `client_id` (UUID v4) generated by the frontend before the record is stored in IndexedDB. This ID is included in the sync payload and used by the server for deduplication.
+
+**Idempotency key header**:
+
+```http
+POST /api/v1/reports
+Idempotency-Key: <client_generated_uuid>
+```
+
+**Server-side handling**: The API endpoint checks the idempotency key against previously processed requests (cached in Redis with a 24-hour TTL). If the key was already processed successfully, the server returns the stored response (200 with the existing record) instead of creating a duplicate.
+
+**Sync record fields** — each offline draft tracks:
+
+```
+client_id          — UUID generated client-side before first save
+idempotency_key   — same UUID, sent as Idempotency-Key header on sync
+sync_status        — "draft" | "pending" | "synced" | "conflict"
+last_sync_attempt  — timestamp of most recent sync attempt
+server_version     — server-side `updated_at` after successful sync
+conflict_status    — null | "server_newer" | "rejected"
+```
+
+**Conflict resolution**: If a server record has been modified (e.g., approved by PM) since the client last synced, the sync is rejected with status 409 and `conflict_status: "server_newer"`. The client surfaces the conflict and offers the user a choice: discard the local draft or force-resubmit (which creates a new report version or resubmission request).
+
 ### 3.6 Component Design Principles
 
 1. **Headless where possible**: `DataTable` uses TanStack Table (headless); `Select` and `Modal` use Radix primitives for accessibility
@@ -697,6 +747,13 @@ invoices --o< payments
 
 ### 4.4 Index Strategy
 
+- **Partial unique indexes for soft-delete safety** — Any uniqueness constraint that should only apply to active (non-deleted) rows must use a partial unique index, not a standard UNIQUE constraint. PostgreSQL treats NULLs in a UNIQUE constraint as distinct values, so `UNIQUE(project_id, report_date, deleted_at)` would allow duplicate active rows where `deleted_at IS NULL`. Use instead:
+  ```sql
+  CREATE UNIQUE INDEX uq_daily_reports_project_date_active
+  ON daily_reports(project_id, report_date)
+  WHERE deleted_at IS NULL;
+  ```
+  This pattern applies wherever uniqueness must be enforced only for non-deleted records (report numbers, document revisions, inventory item codes, etc.).
 - **Partial indexes** with `WHERE deleted_at IS NULL` — smaller and faster since queries always exclude soft-deleted records
 - **Composite indexes** for multi-column query patterns (e.g., `(approver_id, status)` on `approvals` for inbox queries)
 - **GIN indexes on JSONB** — `daily_reports.extra_fields` for querying custom form fields
@@ -722,22 +779,30 @@ LOGIN:
   1. Client POST /api/v1/auth/login { email, password }
   2. Server validates password against bcrypt hash
   3. Server generates:
-     - access_token (JWT, RS256, 15 min expiry)
-     - refresh_token (JWT, 1 day expiry, stored hashed in DB)
-  4. Server returns { access_token, refresh_token, token_type, user }
+     - access_token (JWT, RS256, 15 min expiry) — returned in JSON body
+     - refresh_token (JWT, 1 day expiry) — set as HttpOnly, Secure, SameSite=Strict cookie;
+       stored hashed in DB for rotation/revocation
+  4. Server returns { access_token, token_type, user }
+     (Refresh token is never exposed to JavaScript — it arrives only as a cookie.)
 
 TOKEN REFRESH (silent):
   1. Client detects 401 or near-expiry access token
-  2. Client POST /api/v1/auth/refresh { refresh_token }
-  3. Server validates refresh_token, rotates it (old invalidated)
-  4. Server returns { access_token, refresh_token }
+  2. Client POST /api/v1/auth/refresh (browser sends refresh_token cookie automatically)
+  3. Server validates refresh_token from cookie, rotates it (new token issued, old hashed token invalidated)
+  4. Server sets new refresh_token cookie and returns { access_token }
 
 EVERY AUTHENTICATED REQUEST:
   1. Client sends Authorization: Bearer <access_token>
-  2. Auth middleware decodes JWT, extracts user_id
+  2. Auth dependency decodes JWT, extracts user_id
   3. Fetches user from DB (cached in Redis for 5 minutes)
   4. Attaches user to request.state.user
-  5. RBAC middleware checks role permission for endpoint
+  5. RBAC dependency checks role permission for endpoint
+
+TOKEN STORAGE RATIONALE:
+  - access_token: Stored in memory only (JavaScript variable). Short 15-minute TTL limits exposure.
+  - refresh_token: HttpOnly Secure SameSite=Strict cookie. Inaccessible to JavaScript,
+    never sent cross-site, automatically included on /auth/refresh requests.
+    This prevents token theft via XSS and reduces CSRF risk.
 
 PASSWORD POLICIES:
   - Minimum 8 characters: uppercase + lowercase + number + symbol
@@ -777,7 +842,9 @@ add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline';" always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
+# camera=(self) allows photo capture via <input capture="environment"> for site reports.
+# microphone and geolocation remain disabled until a confirmed requirement.
 ```
 
 ### 5.4 File Upload Security
@@ -787,8 +854,8 @@ add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 3. **Size limits**: 10 MB per photo, 60 MB per document
 4. **Validation**: Server validates MIME type by magic bytes, not just extension
 5. **Storage**: Files stored in MinIO with randomized object keys; original filenames only in DB metadata
-6. **Presigned URLs**: Direct upload to MinIO (no file data passes through FastAPI)
-7. **Access control**: Download URLs are signed and temporary; access checked per-request
+6. **Presigned URLs**: Direct upload to MinIO via presigned URLs (no file data passes through FastAPI)
+7. **Access control**: Download URLs are signed and temporary; access is checked per-request against user permissions. Private files (photos, documents, drawings, invoices, reports) are never served directly by Nginx. The flow is: (1) Client requests file via FastAPI, (2) FastAPI checks RBAC and project access, (3) FastAPI returns a short-lived MinIO presigned URL, (4) Client downloads directly from MinIO, (5) Audit log records the download.
 8. **Watermarking**: Photos watermarked with company name during Celery processing
 
 ### 5.5 Additional Measures
@@ -905,8 +972,10 @@ services:
   nginx:
     image: nginx:1.25-alpine
     ports: ["80:80", "443:443"]
-    volumes: [./nginx/nginx.conf, ./nginx/ssl]
+    volumes: [./nginx/nginx.conf, ./nginx/ssl, frontend_dist:/usr/share/nginx/html]
     depends_on: [backend]
+    # Serves: built frontend static files, /assets/*, reverse-proxies /api/* to FastAPI
+    # Does NOT serve private files — those go through FastAPI → MinIO presigned URLs
 
   backend:
     build: ./backend
