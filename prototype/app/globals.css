@@ -379,13 +379,13 @@ button {
 .productTourLayer {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 900;
   pointer-events: auto;
 }
 
 .tourShade {
   position: fixed;
-  z-index: 100;
+  z-index: 901;
   background: rgba(8, 22, 28, 0.68);
   pointer-events: auto;
 }
@@ -416,7 +416,7 @@ button {
 
 .tourSpotlight {
   position: fixed;
-  z-index: 101;
+  z-index: 910;
   border: 2px solid #ff8b4b;
   border-radius: 12px;
   box-shadow:
@@ -428,7 +428,7 @@ button {
 
 .tourInstructionModal {
   position: fixed;
-  z-index: 102;
+  z-index: 920;
   width: min(390px, calc(100vw - 28px));
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.14);

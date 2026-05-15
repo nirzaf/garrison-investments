@@ -131,7 +131,11 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const handleTourPointer = (event: PointerEvent) => {
+    const handleTourControl = (event: PointerEvent | MouseEvent) => {
+      if (event.type === "click" && "detail" in event && event.detail > 0) {
+        return;
+      }
+
       if (!(event.target instanceof Element)) {
         return;
       }
@@ -159,10 +163,14 @@ export default function Home() {
       }
     };
 
-    document.addEventListener("pointerdown", handleTourPointer, true);
+    document.addEventListener("pointerdown", handleTourControl, true);
+    document.addEventListener("mousedown", handleTourControl, true);
+    document.addEventListener("click", handleTourControl, true);
 
     return () => {
-      document.removeEventListener("pointerdown", handleTourPointer, true);
+      document.removeEventListener("pointerdown", handleTourControl, true);
+      document.removeEventListener("mousedown", handleTourControl, true);
+      document.removeEventListener("click", handleTourControl, true);
     };
   }, [tourIndex]);
 
@@ -487,6 +495,10 @@ function ProductTourOverlay({
   onStep: (index: number) => void;
 }) {
   const isFinalStep = index === productTourSteps.length - 1;
+  const resolvedModalPosition =
+    targetRect && typeof window !== "undefined"
+      ? getTourModalPosition(targetRect, activeStep.position)
+      : modalPosition;
   const runTourAction = (
     event: ReactPointerEvent<HTMLButtonElement>,
     action: () => void,
@@ -538,8 +550,8 @@ function ProductTourOverlay({
       <section
         className="tourInstructionModal"
         style={
-          modalPosition
-            ? { top: modalPosition.top, left: modalPosition.left }
+          resolvedModalPosition
+            ? { top: resolvedModalPosition.top, left: resolvedModalPosition.left }
             : undefined
         }
       >
