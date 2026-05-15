@@ -1,340 +1,489 @@
-# Construction Internal Portal - Requirements Questions
+# Garrisons Internal Portal - Requirements Clarifications
 
-This document lists the business, operational, and technical questions that should be clarified before full implementation. The current documentation provides a strong technical foundation, but these decisions affect database design, API behavior, UI flows, deployment planning, and long-term maintainability.
+Source: `Garrisons Internal Portal - Requirements Questions.docx`
+
+This document updates the original requirements-question checklist with the answers provided in the stakeholder document and recommended implementation decisions for previously unanswered items. Items marked as remaining follow-up still need client assets, source data, or final stakeholder confirmation.
 
 ## 1. Project Scope and Phase Priority
 
-The WBS splits the system into Phase 1 (daily reporting), Phase 2 (materials/workflows/documents), and Phase 3 (accounts/analytics/mobile enhancements). Clarify this first because it affects timeline, budget, and what "complete" means.
+### Confirmed Decisions
 
-**Questions to ask:**
+- The MVP must be a working internal portal for real use, not only a prototype.
+- Material requests and approvals can wait until Phase 2.
+- Documents and version control are required in the first release.
+- Before Phase 3, Accounts must support manpower cost calculation, material cost calculation, and budget tracking.
+- Timeline planning should be project-wise rather than a fixed global 14-week schedule.
+- Initial delivery can avoid full dashboard and secondary features. The task update/reporting flow is the priority.
+- Scope changes must be approved by the Operation Manager and General Manager.
+- First release should include users/auth, projects, supervisor updates, engineer verification/reporting, Project Manager approval, photos, document upload/versioning, basic notifications, and basic exports.
+- First-release document/version control should include upload, metadata, version history, superseded warnings, and approval before active status.
+- Advanced dashboards should be postponed. Launch should include only operational summaries: pending approvals, missing/late reports, active projects, recent updates, and low-stock indicators if materials are included.
 
-- Is Phase 1 only the first deliverable, or should the full Phase 1–3 system be built now?
-- Which modules are mandatory for the first release: daily reports, dashboard, photos, projects, users, approvals, materials, documents, notifications, accounts?
-- Should "MVP" mean a working internal portal for real use, or just a demo/prototype?
-- Are material requests and approvals required in Phase 1, or only from Phase 2?
-- Are documents and version control required in the first release, or later?
-- Accounts integration is listed in Phase 3, but the Accounts role already exists. What should the Accounts Department be able to do before Phase 3?
-- Is the estimated total schedule of around 70.5 development days / 14 weeks acceptable, or does the client expect a shorter timeline?
-- Which features can be removed or delayed if time or budget becomes limited?
-- Who has final authority to approve scope changes?
+### Remaining Follow-Up
+
+- Final stakeholder sign-off on the recommended first-release module list.
+- Confirm whether material request screens are fully postponed to Phase 2 or need read-only placeholders in Phase 1.
 
 ## 2. User Roles and Permissions
 
-The documents define roles such as Admin, Operation Manager, Project Manager, Civil Engineer, Civil Supervisor, Store Keeper, and Accounts. The technical specification also includes an RBAC matrix. However, some permissions need exact confirmation.
+### Confirmed Decisions
 
-**Questions to ask:**
+- A user has exactly one role.
+- Project Managers can currently access all projects. In the future, assignment can become project-wise.
+- Civil Engineers and Civil Supervisors can see reports submitted by others on the same project, but cannot edit them.
+- Civil Supervisors do not submit the final daily report. They update attendance, work location, overtime details, and progress.
+- Civil Engineers visit/check the site quality, approve the supervisor update in the system, and then add the engineer report/update.
+- Store Keepers can access only material/inventory screens.
+- Everyone can request material, but requests must go through final approval.
+- Accounts can see all project budgets, invoices, reports, and materials.
+- Operation Managers approve only items escalated from Project Managers.
+- Admins cannot edit or delete approved reports.
+- Users should be deactivated/renamed/reassigned rather than permanently deleted. Historical continuity should remain in the portal.
+- Admins should be able to customize permissions later.
+- MVP should use fixed role-based permissions, while the database design should allow customizable permissions later.
+- Employee replacement should not rename or overwrite old users. The old user should be deactivated and a new user created. Historical reports, approvals, and audit logs must keep the original user reference.
+- MVP roles should include Admin, General Manager, Operation Manager, Project Manager, Civil Engineer, Civil Supervisor, Store Keeper, and Accounts.
 
-- Can one user have multiple roles, or exactly one role only?
-- Can a Project Manager access only assigned projects, or all projects?
-- Can Civil Engineers and Civil Supervisors see reports submitted by others on the same project?
-- Can Civil Supervisors submit daily reports? The RBAC matrix suggests they can submit their own reports, but the API specification says report submission is for Engineers. This needs clarification.
-- Can Store Keepers see project reports, or only material/inventory screens?
-- Can the Accounts Department see project budgets, invoices, reports, materials, or only financial documents?
-- Should Operation Managers approve all reports, or only reports escalated from Project Managers?
-- Can Admins edit or delete approved reports?
-- Should users be deactivated only, or permanently deleted in rare cases?
-- Should permission rules be hardcoded by role, or should Admins be able to customize permissions later?
+### Remaining Follow-Up
+
+- Define exact role permissions for every module and action.
+- Confirm whether General Manager needs full read-only visibility or approval authority in selected workflows.
 
 ## 3. Daily Site Report Requirements
 
-Daily reporting is the core of the portal. The requirement document lists project, weather, work completed, manpower, equipment, materials, issues, photos, and next-day plan. The API and database define draft, submitted, approved, and rejected states.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Multiple reports per project are allowed.
+- The official daily report is submitted by the Civil Engineer.
+- Multiple users cannot contribute to the same draft report.
+- After submission, only the submitting user can edit, subject to workflow rules.
+- Approved reports cannot be edited. Any change requires resubmission or an admin delete/change request.
+- Rejected reports return to draft, but rejection comments must remain visible in history.
+- Approval history must be visible inside the report.
+- Progress percentage can be both manual and calculated from the engineer report.
+- Progress may go backward depending on the situation, so backward movement should not be blocked globally.
+- Safety incidents are required in every report.
+- Site visitors, inspections, WIR numbers, subcontractors, and delays are mandatory fields.
+- Weather should support both manual entry/dropdown selection and automatic weather data.
+- Reports should support attachments beyond photos.
+- Daily reports must be printable as PDF.
+- After approvals, the daily report PDF should be emailed.
+- Reports must have a unique report number.
+- Future-dated reports are allowed.
+- Previous-date reports are not allowed by default, but can be submitted with admin approval.
+- Weekends and holidays are handled differently.
+- Late report submission should trigger an alert.
+- Daily report approval must confirm that the target was covered and must be approved by the Project Manager.
+- The official report is the final Civil Engineer report approved by the Project Manager.
+- Supervisor updates are report inputs, not the official daily report.
+- Weekend/holiday reports should be allowed, but the day type should be marked. Lateness checks should be skipped unless work was scheduled for that day.
+- Late cutoff should default to 10:00 AM the next day. Notify the submitter first, then notify the Project Manager if still missing.
+- Report number format should be `PROJECTCODE-DR-YYYYMMDD-###`.
+- Required fields should include project, date, work area/location, manpower, overtime, work completed, progress, safety incidents, WIR/inspection status, delays, next-day plan, photos, and attachments.
 
-- Is there exactly one daily report per project per day, or can there be multiple reports per project, site, zone, shift, or supervisor?
-- Who is responsible for submitting the official daily report?
-- Can multiple people contribute to the same draft report?
-- Can a report be edited after submission?
-- Can a report be edited after approval?
-- If a report is rejected, does it return to draft status or rejected status?
-- Should approval history be visible inside the report?
-- Is progress percentage entered manually, automatically calculated, or both?
-- Should progress percentage be validated so it cannot go backward?
-- Are safety incidents required in every report?
-- Are site visitors, inspections, WIR numbers, subcontractors, or delays mandatory fields?
-- Is weather manually entered, selected from a dropdown, or fetched automatically from a weather service?
-- Should reports support attachments other than photos?
-- Should daily reports be printable as PDF?
-- Should reports have a unique report number?
-- Should the system prevent future-dated reports?
-- Should users be able to submit reports for previous dates?
-- Are weekends and holidays handled differently?
-- Should late report submission trigger an alert?
-- What is the exact approval flow for a daily report?
+### Remaining Follow-Up
+
+- Confirm whether 10:00 AM next-day cutoff matches site operations.
+- Confirm any additional company-specific daily report fields from existing paper forms.
 
 ## 4. Approval Workflow
 
-The system includes approval workflows for reports, material requests, and documents. The approval model supports generic request types and multi-level approval.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Daily reports, material requests, documents, invoices, payments, and project changes require approval.
+- Approval is multi-level where needed.
+- Project-related work is approved by the Project Manager once the project is entered.
+- Material and related approvals are two-step: first Engineer approval, final Project Manager approval.
+- Work completion reports should be approved by the Engineer and finally by the Project Manager.
+- Approvers are determined automatically by project/role.
+- Approval delegation is required.
+- If an approver is inactive or unavailable, Admin controls reassignment/handling.
+- Rejection reason/comment is mandatory.
+- Approved items cannot be reopened or revised.
+- Approval deadlines and escalation rules are required.
+- Timely activities should include increment/score points.
+- Users must receive notifications for pending, approved, and rejected approvals.
+- Admins can override approvals.
+- Approval comments are visible only to managers.
+- Recommended approval chains:
+  - Daily report: Supervisor update -> Civil Engineer verification/report -> Project Manager approval.
+  - Material request: requester -> Engineer review -> Project Manager approval -> Operation Manager approval if above USD 1,000.
+  - Documents: uploader -> Project Manager approval before active status.
+  - Invoices/payments: Accounts review/create -> Operation Manager approval.
+- Escalation should send a reminder after 24 hours and escalate after 48 hours.
+- Admin overrides and delegated approvals must be fully audited with reason, timestamp, original approver, and acting user.
 
-- Which items require approval: daily reports, material requests, documents, invoices, payments, project changes?
-- Is approval single-level or multi-level?
-- What is the approval chain for each item type?
-- Can the approver be selected manually, or is the approver determined automatically by project/role?
-- Can an approver delegate approval to someone else?
-- What happens if an approver is inactive or unavailable?
-- Is a rejection reason mandatory?
-- Can an approved item be reopened or revised?
-- Should approval deadlines or escalation rules exist?
-- Should users receive notifications when approval is pending, approved, or rejected?
-- Should Admins be able to override approvals?
-- Should approval comments be visible to all users or only managers?
+### Remaining Follow-Up
+
+- Define whether Operation Manager approval is needed for specific high-risk/non-material items.
+- Define scoring/increment-point rules for timely activities.
 
 ## 5. Material Management and Inventory
 
-The requirement includes material requests, approvals, stock tracking, incoming/outgoing materials, suppliers, and low-stock alerts. The database has materials, suppliers, and material transactions, but there is no clearly defined separate material_requests table even though approvals mention material_request.
+### Confirmed Decisions
 
-**Questions to ask:**
+- A separate material request workflow is required.
+- Supervisors, Engineers, and Project Managers can create material requests.
+- Admin and Project Manager approve material requests.
+- Requests above USD 1,000 require Operation Manager approval.
+- Material requests should reserve stock before issue.
+- Stock must support both centralized/global and project/site/store/warehouse tracking.
+- One material can exist in multiple locations.
+- Materials need batch numbers, delivery notes, purchase order references, or supplier invoice references.
+- Outgoing materials should be linked to a daily report.
+- Material consumption in daily reports should automatically reduce stock.
+- Stock cannot go negative.
+- Stock alerts are required.
+- Returns, wastage, damaged materials, transfers, and adjustments must be handled.
+- These material movements should capture the handling person.
+- Unit options should be selectable, including Nos, KG, TON, and SQM.
+- Minimum stock and reorder points are set by the Store Manager based on requirement.
+- Low-stock alerts should go to both Store Keeper and Project Manager/Operation Manager.
+- Supplier ratings, supplier categories, and payment terms are required.
+- Material pricing is restricted and should not be visible to all users.
+- Inventory should use a multi-location model with central warehouse plus project/site stores.
+- Transfer transactions should support movement between warehouses, stores, and project/site locations.
+- Unit conversion should be configured per material, not globally.
+- Material request lifecycle should be requested -> approved -> reserved -> issued, partially issued, or cancelled.
+- Material pricing should be visible only to Admin, Accounts, Operation Manager, General Manager, and optionally Project Manager.
 
-- Is a separate material request workflow required, or only direct stock in/out transactions?
-- Who can create material requests?
-- Who approves material requests?
-- Should material requests reserve stock before issue?
-- Should stock be tracked globally, by project, by site, by store, or by warehouse?
-- Can one material exist in multiple locations?
-- Do materials need batch numbers, delivery notes, purchase order references, or supplier invoice references?
-- Should outgoing materials be linked to a daily report?
-- Should material consumption in daily reports automatically reduce stock?
-- Can stock go negative?
-- How should returns, wastage, damaged materials, transfers, and adjustments be handled?
-- Should the system track unit conversions, such as bags to kilograms or tons to kilograms?
-- Who sets minimum stock and reorder points?
-- Should low-stock alerts go to Store Keeper only, or also Project Manager/Operation Manager?
-- Are supplier ratings, supplier categories, or payment terms needed?
-- Should material pricing be visible to all users or restricted?
+### Remaining Follow-Up
+
+- Confirm whether Project Manager can view material pricing.
+- Define initial warehouse/site/store list for launch.
 
 ## 6. Project Management and Timeline Tracking
 
-The documents include project list, detail, timeline, project members, progress tracking, and dashboard summaries. The UI tree also includes project timeline and Gantt-style views.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Project creation requires scope of work, deadline, and BOQ.
+- Project code should be auto-generated.
+- Projects have phases, milestones, activities, and BOQ line items.
+- New project entry should provide selectable options for phases, milestones, activities, and BOQ line items.
+- Timeline should be a full task/Gantt tracker.
+- Project progress is calculated from Civil Engineer updates and approved WIR by the Project Manager.
+- Progress can be different for civil, MEP, finishing, and other scopes.
+- Dashboard does not need to show budget. Deadlines can be shown.
+- Project locations only need text and a map image.
+- Client portal access is not required.
+- Users can be assigned to multiple projects in the initial stage.
+- BOQ should support manual entry and spreadsheet import.
+- BOQ fields should include item code, description, unit, quantity, rate, amount, discipline, phase, and milestone.
+- Gantt/task tracking should support tasks, dependencies, start/end dates, baseline dates, actual dates, delay reason, owner, and status.
+- Recommended progress formula: discipline progress = approved quantity divided by planned quantity. Project progress = weighted discipline/BOQ progress.
 
-- What data is required when creating a project?
-- Is project code manually entered or auto-generated?
-- Do projects have phases, milestones, activities, or BOQ line items?
-- Should the timeline be a simple date range, or a full task/Gantt tracker?
-- How is project progress calculated?
-- Can progress be different for civil, MEP, finishing, and other scopes?
-- Should the dashboard show the project budget and cost?
-- Are project locations plain text, maps, GPS coordinates, or all three?
-- Should clients have access later through the future client portal?
-- Can users be assigned to multiple projects?
+### Remaining Follow-Up
+
+- Confirm company BOQ spreadsheet format.
+- Confirm discipline weights for project progress calculation.
 
 ## 7. Photo Upload and Gallery
 
-The plan requires daily site photo uploads, direct camera upload, gallery, and progress archive. The API supports photo upload, metadata, thumbnails, download, and soft deletion.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Maximum 5 photos per report.
+- 10 MB per-file limit is acceptable.
+- Allowed formats should include JPG, PNG, HEIC, and PDF.
+- Photos should be compressed automatically.
+- Thumbnails should be generated automatically.
+- Captions are not required.
+- Photos should be uploaded by the Supervisor.
+- Users cannot delete photos after report submission.
+- Deleted photos should remain recoverable by Admin.
+- Photos should be watermarked with the company name.
+- PDFs should be treated as report attachments or documents, not photos.
+- Store the original photo, a compressed display version, and a thumbnail.
+- Recommended compression: maximum 1920px longest side with JPEG/WebP quality around 75-85.
+- Photo metadata should include project, report number, uploader, timestamp, original filename, file size, MIME type, and optional location.
 
-- How many photos can be uploaded per report?
-- Is the 10 MB per-file limit acceptable?
-- Which formats are allowed: JPG, PNG, HEIC, PDF?
-- Should photos be compressed automatically?
-- Should thumbnails be generated automatically?
-- Should photos include captions?
-- Should users be allowed to delete photos after report submission?
-- Should deleted photos remain recoverable by Admin?
-- Should photos be watermarked with project name, date, user, or location?
+### Remaining Follow-Up
+
+- Confirm whether GPS/location metadata is mandatory or optional.
+- Confirm whether HEIC should be converted to JPEG/WebP for browser display.
 
 ## 8. Document Management
 
-The requirement includes drawings, BOQ, contracts, WIR, invoices, version control, approval workflow, search, and filters. The database and API define document types, versions, search, upload/download, and metadata.
+### Confirmed Decisions
 
-**Questions to ask:**
+- First-release document types include MAR, MIR, WIR, and delivery notes.
+- Documents require approval before becoming active.
+- Civil Engineers and Project Managers can upload drawings, BOQs, contracts, WIRs, and invoices.
+- Financial documents such as invoices and contracts are visible to Admin, Accounts, Project Manager, and Operation Manager.
+- Old document versions remain downloadable.
+- Users must be warned when viewing superseded drawings/documents.
+- Document numbers, revision numbers, and approval statuses must follow company standards.
+- Documents should be linked to projects, reports, materials, and approvals as applicable.
+- Document search should include both file contents and titles/metadata.
+- Maximum document file size is 60 MB.
+- PDF previews are required inside the browser.
+- Document expiry dates and renewal reminders are required.
+- Recommended document number format: `PROJECTCODE-DOC_TYPE-DISCIPLINE-YYYY-###-REV`.
+- CAD/DWG files should be stored and downloadable in MVP. Preview support can be added later.
+- Superseded versions should be visible to managers/admins. Field staff should either not see superseded versions or must see a strong superseded warning before download/view.
 
-- Which document types are required in the first release?
-- Are document approvals required before a document becomes active?
-- Who can upload drawings, BOQs, contracts, WIRs, and invoices?
-- Who can view financial documents such as invoices and contracts?
-- Should old document versions remain downloadable?
-- Should users be warned when viewing superseded drawings?
-- Should document numbers, revision numbers, and approval statuses follow a company standard?
-- Should documents be linked to projects only, or also to reports/materials/approvals?
-- Should document search include file contents, or only titles and metadata?
-- What is the maximum file size for documents?
-- Are PDF previews required inside the browser?
-- Should document expiry dates or renewal reminders be supported?
+### Remaining Follow-Up
+
+- Provide company document numbering/revision standards.
+- Confirm which field roles, if any, may download superseded versions.
 
 ## 9. Dashboard and Analytics
 
-The API defines dashboard summary, project progress, material usage, approval stats, and export endpoints. The UI tree includes stat cards, recent activity, project progress charts, and pending approval widgets.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Dashboard KPIs will be decided later.
+- Dashboard data should be company-wide.
+- Role-specific dashboard content will be decided later.
+- Dashboard numbers should update live every few minutes.
+- Managers should see delayed projects, missing reports, low stock, pending approvals, manpower totals, and material usage.
+- Dashboard filters should include project, date range, location, and department.
+- Excel/PDF exports are required in both Phase 1 and Phase 3.
+- Management report format should be Excel.
+- Reports should use the company's own format. If a client has a required format, the system should allow that template to be uploaded/used.
+- Phase 1 KPIs should include pending approvals, late/missing reports, active projects, recent submissions, low stock, and upcoming deadlines.
+- Phase 1 charts should include project progress by project, reports submitted by date, and pending approvals by type.
+- Export templates should include daily report PDF, project progress Excel, and material usage Excel.
+- Company-wide dashboard should be restricted to management roles. Other roles should see scoped dashboards.
 
-- What KPIs should appear on the main dashboard?
-- Should dashboard data be company-wide or role-scoped?
-- What should each role see on their dashboard?
-- Should dashboard numbers update live, every few minutes, or only on refresh?
-- What charts are required for Phase 1?
-- Should managers see delayed projects, missing reports, low stock, pending approvals, manpower totals, and material usage?
-- Should dashboard filters include project, date range, location, and department?
-- Are exports to Excel/PDF required in Phase 1 or Phase 3?
-- What exact format is required for management reports?
-- Should reports match an existing company template?
+### Remaining Follow-Up
+
+- Collect company/client report templates.
+- Confirm whether low-stock dashboard cards are Phase 1 or Phase 2 depending on material-module timing.
 
 ## 10. Notifications and Alerts
 
-Notifications are part of the planned system and have their own API. The technical specification includes Celery workers for email service and background tasks.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Notifications are required for email and in-app.
+- Notification events include report submitted, report approved, report rejected, low stock, late report, new document, and pending approval.
+- Assigned users should receive reminders before deadlines.
+- If a required upload/report is missing, the Project Manager should receive notification.
+- Users can mute notifications.
+- Notification history should not be kept forever.
+- Reminders should be sent for pending approvals.
+- Unread notification count should be shown in the header.
+- Notification retention should be 90 days for user-facing notifications. Audit logs should be retained separately for compliance.
+- Recipient matrix:
+  - Missing/late report: submitter first, then Project Manager.
+  - Approval pending: assigned approver.
+  - Approval approved/rejected: requester.
+  - Low stock: Store Keeper, Project Manager, and Operation Manager.
+  - New active document: relevant project team.
+- Reminder timing should default to 24-hour pending reminder and 48-hour escalation.
 
-- Which notifications are required: report submitted, report approved, report rejected, low stock, late report, new document, approval pending?
-- Should notifications be in-app only, email only, or both?
-- Who receives each notification type?
-- Should users be able to mute notifications?
-- Should notification history be kept forever?
-- Should reminders be sent for pending approvals?
-- Should unread notification count be shown in the header?
+### Remaining Follow-Up
+
+- Confirm whether any notification must also be sent to General Manager.
 
 ## 11. Mobile and Offline Behavior
 
-The requirement mentions responsive mobile design, camera upload, offline draft saving, and fast loading. The technical specification describes a PWA with service worker, IndexedDB, background sync, and camera capture. But the WBS places major PWA/mobile enhancements in Phase 3. This is a key ambiguity.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Offline draft saving can wait until Phase 3.
+- Offline behavior is limited to saving draft reports offline, not full offline operation.
+- Photo uploads should work offline.
+- Material transactions do not need to work offline.
+- Supported devices include Android phones, iPhones, tablets, and desktop.
+- Supported browsers listed: Chrome, Opera, and Internet Explorer.
+- Mobile does not need all desktop features. It should support the update flow and main functions.
+- Minimum acceptable mobile network performance is H+.
+- Field users are not expected to use low-end phones.
+- Forms should autosave while the user is typing.
+- Microsoft Edge should replace Internet Explorer support.
+- Mobile MVP should include supervisor updates, engineer report/update, photo upload, document view, approvals, and notifications.
+- Offline photo queue should save locally, retry automatically when online, and show sync status.
+- Autosave should run every 30 seconds and on field blur/change.
 
-- Is offline draft saving required in Phase 1, or can it wait until Phase 3?
-- Is the app expected to work fully offline, or only save draft reports offline?
-- Should photo uploads work offline?
-- Should material transactions work offline?
-- Which devices must be supported: Android phones, iPhones, tablets, desktop?
-- Which browsers must be supported?
-- Should the mobile version have the same features as desktop?
-- What is the minimum acceptable performance on mobile networks?
-- Are field users expected to use low-end phones?
-- Should forms autosave while the user is typing?
+### Remaining Follow-Up
+
+- Confirm Edge replacement with stakeholders because Internet Explorer is end-of-life.
+- Confirm whether approvals are required on mobile in MVP or desktop-only is acceptable.
 
 ## 12. Accounts and Financial Features
 
-The Accounts role is included in the role list, and Phase 3 includes invoice tracking, payment status, OCR placeholder, and budget-vs-actual reporting.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Accounts should track material usage, project budget, manpower, and invoicing.
+- Invoice data should be structured in database fields, not only uploaded as documents.
+- Payment status should be tracked.
+- Accounts users can approve invoices, and Operation Manager must also approve.
+- Material purchases do not need to connect to invoices.
+- Project budget vs actual cost should be calculated.
+- Accounting software integration is not required.
+- Financial values are visible to Project Managers.
+- OCR is both a future placeholder and desired capability.
+- Financial reports should include bookkeeping, project-wise profit and loss, and salary sheets.
+- Invoice fields should include invoice number, supplier, project, amount, tax, date, due date, status, attachment, approved by, and payment status.
+- Invoice approval should be Accounts create/check -> Operation Manager approval.
+- Salary sheets should be Phase 2/3 unless required immediately. Suggested fields include employee, project, days, overtime, allowance, deductions, and net salary.
+- OCR should be treated as a future enhancement, not MVP.
+- Financial reports should be visible to Admin, Accounts, Operation Manager, General Manager, and explicitly allowed Project Managers.
 
-- What exactly should the Accounts Department do in the system?
-- Are invoices only documents, or should invoice data be structured in database fields?
-- Should payment status be tracked?
-- Should account users approve invoices?
-- Should material purchases connect to invoices?
-- Should project budget vs actual cost be calculated?
-- Is integration with accounting software required?
-- Are financial values visible to Project Managers?
-- Is OCR actually required, or only a future placeholder?
-- What financial reports are required?
+### Remaining Follow-Up
+
+- Confirm whether salary sheets are required in Phase 1 or later.
+- Confirm which Project Managers can view financial reports.
 
 ## 13. Data Model and Business Rules
 
-The database schema is detailed and includes users, projects, reports, manpower, equipment, materials, suppliers, photos, documents, approvals, notifications, and audit logs. Some business-level rules still need confirmation.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Employee codes are mandatory.
+- Phone numbers are mandatory.
+- Project codes are auto-generated and unique.
+- Material codes are mandatory for tools, but not required for all materials.
+- Supplier records are required before creating materials.
+- Supplier records should include TDS.
+- Soft delete should be used for records.
+- Deleted records remain recoverable for 30 days.
+- Audit logs should record view/download actions and create/update/delete/login/approve actions.
+- Audit logs are visible only to Admin.
+- Retention rules are required for reports, photos, documents, and logs.
+- Old projects should not be archived.
+- Inactive users should remain represented in historical tasks/reports.
+- The system should support multiple companies or branches later.
+- Supplier TDS fields should include TDS certificate/file, tax registration number, expiry date, uploaded document, and compliance status.
+- Retention recommendation: reports, documents, and photos are retained permanently for active/completed projects; deleted records are recoverable for 30 days; audit logs retained for 7 years.
+- Multi-company/branch should be designed into the schema with optional `company_id` and `branch_id`, but only one company should be enabled first.
+- Completed/old projects should become read-only and searchable, not hidden.
 
-- Should employee codes be mandatory?
-- Should phone numbers be mandatory?
-- Are project codes unique, and should they be manually entered or auto-generated?
-- Are material codes mandatory?
-- Are supplier records required before creating materials?
-- Should all records use soft delete, as currently planned?
-- How long should deleted records remain recoverable?
-- Should audit logs record every view/download action, or only create/update/delete/login/approve?
-- Should audit logs be visible only to Admin?
-- Are there data retention rules for reports, photos, documents, and logs?
-- Should old projects be archived?
-- Should inactive users still appear in historical reports?
-- Should the system support multiple companies or branches later?
+### Remaining Follow-Up
+
+- Confirm legal retention period if contracts require longer than 7 years.
+- Confirm whether branch support is needed in initial data model or only future-ready.
 
 ## 14. API and Integration Requirements
 
-The API specification defines `/api/v1`, auth endpoints, CRUD modules, pagination, soft deletes, exports, and common error format.
+### Confirmed Decisions
 
-**Questions to ask:**
+- API access should support future mobile/native apps as well as the web app.
+- Future integration with ERP, accounting, HR, attendance, or inventory systems is expected.
+- API responses can be English initially.
+- In the future, support 3 additional languages.
+- Arabic/other localized field values are future requirements.
+- Bulk import/export APIs are required.
+- External integrations should not be included in MVP unless a confirmed system is provided now.
+- Webhooks should not be included in MVP.
+- Pagination defaults should be `page=1`, `per_page=20`, with maximum `per_page=100`.
+- Large file/photo uploads should use presigned MinIO/S3 URLs. Direct API upload can be used only for small/simple files.
+- MVP rate limits should be stricter for auth and upload endpoints, with standard limits for normal API calls. Heavy role-based rate-limit variation can wait.
 
-- Will any external systems integrate with this API?
-- Is API access only for the web app, or also for future mobile/native apps?
-- Are webhooks required?
-- Is there any existing ERP, accounting, HR, attendance, or inventory system to connect later?
-- Should API responses be in English only?
-- Should the API support Arabic or other localized field values?
-- What are the required pagination defaults and maximum limits?
-- Should bulk import/export APIs be required?
-- Should file upload use direct API upload or presigned MinIO/S3 URLs?
-- Should API rate limits vary by role?
+### Remaining Follow-Up
+
+- Identify the target ERP/accounting/HR/attendance/inventory systems.
+- Confirm whether any of those target systems must be connected in MVP.
 
 ## 15. UI/UX and Branding
 
-The UI component tree defines routing, layout, reusable components, reports, materials, documents, approvals, notifications, and admin screens.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Existing company logo, brand color, typography, or design standard exists and should be used.
+- Dark mode can wait until later.
+- UI should be English in the first release.
+- Users should be able to print forms exactly like company templates.
+- Arabic/RTL should be design-ready but not implemented in the first release.
+- Forms should match existing paper forms where users already rely on them.
+- UX should prioritize mobile site users for update/report flows and desktop users for admin, accounts, documents, and management screens.
+- Management tables should support search, filters, sorting, export, and saved filters.
+- Validation should use clear field-level messages and never expose raw technical errors.
 
-- Is there an existing company logo, brand color, typography, or design standard?
-- Should the portal support dark mode now or later?
-- Should the UI be English only, or bilingual?
-- Is Arabic / right-to-left layout required?
-- Should forms match existing paper forms used on site?
-- Should users be able to print forms exactly like company templates?
-- Are there required dashboard mockups?
-- Should the system be optimized more for desktop office users or mobile site users?
-- Should tables support column customization?
-- Should users be able to save filters?
-- What fields are mandatory on each form?
-- What validation messages and error handling style should be used?
+### Remaining Follow-Up
+
+- Collect logo, colors, typography, and design standards.
+- Collect required dashboard mockups, if any.
+- Define mandatory fields for every form.
+- Collect existing paper forms/templates.
 
 ## 16. Security, Compliance, and Access Control
 
-The technical specification includes JWT auth, refresh rotation, password policy, rate limiting, CORS, secure headers, file upload restrictions, optional virus scan, audit logging, and daily backups.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Two-factor authentication is required.
+- Admin should be able to reset accounts.
+- Admin creates user accounts.
+- Users should be forced to change password on first login.
+- Password reset should happen through Admin or OTP.
+- Account lockout should happen after 3 failed login attempts.
+- Sessions should remain active for 1 day.
+- Proposed 15-minute access token and 7-day refresh token is not acceptable.
+- Downloads should be logged.
+- No company network/IP restriction should be required for MVP unless the company explicitly requires it.
+- Session design should support a 1-day session using a short-lived access token, silent refresh, and forced logout after inactivity if configured.
+- Block executable/script file types by default, including `.exe`, `.sh`, `.bat`, `.cmd`, `.js`, `.php`, `.html`, and unknown binaries.
+- Backups should be encrypted and stored off-server/cloud, with local database backup also retained.
+- Backup restore testing should happen monthly.
+- MVP 2FA should use email OTP. Authenticator-app support can be added later.
 
-- Is email/password login enough, or is two-factor authentication required?
-- Who creates user accounts?
-- Should users be forced to change password on first login?
-- What is the password reset process?
-- Should login be restricted by company network/IP?
-- How many failed login attempts should lock an account?
-- How long should sessions remain active?
-- Is the proposed 15-minute access token and 7-day refresh token acceptable?
-- Which file types should be blocked?
-- Should downloads be logged?
-- Where should backups be stored?
-- How often should backups be tested?
+### Remaining Follow-Up
+
+- Confirm whether company requires IP/network restriction.
+- Confirm backup storage provider/location.
 
 ## 17. Deployment, Hosting, and Operations
 
-The system is designed with Docker, Nginx, PostgreSQL, Redis, MinIO, Celery, and Open Observe monitoring.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Deployment decisions currently require Operation Manager approval.
+- Recommended MVP hosting is a cloud VPS with Docker Compose.
+- Post-launch server ownership should be assigned to internal admin/IT, with development support during warranty.
+- Construction-site internet reliability should be tested; the app should tolerate weak H+ networks.
+- Backup retention should be daily backups for 30 days and monthly backups for 12 months.
+- Basic uptime/error monitoring should be implemented in Phase 1. Full monitoring dashboards can come later.
+- System error alerts should go to Admin/technical support, and Operation Manager for business-critical outages.
+- Staging and production environments are required.
+- Deployment should use GitHub Actions to staging, with manual production approval by Operation Manager.
 
-- Where will the system be hosted: company server, cloud server, or local office server?
-- Who will manage the server after launch?
-- Is internet access available reliably at construction sites?
-- What backup retention period is required?
-- Should monitoring dashboards be implemented in Phase 1 or later?
-- Who receives system error alerts?
-- Are staging and production environments required?
-- Should deployment be manual or automated through GitHub Actions?
+### Remaining Follow-Up
+
+- Confirm final hosting provider/VPS.
+- Confirm internal server owner/contact.
 
 ## 18. Testing and Acceptance Criteria
 
-The WBS includes backend, frontend, integration, smoke, cross-device, performance, and regression testing. But acceptance criteria need to be defined by the client.
+### Confirmed Decisions
 
-**Questions to ask:**
+- User acceptance testing will be performed by the MD and Operation Manager.
+- Launch scenarios must include login, user creation, project creation, supervisor update, engineer report, approval, rejection, photo upload, document version upload, material request if included, notification, and export.
+- Phase 1 is done when all launch scenarios pass on mobile and desktop with real seed data.
+- 80% backend coverage is desirable for critical modules, but launch should not depend on a global percentage. Tests are required for auth, reports, approvals, materials if included, and documents.
+- Test browsers/devices should include Chrome, Edge, Safari iOS, and Android Chrome.
+- Low-speed network testing should be included.
+- Sample users and sample projects should be included for testing.
+- Client should approve UI screens before development for each major module.
+- Module sign-off is required before moving to the next phase.
+- Launch blockers include login failure, data loss, wrong approval routing, broken upload, wrong permissions, missing audit trail, and failed report submission.
 
-- Who will perform user acceptance testing?
-- What exact scenarios must pass before launch?
-- What is the definition of "done" for Phase 1?
-- Is 80% backend test coverage required, as suggested in the WBS?
-- Which browsers and devices must be tested?
-- Should testing include low internet speed conditions?
-- Should sample users and sample projects be included for testing?
-- Should the client approve UI screens before development?
-- Should each module require sign-off before moving to the next phase?
-- What bugs are considered launch blockers?
+### Remaining Follow-Up
+
+- Confirm final UAT checklist with MD and Operation Manager.
 
 ## 19. Data Migration and Initial Setup
 
-The README mentions seed data and sample users. Real deployment will need initial company data.
+### Confirmed Decisions
 
-**Questions to ask:**
+- Existing data import can happen later.
+- Users are currently stored in Excel, HR software, or another system.
+- Projects, suppliers, materials, and documents are already available in spreadsheets.
+- Material opening stock should be imported.
+- Source spreadsheets should be collected before final schema and import-template lock.
+- Import templates should be created for users, projects, suppliers, materials, documents, BOQ, and opening stock.
+- Historical reports/documents should not be migrated in MVP unless legally required. MVP should start with active projects and opening balances.
 
-- Is there existing data to import?
-- Are users currently stored in Excel, HR software, or another system?
-- Are projects, suppliers, materials, and documents already available in spreadsheets?
-- Should material opening stock be imported?
+### Remaining Follow-Up
+
+- Collect source spreadsheets and confirm data quality.
+- Confirm whether historical reports/documents are legally required for migration.
+
+## Implementation Impact Summary
+
+These stakeholder answers change the implementation plan in several important ways:
+
+1. The first release should prioritize real operational task/report updates over a full dashboard-heavy portal.
+2. Document management and version control move into the first release.
+3. Daily report flow is supervisor update -> engineer quality/update -> project manager approval.
+4. Materials require a separate request workflow, reservations, multi-location stock, non-negative stock, and price visibility restrictions.
+5. Project tracking needs Gantt/task support, BOQ linkage, and discipline-specific progress.
+6. Accounts is more than document access; it requires structured finance, budget, manpower, invoicing, payment status, and project-wise profit/loss reporting.
+7. Mobile is important, but full offline support can wait until Phase 3.
+8. Security requirements include 2FA, admin/OTP password reset, 3-failure lockout, 1-day sessions, and download logging.
+9. Recommended defaults now exist for most previously unanswered questions.
+10. Remaining follow-up is mostly about collecting company assets/templates/data, confirming final hosting ownership, and validating a few business-specific policies.
