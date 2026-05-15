@@ -273,7 +273,7 @@ garrison-investments/
 
 | Concern | Solution |
 |---------|----------|
-| **Build tool** | Vite 5 (fast HMR, tree shaking) |
+| **Build tool** | Vite 8 (fast HMR, tree shaking) |
 | **Language** | TypeScript (strict mode) |
 | **Routing** | React Router v6 (lazy-loaded routes) |
 | **State management** | React Context + useReducer (no Redux — app is moderate complexity) |
