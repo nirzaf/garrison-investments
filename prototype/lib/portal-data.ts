@@ -56,6 +56,16 @@ export type GuidedTourStep = {
   outcome: string;
 };
 
+export type ProductTourStep = {
+  title: string;
+  screen: ScreenKey;
+  target: string;
+  eyebrow: string;
+  body: string;
+  instruction: string;
+  position?: "top" | "right" | "bottom" | "left";
+};
+
 export type FeatureGuide = {
   owner: string;
   startsWhen: string;
@@ -242,6 +252,180 @@ export const guidedTourSteps: GuidedTourStep[] = [
     persona: "Delivery team",
     trigger: "Stakeholders approve build funding",
     outcome: "The team has an MVP scope, acceptance scenarios, migration inputs, and deployment model.",
+  },
+];
+
+export const productTourSteps: ProductTourStep[] = [
+  {
+    title: "Start with the investor story",
+    screen: "overview",
+    target: "hero-overview",
+    eyebrow: "Welcome tour",
+    body: "This opening view explains the final product in plain business language before the viewer studies any module.",
+    instruction: "Use this screen to frame the portal as one operating system for construction reporting, approvals, documents, materials, finance, and mobile work.",
+    position: "right",
+  },
+  {
+    title: "Read the operations pulse",
+    screen: "overview",
+    target: "operations-pulse",
+    eyebrow: "Executive summary",
+    body: "The pulse card shows the kind of live management view investors expect from an enterprise SaaS product.",
+    instruction: "Point out that approved field activity immediately updates KPIs, pending approvals, late updates, and document risk.",
+    position: "left",
+  },
+  {
+    title: "Follow the business flow",
+    screen: "overview",
+    target: "business-flow",
+    eyebrow: "End-to-end workflow",
+    body: "This map connects project setup, field update, engineer verification, approval, and final business record.",
+    instruction: "Walk stakeholders through this first so every later feature feels connected to the operating flow.",
+    position: "top",
+  },
+  {
+    title: "Secure first login",
+    screen: "auth",
+    target: "auth-login",
+    eyebrow: "Onboarding",
+    body: "New users enter through a controlled sign-in flow with email, password, and 2FA for the MVP.",
+    instruction: "Explain that Admin creates users, sends access, and the first login requires secure completion before role-based access opens.",
+    position: "right",
+  },
+  {
+    title: "Show role-based permissions",
+    screen: "auth",
+    target: "feature-guide",
+    eyebrow: "Access control",
+    body: "Every feature screen now starts with owner, trigger, user action, system action, and business result.",
+    instruction: "Use this guide to explain how each module works without making investors read technical documentation.",
+    position: "bottom",
+  },
+  {
+    title: "Track operational KPIs",
+    screen: "dashboard",
+    target: "dashboard-kpis",
+    eyebrow: "Dashboard",
+    body: "The dashboard summarizes active projects, pending approvals, late updates, documents, low stock, and unread alerts.",
+    instruction: "Highlight that managers get live risk signals instead of waiting for spreadsheets or chat updates.",
+    position: "bottom",
+  },
+  {
+    title: "Review project progress",
+    screen: "projects",
+    target: "project-selector",
+    eyebrow: "Project control",
+    body: "Project cards let managers switch between jobs and inspect progress, budget, deadlines, delayed reports, and discipline progress.",
+    instruction: "Click a project to show how the prototype changes the detail panel while keeping the same workflow structure.",
+    position: "bottom",
+  },
+  {
+    title: "Explain BOQ and Gantt logic",
+    screen: "projects",
+    target: "gantt-timeline",
+    eyebrow: "Timeline",
+    body: "The Gantt-style timeline previews phase planning, owners, progress status, and delay visibility.",
+    instruction: "Connect this to the BOQ baseline and approved quantities that drive real project progress later.",
+    position: "top",
+  },
+  {
+    title: "Walk the daily report chain",
+    screen: "reports",
+    target: "report-flow",
+    eyebrow: "Core workflow",
+    body: "Supervisor updates become engineer-verified daily reports, then move to PM approval and automated PDF/email/archive.",
+    instruction: "This is the most important MVP story: field data becomes an official company record.",
+    position: "bottom",
+  },
+  {
+    title: "Show required report inputs",
+    screen: "reports",
+    target: "report-form-sections",
+    eyebrow: "Form guidance",
+    body: "The report form guides users through mandatory operational sections such as manpower, equipment, materials, safety, WIR, delays, photos, and attachments.",
+    instruction: "Explain that this standardizes reporting and prevents incomplete daily records.",
+    position: "left",
+  },
+  {
+    title: "Manage approval decisions",
+    screen: "approvals",
+    target: "approval-cards",
+    eyebrow: "Approval inbox",
+    body: "Approvers see report, material, document, and invoice requests with route, SLA, status, and action buttons.",
+    instruction: "Call out reject-with-reason, reminders, escalation, delegation, and audit trail as the management-control layer.",
+    position: "bottom",
+  },
+  {
+    title: "Control stock and suppliers",
+    screen: "materials",
+    target: "materials-inventory",
+    eyebrow: "Supply chain",
+    body: "Inventory is shown by material, location, stock, minimum threshold, and status, with supplier and lifecycle context nearby.",
+    instruction: "Use this to show how Phase 2 turns material requests and stock movement into traceable workflow.",
+    position: "right",
+  },
+  {
+    title: "Handle controlled documents",
+    screen: "documents",
+    target: "documents-table",
+    eyebrow: "Document control",
+    body: "Documents include type, project, revision, approval status, active/superseded versioning, and searchable metadata.",
+    instruction: "Explain that field teams use active documents while managers retain version history and approval evidence.",
+    position: "top",
+  },
+  {
+    title: "Capture photo evidence",
+    screen: "photos",
+    target: "photo-grid",
+    eyebrow: "Media evidence",
+    body: "Photos are limited, compressed, watermarked, queued for offline upload, and recoverable by Admin.",
+    instruction: "Connect photo evidence back to the daily report and audit-ready project record.",
+    position: "bottom",
+  },
+  {
+    title: "Preview financial control",
+    screen: "accounts",
+    target: "finance-kpis",
+    eyebrow: "Accounts",
+    body: "Finance previews budget-vs-actual, manpower cost, pending payment, invoices, payment status, and project P&L.",
+    instruction: "Position this as Phase 2/3 value: cost visibility becomes connected to reports, materials, documents, and approvals.",
+    position: "bottom",
+  },
+  {
+    title: "Explain alerts and reminders",
+    screen: "notifications",
+    target: "notification-cards",
+    eyebrow: "Notifications",
+    body: "Notifications drive action for pending approvals, late reports, low stock, and active document updates.",
+    instruction: "Show that the product actively moves work forward instead of depending on manual follow-up.",
+    position: "bottom",
+  },
+  {
+    title: "Govern users and audit logs",
+    screen: "admin",
+    target: "admin-grid",
+    eyebrow: "Administration",
+    body: "Admin can manage users and inspect audit logs while approved reports and historical identities remain protected.",
+    instruction: "Explain the governance model: deactivate users, preserve records, audit overrides, and avoid silent edits.",
+    position: "bottom",
+  },
+  {
+    title: "Show the field mobile flow",
+    screen: "mobile",
+    target: "phone-preview",
+    eyebrow: "Mobile/PWA",
+    body: "The phone preview shows site users saving updates, queueing photos, and syncing when the connection allows.",
+    instruction: "Use this to make the end product feel practical for construction sites, not only desktop offices.",
+    position: "right",
+  },
+  {
+    title: "Close with delivery confidence",
+    screen: "delivery",
+    target: "delivery-plan",
+    eyebrow: "Launch path",
+    body: "Delivery cards show hosting, environments, deployment, backups, testing, migration, and acceptance scenarios.",
+    instruction: "End here so investors understand the prototype maps directly to implementation scope and launch readiness.",
+    position: "bottom",
   },
 ];
 

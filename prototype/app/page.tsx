@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -42,7 +42,6 @@ import {
   financeCards,
   formSections,
   ganttTasks,
-  guidedTourSteps,
   investorHighlights,
   invoices,
   kpis,
@@ -53,6 +52,7 @@ import {
   navItems,
   notifications,
   photoCards,
+  productTourSteps,
   projects,
   remainingInputs,
   reportFlow,
@@ -65,6 +65,18 @@ import {
   walkthroughSteps,
   type ScreenKey,
 } from "@/lib/portal-data";
+
+type TourRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+type TourModalPosition = {
+  top: number;
+  left: number;
+};
 
 const screenTitles: Record<ScreenKey, string> = {
   overview: "Executive overview",
@@ -90,13 +102,15 @@ export default function Home() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(true);
   const [tourIndex, setTourIndex] = useState(0);
+  const [tourRect, setTourRect] = useState<TourRect | null>(null);
+  const [tourModalPosition, setTourModalPosition] = useState<TourModalPosition | null>(null);
 
   const activeNav = useMemo(
     () => navItems.find((item) => item.key === activeScreen),
     [activeScreen],
   );
 
-  const activeTourStep = guidedTourSteps[tourIndex];
+  const activeTourStep = productTourSteps[tourIndex];
 
   const selectScreen = (screen: ScreenKey) => {
     setActiveScreen(screen);
@@ -106,15 +120,67 @@ export default function Home() {
   const startTour = () => {
     setTourOpen(true);
     setTourIndex(0);
-    selectScreen(guidedTourSteps[0].screen);
+    selectScreen(productTourSteps[0].screen);
   };
 
   const goToTourStep = (nextIndex: number) => {
-    const boundedIndex = (nextIndex + guidedTourSteps.length) % guidedTourSteps.length;
+    const boundedIndex = (nextIndex + productTourSteps.length) % productTourSteps.length;
     setTourIndex(boundedIndex);
-    selectScreen(guidedTourSteps[boundedIndex].screen);
+    selectScreen(productTourSteps[boundedIndex].screen);
     setTourOpen(true);
   };
+
+  useEffect(() => {
+    if (!tourOpen) {
+      setTourRect(null);
+      setTourModalPosition(null);
+      return;
+    }
+
+    let frameId = 0;
+    let timeoutId = 0;
+
+    const updateTourTarget = (shouldScroll = false) => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-tour-target="${activeTourStep.target}"]`,
+      );
+
+      if (!target) {
+        setTourRect(null);
+        setTourModalPosition(null);
+        return;
+      }
+
+      if (shouldScroll) {
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      }
+
+      timeoutId = window.setTimeout(() => {
+        const rect = target.getBoundingClientRect();
+        const padding = 8;
+        const nextRect = {
+          top: Math.max(rect.top - padding, 8),
+          left: Math.max(rect.left - padding, 8),
+          width: Math.min(rect.width + padding * 2, window.innerWidth - 16),
+          height: Math.min(rect.height + padding * 2, window.innerHeight - 16),
+        };
+
+        setTourRect(nextRect);
+        setTourModalPosition(getTourModalPosition(nextRect, activeTourStep.position));
+      }, 220);
+    };
+
+    frameId = window.requestAnimationFrame(() => updateTourTarget(true));
+    window.addEventListener("resize", () => updateTourTarget(false));
+    window.addEventListener("scroll", () => updateTourTarget(false), true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("resize", updateTourTarget);
+      window.removeEventListener("scroll", updateTourTarget, true);
+    };
+  }, [activeTourStep, activeScreen, tourOpen]);
 
   return (
     <main className="appShell">
@@ -173,7 +239,7 @@ export default function Home() {
               <Search size={16} />
               <span>Search reports, docs, materials</span>
             </div>
-            <button type="button">
+            <button data-tour-target="notification-bell" type="button">
               <Bell size={17} />
               17
             </button>
@@ -188,13 +254,15 @@ export default function Home() {
         </header>
 
         {tourOpen ? (
-          <GuidedTourDock
+          <ProductTourOverlay
             activeStep={activeTourStep}
             index={tourIndex}
+            modalPosition={tourModalPosition}
             onClose={() => setTourOpen(false)}
             onNext={() => goToTourStep(tourIndex + 1)}
             onPrev={() => goToTourStep(tourIndex - 1)}
             onStep={goToTourStep}
+            targetRect={tourRect}
           />
         ) : (
           <button className="floatingTourButton" onClick={startTour} type="button">
@@ -228,10 +296,40 @@ export default function Home() {
   );
 }
 
+function getTourModalPosition(
+  rect: TourRect,
+  preferredPosition: "top" | "right" | "bottom" | "left" = "bottom",
+): TourModalPosition {
+  const gap = 14;
+  const modalWidth = Math.min(390, window.innerWidth - 28);
+  const modalHeight = 260;
+  const centeredLeft = rect.left + rect.width / 2 - modalWidth / 2;
+  const clampLeft = (value: number) => Math.min(Math.max(value, 14), window.innerWidth - modalWidth - 14);
+  const clampTop = (value: number) => Math.min(Math.max(value, 14), window.innerHeight - modalHeight - 14);
+
+  if (preferredPosition === "top" && rect.top > modalHeight + gap) {
+    return { top: clampTop(rect.top - modalHeight - gap), left: clampLeft(centeredLeft) };
+  }
+
+  if (preferredPosition === "right" && rect.left + rect.width + modalWidth + gap < window.innerWidth) {
+    return { top: clampTop(rect.top), left: clampLeft(rect.left + rect.width + gap) };
+  }
+
+  if (preferredPosition === "left" && rect.left > modalWidth + gap) {
+    return { top: clampTop(rect.top), left: clampLeft(rect.left - modalWidth - gap) };
+  }
+
+  if (rect.top + rect.height + modalHeight + gap < window.innerHeight) {
+    return { top: clampTop(rect.top + rect.height + gap), left: clampLeft(centeredLeft) };
+  }
+
+  return { top: clampTop(rect.top - modalHeight - gap), left: clampLeft(centeredLeft) };
+}
+
 function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
   return (
     <div className="screenStack">
-      <section className="heroPanel">
+      <section className="heroPanel" data-tour-target="hero-overview">
         <div>
           <span className="eyebrow">Investor-ready SaaS walkthrough</span>
           <h2>Site updates become approved business records.</h2>
@@ -249,7 +347,7 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
             </button>
           </div>
         </div>
-        <div className="pulsePanel">
+        <div className="pulsePanel" data-tour-target="operations-pulse">
           <div className="pulseHeader">
             <span>Today</span>
             <strong>Operations Pulse</strong>
@@ -270,7 +368,7 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
         </div>
       </section>
 
-      <section className="contentGrid four">
+      <section className="contentGrid four" data-tour-target="investor-highlights">
         {investorHighlights.map((item) => (
           <article className="investorCard" key={item.label}>
             <span>{item.label}</span>
@@ -284,7 +382,7 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
         <BusinessFlowMap onOpen={onOpen} />
       </Panel>
 
-      <section className="contentGrid three">
+      <section className="contentGrid three" data-tour-target="launch-modules">
         {launchModules.map((item) => (
           <article className="featureCard" key={item.title}>
             <item.icon size={22} />
@@ -330,60 +428,111 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
   );
 }
 
-function GuidedTourDock({
+function ProductTourOverlay({
   activeStep,
   index,
+  targetRect,
+  modalPosition,
   onClose,
   onNext,
   onPrev,
   onStep,
 }: {
-  activeStep: (typeof guidedTourSteps)[number];
+  activeStep: (typeof productTourSteps)[number];
   index: number;
+  targetRect: TourRect | null;
+  modalPosition: TourModalPosition | null;
   onClose: () => void;
   onNext: () => void;
   onPrev: () => void;
   onStep: (index: number) => void;
 }) {
+  const isFinalStep = index === productTourSteps.length - 1;
+
   return (
-    <section className="guidedTourDock" aria-label="Investor walkthrough">
-      <div className="tourCopy">
-        <span>
-          Step {index + 1} of {guidedTourSteps.length} · {activeStep.label}
-        </span>
-        <h2>{activeStep.persona}</h2>
-        <p>
-          <strong>Trigger:</strong> {activeStep.trigger}
-        </p>
-        <p>
-          <strong>Outcome:</strong> {activeStep.outcome}
-        </p>
-      </div>
-      <div className="tourControls">
-        <div className="tourDots" aria-label="Walkthrough steps">
-          {guidedTourSteps.map((step, stepIndex) => (
-            <button
-              aria-label={`Go to ${step.label}`}
-              className={stepIndex === index ? "isActive" : ""}
-              key={step.label}
-              onClick={() => onStep(stepIndex)}
-              type="button"
-            />
-          ))}
+    <div className="productTourLayer" aria-label="Interactive product tour" aria-modal="true" role="dialog">
+      {targetRect ? (
+        <>
+          <div className="tourShade top" style={{ height: targetRect.top }} />
+          <div
+            className="tourShade left"
+            style={{
+              top: targetRect.top,
+              width: targetRect.left,
+              height: targetRect.height,
+            }}
+          />
+          <div
+            className="tourShade right"
+            style={{
+              top: targetRect.top,
+              left: targetRect.left + targetRect.width,
+              height: targetRect.height,
+            }}
+          />
+          <div
+            className="tourShade bottom"
+            style={{ top: targetRect.top + targetRect.height }}
+          />
+          <div
+            className="tourSpotlight"
+            style={{
+              top: targetRect.top,
+              left: targetRect.left,
+              width: targetRect.width,
+              height: targetRect.height,
+            }}
+          />
+        </>
+      ) : (
+        <div className="tourShade full" />
+      )}
+
+      <section
+        className="tourInstructionModal"
+        style={
+          modalPosition
+            ? { top: modalPosition.top, left: modalPosition.left }
+            : undefined
+        }
+      >
+        <button aria-label="Close walkthrough" className="tourCloseButton" onClick={onClose} type="button">
+          <X size={18} />
+        </button>
+        <span className="tourEyebrow">{activeStep.eyebrow}</span>
+        <h2>{activeStep.title}</h2>
+        <p>{activeStep.body}</p>
+        <div className="tourInstruction">
+          <strong>How to present it</strong>
+          <span>{activeStep.instruction}</span>
+        </div>
+        <div className="tourProgress">
+          <span>
+            {index + 1} / {productTourSteps.length}
+          </span>
+          <div>
+            {productTourSteps.map((step, stepIndex) => (
+              <button
+                aria-label={`Go to ${step.title}`}
+                className={stepIndex === index ? "isActive" : ""}
+                key={step.title}
+                onClick={() => onStep(stepIndex)}
+                type="button"
+              />
+            ))}
+          </div>
         </div>
         <div className="tourButtons">
           <button className="ghostButton" onClick={onPrev} type="button">
             Previous
           </button>
           <button onClick={onNext} type="button">
-            Next screen <ArrowRight size={17} />
-          </button>
-          <button aria-label="Close walkthrough" className="iconButton" onClick={onClose} type="button">
-            <X size={18} />
+            {isFinalStep ? "Restart tour" : "Next"}
+            <ArrowRight size={17} />
           </button>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -391,7 +540,7 @@ function FeatureGuideCard({ screen }: { screen: ScreenKey }) {
   const guide = featureGuides[screen];
 
   return (
-    <section className="featureGuide" aria-label="Feature guide">
+    <section className="featureGuide" aria-label="Feature guide" data-tour-target="feature-guide">
       <div className="guideIntro">
         <BookOpenCheck size={21} />
         <div>
@@ -437,7 +586,7 @@ function BusinessFlowMap({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
   };
 
   return (
-    <div className="businessFlow">
+    <div className="businessFlow" data-tour-target="business-flow">
       {businessFlow.map((item, index) => (
         <article key={item.title}>
           <div className="flowNumber">{index + 1}</div>
@@ -458,7 +607,8 @@ function AuthScreen() {
   return (
     <div className="screenStack">
       <div className="dualGrid">
-        <Panel title="Login experience" icon={<ShieldCheck size={19} />}>
+        <div data-tour-target="auth-login">
+          <Panel title="Login experience" icon={<ShieldCheck size={19} />}>
           <div className="loginMock">
             <label>Email</label>
             <div>engineer@garrisons.example</div>
@@ -468,7 +618,8 @@ function AuthScreen() {
             <div>184 902</div>
             <button type="button">Sign in securely</button>
           </div>
-        </Panel>
+          </Panel>
+        </div>
         <Panel title="Session and security decisions" icon={<CheckCircle2 size={19} />}>
           <Checklist
             items={[
@@ -496,7 +647,7 @@ function AuthScreen() {
 function DashboardScreen() {
   return (
     <div className="screenStack">
-      <div className="kpiGrid">
+      <div className="kpiGrid" data-tour-target="dashboard-kpis">
         {kpis.map((item) => (
           <MetricCard key={item.label} {...item} />
         ))}
@@ -534,7 +685,7 @@ function ProjectsScreen({
 }) {
   return (
     <div className="screenStack">
-      <div className="projectSelector">
+      <div className="projectSelector" data-tour-target="project-selector">
         {projects.map((project) => (
           <button
             className={project.code === selectedProject.code ? "selected" : ""}
@@ -576,6 +727,7 @@ function ProjectsScreen({
           />
         </Panel>
       </section>
+      <div data-tour-target="gantt-timeline">
       <Panel title="Gantt-style timeline" icon={<CircleDashed size={19} />}>
         <div className="gantt">
           {ganttTasks.map((task) => (
@@ -591,6 +743,7 @@ function ProjectsScreen({
           ))}
         </div>
       </Panel>
+      </div>
     </div>
   );
 }
@@ -598,7 +751,7 @@ function ProjectsScreen({
 function ReportsScreen() {
   return (
     <div className="screenStack">
-      <section className="flowGrid">
+      <section className="flowGrid" data-tour-target="report-flow">
         {reportFlow.map((step, index) => (
           <article className="flowCard" key={step.title}>
             <span>{index + 1}</span>
@@ -623,9 +776,11 @@ function ReportsScreen() {
             ])}
           />
         </Panel>
+        <div data-tour-target="report-form-sections">
         <Panel title="Report form sections" icon={<Plus size={19} />}>
           <Checklist items={formSections} />
         </Panel>
+        </div>
       </section>
       <Panel title="Sample report attachments" icon={<Upload size={19} />}>
         <AttachmentList filter={["Daily Report PDF", "Watermarked Photo", "WIR Document"]} />
@@ -637,7 +792,7 @@ function ReportsScreen() {
 function ApprovalsScreen() {
   return (
     <div className="screenStack">
-      <section className="contentGrid two">
+      <section className="contentGrid two" data-tour-target="approval-cards">
         {approvalItems.map((item) => (
           <article className="approvalCard" key={item.title}>
             <span>{item.type}</span>
@@ -673,6 +828,7 @@ function MaterialsScreen() {
   return (
     <div className="screenStack">
       <section className="dualGrid wideLeft">
+        <div data-tour-target="materials-inventory">
         <Panel title="Inventory by location" icon={<PackageIcon />}>
           <DataTable
             columns={["Code", "Material", "Location", "Stock", "Min", "Status"]}
@@ -686,6 +842,7 @@ function MaterialsScreen() {
             ])}
           />
         </Panel>
+        </div>
         <Panel title="Request lifecycle" icon={<RouteIcon />}>
           <Checklist items={materialLifecycle} />
         </Panel>
@@ -729,6 +886,7 @@ function DocumentsScreen() {
         <button type="button"><Search size={16} /> Search contents</button>
         <button type="button"><Filter size={16} /> Type/project filters</button>
       </section>
+      <div data-tour-target="documents-table">
       <DataTable
         columns={["Document no.", "Type", "Project", "Version", "Status", "Size"]}
         rows={documents.map((doc) => [
@@ -740,6 +898,7 @@ function DocumentsScreen() {
           doc.size,
         ])}
       />
+      </div>
       <section className="dualGrid">
         <Panel title="Version control preview" icon={<FileText size={19} />}>
           <div className="versionStack">
@@ -770,7 +929,7 @@ function DocumentsScreen() {
 function PhotosScreen() {
   return (
     <div className="screenStack">
-      <section className="photoGrid">
+      <section className="photoGrid" data-tour-target="photo-grid">
         {photoCards.map((photo) => (
           <article className={`photoCard tone-${photo.tone}`} key={photo.label}>
             <div />
@@ -802,7 +961,7 @@ function PhotosScreen() {
 function AccountsScreen() {
   return (
     <div className="screenStack">
-      <div className="kpiGrid compact">
+      <div className="kpiGrid compact" data-tour-target="finance-kpis">
         {financeCards.map((card) => (
           <article className="metricCard" key={card.label}>
             <card.icon size={20} />
@@ -842,7 +1001,7 @@ function AccountsScreen() {
 function NotificationsScreen() {
   return (
     <div className="screenStack">
-      <section className="contentGrid two">
+      <section className="contentGrid two" data-tour-target="notification-cards">
         {notifications.map((item) => (
           <article className="notificationCard" key={item.label}>
             <Bell size={19} />
@@ -870,7 +1029,7 @@ function NotificationsScreen() {
 function AdminScreen() {
   return (
     <div className="screenStack">
-      <section className="dualGrid">
+      <section className="dualGrid" data-tour-target="admin-grid">
         <Panel title="User management" icon={<Plus size={19} />}>
           <DataTable
             columns={["Name", "Role", "Status", "Last login"]}
@@ -902,6 +1061,7 @@ function AdminScreen() {
 function MobileScreen() {
   return (
     <div className="dualGrid wideLeft">
+      <div data-tour-target="phone-preview">
       <Panel title="Mobile field app preview" icon={<SmartphoneIcon />}>
         <div className="phoneMock">
           <div className="phoneTop">Al Rayyan Villa Compound</div>
@@ -911,6 +1071,7 @@ function MobileScreen() {
           <button type="button">Sync when online</button>
         </div>
       </Panel>
+      </div>
       <Panel title="Mobile/PWA scope" icon={<CheckCircle2 size={19} />}>
         <Checklist items={mobileFeatures} />
         <div className="noteBox">
@@ -950,7 +1111,7 @@ function SecurityScreen() {
 function DeliveryScreen() {
   return (
     <div className="screenStack">
-      <section className="contentGrid three">
+      <section className="contentGrid three" data-tour-target="delivery-plan">
         {deliveryItems.map((item) => (
           <article className="featureCard" key={item.label}>
             <item.icon size={22} />
