@@ -257,7 +257,7 @@ export default function Home() {
           <div className="brandIcon">GI</div>
           <div>
             <strong>Garrisons</strong>
-            <span>Investor Demo Portal</span>
+            <span>Internal Portal</span>
           </div>
         </div>
 
@@ -335,7 +335,7 @@ export default function Home() {
         ) : (
           <button className="floatingTourButton" onClick={startTour} type="button">
             <Rocket size={17} />
-            Investor walkthrough
+            Guided walkthrough
           </button>
         )}
 
@@ -411,7 +411,7 @@ function OverviewScreen({
     <div className="screenStack">
       <section className="heroPanel" data-tour-target="hero-overview">
         <div>
-          <span className="eyebrow">Investor-ready SaaS walkthrough</span>
+          <span className="eyebrow">Construction operations platform</span>
           <h2>One portal turns site activity into management control.</h2>
           <p>
             Garrisons replaces scattered WhatsApp updates, spreadsheets, document folders, and
@@ -420,7 +420,7 @@ function OverviewScreen({
           </p>
           <div className="heroActions">
             <button onClick={onStartTour} type="button">
-              Start investor demo <Play size={17} />
+              Guided product walkthrough <Play size={17} />
             </button>
             <button className="ghostButton" onClick={() => onOpen("dashboard")} type="button">
               Skip tour / explore modules
@@ -475,11 +475,11 @@ function OverviewScreen({
         ))}
       </section>
 
-      <Panel title="Business flow investors should understand" icon={<Map size={18} />}>
+      <Panel title="End-to-end business flow" icon={<Map size={18} />}>
         <BusinessFlowMap onOpen={onOpen} />
       </Panel>
 
-      <Panel title="Requirements coverage mapped to the prototype" icon={<BookOpenCheck size={18} />}>
+      <Panel title="Requirements coverage by module" icon={<BookOpenCheck size={18} />}>
         <CoverageMatrix onOpen={onOpen} />
       </Panel>
 
@@ -498,7 +498,7 @@ function OverviewScreen({
         <Panel title="End-to-end user journey" icon={<ArrowRight size={18} />}>
           <WalkthroughTimeline />
         </Panel>
-        <Panel title="What the first demo proves" icon={<Eye size={18} />}>
+        <Panel title="What the platform delivers" icon={<Eye size={18} />}>
           <Checklist
             items={[
               "The product has a clear daily workflow, not only disconnected screens",
@@ -511,7 +511,7 @@ function OverviewScreen({
       </section>
 
       <section className="dualGrid">
-        <Panel title="Sample files used across the prototype" icon={<Upload size={18} />}>
+        <Panel title="Sample files across the platform" icon={<Upload size={18} />}>
           <AttachmentList compact />
         </Panel>
         <Panel title="API surfaces represented" icon={<FileText size={18} />}>
