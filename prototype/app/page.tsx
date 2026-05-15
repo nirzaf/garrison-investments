@@ -42,9 +42,11 @@ import {
   reportFlow,
   reportRows,
   roleMatrix,
+  sampleAttachments,
   securityItems,
   suppliers,
   users,
+  walkthroughSteps,
   type ScreenKey,
 } from "@/lib/portal-data";
 
@@ -219,6 +221,15 @@ function OverviewScreen({ onOpen }: { onOpen: (screen: ScreenKey) => void }) {
             <p>{item.summary}</p>
           </article>
         ))}
+      </section>
+
+      <section className="dualGrid wideLeft">
+        <Panel title="Guided end-to-end sample journey" icon={<ArrowRight size={19} />}>
+          <WalkthroughTimeline />
+        </Panel>
+        <Panel title="Sample files used across the prototype" icon={<Upload size={19} />}>
+          <AttachmentList compact />
+        </Panel>
       </section>
 
       <section className="dualGrid">
@@ -410,6 +421,9 @@ function ReportsScreen() {
           <Checklist items={formSections} />
         </Panel>
       </section>
+      <Panel title="Sample report attachments" icon={<Upload size={19} />}>
+        <AttachmentList filter={["Daily Report PDF", "Watermarked Photo", "WIR Document"]} />
+      </Panel>
     </div>
   );
 }
@@ -494,6 +508,9 @@ function MaterialsScreen() {
           />
         </Panel>
       </section>
+      <Panel title="Sample material and supplier attachments" icon={<Upload size={19} />}>
+        <AttachmentList filter={["Supplier Compliance", "BOQ Import"]} />
+      </Panel>
     </div>
   );
 }
@@ -537,6 +554,9 @@ function DocumentsScreen() {
           />
         </Panel>
       </section>
+      <Panel title="Sample controlled documents" icon={<Upload size={19} />}>
+        <AttachmentList filter={["WIR Document", "BOQ Import", "Daily Report PDF"]} />
+      </Panel>
     </div>
   );
 }
@@ -565,6 +585,9 @@ function PhotosScreen() {
             "Deleted photos recoverable by Admin",
           ]}
         />
+      </Panel>
+      <Panel title="Sample media attachment" icon={<Upload size={19} />}>
+        <AttachmentList filter={["Watermarked Photo"]} />
       </Panel>
     </div>
   );
@@ -602,6 +625,9 @@ function AccountsScreen() {
             "OCR is future enhancement, not MVP",
           ]}
         />
+      </Panel>
+      <Panel title="Sample finance attachment" icon={<Upload size={19} />}>
+        <AttachmentList filter={["Invoice"]} />
       </Panel>
     </div>
   );
@@ -743,6 +769,9 @@ function DeliveryScreen() {
           ]}
         />
       </Panel>
+      <Panel title="Sample import and launch attachments" icon={<Upload size={19} />}>
+        <AttachmentList filter={["BOQ Import", "Supplier Compliance"]} />
+      </Panel>
     </div>
   );
 }
@@ -854,6 +883,52 @@ function CardList({ rows }: { rows: { title: string; meta: string; badge: string
             <span>{row.meta}</span>
           </div>
           <em>{row.badge}</em>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function WalkthroughTimeline() {
+  return (
+    <div className="walkthrough">
+      {walkthroughSteps.map((item) => (
+        <article key={item.step}>
+          <span>{item.step}</span>
+          <div>
+            <strong>{item.title}</strong>
+            <small>{item.screen}</small>
+            <p>{item.detail}</p>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function AttachmentList({
+  filter,
+  compact = false,
+}: {
+  filter?: string[];
+  compact?: boolean;
+}) {
+  const rows = filter
+    ? sampleAttachments.filter((item) => filter.includes(item.type))
+    : sampleAttachments;
+
+  return (
+    <div className={compact ? "attachmentList compact" : "attachmentList"}>
+      {rows.map((item) => (
+        <article key={item.name}>
+          <FileText size={18} />
+          <div>
+            <strong>{item.name}</strong>
+            <span>
+              {item.type} • {item.owner} • {item.size}
+            </span>
+            <small>{item.linkedTo}</small>
+          </div>
         </article>
       ))}
     </div>

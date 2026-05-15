@@ -479,3 +479,81 @@ export const remainingInputs = [
   "Hosting provider, backup location, and server owner",
   "Source spreadsheets for users, projects, suppliers, materials, BOQ, and stock",
 ];
+
+export const walkthroughSteps = [
+  {
+    step: "1",
+    title: "Create project baseline",
+    screen: "Projects",
+    detail: "Admin/Operation Manager creates project, BOQ, milestones, members, and deadlines.",
+  },
+  {
+    step: "2",
+    title: "Supervisor submits field update",
+    screen: "Daily Reports",
+    detail: "Attendance, work location, OT, progress, safety, and five site photos are captured.",
+  },
+  {
+    step: "3",
+    title: "Engineer verifies and submits report",
+    screen: "Daily Reports",
+    detail: "Engineer validates quality/WIR status, adds work summary, and submits official report.",
+  },
+  {
+    step: "4",
+    title: "Project Manager approves",
+    screen: "Approvals",
+    detail: "PM approves, rejects with comments, or lets the system escalate after SLA breach.",
+  },
+  {
+    step: "5",
+    title: "System updates records",
+    screen: "Dashboard",
+    detail: "Dashboard, PDF export, email notification, audit log, documents, and costs update.",
+  },
+];
+
+export const sampleAttachments = [
+  {
+    name: "GIP-2401-DR-20260515-001.pdf",
+    type: "Daily Report PDF",
+    owner: "Civil Engineer",
+    size: "1.8 MB",
+    linkedTo: "Approved daily report",
+  },
+  {
+    name: "site-progress-west-wing-01.jpg",
+    type: "Watermarked Photo",
+    owner: "Civil Supervisor",
+    size: "820 KB",
+    linkedTo: "Photo evidence",
+  },
+  {
+    name: "GIP-2401-WIR-CIV-2026-014-B.pdf",
+    type: "WIR Document",
+    owner: "Project Manager",
+    size: "18 MB",
+    linkedTo: "Document control",
+  },
+  {
+    name: "boq-import-template.xlsx",
+    type: "BOQ Import",
+    owner: "Operation Manager",
+    size: "240 KB",
+    linkedTo: "Project baseline",
+  },
+  {
+    name: "supplier-tds-certificate.pdf",
+    type: "Supplier Compliance",
+    owner: "Store Keeper",
+    size: "950 KB",
+    linkedTo: "Supplier record",
+  },
+  {
+    name: "INV-8842-steel-supply.pdf",
+    type: "Invoice",
+    owner: "Accounts",
+    size: "1.1 MB",
+    linkedTo: "Payment approval",
+  },
+];

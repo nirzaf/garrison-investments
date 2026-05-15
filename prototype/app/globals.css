@@ -946,6 +946,87 @@ tr:last-child td {
   color: var(--orange);
 }
 
+.walkthrough {
+  display: grid;
+  gap: 10px;
+}
+
+.walkthrough article {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.walkthrough article > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--rail);
+  color: #fff;
+  font-weight: 800;
+}
+
+.walkthrough strong,
+.walkthrough small {
+  display: block;
+}
+
+.walkthrough small {
+  margin-top: 3px;
+  color: var(--orange);
+  font-weight: 800;
+}
+
+.walkthrough p {
+  margin: 8px 0 0;
+}
+
+.attachmentList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.attachmentList.compact {
+  grid-template-columns: 1fr;
+}
+
+.attachmentList article {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.attachmentList svg {
+  flex: 0 0 auto;
+  color: var(--blue);
+  margin-top: 2px;
+}
+
+.attachmentList strong,
+.attachmentList span,
+.attachmentList small {
+  display: block;
+}
+
+.attachmentList span,
+.attachmentList small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
 @keyframes riseIn {
   from {
     opacity: 0;
@@ -1053,7 +1134,8 @@ tr:last-child td {
   .projectSelector,
   .photoGrid,
   .flowGrid,
-  .detailGrid {
+  .detailGrid,
+  .attachmentList {
     grid-template-columns: 1fr;
   }
 
