@@ -1,26 +1,32 @@
-# notifications
+# `notifications`
 
-Stores in-app notification records and links them to the user who must act or be informed.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique notification identifier. |
-| `user_id` | `UUID` | FK | Recipient. References [users](users.md). |
-| `title` | `VARCHAR(200)` |  | Short notification title. |
-| `body` | `TEXT` |  | Detailed message text. |
-| `notification_type` | `VARCHAR(30)` |  | approval, alert, reminder, announcement, or similar. |
-| `reference_type` | `VARCHAR(30)` |  | Optional source type. |
-| `reference_id` | `UUID` |  | Optional source id. Polymorphic by `reference_type`. |
-| `is_read` | `BOOLEAN` |  | Read/unread state. |
-| `created_at` | `TIMESTAMPTZ` |  | Notification timestamp. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `user_id` | `UUID` | No | `` | users.id |
+| `title` | `VARCHAR(200)` | No | `` |  |
+| `body` | `TEXT` | No | `` |  |
+| `notification_type` | `VARCHAR(30)` | No | `` |  |
+| `reference_type` | `VARCHAR(30)` | Yes | `` |  |
+| `reference_id` | `UUID` | Yes | `` |  |
+| `is_read` | `BOOLEAN` | No | `false` |  |
+| `muted` | `BOOLEAN` | No | `false` |  |
+| `email_status` | `VARCHAR(20)` | Yes | `` |  |
+| `read_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [users](users.md).
-- Can point to [approvals](approvals.md), [daily_reports](daily_reports.md), [documents](documents.md), [inventory_items](inventory_items.md), or [invoices](invoices.md) through `reference_type/reference_id`.
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_notifications_user` on `(user_id, is_read, created_at DESC)`.
+| Column | References |
+|---|---|
+| `user_id` | `users.id` |

@@ -1,24 +1,27 @@
-# project_members
+# `project_members`
 
-Joins users to projects and defines their project-level responsibility.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique assignment identifier. |
-| `project_id` | `UUID` | FK | Project assignment. References [projects](projects.md). |
-| `user_id` | `UUID` | FK | Assigned employee. References [users](users.md). |
-| `role_in_project` | `VARCHAR(50)` |  | Project-specific label such as `lead_engineer`, `supervisor`, or `store_keeper`. |
-| `assigned_at` | `TIMESTAMPTZ` |  | Assignment timestamp. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `user_id` | `UUID` | No | `` | users.id |
+| `role_in_project` | `VARCHAR(50)` | Yes | `` |  |
+| `assigned_at` | `DATETIME` | No | `now()` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to one [project](projects.md).
-- Belongs to one [user](users.md).
+- Primary key: `id`
 
-## Constraints and Indexes
+## Outbound Relationships
 
-- Unique pair: `(project_id, user_id)`.
-- `idx_project_members_project` on `project_id`.
-- `idx_project_members_user` on `user_id`.
+| Column | References |
+|---|---|
+| `project_id` | `projects.id` |
+| `user_id` | `users.id` |

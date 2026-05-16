@@ -1,555 +1,671 @@
-# Database Schema — Construction Internal Portal
+# Database Schema - Current Implementation
+
+This document is generated from the current SQLAlchemy model metadata in `backend/app/models` and should be treated as the current implementation reference. The per-table files in [`schema/`](schema/README.md) contain relationship details for each table.
 
 ## Overview
 
-PostgreSQL 16 schema designed for a construction company's internal operations. Uses UUIDs for security, JSONB for flexible report fields, and includes a comprehensive audit trail system.
-
----
-
-## Entity Relationship Diagram (Key Tables)
-
-```
-┌───────────┐     ┌───────────────┐     ┌──────────────────┐
-│   users   │────▶│  user_roles   │     │  audit_log       │
-└─────┬─────┘     └───────────────┘     └──────────────────┘
-      │
-      ├────▶┌────────────────┐
-      │     │  notifications  │
-      │     └────────────────┘
-      │
-      ├────▶┌────────────────────┐
-      │     │  daily_reports     │◀────┐
-      │     └─────────┬──────────┘     │
-      │               │                │
-      │               ├──▶ report_photos    (photos table)
-      │               ├──▶ report_material  (material_consumption)
-      │               └──▶ report_manpower  (manpower_entries)
-      │
-      ├────▶┌────────────────┐
-      │     │  projects       │
-      │     └────────┬───────┘
-      │              ├──▶ project_members
-      │              └──▶ project_photos
-      │
-      ├────▶┌────────────────────┐
-      │     │  inventory_items    │◀── inventory_movements
-      │     └─────────┬──────────┘
-      │               ├──▶ inventory_location_stock
-      │               ├──▶ inventory_assets
-      │               └──▶ storage_locations
-      │
-      ├────▶┌────────────────┐
-      │     │  documents      │◀── document_versions
-      │     └────────────────┘
-      │
-      └────▶┌────────────────┐
-            │  approvals      │
-            └────────────────┘
-```
-
----
-
-## Core Tables
-
-### 1. users
-
-```sql
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(150) NOT NULL,
-    phone VARCHAR(20),
-    employee_code VARCHAR(20) UNIQUE,
-    role VARCHAR(50) NOT NULL CHECK (role IN (
-        'admin', 'operation_manager', 'project_manager',
-        'civil_engineer', 'civil_supervisor',
-        'store_keeper', 'accounts'
-    )),
-    designation VARCHAR(100),
-    is_active BOOLEAN DEFAULT TRUE,
-    last_login_at TIMESTAMPTZ,
-    refresh_token_hash VARCHAR(255),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ           -- soft delete
-);
-
-CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
-CREATE INDEX idx_users_role ON users(role) WHERE deleted_at IS NULL;
-```
-
-### 2. projects
-
-```sql
-CREATE TABLE projects (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(200) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
-    location TEXT,
-    description TEXT,
-    status VARCHAR(30) DEFAULT 'active' CHECK (status IN (
-        'planning', 'active', 'on_hold', 'completed', 'cancelled'
-    )),
-    budget_amount DECIMAL(15,2),
-    start_date DATE,
-    target_end_date DATE,
-    actual_end_date DATE,
-    client_name VARCHAR(200),
-    contract_number VARCHAR(50),
-    progress_percentage DECIMAL(5,2) DEFAULT 0,
-    created_by UUID REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_projects_status ON projects(status) WHERE deleted_at IS NULL;
-CREATE INDEX idx_projects_code ON projects(code);
-```
-
-### 3. project_members
-
-```sql
-CREATE TABLE project_members (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role_in_project VARCHAR(50),     -- e.g. "lead_engineer", "supervisor"
-    assigned_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(project_id, user_id)
-);
-
-CREATE INDEX idx_project_members_project ON project_members(project_id);
-CREATE INDEX idx_project_members_user ON project_members(user_id);
-```
-
-### 4. daily_reports
-
-```sql
-CREATE TABLE daily_reports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    project_id UUID NOT NULL REFERENCES projects(id),
-    report_date DATE NOT NULL,
-    submitted_by UUID NOT NULL REFERENCES users(id),
-    
-    -- Report Content
-    weather_condition VARCHAR(30),
-    temperature DECIMAL(4,1),
-    work_completed TEXT NOT NULL,
-    progress_percentage DECIMAL(5,2),
-    issues_delays TEXT,
-    next_day_plan TEXT,
-    notes TEXT,
-    
-    -- Flexible extra fields (custom form questions per project)
-    extra_fields JSONB DEFAULT '{}',
-    
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN (
-        'draft', 'submitted', 'approved', 'rejected'
-    )),
-    
-    approved_by UUID REFERENCES users(id),
-    approved_at TIMESTAMPTZ,
-    rejection_reason TEXT,
-    
-    -- Draft sync for offline mobile
-    is_synced BOOLEAN DEFAULT TRUE,
-    local_created_at TIMESTAMPTZ,
-    
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ,
-    
-    -- One report per project per day
-    UNIQUE(project_id, report_date, deleted_at)
-);
-
-CREATE INDEX idx_reports_project ON daily_reports(project_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_reports_date ON daily_reports(report_date DESC);
-CREATE INDEX idx_reports_status ON daily_reports(status);
-CREATE INDEX idx_reports_extra ON daily_reports USING GIN (extra_fields);
-
-COMMENT ON COLUMN daily_reports.extra_fields IS 'Flexible JSON:{"soil_condition":"wet","safety_incidents":0}';
-```
-
-### 5. report_manpower
-
-```sql
-CREATE TABLE report_manpower (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    report_id UUID NOT NULL REFERENCES daily_reports(id) ON DELETE CASCADE,
-    labor_type VARCHAR(50) NOT NULL,     -- 'skilled', 'unskilled', 'operator', 'technician'
-    trade VARCHAR(100),                   -- 'mason', 'carpenter', 'electrician', 'plumber'
-    count INT NOT NULL CHECK (count > 0),
-    hours_worked DECIMAL(4,1),
-    overtime_hours DECIMAL(4,1) DEFAULT 0,
-    notes TEXT
-);
-
-CREATE INDEX idx_manpower_report ON report_manpower(report_id);
-```
-
-### 6. report_equipment
-
-```sql
-CREATE TABLE report_equipment (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    report_id UUID NOT NULL REFERENCES daily_reports(id) ON DELETE CASCADE,
-    equipment_name VARCHAR(100) NOT NULL,
-    quantity INT DEFAULT 1,
-    hours_used DECIMAL(5,1),
-    status VARCHAR(20) DEFAULT 'operational',
-    notes TEXT
-);
-
-CREATE INDEX idx_equipment_report ON report_equipment(report_id);
-```
-
-### 7. report_material_consumption
-
-```sql
-CREATE TABLE report_material_consumption (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    report_id UUID NOT NULL REFERENCES daily_reports(id) ON DELETE CASCADE,
-    inventory_item_id UUID REFERENCES inventory_items(id),
-    material_name VARCHAR(150) NOT NULL,
-    quantity DECIMAL(10,3) NOT NULL,
-    unit VARCHAR(20) NOT NULL,
-    wastage DECIMAL(10,3) DEFAULT 0,
-    notes TEXT
-);
-
-CREATE INDEX idx_consumption_report ON report_material_consumption(report_id);
-```
-
-### 8. storage_locations
-
-```sql
-CREATE TABLE storage_locations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(30) UNIQUE,
-    name VARCHAR(150) NOT NULL,
-    location_type VARCHAR(20) NOT NULL CHECK (location_type IN ('warehouse', 'site')),
-    project_id UUID REFERENCES projects(id),
-    address TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_storage_locations_type ON storage_locations(location_type)
-    WHERE deleted_at IS NULL AND is_active = TRUE;
-```
-
-### 9. inventory_items
-
-```sql
-CREATE TABLE inventory_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(150) NOT NULL,
-    code VARCHAR(30) UNIQUE,
-    item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('consumable', 'tool')),
-    category VARCHAR(50) NOT NULL,       -- 'cement', 'steel', 'tools', 'electrical', 'plumbing'
-    unit VARCHAR(20) NOT NULL,           -- 'kg', 'ton', 'm3', 'pcs', 'bags', 'nos'
-    track_assets BOOLEAN DEFAULT FALSE,
-    minimum_stock DECIMAL(12,3) DEFAULT 0,
-    reorder_point DECIMAL(12,3),
-    unit_price DECIMAL(12,2),
-    supplier_id UUID REFERENCES suppliers(id),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_inventory_items_category ON inventory_items(category) WHERE deleted_at IS NULL;
-CREATE INDEX idx_inventory_items_type ON inventory_items(item_type) WHERE deleted_at IS NULL;
-```
-
-### 10. inventory_location_stock
-
-```sql
-CREATE TABLE inventory_location_stock (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    item_id UUID NOT NULL REFERENCES inventory_items(id),
-    location_id UUID NOT NULL REFERENCES storage_locations(id),
-    on_hand_qty DECIMAL(12,3) DEFAULT 0 CHECK (on_hand_qty >= 0),
-    reserved_qty DECIMAL(12,3) DEFAULT 0 CHECK (reserved_qty >= 0),
-    available_qty DECIMAL(12,3) GENERATED ALWAYS AS (on_hand_qty - reserved_qty) STORED,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (item_id, location_id)
-);
-
-CREATE INDEX idx_inventory_stock_item ON inventory_location_stock(item_id);
-CREATE INDEX idx_inventory_stock_location ON inventory_location_stock(location_id);
-CREATE INDEX idx_inventory_stock_low ON inventory_location_stock(item_id, location_id)
-    WHERE available_qty <= 0 OR reserved_qty > 0;
-```
-
-### 11. inventory_assets
-
-```sql
-CREATE TABLE inventory_assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    item_id UUID NOT NULL REFERENCES inventory_items(id),
-    asset_tag VARCHAR(50) UNIQUE NOT NULL,
-    serial_number VARCHAR(100),
-    current_location_id UUID NOT NULL REFERENCES storage_locations(id),
-    project_id UUID REFERENCES projects(id),
-    status VARCHAR(20) NOT NULL DEFAULT 'available'
-        CHECK (status IN ('available', 'reserved', 'issued', 'in_repair', 'retired')),
-    condition VARCHAR(30) DEFAULT 'good',
-    last_movement_id UUID,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_assets_current_location ON inventory_assets(current_location_id)
-    WHERE deleted_at IS NULL;
-CREATE INDEX idx_assets_status ON inventory_assets(status) WHERE deleted_at IS NULL;
-```
-
-### 12. inventory_movements
-
-```sql
-CREATE TABLE inventory_movements (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    item_id UUID NOT NULL REFERENCES inventory_items(id),
-    asset_id UUID REFERENCES inventory_assets(id),
-    movement_type VARCHAR(20) NOT NULL
-        CHECK (movement_type IN ('receive', 'request', 'reserve', 'issue', 'transfer', 'return', 'consume', 'adjustment')),
-    quantity DECIMAL(10,3) NOT NULL CHECK (quantity > 0),
-    from_location_id UUID REFERENCES storage_locations(id),
-    to_location_id UUID REFERENCES storage_locations(id),
-    approval_id UUID REFERENCES approvals(id),
-    reference_type VARCHAR(30),         -- 'purchase', 'daily_report', 'material_request', 'tool_transfer', 'adjustment'
-    reference_id UUID,                   -- ID from related table (PO, report, etc.)
-    performed_by UUID NOT NULL REFERENCES users(id),
-    notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_inventory_movements_item ON inventory_movements(item_id);
-CREATE INDEX idx_inventory_movements_asset ON inventory_movements(asset_id);
-CREATE INDEX idx_inventory_movements_date ON inventory_movements(created_at DESC);
-```
-
-### 13. suppliers
-
-```sql
-CREATE TABLE suppliers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(200) NOT NULL,
-    contact_person VARCHAR(150),
-    phone VARCHAR(20),
-    email VARCHAR(255),
-    address TEXT,
-    gst_number VARCHAR(20),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-```
-
-### 11. photos
-
-```sql
-CREATE TABLE photos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    filename VARCHAR(255) NOT NULL,
-    original_name VARCHAR(255),
-    storage_path VARCHAR(500) NOT NULL,      -- MinIO object key
-    thumbnail_path VARCHAR(500),
-    mime_type VARCHAR(50),
-    size_bytes BIGINT,
-    width INT,
-    height INT,
-    
-    -- Polymorphic association
-    entity_type VARCHAR(30) NOT NULL,        -- 'daily_report', 'project', 'material', 'document'
-    entity_id UUID NOT NULL,
-    
-    caption TEXT,
-    taken_at TIMESTAMPTZ,
-    uploaded_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_photos_entity ON photos(entity_type, entity_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_photos_date ON photos(created_at DESC);
-```
-
-### 12. documents
-
-```sql
-CREATE TABLE documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title VARCHAR(255) NOT NULL,
-    document_type VARCHAR(30) NOT NULL CHECK (document_type IN (
-        'drawing', 'boq', 'contract', 'wir', 'invoice', 'other'
-    )),
-    project_id UUID REFERENCES projects(id),
-    storage_path VARCHAR(500) NOT NULL,
-    mime_type VARCHAR(50),
-    size_bytes BIGINT,
-    version INT DEFAULT 1,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN (
-        'draft', 'active', 'superseded', 'archived'
-    )),
-    uploaded_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ
-);
-
-CREATE INDEX idx_documents_project ON documents(project_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_documents_type ON documents(document_type) WHERE deleted_at IS NULL;
-CREATE INDEX idx_documents_search ON documents
-    USING GIN (to_tsvector('english', title));
-```
-
-### 13. document_versions
-
-```sql
-CREATE TABLE document_versions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    version INT NOT NULL,
-    storage_path VARCHAR(500) NOT NULL,
-    size_bytes BIGINT,
-    change_notes TEXT,
-    uploaded_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX idx_doc_version ON document_versions(document_id, version);
-```
-
-### 14. approvals
-
-```sql
-CREATE TABLE approvals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_type VARCHAR(30) NOT NULL,       -- 'daily_report', 'material_request', 'document', 'leave'
-    request_id UUID NOT NULL,                 -- ID from the source table
-    requested_by UUID NOT NULL REFERENCES users(id),
-    approver_id UUID NOT NULL REFERENCES users(id),
-    approval_level INT DEFAULT 1,            -- Multi-level: level 1, 2, 3
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN (
-        'pending', 'approved', 'rejected', 'cancelled'
-    )),
-    comments TEXT,
-    decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_approvals_approver ON approvals(approver_id, status);
-CREATE INDEX idx_approvals_request ON approvals(request_type, request_id);
-```
-
-### 15. notifications
-
-```sql
-CREATE TABLE notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id),
-    title VARCHAR(200) NOT NULL,
-    body TEXT,
-    notification_type VARCHAR(30),       -- 'approval', 'alert', 'reminder', 'announcement'
-    reference_type VARCHAR(30),
-    reference_id UUID,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_notifications_user ON notifications(user_id, is_read, created_at DESC);
-```
-
-### 16. activity_log (Audit Trail)
-
-```sql
-CREATE TABLE activity_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id),
-    action VARCHAR(30) NOT NULL,         -- 'create', 'update', 'delete', 'login', 'logout', 'approve'
-    entity_type VARCHAR(30) NOT NULL,    -- 'user', 'project', 'daily_report', 'material', etc.
-    entity_id UUID,
-    old_values JSONB,
-    new_values JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_audit_user ON activity_log(user_id, created_at DESC);
-CREATE INDEX idx_audit_entity ON activity_log(entity_type, entity_id);
-CREATE INDEX idx_audit_date ON activity_log(created_at DESC);
-
--- Auto-partition by month for large installations (optional)
--- CREATE TABLE activity_log PARTITION BY RANGE (created_at);
-```
-
----
-
-## Index Strategy Summary
-
-| Table | Index | Type | Reason |
-|-------|-------|------|--------|
-| `users` | `email` | B-tree (partial) | Login lookup |
-| `users` | `role` | B-tree (partial) | Role-based filtering |
-| `daily_reports` | `project_id, report_date` | Composite unique | One report per project per day |
-| `daily_reports` | `extra_fields` | GIN | Querying JSONB custom fields |
-| `documents` | `title` | GIN (tsvector) | Full-text search |
-| `inventory_location_stock` | `item_id, location_id` | Composite | Stock lookup by warehouse/site |
-| `inventory_assets` | `current_location_id, status` | B-tree (partial) | Tool/item current-location lookup |
-| `inventory_movements` | `item_id, created_at` | Composite | Movement history and audit trail |
-| `activity_log` | `created_at` | B-tree (DESC) | Time-range audit queries |
-| `notifications` | `user_id, is_read, created_at` | Composite | Unread notification count |
-| `approvals` | `approver_id, status` | Composite | Pending approvals inbox |
-
----
-
-## Trigger Functions
-
-### update_timestamp
-
-```sql
-CREATE OR REPLACE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Applied to all tables with updated_at column
-CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
--- (repeat for projects, daily_reports, inventory_items, storage_locations, documents)
-```
-
-### audit_trigger
-
-```sql
-CREATE OR REPLACE FUNCTION fn_audit_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO activity_log (user_id, action, entity_type, entity_id, old_values, new_values)
-    VALUES (
-        current_setting('app.current_user_id', TRUE)::UUID,
-        TG_ARGV[0],
-        TG_TABLE_NAME,
-        NEW.id,
-        CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) ELSE NULL END,
-        to_jsonb(NEW)
-    );
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
+- Total modeled tables: 31
+- Primary database: PostgreSQL via SQLAlchemy 2 async models and Alembic migrations.
+- Common conventions: UUID primary keys, timestamp mixins, soft-delete mixins for user-facing historical records, object-storage keys for private files, and polymorphic request/reference fields where workflows span modules.
+
+## Table Groups
+
+| Area | Tables |
+|---|---|
+| Identity and access | [`auth_otp_challenges`](schema/auth_otp_challenges.md), [`auth_refresh_tokens`](schema/auth_refresh_tokens.md), [`users`](schema/users.md) |
+| Projects and planning | [`boq_items`](schema/boq_items.md), [`project_members`](schema/project_members.md), [`project_milestones`](schema/project_milestones.md), [`projects`](schema/projects.md) |
+| Daily reporting | [`daily_report_approval_history`](schema/daily_report_approval_history.md), [`daily_reports`](schema/daily_reports.md), [`report_equipment`](schema/report_equipment.md), [`report_exports`](schema/report_exports.md), [`report_manpower`](schema/report_manpower.md), [`report_material_consumption`](schema/report_material_consumption.md), [`supervisor_updates`](schema/supervisor_updates.md) |
+| Inventory and stores | [`inventory_assets`](schema/inventory_assets.md), [`inventory_items`](schema/inventory_items.md), [`inventory_location_stock`](schema/inventory_location_stock.md), [`inventory_movements`](schema/inventory_movements.md), [`material_request_lines`](schema/material_request_lines.md), [`material_requests`](schema/material_requests.md), [`storage_locations`](schema/storage_locations.md), [`suppliers`](schema/suppliers.md) |
+| Documents and media | [`document_versions`](schema/document_versions.md), [`documents`](schema/documents.md), [`photos`](schema/photos.md) |
+| Workflow and communication | [`approvals`](schema/approvals.md), [`notifications`](schema/notifications.md) |
+| Accounts and finance | [`invoices`](schema/invoices.md), [`payments`](schema/payments.md) |
+| Data import and governance | [`activity_log`](schema/activity_log.md), [`import_batches`](schema/import_batches.md) |
+
+## Current Tables
+
+### `activity_log`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `user_id` | `UUID` | Yes | `` | users.id |
+| `action` | `VARCHAR(64)` | No | `` |  |
+| `entity_type` | `VARCHAR(64)` | Yes | `` |  |
+| `entity_id` | `UUID` | Yes | `` |  |
+| `ip_address` | `VARCHAR(64)` | Yes | `` |  |
+| `user_agent` | `VARCHAR(512)` | Yes | `` |  |
+| `comments` | `TEXT` | Yes | `` |  |
+| `old_values` | `JSONB` | Yes | `` |  |
+| `new_values` | `JSONB` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `approvals`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `request_type` | `VARCHAR(60)` | No | `` |  |
+| `request_id` | `UUID` | No | `` |  |
+| `project_id` | `UUID` | Yes | `` | projects.id |
+| `submitter_id` | `UUID` | Yes | `` | users.id |
+| `approver_id` | `UUID` | Yes | `` | users.id |
+| `delegated_to_id` | `UUID` | Yes | `` | users.id |
+| `escalation_user_id` | `UUID` | Yes | `` | users.id |
+| `status` | `VARCHAR(30)` | No | `'pending'` |  |
+| `step_order` | `INTEGER` | No | `1` |  |
+| `amount` | `NUMERIC(14, 2)` | Yes | `` |  |
+| `currency` | `VARCHAR(3)` | Yes | `` |  |
+| `title` | `VARCHAR(200)` | No | `` |  |
+| `submitter_comments` | `TEXT` | Yes | `` |  |
+| `decision_comments` | `TEXT` | Yes | `` |  |
+| `delegation_reason` | `TEXT` | Yes | `` |  |
+| `override_reason` | `TEXT` | Yes | `` |  |
+| `submitted_at` | `DATETIME` | No | `` |  |
+| `due_at` | `DATETIME` | No | `` |  |
+| `reminded_at` | `DATETIME` | Yes | `` |  |
+| `escalated_at` | `DATETIME` | Yes | `` |  |
+| `decided_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `auth_otp_challenges`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `user_id` | `UUID` | No | `` | users.id |
+| `purpose` | `VARCHAR(32)` | No | `'login'` |  |
+| `otp_hash` | `VARCHAR(255)` | No | `` |  |
+| `expires_at` | `DATETIME` | No | `` |  |
+| `consumed_at` | `DATETIME` | Yes | `` |  |
+| `attempts` | `INTEGER` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `auth_refresh_tokens`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `user_id` | `UUID` | No | `` | users.id |
+| `token_hash` | `VARCHAR(255)` | No | `` |  |
+| `expires_at` | `DATETIME` | No | `` |  |
+| `revoked_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `boq_items`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `milestone_id` | `UUID` | Yes | `` | project_milestones.id |
+| `item_code` | `VARCHAR(50)` | No | `` |  |
+| `description` | `TEXT` | No | `` |  |
+| `discipline` | `VARCHAR(50)` | Yes | `` |  |
+| `phase` | `VARCHAR(100)` | Yes | `` |  |
+| `unit` | `VARCHAR(20)` | No | `` |  |
+| `planned_quantity` | `NUMERIC(14, 3)` | No | `` |  |
+| `approved_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
+| `unit_rate` | `NUMERIC(14, 2)` | No | `` |  |
+| `planned_amount` | `NUMERIC(15, 2)` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `daily_report_approval_history`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `actor_id` | `UUID` | Yes | `` | users.id |
+| `decision` | `VARCHAR(20)` | No | `` |  |
+| `previous_status` | `VARCHAR(20)` | No | `` |  |
+| `comments` | `TEXT` | Yes | `` |  |
+| `decided_at` | `DATETIME` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `daily_reports`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `engineer_id` | `UUID` | No | `` | users.id |
+| `report_number` | `VARCHAR(60)` | Yes | `` |  |
+| `report_date` | `DATE` | No | `` |  |
+| `work_location` | `VARCHAR(255)` | No | `` |  |
+| `manpower_total` | `INTEGER` | No | `0` |  |
+| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
+| `work_completed` | `TEXT` | No | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `` |  |
+| `safety_incidents` | `INTEGER` | No | `0` |  |
+| `safety_notes` | `TEXT` | Yes | `` |  |
+| `wir_status` | `VARCHAR(50)` | No | `` |  |
+| `inspection_status` | `VARCHAR(50)` | No | `` |  |
+| `delay_notes` | `TEXT` | Yes | `` |  |
+| `next_day_plan` | `TEXT` | No | `` |  |
+| `supervisor_update_ids` | `JSONB` | No | `` |  |
+| `photo_refs` | `JSONB` | No | `` |  |
+| `attachment_refs` | `JSONB` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'draft'` |  |
+| `submitted_at` | `DATETIME` | Yes | `` |  |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `rejection_comments` | `TEXT` | Yes | `` |  |
+| `extra_fields` | `JSONB` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `document_versions`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `document_id` | `UUID` | No | `` | documents.id |
+| `version` | `INTEGER` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'pending_approval'` |  |
+| `storage_path` | `VARCHAR(500)` | No | `` |  |
+| `original_name` | `VARCHAR(255)` | No | `` |  |
+| `mime_type` | `VARCHAR(80)` | No | `` |  |
+| `size_bytes` | `BIGINT` | No | `` |  |
+| `uploaded_by` | `UUID` | Yes | `` | users.id |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `approval_comments` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `documents`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `title` | `VARCHAR(255)` | No | `` |  |
+| `document_type` | `VARCHAR(30)` | No | `` |  |
+| `project_id` | `UUID` | Yes | `` | projects.id |
+| `status` | `VARCHAR(20)` | No | `'pending_approval'` |  |
+| `active_version` | `INTEGER` | Yes | `` |  |
+| `metadata` | `JSONB` | No | `` |  |
+| `expiry_date` | `DATE` | Yes | `` |  |
+| `uploaded_by` | `UUID` | Yes | `` | users.id |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `import_batches`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `template_type` | `VARCHAR(40)` | No | `` |  |
+| `file_name` | `VARCHAR(255)` | No | `` |  |
+| `status` | `VARCHAR(30)` | No | `` |  |
+| `created_by` | `UUID` | Yes | `` | users.id |
+| `row_count` | `INTEGER` | No | `0` |  |
+| `error_count` | `INTEGER` | No | `0` |  |
+| `summary` | `JSONB` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `inventory_assets`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `item_id` | `UUID` | No | `` | inventory_items.id |
+| `asset_tag` | `VARCHAR(80)` | No | `` |  |
+| `current_location_id` | `UUID` | No | `` | storage_locations.id |
+| `condition` | `VARCHAR(40)` | No | `'good'` |  |
+| `status` | `VARCHAR(30)` | No | `'active'` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `inventory_items`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(180)` | No | `` |  |
+| `item_code` | `VARCHAR(60)` | Yes | `` |  |
+| `category` | `VARCHAR(80)` | No | `` |  |
+| `item_type` | `VARCHAR(30)` | No | `` |  |
+| `unit` | `VARCHAR(20)` | No | `` |  |
+| `minimum_stock` | `NUMERIC(14, 3)` | No | `0` |  |
+| `reorder_level` | `NUMERIC(14, 3)` | No | `0` |  |
+| `unit_cost` | `NUMERIC(14, 2)` | Yes | `` |  |
+| `supplier_id` | `UUID` | Yes | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `inventory_location_stock`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `item_id` | `UUID` | No | `` | inventory_items.id |
+| `location_id` | `UUID` | No | `` | storage_locations.id |
+| `on_hand_qty` | `NUMERIC(14, 3)` | No | `0` |  |
+| `reserved_qty` | `NUMERIC(14, 3)` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `inventory_movements`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `item_id` | `UUID` | No | `` | inventory_items.id |
+| `asset_id` | `UUID` | Yes | `` | inventory_assets.id |
+| `movement_type` | `VARCHAR(30)` | No | `` |  |
+| `quantity` | `NUMERIC(14, 3)` | No | `` |  |
+| `from_location_id` | `UUID` | Yes | `` | storage_locations.id |
+| `to_location_id` | `UUID` | Yes | `` | storage_locations.id |
+| `project_id` | `UUID` | Yes | `` | projects.id |
+| `reference_type` | `VARCHAR(40)` | Yes | `` |  |
+| `reference_id` | `UUID` | Yes | `` |  |
+| `handled_by` | `UUID` | Yes | `` | users.id |
+| `notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `invoices`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `invoice_number` | `VARCHAR(80)` | No | `` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `supplier_id` | `UUID` | Yes | `` | suppliers.id |
+| `invoice_date` | `DATE` | No | `` |  |
+| `due_date` | `DATE` | No | `` |  |
+| `amount` | `NUMERIC(14, 2)` | No | `` |  |
+| `tax_amount` | `NUMERIC(14, 2)` | No | `0` |  |
+| `total_amount` | `NUMERIC(14, 2)` | No | `` |  |
+| `status` | `VARCHAR(30)` | No | `'draft'` |  |
+| `payment_status` | `VARCHAR(30)` | No | `'unpaid'` |  |
+| `attachment_key` | `VARCHAR(500)` | Yes | `` |  |
+| `created_by` | `UUID` | Yes | `` | users.id |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `material_request_lines`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `request_id` | `UUID` | No | `` | material_requests.id |
+| `item_id` | `UUID` | No | `` | inventory_items.id |
+| `quantity` | `NUMERIC(14, 3)` | No | `` |  |
+| `reserved_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
+| `issued_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
+| `unit_cost` | `NUMERIC(14, 2)` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `material_requests`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `request_number` | `VARCHAR(60)` | No | `` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `requester_id` | `UUID` | Yes | `` | users.id |
+| `from_location_id` | `UUID` | Yes | `` | storage_locations.id |
+| `status` | `VARCHAR(30)` | No | `'requested'` |  |
+| `total_estimated_cost` | `NUMERIC(14, 2)` | No | `0` |  |
+| `notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `notifications`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `user_id` | `UUID` | No | `` | users.id |
+| `title` | `VARCHAR(200)` | No | `` |  |
+| `body` | `TEXT` | No | `` |  |
+| `notification_type` | `VARCHAR(30)` | No | `` |  |
+| `reference_type` | `VARCHAR(30)` | Yes | `` |  |
+| `reference_id` | `UUID` | Yes | `` |  |
+| `is_read` | `BOOLEAN` | No | `false` |  |
+| `muted` | `BOOLEAN` | No | `false` |  |
+| `email_status` | `VARCHAR(20)` | Yes | `` |  |
+| `read_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `payments`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `invoice_id` | `UUID` | No | `` | invoices.id |
+| `payment_date` | `DATE` | No | `` |  |
+| `amount` | `NUMERIC(14, 2)` | No | `` |  |
+| `method` | `VARCHAR(50)` | No | `` |  |
+| `reference_number` | `VARCHAR(100)` | Yes | `` |  |
+| `recorded_by` | `UUID` | Yes | `` | users.id |
+| `notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `photos`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `filename` | `VARCHAR(255)` | No | `` |  |
+| `original_name` | `VARCHAR(255)` | No | `` |  |
+| `storage_path` | `VARCHAR(500)` | No | `` |  |
+| `compressed_path` | `VARCHAR(500)` | Yes | `` |  |
+| `thumbnail_path` | `VARCHAR(500)` | Yes | `` |  |
+| `mime_type` | `VARCHAR(80)` | No | `` |  |
+| `size_bytes` | `BIGINT` | No | `` |  |
+| `width` | `INTEGER` | Yes | `` |  |
+| `height` | `INTEGER` | Yes | `` |  |
+| `entity_type` | `VARCHAR(30)` | No | `` |  |
+| `entity_id` | `UUID` | No | `` |  |
+| `kind` | `VARCHAR(20)` | No | `'photo'` |  |
+| `caption` | `TEXT` | Yes | `` |  |
+| `taken_at` | `DATETIME` | Yes | `` |  |
+| `uploaded_by` | `UUID` | Yes | `` | users.id |
+| `processing_status` | `VARCHAR(20)` | No | `'ready'` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `project_members`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `user_id` | `UUID` | No | `` | users.id |
+| `role_in_project` | `VARCHAR(50)` | Yes | `` |  |
+| `assigned_at` | `DATETIME` | No | `now()` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `project_milestones`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `name` | `VARCHAR(150)` | No | `` |  |
+| `discipline` | `VARCHAR(50)` | Yes | `` |  |
+| `planned_start_date` | `DATE` | Yes | `` |  |
+| `planned_end_date` | `DATE` | Yes | `` |  |
+| `actual_start_date` | `DATE` | Yes | `` |  |
+| `actual_end_date` | `DATE` | Yes | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
+| `status` | `VARCHAR(30)` | No | `'not_started'` |  |
+| `sort_order` | `INTEGER` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `projects`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(200)` | No | `` |  |
+| `code` | `VARCHAR(20)` | No | `` |  |
+| `location` | `TEXT` | Yes | `` |  |
+| `description` | `TEXT` | Yes | `` |  |
+| `scope_of_work` | `TEXT` | No | `` |  |
+| `status` | `VARCHAR(30)` | No | `'planning'` |  |
+| `budget_amount` | `NUMERIC(15, 2)` | Yes | `` |  |
+| `start_date` | `DATE` | Yes | `` |  |
+| `target_end_date` | `DATE` | No | `` |  |
+| `actual_end_date` | `DATE` | Yes | `` |  |
+| `client_name` | `VARCHAR(200)` | Yes | `` |  |
+| `contract_number` | `VARCHAR(50)` | Yes | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
+| `created_by` | `UUID` | Yes | `` | users.id |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `report_equipment`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `equipment_name` | `VARCHAR(120)` | No | `` |  |
+| `quantity` | `INTEGER` | No | `` |  |
+| `hours_used` | `NUMERIC(6, 2)` | No | `0` |  |
+| `remarks` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `report_exports`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `generated_by` | `UUID` | Yes | `` | users.id |
+| `file_name` | `VARCHAR(255)` | No | `` |  |
+| `object_key` | `VARCHAR(512)` | No | `` |  |
+| `content_type` | `VARCHAR(120)` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'ready'` |  |
+| `error_message` | `TEXT` | Yes | `` |  |
+| `email_status` | `VARCHAR(20)` | Yes | `` |  |
+| `email_error` | `TEXT` | Yes | `` |  |
+| `emailed_at` | `DATETIME` | Yes | `` |  |
+| `generated_at` | `DATETIME` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `report_manpower`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `trade` | `VARCHAR(100)` | No | `` |  |
+| `count` | `INTEGER` | No | `` |  |
+| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `report_material_consumption`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `boq_item_id` | `UUID` | Yes | `` | boq_items.id |
+| `material_name` | `VARCHAR(160)` | No | `` |  |
+| `unit` | `VARCHAR(30)` | No | `` |  |
+| `quantity` | `NUMERIC(14, 3)` | No | `` |  |
+| `remarks` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `storage_locations`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(160)` | No | `` |  |
+| `code` | `VARCHAR(40)` | No | `` |  |
+| `location_type` | `VARCHAR(30)` | No | `` |  |
+| `project_id` | `UUID` | Yes | `` | projects.id |
+| `address` | `TEXT` | Yes | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `supervisor_updates`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `supervisor_id` | `UUID` | No | `` | users.id |
+| `update_date` | `DATE` | No | `` |  |
+| `day_type` | `VARCHAR(20)` | No | `'weekday'` |  |
+| `work_location` | `VARCHAR(255)` | No | `` |  |
+| `attendance_count` | `INTEGER` | No | `` |  |
+| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
+| `progress_notes` | `TEXT` | No | `` |  |
+| `delay_notes` | `TEXT` | Yes | `` |  |
+| `required_notes` | `TEXT` | No | `` |  |
+| `attachment_refs` | `JSONB` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'draft'` |  |
+| `submitted_at` | `DATETIME` | Yes | `` |  |
+| `verified_by` | `UUID` | Yes | `` | users.id |
+| `verified_at` | `DATETIME` | Yes | `` |  |
+| `verification_notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `suppliers`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(200)` | No | `` |  |
+| `category` | `VARCHAR(80)` | No | `` |  |
+| `rating` | `VARCHAR(20)` | No | `` |  |
+| `payment_terms` | `VARCHAR(120)` | No | `` |  |
+| `contact_person` | `VARCHAR(150)` | No | `` |  |
+| `phone` | `VARCHAR(32)` | No | `` |  |
+| `email` | `VARCHAR(255)` | No | `` |  |
+| `address` | `TEXT` | No | `` |  |
+| `tax_registration_number` | `VARCHAR(80)` | No | `` |  |
+| `tds_certificate_number` | `VARCHAR(120)` | Yes | `` |  |
+| `tds_expiry_date` | `DATE` | Yes | `` |  |
+| `tds_document_key` | `VARCHAR(500)` | Yes | `` |  |
+| `compliance_status` | `VARCHAR(30)` | No | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+### `users`
+
+Primary key: `id`
+
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `email` | `VARCHAR(255)` | No | `` |  |
+| `full_name` | `VARCHAR(255)` | No | `` |  |
+| `role` | `VARCHAR(64)` | No | `` |  |
+| `employee_code` | `VARCHAR(64)` | Yes | `` |  |
+| `phone` | `VARCHAR(32)` | Yes | `` |  |
+| `designation` | `VARCHAR(100)` | Yes | `` |  |
+| `password_hash` | `VARCHAR(255)` | Yes | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `must_change_password` | `BOOLEAN` | No | `true` |  |
+| `failed_login_attempts` | `INTEGER` | No | `0` |  |
+| `locked_until` | `DATETIME` | Yes | `` |  |
+| `last_login_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
+
+## Notes
+
+- This document intentionally follows the implemented model names, even where they differ from earlier planning terminology.
+- Query/index details that are migration-specific should be checked in `backend/alembic/versions` when preparing database changes.
+- Production launch evidence and sign-off requirements are tracked in `09_Production_Readiness_Evidence.md`.

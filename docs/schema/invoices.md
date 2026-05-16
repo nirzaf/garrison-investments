@@ -1,40 +1,46 @@
-# invoices
+# `invoices`
 
-Stores supplier/customer invoice metadata for project-level accounts and cost visibility.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique invoice identifier. |
-| `project_id` | `UUID` | FK | Costed project. References [projects](projects.md). |
-| `supplier_id` | `UUID` | FK | Supplier issuing the invoice. References [suppliers](suppliers.md). |
-| `document_id` | `UUID` | FK | Uploaded invoice file. References [documents](documents.md). |
-| `invoice_number` | `VARCHAR(80)` |  | Supplier invoice number. |
-| `invoice_date` | `DATE` |  | Invoice issue date. |
-| `due_date` | `DATE` |  | Payment due date. |
-| `currency` | `VARCHAR(3)` |  | Currency code, default `QAR`. |
-| `subtotal_amount` | `DECIMAL(15,2)` |  | Invoice subtotal before tax/discount. |
-| `tax_amount` | `DECIMAL(15,2)` |  | Tax amount. |
-| `total_amount` | `DECIMAL(15,2)` |  | Total invoice amount. |
-| `status` | `VARCHAR(30)` |  | `draft`, `accounts_review`, `pending_approval`, `approved`, `part_paid`, `paid`, `rejected`, `cancelled`. |
-| `approval_id` | `UUID` | FK | Approval workflow. References [approvals](approvals.md). |
-| `created_by` | `UUID` | FK | User who entered invoice. References [users](users.md). |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `invoice_number` | `VARCHAR(80)` | No | `` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `supplier_id` | `UUID` | Yes | `` | suppliers.id |
+| `invoice_date` | `DATE` | No | `` |  |
+| `due_date` | `DATE` | No | `` |  |
+| `amount` | `NUMERIC(14, 2)` | No | `` |  |
+| `tax_amount` | `NUMERIC(14, 2)` | No | `0` |  |
+| `total_amount` | `NUMERIC(14, 2)` | No | `` |  |
+| `status` | `VARCHAR(30)` | No | `'draft'` |  |
+| `payment_status` | `VARCHAR(30)` | No | `'unpaid'` |  |
+| `attachment_key` | `VARCHAR(500)` | Yes | `` |  |
+| `created_by` | `UUID` | Yes | `` | users.id |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `notes` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [projects](projects.md) and [suppliers](suppliers.md).
-- Can attach a file through [documents](documents.md).
-- Can be authorized by [approvals](approvals.md).
-- Has [payments](payments.md).
-- Created by [users](users.md).
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_invoices_project` on `project_id`.
-- `idx_invoices_supplier` on `supplier_id`.
-- `idx_invoices_status` on `status` where `deleted_at IS NULL`.
-- Intended unique key: `(supplier_id, invoice_number)` where `deleted_at IS NULL`.
+| Column | References |
+|---|---|
+| `project_id` | `projects.id` |
+| `supplier_id` | `suppliers.id` |
+| `created_by` | `users.id` |
+| `approved_by` | `users.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `payments.invoice_id` | `invoices.id` |

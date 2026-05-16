@@ -1,44 +1,58 @@
-# daily_reports
+# `daily_reports`
 
-Stores the official daily site report after supervisor capture, engineer verification, and approval workflow.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique daily report identifier. |
-| `project_id` | `UUID` | FK | Project being reported. References [projects](projects.md). |
-| `report_date` | `DATE` |  | Site work date. |
-| `submitted_by` | `UUID` | FK | User who submits the report. References [users](users.md). |
-| `weather_condition` | `VARCHAR(30)` |  | Weather summary. |
-| `temperature` | `DECIMAL(4,1)` |  | Temperature value. |
-| `work_completed` | `TEXT` |  | Required daily work summary. |
-| `progress_percentage` | `DECIMAL(5,2)` |  | Reported progress contribution. |
-| `issues_delays` | `TEXT` |  | Delays, blockers, or site issues. |
-| `next_day_plan` | `TEXT` |  | Planned next-day work. |
-| `notes` | `TEXT` |  | Additional remarks. |
-| `extra_fields` | `JSONB` |  | Flexible per-project form fields. |
-| `status` | `VARCHAR(20)` |  | `draft`, `submitted`, `approved`, or `rejected`. |
-| `approved_by` | `UUID` | FK | Approver user. References [users](users.md). |
-| `approved_at` | `TIMESTAMPTZ` |  | Approval timestamp. |
-| `rejection_reason` | `TEXT` |  | Required when rejected. |
-| `is_synced` | `BOOLEAN` |  | Indicates whether an offline/mobile draft has synced. |
-| `local_created_at` | `TIMESTAMPTZ` |  | Device-side creation timestamp for offline drafts. |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `engineer_id` | `UUID` | No | `` | users.id |
+| `report_number` | `VARCHAR(60)` | Yes | `` |  |
+| `report_date` | `DATE` | No | `` |  |
+| `work_location` | `VARCHAR(255)` | No | `` |  |
+| `manpower_total` | `INTEGER` | No | `0` |  |
+| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
+| `work_completed` | `TEXT` | No | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `` |  |
+| `safety_incidents` | `INTEGER` | No | `0` |  |
+| `safety_notes` | `TEXT` | Yes | `` |  |
+| `wir_status` | `VARCHAR(50)` | No | `` |  |
+| `inspection_status` | `VARCHAR(50)` | No | `` |  |
+| `delay_notes` | `TEXT` | Yes | `` |  |
+| `next_day_plan` | `TEXT` | No | `` |  |
+| `supervisor_update_ids` | `JSONB` | No | `` |  |
+| `photo_refs` | `JSONB` | No | `` |  |
+| `attachment_refs` | `JSONB` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'draft'` |  |
+| `submitted_at` | `DATETIME` | Yes | `` |  |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `rejection_comments` | `TEXT` | Yes | `` |  |
+| `extra_fields` | `JSONB` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [projects](projects.md).
-- Submitted and approved by [users](users.md).
-- Has [report_manpower](report_manpower.md), [report_equipment](report_equipment.md), [report_material_consumption](report_material_consumption.md), [photos](photos.md), and [approvals](approvals.md).
-- Can generate [documents](documents.md) or exported PDF metadata in document storage.
+- Primary key: `id`
 
-## Constraints and Indexes
+## Outbound Relationships
 
-- Intended uniqueness: one active report per `(project_id, report_date)`.
-- `idx_reports_project` on `project_id` where `deleted_at IS NULL`.
-- `idx_reports_date` on `report_date DESC`.
-- `idx_reports_status` on `status`.
-- `idx_reports_extra` GIN on `extra_fields`.
+| Column | References |
+|---|---|
+| `project_id` | `projects.id` |
+| `engineer_id` | `users.id` |
+| `approved_by` | `users.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `daily_report_approval_history.report_id` | `daily_reports.id` |
+| `report_equipment.report_id` | `daily_reports.id` |
+| `report_exports.report_id` | `daily_reports.id` |
+| `report_manpower.report_id` | `daily_reports.id` |
+| `report_material_consumption.report_id` | `daily_reports.id` |

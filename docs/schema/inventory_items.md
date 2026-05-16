@@ -1,35 +1,35 @@
-# inventory_items
+# `inventory_items`
 
-Stores the shared catalog for consumable materials and trackable tools/items.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique inventory item identifier. |
-| `name` | `VARCHAR(150)` |  | Item name. |
-| `code` | `VARCHAR(30)` | Unique | Item code used in stock and movement screens. |
-| `item_type` | `VARCHAR(20)` |  | `consumable` or `tool`. |
-| `category` | `VARCHAR(50)` |  | Category such as cement, steel, tools, electrical, plumbing. |
-| `unit` | `VARCHAR(20)` |  | Stock unit such as bags, ton, m3, pcs, nos. |
-| `track_assets` | `BOOLEAN` |  | True when individual assets/tags must be tracked. |
-| `minimum_stock` | `DECIMAL(12,3)` |  | Minimum expected quantity per business rule. |
-| `reorder_point` | `DECIMAL(12,3)` |  | Quantity at which alerts/reorders should start. |
-| `unit_price` | `DECIMAL(12,2)` |  | Latest or standard unit price. Access should be role restricted. |
-| `supplier_id` | `UUID` | FK | Preferred supplier. References [suppliers](suppliers.md). |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(180)` | No | `` |  |
+| `item_code` | `VARCHAR(60)` | Yes | `` |  |
+| `category` | `VARCHAR(80)` | No | `` |  |
+| `item_type` | `VARCHAR(30)` | No | `` |  |
+| `unit` | `VARCHAR(20)` | No | `` |  |
+| `minimum_stock` | `NUMERIC(14, 3)` | No | `0` |  |
+| `reorder_level` | `NUMERIC(14, 3)` | No | `0` |  |
+| `unit_cost` | `NUMERIC(14, 2)` | Yes | `` |  |
+| `supplier_id` | `UUID` | Yes | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Optionally supplied by [suppliers](suppliers.md).
-- Has stock rows in [inventory_location_stock](inventory_location_stock.md).
-- Has serialized assets in [inventory_assets](inventory_assets.md) when `track_assets = TRUE`.
-- Has movement history in [inventory_movements](inventory_movements.md).
-- Can be consumed by [report_material_consumption](report_material_consumption.md).
+- Primary key: `id`
 
-## Indexes
+## Referenced By
 
-- `idx_inventory_items_category` on `category` where not deleted.
-- `idx_inventory_items_type` on `item_type` where not deleted.
+| Source | Target |
+|---|---|
+| `inventory_assets.item_id` | `inventory_items.id` |
+| `inventory_location_stock.item_id` | `inventory_items.id` |
+| `inventory_movements.item_id` | `inventory_items.id` |
+| `material_request_lines.item_id` | `inventory_items.id` |

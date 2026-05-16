@@ -1,24 +1,27 @@
-# report_equipment
+# `report_equipment`
 
-Stores equipment usage lines for a daily report.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique equipment line identifier. |
-| `report_id` | `UUID` | FK | Parent report. References [daily_reports](daily_reports.md). |
-| `equipment_name` | `VARCHAR(100)` |  | Equipment name entered or selected by site staff. |
-| `quantity` | `INT` |  | Number of units used. |
-| `hours_used` | `DECIMAL(5,1)` |  | Total operating hours. |
-| `status` | `VARCHAR(20)` |  | Operational status note. |
-| `notes` | `TEXT` |  | Optional details. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `equipment_name` | `VARCHAR(120)` | No | `` |  |
+| `quantity` | `INTEGER` | No | `` |  |
+| `hours_used` | `NUMERIC(6, 2)` | No | `0` |  |
+| `remarks` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [daily_reports](daily_reports.md).
-- May correspond to tagged tools/assets in [inventory_assets](inventory_assets.md), but this table keeps report evidence independent.
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_equipment_report` on `report_id`.
+| Column | References |
+|---|---|
+| `report_id` | `daily_reports.id` |

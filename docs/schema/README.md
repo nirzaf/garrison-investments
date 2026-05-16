@@ -1,69 +1,80 @@
-# PostgreSQL Schema Implementation Intent
+# PostgreSQL Schema Reference
 
-This folder documents the intended PostgreSQL schema for the Construction Internal Portal. It is organized as one file per table so engineers can review relationships and implementation behavior without reading one long schema file.
-
-The schema is designed for PostgreSQL 16 with UUID primary keys, soft deletes on user-facing records, audit logging, approval routing, document/media storage metadata, location-aware inventory, and project-level finance.
+This folder is generated from the current SQLAlchemy model metadata in `backend/app/models`. It is the codebase-derived table reference for the Construction Internal Portal.
 
 ## Table Groups
 
 | Area | Tables |
 |---|---|
-| Identity and access | [users](users.md) |
-| Projects and planning | [projects](projects.md), [project_members](project_members.md), [project_milestones](project_milestones.md), [boq_items](boq_items.md) |
-| Daily reporting | [daily_reports](daily_reports.md), [report_manpower](report_manpower.md), [report_equipment](report_equipment.md), [report_material_consumption](report_material_consumption.md) |
-| Inventory and stores | [suppliers](suppliers.md), [storage_locations](storage_locations.md), [inventory_items](inventory_items.md), [inventory_location_stock](inventory_location_stock.md), [inventory_assets](inventory_assets.md), [inventory_movements](inventory_movements.md) |
-| Documents and media | [documents](documents.md), [document_versions](document_versions.md), [photos](photos.md) |
+| Identity and access | [auth_otp_challenges](auth_otp_challenges.md), [auth_refresh_tokens](auth_refresh_tokens.md), [users](users.md) |
+| Projects and planning | [boq_items](boq_items.md), [project_members](project_members.md), [project_milestones](project_milestones.md), [projects](projects.md) |
+| Daily reporting | [daily_report_approval_history](daily_report_approval_history.md), [daily_reports](daily_reports.md), [report_equipment](report_equipment.md), [report_exports](report_exports.md), [report_manpower](report_manpower.md), [report_material_consumption](report_material_consumption.md), [supervisor_updates](supervisor_updates.md) |
+| Inventory and stores | [inventory_assets](inventory_assets.md), [inventory_items](inventory_items.md), [inventory_location_stock](inventory_location_stock.md), [inventory_movements](inventory_movements.md), [material_request_lines](material_request_lines.md), [material_requests](material_requests.md), [storage_locations](storage_locations.md), [suppliers](suppliers.md) |
+| Documents and media | [document_versions](document_versions.md), [documents](documents.md), [photos](photos.md) |
 | Workflow and communication | [approvals](approvals.md), [notifications](notifications.md) |
 | Accounts and finance | [invoices](invoices.md), [payments](payments.md) |
-| Governance | [activity_log](activity_log.md) |
+| Data import and governance | [activity_log](activity_log.md), [import_batches](import_batches.md) |
 
 ## Relationship Map
 
 ```mermaid
 erDiagram
-  users ||--o{ projects : creates
-  users ||--o{ project_members : assigned
-  projects ||--o{ project_members : has
-  projects ||--o{ project_milestones : plans
-  projects ||--o{ boq_items : budgets
-  projects ||--o{ daily_reports : receives
-  projects ||--o{ storage_locations : may_have_site_store
-  projects ||--o{ documents : stores
-  projects ||--o{ invoices : costs
-
-  daily_reports ||--o{ report_manpower : records
-  daily_reports ||--o{ report_equipment : records
-  daily_reports ||--o{ report_material_consumption : records
-  inventory_items ||--o{ report_material_consumption : consumed
-
-  suppliers ||--o{ inventory_items : supplies
-  inventory_items ||--o{ inventory_location_stock : stocked_at
-  storage_locations ||--o{ inventory_location_stock : holds
-  inventory_items ||--o{ inventory_assets : serialized_as
-  storage_locations ||--o{ inventory_assets : current_location
-  inventory_items ||--o{ inventory_movements : moves
-  inventory_assets ||--o{ inventory_movements : asset_moves
-  storage_locations ||--o{ inventory_movements : from_or_to
-
-  documents ||--o{ document_versions : versions
-  users ||--o{ documents : uploads
-  users ||--o{ photos : uploads
-
-  users ||--o{ approvals : requests
-  users ||--o{ approvals : decides
-  approvals ||--o{ inventory_movements : authorizes
-  approvals ||--o{ invoices : authorizes
-
-  invoices ||--o{ payments : paid_by
-  users ||--o{ notifications : receives
-  users ||--o{ activity_log : performs
+  users ||--o{ activity_log : references
+  projects ||--o{ approvals : references
+  users ||--o{ approvals : references
+  users ||--o{ auth_otp_challenges : references
+  users ||--o{ auth_refresh_tokens : references
+  projects ||--o{ boq_items : references
+  project_milestones ||--o{ boq_items : references
+  daily_reports ||--o{ daily_report_approval_history : references
+  users ||--o{ daily_report_approval_history : references
+  projects ||--o{ daily_reports : references
+  users ||--o{ daily_reports : references
+  documents ||--o{ document_versions : references
+  users ||--o{ document_versions : references
+  projects ||--o{ documents : references
+  users ||--o{ documents : references
+  users ||--o{ import_batches : references
+  inventory_items ||--o{ inventory_assets : references
+  storage_locations ||--o{ inventory_assets : references
+  inventory_items ||--o{ inventory_location_stock : references
+  storage_locations ||--o{ inventory_location_stock : references
+  inventory_items ||--o{ inventory_movements : references
+  inventory_assets ||--o{ inventory_movements : references
+  storage_locations ||--o{ inventory_movements : references
+  projects ||--o{ inventory_movements : references
+  users ||--o{ inventory_movements : references
+  projects ||--o{ invoices : references
+  suppliers ||--o{ invoices : references
+  users ||--o{ invoices : references
+  material_requests ||--o{ material_request_lines : references
+  inventory_items ||--o{ material_request_lines : references
+  projects ||--o{ material_requests : references
+  users ||--o{ material_requests : references
+  storage_locations ||--o{ material_requests : references
+  users ||--o{ notifications : references
+  invoices ||--o{ payments : references
+  users ||--o{ payments : references
+  users ||--o{ photos : references
+  projects ||--o{ project_members : references
+  users ||--o{ project_members : references
+  projects ||--o{ project_milestones : references
+  users ||--o{ projects : references
+  daily_reports ||--o{ report_equipment : references
+  daily_reports ||--o{ report_exports : references
+  users ||--o{ report_exports : references
+  daily_reports ||--o{ report_manpower : references
+  daily_reports ||--o{ report_material_consumption : references
+  boq_items ||--o{ report_material_consumption : references
+  projects ||--o{ storage_locations : references
+  projects ||--o{ supervisor_updates : references
+  users ||--o{ supervisor_updates : references
 ```
 
 ## Cross-Cutting Rules
 
-- Every table uses `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()` unless noted.
-- User-facing records use `deleted_at TIMESTAMPTZ` for soft delete where historical traceability matters.
-- Records with mutable business state use `created_at` and `updated_at`.
-- Approval-controlled records store the workflow in [approvals](approvals.md) and keep the business record immutable after approval unless an audited override is used.
-- Files are stored in object storage; PostgreSQL stores metadata and object keys only.
-- Inventory current location is warehouse/site only. Person and vehicle custody are intentionally out of scope for this version.
+- Tables use UUID primary keys where represented by the model metadata.
+- Timestamped business records inherit `created_at` and `updated_at`.
+- Soft-deletable business records include `deleted_at`.
+- Files are stored in object storage; PostgreSQL stores metadata and object keys.
+- Launch and production evidence remains documented separately in `../09_Production_Readiness_Evidence.md`.

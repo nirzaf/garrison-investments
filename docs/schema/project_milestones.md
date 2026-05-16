@@ -1,32 +1,38 @@
-# project_milestones
+# `project_milestones`
 
-Stores project phases, milestone dates, and Gantt-style progress checkpoints.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique milestone identifier. |
-| `project_id` | `UUID` | FK | Parent project. References [projects](projects.md). |
-| `name` | `VARCHAR(150)` |  | Milestone or phase name. |
-| `discipline` | `VARCHAR(50)` |  | Discipline such as civil, MEP, fit-out, or procurement. |
-| `planned_start_date` | `DATE` |  | Planned start. |
-| `planned_end_date` | `DATE` |  | Planned finish. |
-| `actual_start_date` | `DATE` |  | Actual start when work begins. |
-| `actual_end_date` | `DATE` |  | Actual finish when complete. |
-| `progress_percentage` | `DECIMAL(5,2)` |  | Progress for this milestone. |
-| `status` | `VARCHAR(30)` |  | `not_started`, `in_progress`, `delayed`, `completed`, or `blocked`. |
-| `sort_order` | `INT` |  | Display order in project timeline. |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `name` | `VARCHAR(150)` | No | `` |  |
+| `discipline` | `VARCHAR(50)` | Yes | `` |  |
+| `planned_start_date` | `DATE` | Yes | `` |  |
+| `planned_end_date` | `DATE` | Yes | `` |  |
+| `actual_start_date` | `DATE` | Yes | `` |  |
+| `actual_end_date` | `DATE` | Yes | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
+| `status` | `VARCHAR(30)` | No | `'not_started'` |  |
+| `sort_order` | `INTEGER` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [projects](projects.md).
-- Progress can be compared with approved [daily_reports](daily_reports.md) and [boq_items](boq_items.md).
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_project_milestones_project` on `project_id, sort_order`.
-- `idx_project_milestones_status` on `status` where `deleted_at IS NULL`.
+| Column | References |
+|---|---|
+| `project_id` | `projects.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `boq_items.milestone_id` | `project_milestones.id` |

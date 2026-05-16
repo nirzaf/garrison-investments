@@ -1,32 +1,34 @@
-# inventory_assets
+# `inventory_assets`
 
-Stores individual tagged tools/items and their current warehouse/site location.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique asset identifier. |
-| `item_id` | `UUID` | FK | Catalog item. References [inventory_items](inventory_items.md). |
-| `asset_tag` | `VARCHAR(50)` | Unique | Physical tag/label used to identify the tool/item. |
-| `serial_number` | `VARCHAR(100)` |  | Manufacturer serial number, if available. |
-| `current_location_id` | `UUID` | FK | Current warehouse/site. References [storage_locations](storage_locations.md). |
-| `project_id` | `UUID` | FK | Optional current project association. References [projects](projects.md). |
-| `status` | `VARCHAR(20)` |  | `available`, `reserved`, `issued`, `in_repair`, or `retired`. |
-| `condition` | `VARCHAR(30)` |  | Current condition such as good, damaged, calibration due. |
-| `last_movement_id` | `UUID` | FK | Last movement record. References [inventory_movements](inventory_movements.md). |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `item_id` | `UUID` | No | `` | inventory_items.id |
+| `asset_tag` | `VARCHAR(80)` | No | `` |  |
+| `current_location_id` | `UUID` | No | `` | storage_locations.id |
+| `condition` | `VARCHAR(40)` | No | `'good'` |  |
+| `status` | `VARCHAR(30)` | No | `'active'` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [inventory_items](inventory_items.md).
-- Currently located at [storage_locations](storage_locations.md).
-- Optionally associated with [projects](projects.md).
-- Has movement history in [inventory_movements](inventory_movements.md).
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_assets_current_location` on `current_location_id` where not deleted.
-- `idx_assets_status` on `status` where not deleted.
+| Column | References |
+|---|---|
+| `item_id` | `inventory_items.id` |
+| `current_location_id` | `storage_locations.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `inventory_movements.asset_id` | `inventory_assets.id` |

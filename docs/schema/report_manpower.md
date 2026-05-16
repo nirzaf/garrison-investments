@@ -1,25 +1,26 @@
-# report_manpower
+# `report_manpower`
 
-Stores manpower lines for a daily report.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique manpower line identifier. |
-| `report_id` | `UUID` | FK | Parent report. References [daily_reports](daily_reports.md). |
-| `labor_type` | `VARCHAR(50)` |  | Skilled, unskilled, operator, technician, or similar. |
-| `trade` | `VARCHAR(100)` |  | Mason, carpenter, electrician, plumber, etc. |
-| `count` | `INT` |  | Number of workers; must be greater than zero. |
-| `hours_worked` | `DECIMAL(4,1)` |  | Regular hours worked. |
-| `overtime_hours` | `DECIMAL(4,1)` |  | Overtime hours. |
-| `notes` | `TEXT` |  | Optional context. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `report_id` | `UUID` | No | `` | daily_reports.id |
+| `trade` | `VARCHAR(100)` | No | `` |  |
+| `count` | `INTEGER` | No | `` |  |
+| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [daily_reports](daily_reports.md).
-- Feeds accounts/manpower cost reporting.
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_manpower_report` on `report_id`.
+| Column | References |
+|---|---|
+| `report_id` | `daily_reports.id` |
