@@ -202,8 +202,7 @@ export function SupervisorUpdatePage() {
     try {
       const values = watch();
       const updateId =
-        savedDraftId ??
-        (await createSupervisorUpdate(buildPayload(values as UpdateFormValues))).id;
+        savedDraftId ?? (await createSupervisorUpdate(buildPayload(values as UpdateFormValues))).id;
       if (!savedDraftId) setSavedDraftId(updateId);
       const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
       const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
@@ -260,8 +259,7 @@ export function SupervisorUpdatePage() {
     setNotice(null);
     setIsSaving(true);
     try {
-      const updateId =
-        savedDraftId ?? (await createSupervisorUpdate(buildPayload(values))).id;
+      const updateId = savedDraftId ?? (await createSupervisorUpdate(buildPayload(values))).id;
       await submitSupervisorUpdate(updateId);
       setSavedDraftId(null);
       reset(defaultValues);
@@ -488,7 +486,9 @@ function Field({ children, error, label }: { children: ReactNode; error?: string
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-theme-text-secondary">{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span> : null}
+      {error ? (
+        <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span>
+      ) : null}
     </label>
   );
 }
