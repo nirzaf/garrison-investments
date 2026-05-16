@@ -62,6 +62,9 @@ jobs:
       - name: Alembic migrations
         run: alembic upgrade head
 
+      - name: Launch import template validation
+        run: python scripts/validate_import_sources.py --check
+
       - name: Pytest
         run: pytest -q
 

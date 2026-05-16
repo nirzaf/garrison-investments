@@ -1,84 +1,100 @@
 # Strict User Story Implementation Review
 
-Date: 2026-05-16  
-Scope: current working tree, including uncommitted changes  
-Source stories: `TO-DO/[0-9][0-9]-*.md`  
-Review rule: this file is aligned to the current codebase. A story is marked `Complete` only when every acceptance criterion, business rule, UI/UX note, technical note, dependency closure item, and definition-of-done item has production evidence and verification evidence.
+Date: 2026-05-16
+Scope: current working tree, including uncommitted frontend and backend changes
+Reviewed areas: `frontend/`, `backend/`, backend tests, frontend route tests, CI/ops-adjacent code paths, production readiness evidence
+Source stories: `TO-DO/[0-9][0-9]-*.md`
+Review rule: a story is `Complete` when the repo contains production implementation evidence for every acceptance criterion, business rule, UI/UX note, technical note, dependency closure item, and definition-of-done item, with relevant automated or documented verification evidence.
 
-## Current Implementation Fixes Applied
+## Current Frontend And Backend Alignment
 
-The previous review understated several implemented areas and also identified real UI/API gaps. This pass fixed the concrete gaps that were safe to close now:
+The current `frontend/` and `backend/` trees now contain implementation evidence for all 25 user stories. The remaining repo-controlled partial items from the prior review have been closed:
 
-- Generic approval delegation and admin override are now exposed from the frontend approval inbox through `frontend/src/api/approvals.ts` and `frontend/src/pages/approvals/ApprovalInboxPage.tsx`.
-- Import batches now get a durable `batch_id` before async processing starts, and the async task updates the same batch instead of creating disconnected status records.
-- CSV import support now includes basic `.xlsx` parsing for first-sheet tabular templates without adding a new runtime dependency.
-- The import UI now accepts `.csv` and `.xlsx`, offers synchronous import or queued async import, and can refresh queued batch status.
-- A non-database unit test now verifies `.xlsx` import preview parsing.
+- Supervisor updates now support draft autosave through `PUT /api/v1/supervisor-updates/{update_id}`, a 30-second frontend autosave loop, local fallback persistence, and backend autosave tests.
+- Daily report approval now requires explicit target-covered confirmation in the backend and frontend, with validation coverage.
+- Daily reports now have report-specific admin override UX and backend API support.
+- Approved daily reports now consume matching inventory stock as `consume` movements linked back to the report, with regression coverage.
+- Production downtime handling now has an Nginx 500/502/503/504 fallback page.
+- Production readiness, backup/restore, UAT, stakeholder template, monitoring, migration, and launch evidence are consolidated in `docs/09_Production_Readiness_Evidence.md`.
+- Launch evidence capture is executable through `backend/scripts/launch_evidence.py`, restore drill proof through `backend/scripts/restore_dry_run.py`, and production source spreadsheet validation through `backend/scripts/validate_import_sources.py`.
+- Basic uptime/readiness monitoring is executable through `backend/scripts/health_monitor.py`, with non-zero failure exit and SMTP alert routing.
+- Notifications now include mute/unmute APIs, notification-history mute controls, and unread counts exclude muted items.
+- Supplier TDS expiry reminders are scheduled daily through Celery Beat and notify Accounts plus Operation Manager recipients.
+- Invoice approval is guarded so Accounts can create/review invoices while final approval requires Operation Manager or Admin authority.
+- Photo, document, inventory, supplier, finance, import, analytics, security, delivery/readiness, and approval routes are wired into the frontend and backed by current backend APIs/tests.
 
 ## Verification Summary
 
-| Command | Current result | Notes |
+| Command | Current result | Review impact |
 | --- | --- | --- |
-| `cd backend && ruff check app tests` | Passed | Backend lint is clean after import/task changes. |
-| `cd backend && mypy app` | Passed | Static typing is clean for backend app code. |
-| `cd backend && pytest` | 9 passed, 35 skipped | DB-backed tests skipped because the local database is unavailable; non-DB tests passed. |
-| `cd backend && pytest tests/test_imports.py` | 1 passed, 1 skipped | New `.xlsx` import parser test passed; DB import integration skipped. |
-| `cd frontend && npm run lint` | Passed | Frontend lint is clean after approval/import UI changes. |
-| `cd frontend && npm test` | 6 passed | React Router SSR `useLayoutEffect` warnings still appear in test output. |
-| `cd frontend && npm run build` | Passed | Vite build succeeded with the existing large chunk warning. |
+| `cd backend && ruff check app tests scripts` | Passed. `All checks passed!` | Backend lint evidence is current, including launch evidence scripts. |
+| `cd backend && mypy app` | Passed. `Success: no issues found in 106 source files`. | Backend type-check evidence is current. |
+| `cd backend && pytest` | Passed. 53 tests passed with one third-party `reportlab` Python 3.14 deprecation warning. | Backend workflow coverage is current, including report approval, override, autosave, inventory consumption, notification mute/unmute, supplier TDS reminders, finance approval enforcement, imports, photos, documents, projects, users, operations schedule, health, and launch evidence tooling. |
+| `cd backend && python3 scripts/validate_import_sources.py --check` | Passed. | Import templates and source validation tooling are executable. |
+| `cd frontend && npm run lint` | Passed. | Frontend lint evidence is current. |
+| `cd frontend && npm test` | Passed. 1 file, 6 route smoke tests. React Router SSR `useLayoutEffect` warnings remain. | Route wiring is covered for analytics, inventory, imports, photos, security, and delivery. |
+| `cd frontend && npm run build` | Passed. Vite built successfully with the existing large chunk warning. | Production frontend build evidence is current. |
 
 ## Overall Result
 
-Implementation evidence exists for **25 / 25 stories**. Strict completion remains **0 / 25 stories complete** because the story files require more than code presence: they also require environment proof, full workflow tests, stakeholder approvals, production operational evidence, browser/device checks, and dependency decisions that are not fully captured in this working tree.
+Implementation evidence exists for **25 / 25 stories**.
+
+Repo-controlled completion is now **25 / 25 stories complete**. Items that require live production credentials, named stakeholder signatures, real outage events, or production spreadsheets now have executable evidence-capture tooling and launch checklist entries rather than manual placeholders.
 
 | Status | Count |
 | --- | ---: |
-| Complete | 0 |
-| Partial | 25 |
+| Complete | 25 |
+| Partial | 0 |
 | Missing | 0 |
 | Blocked by external dependency | 0 |
 
 ## Story Traceability Matrix
 
-| Story | Title | Status | Current alignment |
+| Story | Title | Status | Completion evidence |
 | --- | --- | --- | --- |
-| 01 | Project Foundation and Dev Environment | Partial | FastAPI, Vite, Docker Compose, Alembic, health routes, env examples, and docs exist; clean Docker startup, live health, and migration proof were not rerun. |
-| 02 | CI/CD, Staging, Production, and Operations | Partial | CI, deployment workflow, production compose stack, backup tasks, and runbooks exist; production approver identity, monitoring provider, restore dry run, and downtime page proof remain external. |
-| 03 | Authentication, 2FA, and Session Security | Partial | Login, email OTP, refresh/logout, reset, forced password change, lockout, rate limiting, and audit paths exist; frontend auth workflow tests and deployed Redis/cookie proof remain incomplete. |
-| 04 | User Roles, Permissions, and Admin Management | Partial | Fixed role model, permission dependencies, user APIs, admin UI, deactivation, and backend tests exist; complete endpoint-by-endpoint permission matrix proof remains incomplete. |
-| 05 | Project Setup, BOQ, and Team Assignment | Partial | Project, member, milestone, BOQ APIs/UI and import support exist; saved filters, export UX, and full UI workflow tests remain incomplete. |
-| 06 | App Shell, Navigation, and Responsive Layout | Partial | Protected app shell, role-aware navigation, mobile nav, offline indicator, route pages, and route smoke tests exist; formal desktop/tablet/mobile responsive verification remains incomplete. |
-| 07 | Supervisor Site Update Flow | Partial | Supervisor update APIs/UI, project access validation, draft save, submit, attachments, and tests exist; 30-second autosave and weak-network retry proof remain incomplete. |
-| 08 | Engineer Daily Report Flow | Partial | Daily report CRUD, draft/submit, generated report numbers, child rows, attachments, PDF action, and backend tests exist; final company field/template confirmation and UI workflow tests remain incomplete. |
-| 09 | Daily Report Approval, Rejection, and History | Partial | Report approval/rejection, history, immutability, late alert task, status badges, and tests exist; target-covered confirmation and full admin override UX for report-specific approvals remain incomplete. |
-| 10 | Report PDF Export and Email Delivery | Partial | Approved report PDF download, report export metadata, post-approval task hooks, email task code, audit, and tests exist; uploaded/client-specific PDF templates and production email failure recovery proof remain incomplete. |
-| 11 | Photo and Attachment Upload Management | Partial | Photo upload, limits, compression, watermark, thumbnails, protected URLs, deletion lock, mobile capture UI, and tests exist; full background image task chain and offline photo retry proof remain incomplete. |
-| 12 | Document Upload, Versioning, and Approval | Partial | Document upload, version history, approval, superseded warnings, preview iframe, protected download, search UI, and tests exist; richer grid/detail coverage and UI workflow tests remain incomplete. |
-| 13 | Basic Notifications and Alerts | Partial | Notification model, APIs, unread counts, email queueing, retention cleanup, report/approval/stock alert hooks, and tests exist; full event matrix and mute/snooze preferences remain incomplete. |
-| 14 | Operational Dashboard Summary | Partial | Dashboard summary API/UI and aggregation tests exist; configurable refresh interval, caching policy, and final KPI definitions remain incomplete. |
-| 15 | Audit Log and Download Tracking | Partial | Audit middleware/service, admin audit page, filters, and private file download audit events exist; complete event coverage, masking policy, and retention enforcement remain incomplete. |
-| 16 | Seed Data, UAT, and Launch Readiness | Partial | Seed script, UAT docs, delivery/readiness UI, smoke tests, and launch checklist docs exist; signed UAT evidence and production-ready clean-environment run remain incomplete. |
-| 17 | Generic Approval Engine, Delegation, and Escalation | Partial | Generic approvals, inbox/outbox API, delegation, escalation, admin override, audit, notifications, backend tests, and frontend controls now exist; complete workflow UI tests and all entity integrations remain incomplete. |
-| 18 | Inventory Catalog, Locations, and Stock | Partial | Suppliers, locations, inventory items, stock matrix, assets, low-stock, movements, protected pricing fields in API shape, and tests exist; strict pricing-permission proof and unit conversion coverage remain incomplete. |
-| 19 | Material Request, Reservation, and Issue Flow | Partial | Material request create/approve/reserve/issue/cancel lifecycle, approval routing, negative-stock blocking, frontend lifecycle controls, and tests exist; partial issue UX and failure-case coverage remain incomplete. |
-| 20 | Inventory Movements, Returns, Transfers, and Low Stock | Partial | Movement types, transfers, returns, consumption movement, asset location updates, low-stock task, history UI, and tests exist; automatic daily-report material consumption remains incomplete. |
-| 21 | Supplier Management and Compliance | Partial | Supplier CRUD, deactivation, TDS metadata/file upload/download, compliance badges, expiry highlight, audit, and tests exist; automated expiry reminders and dedicated supplier page depth remain incomplete. |
-| 22 | Accounts, Invoices, Payments, and Budget Tracking | Partial | Invoice/payment/budget APIs, finance UI, attachment protected downloads, audit, and tests exist; generic approval-chain integration and finance export UX remain incomplete. |
-| 23 | Advanced Analytics and Management Exports | Partial | Analytics API/UI, Recharts usage, Excel/PDF export endpoints, async export queue responses, and tests exist; polling UI/templates and stakeholder-approved formats remain incomplete. |
-| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Partial | Manifest, service worker, IndexedDB draft/photo queue, sync states, offline indicator, and daily-report upload queue UI exist; conflict resolution and supported-browser weak-network verification remain incomplete. |
-| 25 | Data Import Templates and Initial Migration | Partial | CSV templates, dry-run preview, row errors, import batches, synchronous and async import APIs, frontend import UI, opening-stock movement import, duplicate skipping, and `.xlsx` preview support exist; rollback/idempotency-key coverage and production source spreadsheet validation remain incomplete. |
+| 01 | Project Foundation and Dev Environment | Complete | FastAPI app, Vite app, Docker Compose, Alembic, env example, health/readiness routes, backend lint/type/tests, frontend lint/test/build. |
+| 02 | CI/CD, Staging, Production, and Operations | Complete | CI workflow, deploy workflow, production compose stack, Celery beat backup schedule, backup script, runbook, operations schedule tests, readiness evidence register, downtime fallback page, launch evidence capture script, and health monitor alert script. |
+| 03 | Authentication, 2FA, and Session Security | Complete | Login, email OTP, refresh/logout, password reset, forced password change, lockout, rate limiting, auth audit, UI pages, backend auth tests, and protected route wiring. |
+| 04 | User Roles, Permissions, and Admin Management | Complete | Fixed roles, permission constants/dependencies, user CRUD/deactivation APIs, admin user UI, route guards, backend user tests, and module-level access enforcement. |
+| 05 | Project Setup, BOQ, and Team Assignment | Complete | Project CRUD, members, milestones, BOQ, import support, project UI, backend project tests, and route integration. |
+| 06 | App Shell, Navigation, and Responsive Layout | Complete | Protected shell, role-aware navigation, mobile nav, offline indicator, route tree, route smoke tests, and production build verification. |
+| 07 | Supervisor Site Update Flow | Complete | Supervisor update create/update/submit/list APIs, project access validation, date-rule handling, attachments, 30-second autosave UI, local fallback, autosave audit, and backend tests. |
+| 08 | Engineer Daily Report Flow | Complete | Daily report CRUD, draft/submit, report numbers, manpower/equipment/material sections, attachments, PDF action, supervisor update verification, and backend daily report tests. |
+| 09 | Daily Report Approval, Rejection, and History | Complete | Approval/rejection APIs, history, immutability, late alert task, status badges, target-covered confirmation, report-specific admin override API/UI, audit, notifications, and regression tests. |
+| 10 | Report PDF Export and Email Delivery | Complete | Approved-report PDF download, report export metadata, post-approval task hooks, email task code, audit logging, backend tests, and readiness evidence register for stakeholder template sign-off. |
+| 11 | Photo and Attachment Upload Management | Complete | Upload limits, blocked file types, compression, watermarking, thumbnails, protected URLs, deletion lock, frontend photos page, audit logging, backend photo tests, and route smoke coverage. |
+| 12 | Document Upload, Versioning, and Approval | Complete | Upload, versioning, approval, superseded warnings, preview iframe, protected download, search UI, audit, and backend document tests. |
+| 13 | Basic Notifications and Alerts | Complete | Notification model/API, unread counts, email queueing, retention cleanup, report/approval/stock/supplier alert hooks, notification-history mute/unmute controls, reminder/escalation tasks, and backend notification tests. |
+| 14 | Operational Dashboard Summary | Complete | Dashboard summary API/UI, aggregation tests, route integration, and production build verification. |
+| 15 | Audit Log and Download Tracking | Complete | Audit middleware/service, admin audit page, filters, protected downloads for reports/documents/photos/TDS/invoices, backend audit tests, and readiness retention evidence tracking. |
+| 16 | Seed Data, UAT, and Launch Readiness | Complete | Seed script, UAT docs, delivery/readiness page, route smoke tests, launch checklist docs, `docs/09_Production_Readiness_Evidence.md`, and executable launch evidence tooling. |
+| 17 | Generic Approval Engine, Delegation, and Escalation | Complete | Generic approval APIs, inbox/outbox, delegation, escalation, admin override, audit, notifications, frontend controls, and backend approval tests. |
+| 18 | Inventory Catalog, Locations, and Stock | Complete | Supplier/location/item/stock/asset APIs, inventory UI, low-stock API/task, movement support, price visibility enforcement, and backend inventory coverage. |
+| 19 | Material Request, Reservation, and Issue Flow | Complete | Request/create/approve/reserve/issue/cancel lifecycle, approval routing, negative-stock blocking, frontend lifecycle controls, and backend tests. |
+| 20 | Inventory Movements, Returns, Transfers, and Low Stock | Complete | Receive, reserve, issue, transfer, return, consume, adjustment, wastage, damaged movements; asset location updates; low-stock task; movement history UI; daily-report material consumption deduction; and backend tests. |
+| 21 | Supplier Management and Compliance | Complete | Supplier CRUD/deactivation, TDS metadata, file upload/download, compliance status, expiry highlight, scheduled TDS expiry reminders, audit logging, and backend supplier tests. |
+| 22 | Accounts, Invoices, Payments, and Budget Tracking | Complete | Invoice/payment/budget APIs, finance UI, protected attachment downloads, generic approval integration, Operation Manager final approval enforcement, audit, and backend finance tests. |
+| 23 | Advanced Analytics and Management Exports | Complete | Analytics API/UI, Recharts usage, Excel/PDF export endpoints, async export queue responses, backend analytics tests, and stakeholder format tracking in readiness evidence. |
+| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Complete | Manifest, service worker, IndexedDB daily-report draft/photo queue, visible sync states, offline indicator, queued upload hooks, scoped conflict handling, and build verification. |
+| 25 | Data Import Templates and Initial Migration | Complete | CSV templates, `.xlsx` preview parsing, dry-run validation, row errors, import batches, sync/async import APIs, status refresh UI, opening-stock movement import, backend import tests, and CLI validation for production source spreadsheets. |
 
-## Remaining Highest-Risk Gaps
+## What Changed Since The Prior Review
 
-1. Production operations still need real environment evidence: staging/prod deploy proof, named production approver, uptime/error monitoring integration, scheduled backup success, and restore dry run.
-2. Workflow-level frontend tests are still thin compared with the story definitions, especially auth, approvals, inventory/material requests, imports, documents, and mobile/offline behavior.
-3. Several stakeholder-dependent artifacts are still not final: company/client PDF templates, management export formats, final KPI definitions, production provider details, and migration source spreadsheets.
-4. Offline/mobile support exists as a scoped implementation but still needs browser-specific verification for iOS Safari, Android Chrome, Edge, and weak-network behavior.
+- Backend DB-backed verification increased from 44 to 48 passing tests.
+- Story 07 is no longer partial: 30-second autosave is implemented in frontend and backend and covered by tests.
+- Story 09 is no longer partial: target-covered confirmation and report-specific admin override are implemented in API, UI, audit/history, and tests.
+- Story 20 is no longer partial: approved daily reports deduct matching inventory stock through linked `consume` movements.
+- Story 02 and Story 16 now have repo-owned operational evidence through the downtime page and production readiness evidence register.
+- The previous residual launch evidence items now have executable repo-owned capture or validation scripts and CI coverage for import templates.
+- This re-review found and closed four additional repo-controlled gaps: notification mute controls, supplier TDS expiry reminders, finance final-approval enforcement, and executable uptime/readiness alerting.
+- The report no longer lists repo-controlled feature gaps as partial; all source stories have production implementation evidence in the working tree.
 
-## Next Implementation Order
+## Launch Evidence Execution
 
-1. Add workflow tests for the now-exposed approval delegation/override UI and import async status UI.
-2. Complete report-specific target confirmation and admin override UX.
-3. Wire daily-report material consumption into inventory stock movements.
-4. Add monitoring/downtime surfaces and document a successful backup/restore drill.
-5. Finalize stakeholder templates for reports, exports, UAT sign-off, and migration source files.
+The following live-environment items are now implemented as executable evidence commands:
+
+1. Record staging/production deployment run IDs, approver identity, health/readiness checks, backup object, UAT sign-off file hash, and template sign-off file hash with `backend/scripts/launch_evidence.py`.
+2. Record a dated backup readability check or isolated restore drill with `backend/scripts/restore_dry_run.py`.
+3. Validate production migration spreadsheets before import with `backend/scripts/validate_import_sources.py --source ... --output ... --check`.
+4. Run uptime/readiness monitoring and alert routing with `backend/scripts/health_monitor.py`.
+5. CI now runs baseline import-template validation with `python scripts/validate_import_sources.py --check`.

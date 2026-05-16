@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.inventory import InventoryMovement
 from app.models.report_export import ReportExport
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -190,6 +191,75 @@ def report_payload(project_id: str, supervisor_update_id: str | None = None) -> 
     }
 
 
+async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: str) -> dict:
+    store_email, store_password = await create_user("store_keeper")
+    store_token = await login_for_token(client, store_email, store_password)
+    suffix = uuid4().hex[:6]
+    supplier = (
+        await client.post(
+            "/api/v1/suppliers",
+            json={
+                "name": f"Concrete Supplier {suffix}",
+                "category": "Civil",
+                "rating": "A",
+                "payment_terms": "30 days",
+                "contact_person": "Supplier Contact",
+                "phone": "+97455550666",
+                "email": f"supplier-{suffix}@example.com",
+                "address": "Industrial Area",
+                "tax_registration_number": f"TAX-{suffix}",
+                "tds_certificate_number": "TDS-001",
+                "tds_expiry_date": "2027-05-16",
+                "compliance_status": "compliant",
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+    ).json()
+    location = (
+        await client.post(
+            "/api/v1/inventory/locations",
+            json={
+                "name": f"Project Store {suffix}",
+                "code": f"PS-{suffix}",
+                "location_type": "project_site",
+                "project_id": project_id,
+                "address": "Site",
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+    ).json()
+    item = (
+        await client.post(
+            "/api/v1/inventory/items",
+            json={
+                "name": "Concrete",
+                "item_code": f"CON-{suffix}",
+                "category": "Civil",
+                "item_type": "consumable",
+                "unit": "m2",
+                "minimum_stock": "5",
+                "reorder_level": "5",
+                "unit_cost": "12.50",
+                "supplier_id": supplier["id"],
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+    ).json()
+    await client.post(
+        "/api/v1/inventory/movements",
+        json={
+            "item_id": item["id"],
+            "movement_type": "receive",
+            "quantity": "20",
+            "to_location_id": location["id"],
+            "project_id": project_id,
+            "notes": "Opening stock",
+        },
+        headers={"Authorization": f"Bearer {store_token}"},
+    )
+    return {"store_token": store_token, "item_id": item["id"], "location_id": location["id"]}
+
+
 async def test_engineer_can_save_and_submit_daily_report() -> None:
     await skip_if_database_unavailable()
 
@@ -287,7 +357,7 @@ async def test_project_manager_can_approve_report_and_lock_edits() -> None:
         )
         approve_response = await client.post(
             f"/api/v1/reports/{submitted['id']}/approve",
-            json={"comments": "Target covered."},
+            json={"comments": "Target covered.", "target_covered": True},
             headers={"Authorization": f"Bearer {setup['manager_token']}"},
         )
         edit_response = await client.put(
@@ -303,6 +373,114 @@ async def test_project_manager_can_approve_report_and_lock_edits() -> None:
         assert approved["status"] == "approved"
         assert any(item["decision"] == "approved" for item in approved["approval_history"])
         assert edit_response.status_code == 409
+
+
+async def test_approval_requires_target_covered_confirmation() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+
+        response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/approve",
+            json={"comments": "Reviewed without confirmation."},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error_code"] == "DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED"
+
+
+async def test_report_approval_consumes_matching_inventory_stock() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        stock = await setup_report_consumption_stock(client, setup["project_id"])
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        approved = await client.post(
+            f"/api/v1/reports/{submitted['id']}/approve",
+            json={"comments": "Target covered.", "target_covered": True},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert approved.status_code == 200
+
+    async with AsyncSessionLocal() as session:
+        movement = await session.scalar(
+            select(InventoryMovement).where(
+                InventoryMovement.item_id == UUID(stock["item_id"]),
+                InventoryMovement.reference_id == UUID(report["id"]),
+                InventoryMovement.movement_type == "consume",
+            )
+        )
+        assert movement is not None
+        assert str(movement.quantity) == "12.000"
+
+
+async def test_admin_can_override_submitted_report_with_target_confirmation() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        admin_email, admin_password = await create_user("admin")
+        admin_token = await login_for_token(client, admin_email, admin_password)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/override",
+            json={
+                "decision": "approved",
+                "reason": "Emergency management approval.",
+                "target_covered": True,
+            },
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+
+        assert response.status_code == 200
+        overridden = response.json()
+        assert overridden["status"] == "approved"
+        assert any(
+            item["decision"] == "approved"
+            and item["comments"] == "Admin override: Emergency management approval."
+            for item in overridden["approval_history"]
+        )
 
 
 async def test_approved_report_can_be_downloaded_as_pdf() -> None:
@@ -326,7 +504,7 @@ async def test_approved_report_can_be_downloaded_as_pdf() -> None:
         approved = (
             await client.post(
                 f"/api/v1/reports/{submitted['id']}/approve",
-                json={"comments": "Ready for archive."},
+                json={"comments": "Ready for archive.", "target_covered": True},
                 headers={"Authorization": f"Bearer {setup['manager_token']}"},
             )
         ).json()
@@ -368,7 +546,7 @@ async def test_report_email_updates_export_status_when_delivery_succeeds(monkeyp
         approved = (
             await client.post(
                 f"/api/v1/reports/{submitted['id']}/approve",
-                json={"comments": "Ready for archive."},
+                json={"comments": "Ready for archive.", "target_covered": True},
                 headers={"Authorization": f"Bearer {setup['manager_token']}"},
             )
         ).json()

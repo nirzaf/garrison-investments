@@ -160,6 +160,42 @@ async def test_supervisor_can_create_and_submit_update_for_assigned_project() ->
         assert list_response.json()["total"] >= 1
 
 
+async def test_supervisor_can_autosave_existing_draft_update() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        project, supervisor_token, _ = await setup_assigned_supervisor_project(client)
+        payload = {
+            "project_id": project["id"],
+            "update_date": str(utc_now().date()),
+            "day_type": "weekday",
+            "work_location": "Zone A",
+            "attendance_count": 12,
+            "overtime_hours": "2",
+            "progress_notes": "Completed shuttering.",
+            "delay_notes": "No delays.",
+            "required_notes": "Safety toolbox talk completed.",
+            "attachment_refs": [{"name": "zone-a.jpg", "kind": "photo"}],
+        }
+        update = (
+            await client.post(
+                "/api/v1/supervisor-updates",
+                json=payload,
+                headers={"Authorization": f"Bearer {supervisor_token}"},
+            )
+        ).json()
+        autosave_response = await client.put(
+            f"/api/v1/supervisor-updates/{update['id']}",
+            json={**payload, "attendance_count": 14, "progress_notes": "Autosaved progress."},
+            headers={"Authorization": f"Bearer {supervisor_token}"},
+        )
+
+        assert autosave_response.status_code == 200
+        autosaved = autosave_response.json()
+        assert autosaved["attendance_count"] == 14
+        assert autosaved["progress_notes"] == "Autosaved progress."
+
+
 async def test_unassigned_supervisor_cannot_create_update() -> None:
     await skip_if_database_unavailable()
     op_email, op_password = await create_user("operation_manager")

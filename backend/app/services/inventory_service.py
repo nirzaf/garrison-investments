@@ -5,6 +5,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.daily_report import DailyReport
 from app.models.inventory import (
     InventoryAsset,
     InventoryItem,
@@ -190,6 +191,54 @@ class InventoryService:
         if commit:
             await self.session.commit()
         return movement
+
+    async def consume_daily_report_materials(
+        self,
+        report: DailyReport,
+        actor: User,
+    ) -> int:
+        consumed = 0
+        for line in report.material_consumption:
+            item: InventoryItem | None = None
+            stock: InventoryLocationStock | None = None
+            for candidate in await self._find_consumption_items(line.material_name):
+                candidate_stock = await self._find_consumption_stock(
+                    item_id=candidate.id,
+                    project_id=report.project_id,
+                    quantity=line.quantity,
+                )
+                if candidate_stock:
+                    item = candidate
+                    stock = candidate_stock
+                    break
+            if not stock:
+                continue
+            if not item:
+                continue
+            await self.create_movement(
+                MovementCreateRequest(
+                    item_id=item.id,
+                    movement_type="consume",
+                    quantity=line.quantity,
+                    from_location_id=stock.location_id,
+                    project_id=report.project_id,
+                    reference_type="daily_report",
+                    reference_id=report.id,
+                    notes=f"Daily report consumption: {report.report_number or report.id}",
+                ),
+                actor,
+                commit=False,
+            )
+            consumed += 1
+        if consumed:
+            await self.audit.record(
+                action="inventory.daily_report_consumption_applied",
+                user_id=actor.id,
+                entity_type="daily_reports",
+                entity_id=report.id,
+                new_values={"lines_consumed": consumed},
+            )
+        return consumed
 
     async def list_movements(
         self,
@@ -513,6 +562,53 @@ class InventoryService:
         if not item:
             raise NotFoundException("Inventory item")
         return item
+
+    async def _find_consumption_items(self, material_name: str) -> list[InventoryItem]:
+        normalized = material_name.strip().lower()
+        return list(
+            (
+                await self.session.scalars(
+                    select(InventoryItem)
+                    .where(
+                        InventoryItem.deleted_at.is_(None),
+                        or_(
+                            func.lower(InventoryItem.name) == normalized,
+                            func.lower(InventoryItem.item_code) == normalized,
+                        ),
+                    )
+                    .order_by(InventoryItem.updated_at.desc(), InventoryItem.created_at.desc())
+                )
+            ).all()
+        )
+
+    async def _find_consumption_stock(
+        self,
+        *,
+        item_id: UUID,
+        project_id: UUID,
+        quantity: Decimal,
+    ) -> InventoryLocationStock | None:
+        stocks = list(
+            (
+                await self.session.scalars(
+                    select(InventoryLocationStock)
+                    .join(StorageLocation, StorageLocation.id == InventoryLocationStock.location_id)
+                    .where(
+                        InventoryLocationStock.item_id == item_id,
+                        InventoryLocationStock.deleted_at.is_(None),
+                        StorageLocation.deleted_at.is_(None),
+                    )
+                    .order_by(
+                        (StorageLocation.project_id == project_id).desc(),
+                        StorageLocation.location_type.desc(),
+                    )
+                )
+            ).all()
+        )
+        for stock in stocks:
+            if stock.on_hand_qty - stock.reserved_qty >= quantity:
+                return stock
+        return None
 
     async def _get_material_request(self, request_id: UUID) -> MaterialRequest:
         request = await self.session.scalar(

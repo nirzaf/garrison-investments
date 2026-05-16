@@ -54,3 +54,18 @@ async def submit_supervisor_update(
 ) -> SupervisorUpdateResponse:
     update = await ReportingService(session).submit_supervisor_update(update_id, current_user)
     return SupervisorUpdateResponse.model_validate(update)
+
+
+@router.put("/{update_id}", response_model=SupervisorUpdateResponse)
+async def update_supervisor_update(
+    update_id: UUID,
+    payload: SupervisorUpdateCreateRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> SupervisorUpdateResponse:
+    update = await ReportingService(session).update_supervisor_update(
+        update_id,
+        payload,
+        current_user,
+    )
+    return SupervisorUpdateResponse.model_validate(update)

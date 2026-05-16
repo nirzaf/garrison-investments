@@ -68,6 +68,54 @@ Daily backups are retained for 30 days by default. Monthly archives are retained
 4. Confirm the schema loads, core tables are queryable, and the application can pass `/health` against the restored database.
 5. Record the restore test date, operator, backup object name, and result.
 
+The repository includes an executable evidence helper for the restore drill. Use it first
+in validation-only mode to confirm the dump is readable:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend \
+  python scripts/restore_dry_run.py \
+  --backup-file /tmp/latest-backup.sql.gz \
+  --output docs/launch_evidence/restore-dry-run.md
+```
+
+For a full isolated restore, provide `RESTORE_DATABASE_URL` or pass
+`--restore-database-url` to load the dump with `psql --single-transaction` and write the
+same evidence file.
+
+## Launch Evidence Capture
+
+After staging or production deployment, capture a durable launch record:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend \
+  python scripts/launch_evidence.py \
+  --target production \
+  --output docs/launch_evidence/production-launch.md \
+  --health-url https://portal.example.com/health \
+  --readiness-url https://portal.example.com/health/readiness \
+  --approver "Operation Manager" \
+  --backup-object backups/daily/latest.sql.gz \
+  --restore-log docs/launch_evidence/restore-dry-run.md \
+  --uat-signoff docs/launch_signoff/uat.md \
+  --template-signoff docs/launch_signoff/templates.md
+```
+
+Validate production migration spreadsheets before running imports:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend \
+  python scripts/validate_import_sources.py \
+  --source users=/imports/users.xlsx \
+  --source projects=/imports/projects.xlsx \
+  --source suppliers=/imports/suppliers.xlsx \
+  --source materials=/imports/materials.xlsx \
+  --source boq=/imports/boq.xlsx \
+  --source documents=/imports/documents.xlsx \
+  --source opening_stock=/imports/opening_stock.xlsx \
+  --output docs/launch_evidence/import-validation.md \
+  --check
+```
+
 ## Rollback
 
 1. Identify the last known good Git commit.
@@ -80,3 +128,17 @@ Daily backups are retained for 30 days by default. Monthly archives are retained
 ## Operational Alerts
 
 Phase 1 alert routing should send business-critical outages to Admin or technical support and the Operation Manager. Until a monitoring provider is selected, `/health` and container status are the minimum uptime checks.
+
+The backend image includes a provider-neutral health monitor for the minimum uptime
+check. Run it from cron, systemd timer, or external scheduler:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend \
+  python scripts/health_monitor.py \
+  --url https://portal.example.com/health \
+  --url https://portal.example.com/health/readiness \
+  --alert-to admin@example.com,operations@example.com
+```
+
+The command exits non-zero on failed checks and sends readable email alerts through the
+configured SMTP server.

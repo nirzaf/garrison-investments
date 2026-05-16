@@ -1,11 +1,13 @@
-import { CheckCheck } from 'lucide-react';
+import { Bell, BellOff, Check, CheckCheck } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  type NotificationRecord
+  muteNotification,
+  type NotificationRecord,
+  unmuteNotification
 } from '../../api/notifications';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
@@ -38,6 +40,15 @@ export function NotificationsPage() {
     await loadNotifications();
   }
 
+  async function toggleMute(notification: NotificationRecord) {
+    if (notification.muted) {
+      await unmuteNotification(notification.id);
+    } else {
+      await muteNotification(notification.id);
+    }
+    await loadNotifications();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -67,11 +78,9 @@ export function NotificationsPage() {
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => (
-            <button
+            <article
               className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-sm hover:bg-theme-card-elevated"
               key={notification.id}
-              onClick={() => void markRead(notification)}
-              type="button"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -83,11 +92,37 @@ export function NotificationsPage() {
                     {new Date(notification.created_at).toLocaleString()}
                   </p>
                 </div>
-                <StatusBadge tone={notification.is_read ? 'neutral' : 'info'}>
-                  {notification.is_read ? 'read' : 'unread'}
-                </StatusBadge>
+                <div className="flex shrink-0 items-center gap-2">
+                  <StatusBadge
+                    tone={notification.muted ? 'warning' : notification.is_read ? 'neutral' : 'info'}
+                  >
+                    {notification.muted ? 'muted' : notification.is_read ? 'read' : 'unread'}
+                  </StatusBadge>
+                  {!notification.is_read ? (
+                    <button
+                      aria-label="Mark notification read"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-theme-border text-theme-text-secondary hover:bg-theme-card-elevated"
+                      onClick={() => void markRead(notification)}
+                      type="button"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                  <button
+                    aria-label={notification.muted ? 'Unmute notification' : 'Mute notification'}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-theme-border text-theme-text-secondary hover:bg-theme-card-elevated"
+                    onClick={() => void toggleMute(notification)}
+                    type="button"
+                  >
+                    {notification.muted ? (
+                      <Bell className="h-4 w-4" />
+                    ) : (
+                      <BellOff className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
-            </button>
+            </article>
           ))}
         </div>
       )}

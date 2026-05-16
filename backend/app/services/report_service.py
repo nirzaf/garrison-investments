@@ -149,9 +149,16 @@ class ReportService:
         report_id: UUID,
         actor: User,
         comments: str | None = None,
+        target_covered: bool = False,
     ) -> DailyReport:
         report = await self._get_required(report_id)
         await self._ensure_approver(report, actor)
+        if not target_covered:
+            raise AppException(
+                "Approver must confirm the report target was covered.",
+                status_code=422,
+                error_code="DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED",
+            )
         if report.status != "submitted":
             raise AppException(
                 "Only submitted reports can be approved.",
@@ -176,7 +183,9 @@ class ReportService:
             entity_type="daily_reports",
             entity_id=report.id,
             comments=comments,
+            new_values={"target_covered": target_covered},
         )
+        await self._consume_report_materials(report, actor)
         await self.notifications.create(
             user_id=report.engineer_id,
             title="Daily report approved",
@@ -187,6 +196,72 @@ class ReportService:
         )
         await self.session.commit()
         self._queue_post_approval_tasks(report.id, actor.id)
+        return await self._get_required(report.id)
+
+    async def override_report(
+        self,
+        report_id: UUID,
+        actor: User,
+        *,
+        decision: str,
+        reason: str,
+        target_covered: bool,
+    ) -> DailyReport:
+        if actor.role != ROLE_ADMIN:
+            raise AppException(
+                "Only Admin can override daily report approvals.",
+                status_code=403,
+                error_code="DAILY_REPORT_OVERRIDE_FORBIDDEN",
+            )
+        if decision == "approved" and not target_covered:
+            raise AppException(
+                "Admin approval override requires target-covered confirmation.",
+                status_code=422,
+                error_code="DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED",
+            )
+        report = await self._get_required(report_id)
+        if report.status == "approved":
+            raise AppException(
+                "Approved reports cannot be overridden.",
+                status_code=409,
+                error_code="DAILY_REPORT_APPROVED_LOCKED",
+            )
+        previous_status = report.status
+        if decision == "approved":
+            report.status = "approved"
+            report.approved_by = actor.id
+            report.approved_at = utc_now()
+            report.rejection_comments = None
+            await self._consume_report_materials(report, actor)
+        else:
+            report.status = "draft"
+            report.rejection_comments = reason.strip()
+        await self._record_history(
+            report=report,
+            actor=actor,
+            decision=decision,
+            previous_status=previous_status,
+            comments=f"Admin override: {reason.strip()}",
+        )
+        await self.audit.record(
+            action=f"daily_reports.override_{decision}",
+            user_id=actor.id,
+            entity_type="daily_reports",
+            entity_id=report.id,
+            comments=reason.strip(),
+            new_values={"target_covered": target_covered},
+        )
+        await self.notifications.create(
+            user_id=report.engineer_id,
+            title="Daily report override",
+            body=f"{report.report_number or 'Daily report'} was overridden: {decision}.",
+            notification_type="approval",
+            reference_type="daily_report",
+            reference_id=report.id,
+        )
+        await self.session.commit()
+        if decision == "approved":
+            self._queue_post_approval_tasks(report.id, actor.id)
         return await self._get_required(report.id)
 
     async def reject_report(
@@ -397,6 +472,11 @@ class ReportService:
                     reference_type="daily_report",
                     reference_id=report.id,
                 )
+
+    async def _consume_report_materials(self, report: DailyReport, actor: User) -> None:
+        from app.services.inventory_service import InventoryService
+
+        await InventoryService(self.session).consume_daily_report_materials(report, actor)
 
     def _ensure_engineer(self, actor: User) -> None:
         if actor.role != ROLE_CIVIL_ENGINEER:

@@ -1,12 +1,17 @@
+from datetime import date
 from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.notification import Notification
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.tasks.maintenance import _check_supplier_tds_expiry
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -140,3 +145,45 @@ async def test_accounts_can_create_update_filter_deactivate_and_download_tds(
         )
         assert deactivated.status_code == 200
         assert deactivated.json()["is_active"] is False
+
+
+async def test_supplier_tds_expiry_reminder_notifies_accounts_and_operations() -> None:
+    await skip_if_database_unavailable()
+    accounts, _ = await create_user("accounts")
+    operation_manager, _ = await create_user("operation_manager")
+    async with AsyncSessionLocal() as session:
+        supplier = Supplier(
+            name=f"Expiring Supplier {uuid4().hex[:6]}",
+            category="Civil",
+            rating="A",
+            payment_terms="30 days",
+            contact_person="Compliance Contact",
+            phone="+97455550888",
+            email=f"expiring-{uuid4().hex}@example.com",
+            address="Doha",
+            tax_registration_number=f"TAX-{uuid4().hex[:8]}",
+            tds_certificate_number="TDS-EXP",
+            tds_expiry_date=date(2026, 5, 30),
+            compliance_status="compliant",
+        )
+        session.add(supplier)
+        await session.commit()
+        await session.refresh(supplier)
+
+    result = await _check_supplier_tds_expiry()
+
+    assert result.endswith("supplier TDS expiry notifications sent")
+    async with AsyncSessionLocal() as session:
+        notifications = list(
+            (
+                await session.scalars(
+                    select(Notification).where(
+                        Notification.title == "Supplier TDS expiring",
+                        Notification.reference_id == supplier.id,
+                    )
+                )
+            ).all()
+        )
+        recipient_ids = {notification.user_id for notification in notifications}
+        assert accounts.id in recipient_ids
+        assert operation_manager.id in recipient_ids

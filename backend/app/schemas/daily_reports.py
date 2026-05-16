@@ -87,6 +87,13 @@ class DailyReportApprovalHistoryResponse(BaseModel):
 
 class DailyReportDecisionRequest(BaseModel):
     comments: str | None = None
+    target_covered: bool = False
+
+
+class DailyReportOverrideRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected)$")
+    reason: str = Field(min_length=1)
+    target_covered: bool = False
 
 
 class DailyReportResponse(BaseModel):

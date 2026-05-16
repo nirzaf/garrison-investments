@@ -42,6 +42,34 @@ async def mark_read(
     return NotificationResponse.model_validate(notification)
 
 
+@router.patch("/{notification_id}/mute", response_model=NotificationResponse)
+async def mute_notification(
+    notification_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> NotificationResponse:
+    notification = await NotificationService(session).set_muted(
+        notification_id,
+        current_user,
+        muted=True,
+    )
+    return NotificationResponse.model_validate(notification)
+
+
+@router.patch("/{notification_id}/unmute", response_model=NotificationResponse)
+async def unmute_notification(
+    notification_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> NotificationResponse:
+    notification = await NotificationService(session).set_muted(
+        notification_id,
+        current_user,
+        muted=False,
+    )
+    return NotificationResponse.model_validate(notification)
+
+
 @router.post("/mark-all-read")
 async def mark_all_read(current_user: CurrentUser, session: DbSession) -> dict[str, int]:
     return {"updated": await NotificationService(session).mark_all_read(current_user)}

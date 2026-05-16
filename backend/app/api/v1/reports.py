@@ -9,6 +9,7 @@ from app.schemas.daily_reports import (
     DailyReportCreateRequest,
     DailyReportDecisionRequest,
     DailyReportListResponse,
+    DailyReportOverrideRequest,
     DailyReportResponse,
     DailyReportUpdateRequest,
 )
@@ -109,6 +110,7 @@ async def approve_report(
         report_id,
         current_user,
         comments=payload.comments,
+        target_covered=payload.target_covered,
     )
     return DailyReportResponse.model_validate(report)
 
@@ -124,5 +126,22 @@ async def reject_report(
         report_id,
         current_user,
         comments=payload.comments,
+    )
+    return DailyReportResponse.model_validate(report)
+
+
+@router.post("/{report_id}/override", response_model=DailyReportResponse)
+async def override_report(
+    report_id: UUID,
+    payload: DailyReportOverrideRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).override_report(
+        report_id,
+        current_user,
+        decision=payload.decision,
+        reason=payload.reason,
+        target_covered=payload.target_covered,
     )
     return DailyReportResponse.model_validate(report)

@@ -106,10 +106,12 @@ export async function submitDailyReport(reportId: string): Promise<DailyReportRe
 
 export async function approveDailyReport(
   reportId: string,
-  comments?: string
+  comments?: string,
+  targetCovered = false
 ): Promise<DailyReportRecord> {
   const response = await apiClient.post<DailyReportRecord>(`/reports/${reportId}/approve`, {
-    comments
+    comments,
+    target_covered: targetCovered
   });
   return response.data;
 }
@@ -120,6 +122,18 @@ export async function rejectDailyReport(
 ): Promise<DailyReportRecord> {
   const response = await apiClient.post<DailyReportRecord>(`/reports/${reportId}/reject`, {
     comments
+  });
+  return response.data;
+}
+
+export async function overrideDailyReport(
+  reportId: string,
+  payload: { decision: 'approved' | 'rejected'; reason: string; targetCovered?: boolean }
+): Promise<DailyReportRecord> {
+  const response = await apiClient.post<DailyReportRecord>(`/reports/${reportId}/override`, {
+    decision: payload.decision,
+    reason: payload.reason,
+    target_covered: payload.targetCovered ?? false
   });
   return response.data;
 }

@@ -55,6 +55,7 @@ class NotificationRepository:
             .where(
                 Notification.user_id == user_id,
                 Notification.is_read.is_(False),
+                Notification.muted.is_(False),
                 Notification.deleted_at.is_(None),
             )
         )

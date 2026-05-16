@@ -48,4 +48,8 @@ celery_app.conf.beat_schedule = {
         "task": "cleanup_old_notifications",
         "schedule": crontab(hour=3, minute=0),
     },
+    "check-supplier-tds-expiry-daily": {
+        "task": "check_supplier_tds_expiry",
+        "schedule": crontab(hour=4, minute=0),
+    },
 }

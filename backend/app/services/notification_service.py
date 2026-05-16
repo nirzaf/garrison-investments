@@ -61,3 +61,20 @@ class NotificationService:
         changed = await self.notifications.mark_all_read(user.id, utc_now())
         await self.session.commit()
         return changed
+
+    async def set_muted(
+        self,
+        notification_id: UUID,
+        user: User,
+        *,
+        muted: bool,
+    ) -> Notification:
+        notification = await self.notifications.get_for_user(notification_id, user.id)
+        if not notification:
+            raise NotFoundException("Notification")
+        notification.muted = muted
+        if muted:
+            notification.is_read = True
+            notification.read_at = notification.read_at or utc_now()
+        await self.session.commit()
+        return notification

@@ -63,9 +63,17 @@ async def test_report_submission_and_decision_create_notifications() -> None:
             f"/api/v1/notifications/{first_notification['id']}/read",
             headers={"Authorization": f"Bearer {setup['manager_token']}"},
         )
+        mute_response = await client.patch(
+            f"/api/v1/notifications/{first_notification['id']}/mute",
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        unmute_response = await client.patch(
+            f"/api/v1/notifications/{first_notification['id']}/unmute",
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
         approve_response = await client.post(
             f"/api/v1/reports/{submitted['id']}/approve",
-            json={"comments": "Approved"},
+            json={"comments": "Approved", "target_covered": True},
             headers={"Authorization": f"Bearer {setup['manager_token']}"},
         )
         engineer_count = await client.get(
@@ -75,6 +83,10 @@ async def test_report_submission_and_decision_create_notifications() -> None:
 
         assert read_response.status_code == 200
         assert read_response.json()["is_read"] is True
+        assert mute_response.status_code == 200
+        assert mute_response.json()["muted"] is True
+        assert unmute_response.status_code == 200
+        assert unmute_response.json()["muted"] is False
         assert approve_response.status_code == 200
         assert engineer_count.json()["unread_count"] >= 1
 
