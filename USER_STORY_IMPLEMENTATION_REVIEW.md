@@ -44,7 +44,7 @@ All stories have at least some implementation or documentation evidence, but non
 | --- | --- | --- | --- |
 | 01 | Project Foundation and Dev Environment | Partial | Local verification now passes, but full Docker/health/migration runtime proof remains outstanding. |
 | 02 | CI/CD, Staging, Production, and Operations | Partial | Scheduled backups are now configured, but production approval identity and monitoring remain unproven for the target environment. |
-| 03 | Authentication, 2FA, and Session Security | Partial | Auth exists, but forced-password UI and backend test verification are incomplete/unproven. |
+| 03 | Authentication, 2FA, and Session Security | Partial | Auth, password reset, and forced-password UI exist, but full security-flow coverage remains narrow. |
 | 04 | User Roles, Permissions, and Admin Management | Partial | RBAC exists, but strict permission coverage and admin UX completeness are not fully proven. |
 | 05 | Project Setup, BOQ, and Team Assignment | Partial | Core project/BOQ APIs and UI exist, but import/export/saved-filter UX and tests are incomplete. |
 | 06 | App Shell, Navigation, and Responsive Layout | Partial | Shell exists and lint passes, but route-level loading/empty/error states remain inconsistent. |
@@ -124,21 +124,24 @@ Status: **Partial**
 
 Evidence:
 
-- Auth APIs exist in `backend/app/api/v1/auth.py` (login, logout, register, forgot/reset password, refresh token, profile/update, force-password-change).
-- `backend/app/core/security.py` implements JWT access/refresh token creation, password hashing, 2FA token generation/verification, and user context from token.
-- 2FA enable/verify/disable endpoints exist; token reuse prevention and rate limiting are configured.
-- `backend/app/schemas/auth.py` defines request/response models with validation; `backend/app/models/user.py` includes `force_password_change`, `otp_secret`, `otp_enabled`, `failed_login_attempts`, `locked_until`.
-- Frontend auth pages exist under `frontend/src/pages/auth/` (Login, Register, ForgotPassword, ResetPassword, 2FA, ForcePasswordChange).
+- Auth APIs exist in `backend/app/api/v1/auth.py`: login, verify OTP, refresh, logout, me, change password, password-reset request/confirm.
+- `backend/app/services/auth_service.py` implements password hashing, OTP verification, failed-login lockout, refresh token rotation, logout invalidation, first-login password change flag handling, and auth audit records.
+- `backend/app/middleware/rate_limit.py` rate-limits login, OTP, and password reset endpoints.
+- `frontend/src/pages/auth/LoginPage.tsx` supports login, OTP verification, and links to password reset.
+- `frontend/src/pages/auth/PasswordResetPage.tsx` implements password-reset request, OTP confirmation, and new-password validation.
+- `frontend/src/pages/auth/ChangePasswordPage.tsx` implements the forced password-change form.
+- `frontend/src/components/layout/AppLayout.tsx` redirects authenticated users with `must_change_password` to `/change-password`.
+- Backend pytest, Ruff, and mypy now pass; frontend lint, tests, and build now pass.
 
 Missing items:
 
-- Force-password-change UI page exists but no evidence it is triggered after admin-forced password reset; the server-side enforcement via `force_password_change` flag is present but the frontend redirect/intercept is not verified.
-- Backend test verification is unavailable (pytest collection failed); auth endpoint behavior, token expiry, and 2FA flows are unverified.
-- No evidence of production-rate-limiting configuration for auth endpoints (though rate-limiting primitives exist in `backend/app/core/deps.py`).
+- Frontend route smoke tests are still broad and do not explicitly exercise login, password reset, and forced-password redirect behavior.
+- Session storage claims cannot be fully validated from static review; access token is held in memory, but full refresh-cookie behavior depends on runtime browser/API behavior.
+- Production auth rate-limit behavior depends on Redis/runtime configuration and still needs target-environment verification.
 
 Risk:
 
-- Auth paths may work in dev but the combined 2FA + forced-password + rate-limit flow is unproven end-to-end.
+- Required auth screens now exist, but security-sensitive auth regression coverage should be expanded before launch.
 
 ### 04. User Roles, Permissions, and Admin Management
 
