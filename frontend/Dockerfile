@@ -9,4 +9,5 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+RUN npm run build
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0"]

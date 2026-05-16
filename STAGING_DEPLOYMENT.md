@@ -35,6 +35,8 @@ From the local repo:
 rsync -az --delete \
   --exclude '.git/' \
   --exclude '.env' \
+  --exclude '.env.staging' \
+  --exclude '.env.prod' \
   --exclude 'frontend/node_modules/' \
   --exclude 'frontend/dist/' \
   --exclude 'prototype/node_modules/' \
