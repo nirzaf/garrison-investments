@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, ChevronRight, LogOut, Menu, Play, Rocket, Search } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Menu, Moon, Play, Rocket, Search, Sun } from "lucide-react";
 
 import { navItems, productTourSteps, projects, type PortalNavGroup, type ScreenKey } from "@/lib/portal-data";
 import { screenTitles } from "@/components/screen-titles";
@@ -24,6 +24,7 @@ export function PortalPrototype() {
   const [tourIndex, setTourIndex] = useState(0);
   const [tourRect, setTourRect] = useState<TourRect | null>(null);
   const [tourModalPosition, setTourModalPosition] = useState<TourModalPosition | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   const activeNav = useMemo(
     () => navItems.find((item) => item.key === activeScreen),
@@ -31,6 +32,20 @@ export function PortalPrototype() {
   );
 
   const activeTourStep = productTourSteps[tourIndex];
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("garrisons-theme");
+    const resolved = stored === "light" ? "light" : "dark";
+    setTheme(resolved);
+    document.documentElement.setAttribute("data-theme", resolved);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    window.localStorage.setItem("garrisons-theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  };
 
   const selectScreen = (screen: ScreenKey) => {
     setActiveScreen(screen);
@@ -153,7 +168,7 @@ export function PortalPrototype() {
     <main className="appShell">
       <aside className={`sideRail ${mobileNavOpen ? "isOpen" : ""}`} aria-label="Prototype modules">
         <div className="brandBlock">
-          <div className="brandIcon">GI</div>
+          <img className="brandIcon" src="/brand/logo-mark.png" alt="" />
           <div>
             <strong>Garrisons</strong>
             <span>Internal Portal</span>
@@ -213,6 +228,13 @@ export function PortalPrototype() {
               <Search size={16} />
               <span>Search reports, docs, inventory</span>
             </div>
+            <button
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleTheme}
+              type="button"
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
             <button data-tour-target="notification-bell" type="button">
               <Bell size={16} />
               17

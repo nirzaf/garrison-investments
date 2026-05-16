@@ -1,5 +1,5 @@
+/* ── Design tokens: dark mode (default) ── */
 :root {
-  /* ── Surfaces ── */
   --bg: #0E1317;
   --surface: #171E25;
   --surface-2: #1D2630;
@@ -10,11 +10,9 @@
   --line-light: rgba(42, 51, 61, 0.5);
   --rail: #111820;
 
-  /* ── Brand accent (Deep Emerald) ── */
   --brand: #0F766E;
   --brand-hover: #14A085;
 
-  /* ── Semantic color aliases (kept for component compatibility) ── */
   --orange: #0F766E;
   --orange-soft: rgba(15, 118, 110, 0.14);
   --blue: #2563EB;
@@ -31,16 +29,126 @@
   --amber-soft: rgba(201, 162, 39, 0.12);
   --slate: #8A96A3;
 
-  /* ── Shape ── */
   --radius: 10px;
   --radius-sm: 6px;
   --radius-lg: 14px;
 
-  /* ── Shadows (dark-mode tuned) ── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.25);
+
+  /* Shell-specific */
+  --rail-gradient: linear-gradient(180deg, #111820 0%, #0E1317 100%);
+  --rail-color: #D7DDE3;
+  --rail-color-muted: rgba(215, 221, 227, 0.52);
+  --rail-group-heading: rgba(215, 221, 227, 0.46);
+  --nav-color: rgba(215, 221, 227, 0.7);
+  --nav-color-hover: #fff;
+  --nav-hover-bg: rgba(255, 255, 255, 0.07);
+  --nav-active-bg: rgba(15, 118, 110, 0.18);
+  --nav-active-border: rgba(15, 118, 110, 0.35);
+  --nav-active-color: #fff;
+  --nav-badge-color: rgba(215, 221, 227, 0.4);
+  --status-panel-bg: rgba(255, 255, 255, 0.05);
+  --status-panel-border: rgba(255, 255, 255, 0.08);
+  --code-bg: #1e2a32;
+  --code-color: #e8ecf0;
+  --th-bg: rgba(15, 23, 42, 0.02);
+  --tr-hover-bg: rgba(15, 23, 42, 0.015);
+  --bar-track-bg: rgba(15, 23, 42, 0.08);
+  --brand-icon-gradient: linear-gradient(135deg, var(--brand), #0B5F59);
+
+  /* Phone mock */
+  --phone-border-color: #1a2027;
+  --phone-bg: #f3f0e9;
+  --phone-top-gradient: linear-gradient(135deg, #132a3a, #0c1d29);
+  --phone-progress-bg: rgba(31, 34, 38, 0.08);
+
+  /* Pulse panel */
+  --pulse-bg: linear-gradient(145deg, #171E25 0%, #111820 100%);
+  --pulse-color: #E5E9ED;
+  --pulse-muted: rgba(215, 221, 227, 0.52);
+  --pulse-header-border: rgba(255, 255, 255, 0.1);
+  --pulse-metric-bg: rgba(42, 51, 61, 0.5);
+  --pulse-metric-color: #E5E9ED;
+  --pulse-metric-muted: rgba(215, 221, 227, 0.52);
+  --pulse-timeline-color: rgba(215, 221, 227, 0.72);
+
+  color-scheme: dark;
+}
+
+/* ── Light mode tokens ── */
+:root[data-theme="light"] {
+  --bg: #F5F7F8;
+  --surface: #FFFFFF;
+  --surface-2: #F9FAFB;
+  --ink: #111820;
+  --ink-secondary: #4B5563;
+  --muted: #7A8490;
+  --line: #D8DEE4;
+  --line-light: rgba(216, 222, 228, 0.6);
+  --rail: #FFFFFF;
+
+  --brand: #0F766E;
+  --brand-hover: #0B5F59;
+
+  --orange: #0F766E;
+  --orange-soft: rgba(15, 118, 110, 0.10);
+  --blue: #2563EB;
+  --blue-soft: rgba(37, 99, 235, 0.08);
+  --green: #16A34A;
+  --green-soft: rgba(22, 163, 74, 0.08);
+  --red: #B42318;
+  --red-soft: rgba(180, 35, 24, 0.08);
+  --purple: #7559aa;
+  --purple-soft: rgba(117, 89, 170, 0.08);
+  --teal: #0F766E;
+  --teal-soft: rgba(15, 118, 110, 0.10);
+  --amber: #B08900;
+  --amber-soft: rgba(176, 137, 0, 0.08);
+  --slate: #64748B;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.04);
+
+  --rail-gradient: #FFFFFF;
+  --rail-color: #111820;
+  --rail-color-muted: rgba(17, 24, 32, 0.48);
+  --rail-group-heading: rgba(17, 24, 32, 0.42);
+  --nav-color: rgba(17, 24, 32, 0.7);
+  --nav-color-hover: #111820;
+  --nav-hover-bg: rgba(15, 118, 110, 0.06);
+  --nav-active-bg: #E6F4F1;
+  --nav-active-border: rgba(15, 118, 110, 0.35);
+  --nav-active-color: #0F766E;
+  --nav-badge-color: rgba(17, 24, 32, 0.38);
+  --status-panel-bg: #F9FAFB;
+  --status-panel-border: var(--line);
+  --code-bg: #f1f5f9;
+  --code-color: #1e293b;
+  --th-bg: rgba(245, 247, 248, 0.6);
+  --tr-hover-bg: rgba(245, 247, 248, 0.5);
+  --bar-track-bg: rgba(216, 222, 228, 0.4);
+  --brand-icon-gradient: linear-gradient(135deg, var(--brand), #0B5F59);
+
+  --phone-border-color: #d1d5db;
+  --phone-bg: #fafaf9;
+  --phone-top-gradient: linear-gradient(135deg, #0F766E, #0B5F59);
+  --phone-progress-bg: rgba(216, 222, 228, 0.5);
+
+  --pulse-bg: linear-gradient(145deg, #0F766E 0%, #0B5F59 100%);
+  --pulse-color: #FFFFFF;
+  --pulse-muted: rgba(255, 255, 255, 0.72);
+  --pulse-header-border: rgba(255, 255, 255, 0.18);
+  --pulse-metric-bg: rgba(255, 255, 255, 0.15);
+  --pulse-metric-color: #FFFFFF;
+  --pulse-metric-muted: rgba(255, 255, 255, 0.68);
+  --pulse-timeline-color: rgba(255, 255, 255, 0.82);
+
+  color-scheme: light;
 }
 
 * {
@@ -53,7 +161,7 @@ html {
 
 body {
   margin: 0;
-  background: #0E1317;
+  background: var(--bg);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

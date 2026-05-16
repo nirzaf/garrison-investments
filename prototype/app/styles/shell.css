@@ -8,10 +8,10 @@
   flex-direction: column;
   gap: 16px;
   padding: 18px 14px;
-  background: linear-gradient(180deg, #111820 0%, #0E1317 100%);
-  color: #D7DDE3;
+  background: var(--rail-gradient);
+  color: var(--rail-color);
   overflow: auto;
-  border-right: 1px solid rgba(42, 51, 61, 0.8);
+  border-right: 1px solid var(--line);
 }
 
 .brandBlock {
@@ -25,13 +25,9 @@
 .brandIcon {
   width: 40px;
   height: 40px;
-  display: grid;
-  place-items: center;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--brand), #0B5F59);
-  color: #fff;
-  font-weight: 800;
-  font-size: 15px;
+  object-fit: cover;
+  background: #111820;
   box-shadow: 0 2px 8px rgba(15, 118, 110, 0.35);
 }
 
@@ -43,7 +39,7 @@
 
 .brandBlock span {
   display: block;
-  color: rgba(215, 221, 227, 0.52);
+  color: var(--rail-color-muted);
   font-size: 11px;
   margin-top: 2px;
   letter-spacing: 0.02em;
@@ -62,7 +58,7 @@
 .moduleGroup h2 {
   margin: 0 0 4px;
   padding: 0 10px;
-  color: rgba(215, 221, 227, 0.46);
+  color: var(--rail-group-heading);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -76,7 +72,7 @@
   align-items: center;
   gap: 9px;
   padding: 0 10px;
-  color: rgba(215, 221, 227, 0.7);
+  color: var(--nav-color);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -86,14 +82,14 @@
 }
 
 .moduleNav button:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  color: var(--nav-color-hover);
+  background: var(--nav-hover-bg);
 }
 
 .moduleNav button.isActive {
-  color: #fff;
-  background: rgba(15, 118, 110, 0.18);
-  border-color: rgba(15, 118, 110, 0.35);
+  color: var(--nav-active-color);
+  background: var(--nav-active-bg);
+  border-color: var(--nav-active-border);
 }
 
 .moduleNav button.isTourTarget {
@@ -102,7 +98,7 @@
 }
 
 .moduleNav small {
-  color: rgba(215, 221, 227, 0.4);
+  color: var(--nav-badge-color);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -113,12 +109,12 @@
   margin-top: auto;
   padding: 13px 14px;
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--status-panel-bg);
+  border: 1px solid var(--status-panel-border);
 }
 
 .prototypeStatus span {
-  color: rgba(215, 221, 227, 0.48);
+  color: var(--rail-color-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -133,7 +129,7 @@
 
 .prototypeStatus p {
   margin: 0;
-  color: rgba(215, 221, 227, 0.52);
+  color: var(--rail-color-muted);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -200,7 +196,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--rail);
-  color: #fff;
+  color: var(--ink);
   font-weight: 700;
   font-size: 13.5px;
   transition: 150ms ease;

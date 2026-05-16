@@ -1,5 +1,14 @@
-const CACHE_NAME = 'garrisons-app-shell-v1';
-const APP_SHELL = ['/', '/reports/daily', '/manifest.json', '/pwa-icon.svg'];
+const CACHE_NAME = 'garrisons-app-shell-v2';
+const APP_SHELL = [
+  '/',
+  '/reports/daily',
+  '/manifest.json',
+  '/brand/apple-touch-icon.png',
+  '/brand/icon-192.png',
+  '/brand/icon-512.png',
+  '/brand/logo-full.jpg',
+  '/brand/logo-mark.png'
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

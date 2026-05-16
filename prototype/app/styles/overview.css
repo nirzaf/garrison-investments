@@ -190,8 +190,8 @@
   overflow: hidden;
   padding: 20px;
   border-radius: var(--radius);
-  background: linear-gradient(145deg, #171E25 0%, #111820 100%);
-  color: #E5E9ED;
+  background: var(--pulse-bg);
+  color: var(--pulse-color);
   border: 1px solid var(--line);
 }
 
@@ -211,7 +211,7 @@
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--pulse-header-border);
   position: relative;
   z-index: 1;
 }
@@ -219,7 +219,7 @@
 .pulseHeader span {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(240, 244, 248, 0.52);
+  color: var(--pulse-muted);
 }
 
 .pulseHeader strong {
@@ -252,9 +252,9 @@
 }
 
 .pulsePanel .metricCard {
-  background: rgba(42, 51, 61, 0.5);
-  color: #E5E9ED;
-  border-color: rgba(42, 51, 61, 0.8);
+  background: var(--pulse-metric-bg);
+  color: var(--pulse-metric-color);
+  border-color: var(--pulse-metric-bg);
   box-shadow: none;
 }
 
@@ -283,7 +283,7 @@
 
 .pulsePanel .metricCard span,
 .pulsePanel .metricCard small {
-  color: rgba(215, 221, 227, 0.52);
+  color: var(--pulse-metric-muted);
 }
 
 .tone-orange strong { color: var(--orange); }
@@ -321,7 +321,7 @@
 
 .liveTimeline p {
   margin: 0;
-  color: rgba(215, 221, 227, 0.72);
+  color: var(--pulse-timeline-color);
   font-size: 13px;
 }
 
