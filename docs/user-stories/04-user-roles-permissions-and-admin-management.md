@@ -48,7 +48,7 @@ Create role-based access control and admin user management for the MVP roles: Ad
 - Use soft delete or deactivation for users.
 - Preserve foreign key references to inactive users.
 - Add tests for API permission enforcement, not only UI hiding.
-- Follow `../../ARCHITECTURE.md` RBAC matrix as the starting permission model.
+- Follow `../ARCHITECTURE.md` RBAC matrix as the starting permission model.
 - Keep route handlers thin; put account lifecycle and permission business rules in a user/admin service.
 - Repository queries must exclude `deleted_at` records by default and preserve inactive historical references.
 

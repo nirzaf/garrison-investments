@@ -47,7 +47,7 @@ Implement Phase 2 inventory catalog, storage locations, consumable materials, as
 - Add APIs for locations, items, item detail, stock, and assets.
 - Model unit conversion per material, not globally.
 - Prepare stock reservation fields for material request workflow.
-- Follow `../../ARCHITECTURE.md` guidance that inventory stock quantities should not be cached aggressively.
+- Follow `../ARCHITECTURE.md` guidance that inventory stock quantities should not be cached aggressively.
 - InventoryService owns stock business rules; repositories perform async SQLAlchemy reads/writes with soft-delete filtering.
 - Use ACID PostgreSQL transactions for stock-affecting operations.
 

@@ -46,7 +46,7 @@ Implement the protected application shell, desktop sidebar, header, breadcrumbs,
 - Add shared layout components for sidebar, header, mobile navigation, status badges, loading states, and error boundaries.
 - Use role/permission metadata from the authenticated user.
 - Keep route structure aligned with the UI component tree.
-- Follow `../../ARCHITECTURE.md` frontend composition: QueryClientProvider, AuthProvider, ThemeProvider, BrowserRouter, RequireAuth, AppLayout, Sidebar, Header, MobileNav, OfflineIndicator, and Outlet.
+- Follow `../ARCHITECTURE.md` frontend composition: QueryClientProvider, AuthProvider, ThemeProvider, BrowserRouter, RequireAuth, AppLayout, Sidebar, Header, MobileNav, OfflineIndicator, and Outlet.
 - Use React Context for auth, TanStack Query for server state, local state for UI state, and no Redux.
 - Every route-level component must handle loading, empty, and error states.
 

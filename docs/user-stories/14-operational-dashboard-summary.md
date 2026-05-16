@@ -46,7 +46,7 @@ Build a first-release dashboard that avoids advanced analytics but provides oper
 - Use TanStack Query or equivalent client cache with periodic refresh.
 - Use existing report, approval, project, notification, and inventory data as available.
 - Low-stock cards should remain hidden or empty until inventory is implemented.
-- Follow `../../ARCHITECTURE.md` caching guidance: dashboard summaries may be cached in Redis, but approval inboxes, audit logs, financial records, and inventory stock quantities should not be cached aggressively.
+- Follow `../ARCHITECTURE.md` caching guidance: dashboard summaries may be cached in Redis, but approval inboxes, audit logs, financial records, and inventory stock quantities should not be cached aggressively.
 - Dashboard APIs should be implemented in DashboardService and repositories, not direct queries in routes.
 - Frontend dashboard data must use TanStack Query server-state caching and invalidation.
 

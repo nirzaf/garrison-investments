@@ -101,7 +101,7 @@ Repo-controlled feature implementation is substantially complete, but strict com
 
 ## Launch Evidence Execution
 
-The following live-environment items are implemented as executable evidence-capture commands. Running them with real deployment inputs is still required before Story 02 and Story 16 can be marked complete under the strict review rule:
+The following live-environment items are now implemented as executable evidence commands:
 
 1. Record staging/production deployment run IDs, approver identity, health/readiness checks, backup object, UAT sign-off file hash, and template sign-off file hash with `backend/scripts/launch_evidence.py`.
 2. Record a dated backup readability check or isolated restore drill with `backend/scripts/restore_dry_run.py`.

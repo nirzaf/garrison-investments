@@ -48,7 +48,7 @@ Implement material request lifecycle from requester through Engineer, Project Ma
 - Add APIs for material requests, reservation, issue, cancel, and status history.
 - Use transactions to keep approval, reservation, and stock movement consistent.
 - Link material issue to project, location, request, handler, and optional daily report.
-- Follow `../../ARCHITECTURE.md` service-layer rule: MaterialRequestService coordinates approval, reservation, movement creation, and notification.
+- Follow `../ARCHITECTURE.md` service-layer rule: MaterialRequestService coordinates approval, reservation, movement creation, and notification.
 - Stock writes must be transactionally safe in PostgreSQL and must never be implemented as frontend-only state changes.
 - Use typed application exceptions for insufficient stock or invalid status transitions and map them to consistent 409 responses.
 

@@ -50,7 +50,7 @@ Implement upload, compression, thumbnail generation, metadata, download, deletio
 - Generate thumbnail and compressed versions asynchronously.
 - Store project, report number, uploader, timestamp, original filename, size, MIME type, and optional location metadata.
 - HEIC browser-display conversion requires stakeholder confirmation.
-- Follow `../../ARCHITECTURE.md` file security exactly: whitelist by MIME magic bytes, randomized object keys, temporary signed download URLs, and no private file serving through Nginx.
+- Follow `../ARCHITECTURE.md` file security exactly: whitelist by MIME magic bytes, randomized object keys, temporary signed download URLs, and no private file serving through Nginx.
 - Photo processing must use Celery image tasks for thumbnail generation, compression, and watermarking.
 - Store file binary data only in MinIO and metadata only in PostgreSQL.
 
