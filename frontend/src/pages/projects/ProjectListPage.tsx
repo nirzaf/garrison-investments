@@ -94,18 +94,18 @@ export function ProjectListPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Projects</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Project Setup</h2>
+          <p className="text-sm font-medium text-brand-600">Projects</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Project Setup</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search projects"
             value={search}
           />
           <select
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setStatus(event.target.value)}
             value={status}
           >
@@ -124,43 +124,43 @@ export function ProjectListPage() {
       ) : null}
 
       {canManageProjects ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
           <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, name: event.target.value })}
               placeholder="Project name"
               required
               value={form.name}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, client_name: event.target.value })}
               placeholder="Client"
               value={form.client_name}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, location: event.target.value })}
               placeholder="Location"
               value={form.location}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, target_end_date: event.target.value })}
               required
               type="date"
               value={form.target_end_date}
             />
             <textarea
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm lg:col-span-2"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary lg:col-span-2"
               onChange={(event) => setForm({ ...form, scope_of_work: event.target.value })}
               placeholder="Scope of work"
               required
               value={form.scope_of_work}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) =>
                 setForm({ ...form, milestones: [{ ...milestone, name: event.target.value }] })
               }
@@ -169,7 +169,7 @@ export function ProjectListPage() {
               value={milestone.name}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) =>
                 setForm({ ...form, boq_items: [{ ...boqItem, description: event.target.value }] })
               }
@@ -178,7 +178,7 @@ export function ProjectListPage() {
               value={boqItem.description}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) =>
                 setForm({
                   ...form,
@@ -191,7 +191,7 @@ export function ProjectListPage() {
               value={boqItem.planned_quantity}
             />
             <input
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) =>
                 setForm({ ...form, boq_items: [{ ...boqItem, unit_rate: event.target.value }] })
               }
@@ -201,7 +201,7 @@ export function ProjectListPage() {
               value={boqItem.unit_rate}
             />
             <button
-              className="rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
               type="submit"
             >
               Create project
@@ -210,13 +210,13 @@ export function ProjectListPage() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">
+      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-sm">
+        <div className="border-b border-theme-border px-4 py-3 text-sm text-theme-text-secondary">
           {isLoading ? 'Loading projects' : `${total} projects`}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <table className="min-w-full divide-y divide-theme-border text-sm">
+            <thead className="bg-theme-main text-left text-xs font-semibold uppercase text-theme-text-muted">
               <tr>
                 <th className="px-4 py-3">Project</th>
                 <th className="px-4 py-3">Client</th>
@@ -225,18 +225,18 @@ export function ProjectListPage() {
                 <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-theme-border">
               {projects.map((project) => (
                 <tr key={project.id}>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-950">{project.name}</p>
-                    <p className="text-xs text-slate-500">{project.code}</p>
+                    <p className="font-medium text-theme-text-primary">{project.name}</p>
+                    <p className="text-xs text-theme-text-muted">{project.code}</p>
                   </td>
                   <td className="px-4 py-3">{project.client_name || '-'}</td>
                   <td className="px-4 py-3">{project.target_end_date}</td>
                   <td className="px-4 py-3">{project.progress_percentage}%</td>
                   <td className="px-4 py-3">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                    <span className="rounded-full bg-theme-card-elevated px-2 py-1 text-xs font-semibold text-theme-text-secondary">
                       {project.status.replace('_', ' ')}
                     </span>
                   </td>

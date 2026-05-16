@@ -101,18 +101,18 @@ export function UserManagementPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Admin</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Users</h2>
+          <p className="text-sm font-medium text-brand-600">Admin</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Users</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search"
             value={search}
           />
           <select
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setRoleFilter(event.target.value)}
             value={roleFilter}
           >
@@ -124,7 +124,7 @@ export function UserManagementPage() {
             ))}
           </select>
           <select
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setActiveFilter(event.target.value)}
             value={activeFilter}
           >
@@ -139,17 +139,17 @@ export function UserManagementPage() {
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
         <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, full_name: event.target.value })}
             placeholder="Full name"
             required
             value={form.full_name}
           />
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, email: event.target.value })}
             placeholder="Email"
             required
@@ -157,7 +157,7 @@ export function UserManagementPage() {
             value={form.email}
           />
           <select
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, role: event.target.value })}
             value={form.role}
           >
@@ -168,27 +168,27 @@ export function UserManagementPage() {
             ))}
           </select>
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, employee_code: event.target.value })}
             placeholder="Employee code"
             required
             value={form.employee_code}
           />
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, phone: event.target.value })}
             placeholder="Phone"
             required
             value={form.phone}
           />
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, designation: event.target.value })}
             placeholder="Designation"
             value={form.designation}
           />
           <input
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
             onChange={(event) => setForm({ ...form, temporary_password: event.target.value })}
             placeholder="Temporary password"
             required
@@ -196,7 +196,7 @@ export function UserManagementPage() {
             value={form.temporary_password}
           />
           <button
-            className="rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             type="submit"
           >
             Create user
@@ -204,13 +204,13 @@ export function UserManagementPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3 text-sm text-slate-600">
+      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-sm">
+        <div className="border-b border-theme-border px-4 py-3 text-sm text-theme-text-secondary">
           {isLoading ? 'Loading users' : `${total} users`}
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+          <table className="min-w-full divide-y divide-theme-border text-sm">
+            <thead className="bg-theme-main text-left text-xs font-semibold uppercase text-theme-text-muted">
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Role</th>
@@ -220,12 +220,12 @@ export function UserManagementPage() {
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-theme-border">
               {users.map((user) => (
                 <tr key={user.id}>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-950">{user.full_name}</p>
-                    <p className="text-xs text-slate-500">{user.email}</p>
+                    <p className="font-medium text-theme-text-primary">{user.full_name}</p>
+                    <p className="text-xs text-theme-text-muted">{user.email}</p>
                   </td>
                   <td className="px-4 py-3">{roleLabel(user.role)}</td>
                   <td className="px-4 py-3">{user.employee_code}</td>
@@ -235,7 +235,7 @@ export function UserManagementPage() {
                       className={`rounded-full px-2 py-1 text-xs font-semibold ${
                         user.is_active
                           ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-slate-100 text-slate-600'
+                          : 'bg-theme-card-elevated text-theme-text-secondary'
                       }`}
                     >
                       {user.is_active ? 'Active' : 'Inactive'}

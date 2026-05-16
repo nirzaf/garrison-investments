@@ -7,6 +7,7 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.tasks.report import generate_excel_export
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -88,3 +89,38 @@ async def test_management_analytics_and_exports_are_restricted() -> None:
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         assert blocked.status_code == 403
+
+
+def test_generate_excel_export_requires_actor_id() -> None:
+    assert generate_excel_export() == "export actor required"
+
+
+def test_generate_excel_export_delegates_to_management_export(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_generate(export_type: str, actor_id: str, filters: dict) -> str:
+        captured["export_type"] = export_type
+        captured["actor_id"] = actor_id
+        captured["filters"] = filters
+        return "exports/material-usage/object-key"
+
+    monkeypatch.setattr("app.tasks.report._generate_management_export", fake_generate)
+
+    actor_id = str(uuid4())
+    result = generate_excel_export(
+        "material-usage",
+        actor_id,
+        {"department": "civil", "date_from": "2026-01-01"},
+    )
+
+    assert result == "exports/material-usage/object-key"
+    assert captured == {
+        "export_type": "material-usage",
+        "actor_id": actor_id,
+        "filters": {"department": "civil", "date_from": "2026-01-01"},
+    }
+
+
+def test_generate_excel_export_rejects_pdf_exports() -> None:
+    with pytest.raises(ValueError, match="only supports XLSX exports"):
+        generate_excel_export("management-summary", str(uuid4()), {})

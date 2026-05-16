@@ -10,9 +10,9 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-      <h3 className="text-base font-semibold text-slate-950">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">{description}</p>
+    <div className="rounded-lg border border-dashed border-theme-border bg-theme-card px-4 py-10 text-center">
+      <h3 className="text-base font-semibold text-theme-text-primary">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-theme-text-secondary">{description}</p>
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );

@@ -3,6 +3,7 @@ from datetime import time, timedelta
 
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.activity_log import ActivityLog
 from app.models.daily_report import DailyReport
@@ -18,7 +19,29 @@ from app.utils.security import utc_now
 
 @celery_app.task(name="cleanup_old_notifications", queue="maintenance")
 def cleanup_old_notifications() -> str:
-    return "notification cleanup placeholder"
+    return asyncio.run(_cleanup_old_notifications())
+
+
+async def _cleanup_old_notifications() -> str:
+    cutoff = utc_now() - timedelta(days=get_settings().notification_retention_days)
+
+    async with AsyncSessionLocal() as session:
+        notifications = list(
+            (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.created_at < cutoff,
+                        Notification.deleted_at.is_(None),
+                    )
+                )
+            ).scalars()
+        )
+
+        for notification in notifications:
+            notification.deleted_at = utc_now()
+
+        await session.commit()
+    return f"{len(notifications)} notifications cleaned up"
 
 
 @celery_app.task(name="check_late_reports", queue="maintenance")

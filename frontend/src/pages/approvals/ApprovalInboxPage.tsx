@@ -107,18 +107,20 @@ export function ApprovalInboxPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Approvals</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Daily Report Inbox</h2>
+          <p className="text-sm font-medium text-brand-600">Approvals</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Daily Report Inbox</h2>
         </div>
         <StatusBadge tone="info">
           {isLoading ? 'Loading' : `${reports.length + genericApprovals.length} pending`}
         </StatusBadge>
       </div>
 
-      <div className="inline-flex rounded-md border border-slate-300 bg-white p-1">
+      <div className="inline-flex rounded-md border border-theme-border bg-theme-card p-1">
         <button
           className={`rounded px-3 py-2 text-sm font-medium ${
-            tab === 'reports' ? 'bg-brand-700 text-white' : 'text-slate-700 hover:bg-slate-100'
+            tab === 'reports'
+              ? 'bg-brand-600 text-white'
+              : 'text-theme-text-secondary hover:bg-theme-card-elevated'
           }`}
           onClick={() => setTab('reports')}
           type="button"
@@ -127,7 +129,9 @@ export function ApprovalInboxPage() {
         </button>
         <button
           className={`rounded px-3 py-2 text-sm font-medium ${
-            tab === 'workflow' ? 'bg-brand-700 text-white' : 'text-slate-700 hover:bg-slate-100'
+            tab === 'workflow'
+              ? 'bg-brand-600 text-white'
+              : 'text-theme-text-secondary hover:bg-theme-card-elevated'
           }`}
           onClick={() => setTab('workflow')}
           type="button"
@@ -159,30 +163,32 @@ export function ApprovalInboxPage() {
           <div className="grid gap-4">
             {genericApprovals.map((approval) => (
               <article
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
                 key={approval.id}
               >
                 <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{approval.title}</h3>
+                      <h3 className="text-base font-semibold text-theme-text-primary">
+                        {approval.title}
+                      </h3>
                       <StatusBadge tone="info">{approval.status}</StatusBadge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-theme-text-muted">
                       {approval.request_type} - due {new Date(approval.due_at).toLocaleString()}
                     </p>
                   </div>
                   {approval.amount ? (
-                    <p className="text-sm font-medium text-slate-700">
+                    <p className="text-sm font-medium text-theme-text-secondary">
                       {approval.currency ?? 'USD'} {approval.amount}
                     </p>
                   ) : null}
                 </div>
-                <p className="mt-3 text-sm text-slate-600">
+                <p className="mt-3 text-sm text-theme-text-secondary">
                   {approval.submitter_comments ?? 'No submitter comments.'}
                 </p>
                 <label className="mt-4 block">
-                  <span className="mb-1 block text-sm font-medium text-slate-700">
+                  <span className="mb-1 block text-sm font-medium text-theme-text-secondary">
                     Approval or rejection comments
                   </span>
                   <textarea
@@ -206,7 +212,7 @@ export function ApprovalInboxPage() {
                     Reject
                   </button>
                   <button
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
                     onClick={() => void approveWorkflow(approval)}
                     type="button"
                   >
@@ -227,44 +233,44 @@ export function ApprovalInboxPage() {
         <div className="grid gap-4">
           {reports.map((report) => (
             <article
-              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+              className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
               key={report.id}
             >
               <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-slate-950">
+                    <h3 className="text-base font-semibold text-theme-text-primary">
                       {report.report_number}
                     </h3>
                     <StatusBadge tone="info">{report.status}</StatusBadge>
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-theme-text-muted">
                     {report.report_date} - {report.work_location}
                   </p>
                 </div>
-                <p className="text-sm font-medium text-slate-700">
+                <p className="text-sm font-medium text-theme-text-secondary">
                   {report.progress_percentage}% progress
                 </p>
               </div>
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-950">Work completed</h4>
-                  <p className="mt-1 text-sm text-slate-600">{report.work_completed}</p>
+                  <h4 className="text-sm font-semibold text-theme-text-primary">Work completed</h4>
+                  <p className="mt-1 text-sm text-theme-text-secondary">{report.work_completed}</p>
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-950">Next-day plan</h4>
-                  <p className="mt-1 text-sm text-slate-600">{report.next_day_plan}</p>
+                  <h4 className="text-sm font-semibold text-theme-text-primary">Next-day plan</h4>
+                  <p className="mt-1 text-sm text-theme-text-secondary">{report.next_day_plan}</p>
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-950">Safety</h4>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <h4 className="text-sm font-semibold text-theme-text-primary">Safety</h4>
+                  <p className="mt-1 text-sm text-theme-text-secondary">
                     {report.safety_incidents} incidents. {report.safety_notes || 'No notes.'}
                   </p>
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-950">History</h4>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <h4 className="text-sm font-semibold text-theme-text-primary">History</h4>
+                  <p className="mt-1 text-sm text-theme-text-secondary">
                     {report.approval_history.length} workflow events recorded.
                   </p>
                 </div>
@@ -272,7 +278,7 @@ export function ApprovalInboxPage() {
 
               <div className="mt-4">
                 <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-slate-700">
+                  <span className="mb-1 block text-sm font-medium text-theme-text-secondary">
                     Approval or rejection comments
                   </span>
                   <textarea
@@ -298,7 +304,7 @@ export function ApprovalInboxPage() {
                   Reject
                 </button>
                 <button
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
                   onClick={() => void approve(report)}
                   type="button"
                 >

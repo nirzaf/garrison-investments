@@ -45,12 +45,12 @@ export function FinancePage() {
   return (
     <section className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-brand-700">Accounts</p>
-        <h2 className="text-2xl font-semibold text-slate-950">Invoices And Payments</h2>
+        <p className="text-sm font-medium text-brand-600">Accounts</p>
+        <h2 className="text-2xl font-semibold text-theme-text-primary">Invoices And Payments</h2>
       </div>
 
       <form
-        className="rounded-lg border border-slate-200 bg-white p-4"
+        className="rounded-lg border border-theme-border bg-theme-card p-4"
         onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
@@ -67,7 +67,7 @@ export function FinancePage() {
           event.currentTarget.reset();
         }}
       >
-        <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+        <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
           <Receipt className="h-4 w-4" />
           New invoice
         </h3>
@@ -100,15 +100,15 @@ export function FinancePage() {
           <input className="form-field" name="tax_amount" placeholder="Tax" type="number" />
           <input className="form-field md:col-span-2" name="notes" placeholder="Notes" />
         </div>
-        <button className="mt-3 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white">
+        <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
           Submit invoice
         </button>
       </form>
 
       {invoices.data && invoices.data.items.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+        <div className="overflow-hidden rounded-lg border border-theme-border bg-theme-card">
+          <table className="min-w-full divide-y divide-theme-border text-sm">
+            <thead className="bg-theme-main text-left text-xs uppercase tracking-wide text-theme-text-muted">
               <tr>
                 <th className="px-4 py-3">Invoice</th>
                 <th className="px-4 py-3">Amount</th>
@@ -118,11 +118,13 @@ export function FinancePage() {
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-theme-border">
               {invoices.data.items.map((invoice) => (
                 <tr key={invoice.id}>
-                  <td className="px-4 py-3 font-medium text-slate-950">{invoice.invoice_number}</td>
-                  <td className="px-4 py-3 text-slate-700">{invoice.total_amount}</td>
+                  <td className="px-4 py-3 font-medium text-theme-text-primary">
+                    {invoice.invoice_number}
+                  </td>
+                  <td className="px-4 py-3 text-theme-text-secondary">{invoice.total_amount}</td>
                   <td className="px-4 py-3">
                     <StatusBadge tone="info">{invoice.status}</StatusBadge>
                   </td>
@@ -131,7 +133,7 @@ export function FinancePage() {
                       {invoice.payment_status}
                     </StatusBadge>
                     {invoice.payments.length > 0 ? (
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-theme-text-muted">
                         {invoice.payments.length} payment{invoice.payments.length > 1 ? 's' : ''}
                       </p>
                     ) : null}
@@ -150,7 +152,7 @@ export function FinancePage() {
                       />
                       {invoice.attachment_key ? (
                         <button
-                          className="text-left text-xs font-semibold text-brand-700"
+                          className="text-left text-xs font-semibold text-brand-600"
                           onClick={() => void openAttachment(invoice.id)}
                           type="button"
                         >
@@ -161,7 +163,7 @@ export function FinancePage() {
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-md border border-theme-border px-3 py-2 text-xs font-semibold text-theme-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={invoice.status !== 'approved'}
                       onClick={() =>
                         createPaymentMutation.mutate({

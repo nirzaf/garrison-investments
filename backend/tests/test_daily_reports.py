@@ -4,6 +4,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
+from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.report_export import ReportExport
@@ -344,6 +345,69 @@ async def test_approved_report_can_be_downloaded_as_pdf() -> None:
             )
         assert export is not None
         assert await _send_report_email(str(export.id)) == "report email skipped"
+
+
+async def test_report_email_updates_export_status_when_delivery_succeeds(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        approved = (
+            await client.post(
+                f"/api/v1/reports/{submitted['id']}/approve",
+                json={"comments": "Ready for archive."},
+                headers={"Authorization": f"Bearer {setup['manager_token']}"},
+            )
+        ).json()
+        response = await client.get(
+            f"/api/v1/reports/{approved['id']}/pdf",
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert response.status_code == 200
+
+    async with AsyncSessionLocal() as session:
+        export = await session.scalar(
+            select(ReportExport).where(ReportExport.report_id == approved["id"])
+        )
+        assert export is not None
+
+    monkeypatch.setattr(
+        "app.tasks.email.get_settings",
+        lambda: Settings(report_email_recipients="pm@example.com,om@example.com"),
+    )
+
+    sent_payload: dict[str, object] = {}
+
+    def fake_send(self, *, recipients: list[str], subject: str, body: str) -> int:
+        sent_payload["recipients"] = recipients
+        sent_payload["subject"] = subject
+        sent_payload["body"] = body
+        return len(recipients)
+
+    monkeypatch.setattr("app.tasks.email.EmailService.send", fake_send)
+
+    assert await _send_report_email(str(export.id)) == "report email sent to 2 recipients"
+    assert sent_payload["recipients"] == ["pm@example.com", "om@example.com"]
+
+    async with AsyncSessionLocal() as session:
+        refreshed = await session.get(ReportExport, export.id)
+        assert refreshed is not None
+        assert refreshed.email_status == "sent"
+        assert refreshed.emailed_at is not None
 
 
 async def test_project_manager_rejects_with_required_reason() -> None:

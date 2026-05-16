@@ -57,11 +57,11 @@ export function ImportPage() {
   return (
     <section className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-brand-700">Admin</p>
-        <h2 className="text-2xl font-semibold text-slate-950">Data Imports</h2>
+        <p className="text-sm font-medium text-brand-600">Admin</p>
+        <h2 className="text-2xl font-semibold text-theme-text-primary">Data Imports</h2>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="rounded-lg border border-theme-border bg-theme-card p-4">
         <div className="grid gap-3 md:grid-cols-[220px_1fr_auto_auto]">
           <select
             className="form-field"
@@ -85,7 +85,7 @@ export function ImportPage() {
             type="file"
           />
           <button
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary"
             onClick={() => void downloadSelectedTemplate()}
             type="button"
           >
@@ -93,7 +93,7 @@ export function ImportPage() {
             Template
           </button>
           <button
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
             onClick={() => void previewSelected()}
             type="button"
           >
@@ -108,18 +108,18 @@ export function ImportPage() {
       ) : null}
 
       {preview ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="rounded-lg border border-theme-border bg-theme-card p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-slate-950">Validation preview</h3>
-              <p className="text-sm text-slate-500">{preview.row_count} rows checked.</p>
+              <h3 className="font-semibold text-theme-text-primary">Validation preview</h3>
+              <p className="text-sm text-theme-text-muted">{preview.row_count} rows checked.</p>
             </div>
             <StatusBadge tone={preview.valid ? 'success' : 'warning'}>
               {preview.valid ? 'valid' : `${preview.errors.length} errors`}
             </StatusBadge>
           </div>
           {preview.errors.length > 0 ? (
-            <div className="mt-4 divide-y divide-slate-100">
+            <div className="mt-4 divide-y divide-theme-border">
               {preview.errors.map((item) => (
                 <p className="py-2 text-sm text-red-700" key={`${item.row}-${item.field}`}>
                   Row {item.row}, {item.field}: {item.message}
@@ -128,7 +128,7 @@ export function ImportPage() {
             </div>
           ) : (
             <button
-              className="mt-4 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white"
+              className="mt-4 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
               onClick={() => void runSelected()}
               type="button"
             >

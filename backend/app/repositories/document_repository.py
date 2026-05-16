@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -60,13 +60,13 @@ class DocumentRepository:
         if document_type:
             query = query.where(Document.document_type == document_type)
         if search:
-            pattern = f"%{search.strip().lower()}%"
-            query = query.where(
-                or_(
-                    func.lower(Document.title).like(pattern),
-                    func.lower(Document.document_type).like(pattern),
+            clean = search.strip()
+            if clean:
+                query = query.where(
+                    func.to_tsvector("english", Document.title).bool_op("@@")(
+                        func.plainto_tsquery("english", clean)
+                    )
                 )
-            )
         total = await self.session.scalar(
             select(func.count()).select_from(query.with_only_columns(Document.id).subquery())
         )

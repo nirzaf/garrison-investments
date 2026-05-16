@@ -42,11 +42,11 @@ export function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Notifications</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Notification History</h2>
+          <p className="text-sm font-medium text-brand-600">Notifications</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Notification History</h2>
         </div>
         <button
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card-elevated"
           onClick={() => void markAllRead()}
           type="button"
         >
@@ -68,16 +68,18 @@ export function NotificationsPage() {
         <div className="space-y-3">
           {notifications.map((notification) => (
             <button
-              className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm hover:bg-slate-50"
+              className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-sm hover:bg-theme-card-elevated"
               key={notification.id}
               onClick={() => void markRead(notification)}
               type="button"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-950">{notification.title}</p>
-                  <p className="mt-1 text-sm text-slate-600">{notification.body}</p>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="text-sm font-semibold text-theme-text-primary">
+                    {notification.title}
+                  </p>
+                  <p className="mt-1 text-sm text-theme-text-secondary">{notification.body}</p>
+                  <p className="mt-2 text-xs text-theme-text-muted">
                     {new Date(notification.created_at).toLocaleString()}
                   </p>
                 </div>

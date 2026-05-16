@@ -3,6 +3,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.user import User
@@ -151,3 +152,34 @@ async def test_change_password_clears_forced_change_flag() -> None:
         )
 
         assert login_after_change.status_code == 200
+
+
+async def test_auth_rate_limit_blocks_repeated_login_attempts(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    email = f"limited-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, password=password)
+
+    custom_settings = Settings(
+        auth_rate_limit_max_requests=1,
+        auth_rate_limit_window_seconds=60,
+    )
+    monkeypatch.setattr("app.main.get_settings", lambda: custom_settings)
+
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        second_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+
+    assert first_response.status_code == 200
+    assert first_response.headers["X-RateLimit-Limit"] == "1"
+    assert first_response.headers["X-RateLimit-Remaining"] == "0"
+    assert second_response.status_code == 429
+    assert second_response.json()["error_code"] == "RATE_LIMITED"
+    assert second_response.headers["Retry-After"] == "60"

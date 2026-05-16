@@ -1,10 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertTriangle, Check, ClipboardList, Save, Send, Upload } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { uploadEntityFiles, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createSupervisorUpdate,
@@ -13,7 +14,12 @@ import {
   type SupervisorUpdateRecord
 } from '../../api/supervisorUpdates';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE = 60 * 1024 * 1024;
+const MAX_PHOTOS = 5;
 
 const draftKey = 'garrisons.supervisor-update-draft';
 
@@ -74,6 +80,9 @@ export function SupervisorUpdatePage() {
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const storedDraft = useMemo(() => {
     try {
@@ -132,10 +141,17 @@ export function SupervisorUpdatePage() {
   }, []);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     const subscription = watch((value) => {
-      window.localStorage.setItem(draftKey, JSON.stringify(value));
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        window.localStorage.setItem(draftKey, JSON.stringify(value));
+      }, 800);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      window.clearTimeout(timer);
+    };
   }, [watch]);
 
   useEffect(() => {
@@ -155,6 +171,44 @@ export function SupervisorUpdatePage() {
       required_notes: values.required_notes,
       attachment_refs: parseAttachmentNames(values.attachment_names)
     };
+  }
+
+  async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
+    if (!files?.length) return;
+    setIsSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const values = watch();
+      const updateId =
+        savedDraftId ??
+        (await createSupervisorUpdate(buildPayload(values as UpdateFormValues))).id;
+      if (!savedDraftId) setSavedDraftId(updateId);
+      const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
+      const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
+      const fileList = Array.from(files);
+      if (maxCount && fileList.length > maxCount) {
+        setError(`Maximum ${maxCount} photos allowed per update.`);
+        return;
+      }
+      if (fileList.some((f) => f.size > maxSize)) {
+        const label = kind === 'photo' ? '10 MB' : '60 MB';
+        setError(`File size exceeds the ${label} limit.`);
+        return;
+      }
+      const uploaded = await uploadEntityFiles({
+        entityType: 'supervisor_update',
+        entityId: updateId,
+        kind,
+        files
+      });
+      setUploadedFiles((prev) => [...prev, ...uploaded]);
+      setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
+    } catch (uploadError) {
+      setError(formatApiError(uploadError));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function saveDraft(values: UpdateFormValues) {
@@ -185,7 +239,8 @@ export function SupervisorUpdatePage() {
     setNotice(null);
     setIsSaving(true);
     try {
-      const updateId = savedDraftId ?? (await createSupervisorUpdate(buildPayload(values))).id;
+      const updateId =
+        savedDraftId ?? (await createSupervisorUpdate(buildPayload(values))).id;
       await submitSupervisorUpdate(updateId);
       setSavedDraftId(null);
       reset(defaultValues);
@@ -203,8 +258,8 @@ export function SupervisorUpdatePage() {
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-brand-700">Reports</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Supervisor Site Update</h2>
+          <p className="text-sm font-medium text-brand-600">Reports</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Supervisor Site Update</h2>
         </div>
 
         {notice ? (
@@ -221,7 +276,7 @@ export function SupervisorUpdatePage() {
         ) : null}
 
         <form
-          className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+          className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
           onSubmit={handleSubmit(submitUpdate)}
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -289,21 +344,53 @@ export function SupervisorUpdatePage() {
               <textarea className="form-field min-h-24" {...register('required_notes')} />
             </Field>
 
-            <Field label="Photos and support file names" error={errors.attachment_names?.message}>
-              <div className="relative">
-                <Upload className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                <textarea
-                  className="form-field min-h-20 pl-10"
-                  placeholder="zone-a.jpg&#10;attendance-sheet.pdf"
-                  {...register('attachment_names')}
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Upload photos">
+                <input
+                  accept="image/jpeg,image/png,image/heic"
+                  capture="environment"
+                  className="form-field"
+                  multiple
+                  onChange={(e) => void uploadFiles(e.target.files, 'photo')}
+                  ref={photoInputRef}
+                  type="file"
                 />
+                <p className="mt-1 text-xs text-theme-text-muted">
+                  Max 5 photos at 10 MB each. JPG, PNG, or HEIC.
+                </p>
+              </Field>
+              <Field label="Upload attachments">
+                <input
+                  accept="application/pdf,image/jpeg,image/png"
+                  className="form-field"
+                  multiple
+                  onChange={(e) => void uploadFiles(e.target.files, 'attachment')}
+                  ref={attachmentInputRef}
+                  type="file"
+                />
+                <p className="mt-1 text-xs text-theme-text-muted">
+                  Supporting documents up to 60 MB.
+                </p>
+              </Field>
+            </div>
+            {uploadedFiles.length > 0 ? (
+              <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
+                {uploadedFiles.map((file) => (
+                  <div
+                    className="flex items-center justify-between rounded-md border border-theme-border px-3 py-2"
+                    key={file.id}
+                  >
+                    <span>{file.original_name}</span>
+                    <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                  </div>
+                ))}
               </div>
-            </Field>
+            ) : null}
           </div>
 
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-60"
               disabled={isSaving}
               onClick={handleSubmit(saveDraft)}
               type="button"
@@ -312,7 +399,7 @@ export function SupervisorUpdatePage() {
               Save draft
             </button>
             <button
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
               disabled={isSaving}
               type="submit"
             >
@@ -325,8 +412,8 @@ export function SupervisorUpdatePage() {
 
       <aside className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-brand-700">Current Records</p>
-          <h3 className="text-xl font-semibold text-slate-950">Recent Site Updates</h3>
+          <p className="text-sm font-medium text-brand-600">Current Records</p>
+          <h3 className="text-xl font-semibold text-theme-text-primary">Recent Site Updates</h3>
         </div>
         {updates.length === 0 ? (
           <EmptyState
@@ -337,24 +424,28 @@ export function SupervisorUpdatePage() {
           <div className="space-y-3">
             {updates.map((update) => (
               <article
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
                 key={update.id}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">{update.update_date}</p>
-                    <p className="text-xs text-slate-500">{update.work_location}</p>
+                    <p className="text-sm font-semibold text-theme-text-primary">
+                      {update.update_date}
+                    </p>
+                    <p className="text-xs text-theme-text-muted">{update.work_location}</p>
                   </div>
                   <StatusBadge tone={update.status === 'submitted' ? 'success' : 'warning'}>
                     {update.status}
                   </StatusBadge>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                <div className="mt-3 flex items-center gap-2 text-xs text-theme-text-muted">
                   <ClipboardList className="h-4 w-4" />
                   <span>{update.attendance_count} attendance</span>
                   <span>{update.overtime_hours} overtime</span>
                 </div>
-                <p className="mt-3 line-clamp-3 text-sm text-slate-700">{update.progress_notes}</p>
+                <p className="mt-3 line-clamp-3 text-sm text-theme-text-secondary">
+                  {update.progress_notes}
+                </p>
               </article>
             ))}
           </div>
@@ -367,7 +458,7 @@ export function SupervisorUpdatePage() {
 function Field({ children, error, label }: { children: ReactNode; error?: string; label: string }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-theme-text-secondary">{label}</span>
       {children}
       {error ? <span className="mt-1 block text-xs text-red-700">{error}</span> : null}
     </label>

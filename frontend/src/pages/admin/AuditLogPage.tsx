@@ -48,30 +48,30 @@ export function AuditLogPage() {
     <section className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-950">Audit Logs</h2>
-          <p className="text-sm text-slate-600">
+          <h2 className="text-xl font-semibold text-theme-text-primary">Audit Logs</h2>
+          <p className="text-sm text-theme-text-secondary">
             Admin-only trace of access, approvals, downloads, and security events.
           </p>
         </div>
       </div>
 
-      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-[1fr_220px_220px]">
-        <label className="space-y-1 text-sm font-medium text-slate-700">
+      <div className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 md:grid-cols-[1fr_220px_220px]">
+        <label className="space-y-1 text-sm font-medium text-theme-text-secondary">
           Search
-          <div className="flex items-center gap-2 rounded-md border border-slate-300 px-3">
-            <Search className="h-4 w-4 text-slate-400" />
+          <div className="flex items-center gap-2 rounded-md border border-theme-border bg-theme-card px-3">
+            <Search className="h-4 w-4 text-theme-text-muted" />
             <input
-              className="min-h-10 flex-1 border-0 bg-transparent text-sm outline-none"
+              className="min-h-10 flex-1 border-0 bg-transparent text-sm text-theme-text-primary outline-none"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Action, entity, comment"
               value={search}
             />
           </div>
         </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700">
+        <label className="space-y-1 text-sm font-medium text-theme-text-secondary">
           Action
           <select
-            className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            className="min-h-10 w-full rounded-md border border-theme-border bg-theme-card px-3 text-sm text-theme-text-primary"
             onChange={(event) => setAction(event.target.value)}
             value={action}
           >
@@ -82,10 +82,10 @@ export function AuditLogPage() {
             ))}
           </select>
         </label>
-        <label className="space-y-1 text-sm font-medium text-slate-700">
+        <label className="space-y-1 text-sm font-medium text-theme-text-secondary">
           Entity
           <select
-            className="min-h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            className="min-h-10 w-full rounded-md border border-theme-border bg-theme-card px-3 text-sm text-theme-text-primary"
             onChange={(event) => setEntityType(event.target.value)}
             value={entityType}
           >
@@ -98,15 +98,15 @@ export function AuditLogPage() {
         </label>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-lg border border-theme-border bg-theme-card">
         {isLoading ? (
-          <p className="p-4 text-sm text-slate-600">Loading audit logs</p>
+          <p className="p-4 text-sm text-theme-text-secondary">Loading audit logs</p>
         ) : isError ? (
           <p className="p-4 text-sm text-red-700">Unable to load audit logs.</p>
         ) : data && data.items.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <table className="min-w-full divide-y divide-theme-border text-sm">
+              <thead className="bg-theme-main text-left text-xs uppercase tracking-wide text-theme-text-muted">
                 <tr>
                   <th className="px-4 py-3">Time</th>
                   <th className="px-4 py-3">Action</th>
@@ -115,27 +115,27 @@ export function AuditLogPage() {
                   <th className="px-4 py-3">Context</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-theme-border">
                 {data.items.map((log) => (
                   <tr key={log.id}>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                    <td className="whitespace-nowrap px-4 py-3 text-theme-text-secondary">
                       {new Date(log.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge tone="info">{readableAction(log.action)}</StatusBadge>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-theme-text-secondary">
                       <p>{log.entity_type ?? '-'}</p>
-                      <p className="max-w-48 truncate text-xs text-slate-500">
+                      <p className="max-w-48 truncate text-xs text-theme-text-muted">
                         {log.entity_id ?? ''}
                       </p>
                     </td>
-                    <td className="max-w-48 truncate px-4 py-3 text-slate-600">
+                    <td className="max-w-48 truncate px-4 py-3 text-theme-text-secondary">
                       {log.user_id ?? 'System'}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-theme-text-secondary">
                       <p>{log.comments ?? '-'}</p>
-                      <p className="max-w-md truncate text-xs text-slate-500">
+                      <p className="max-w-md truncate text-xs text-theme-text-muted">
                         {log.ip_address ?? ''} {log.user_agent ? `· ${log.user_agent}` : ''}
                       </p>
                     </td>
