@@ -300,7 +300,7 @@ export function InventoryPage() {
                 >
                   <div>
                     <p className="font-medium text-theme-text-primary">{supplier.name}</p>
-                    <p className={isExpiring ? 'text-amber-700' : 'text-theme-text-muted'}>
+                    <p className={isExpiring ? 'text-[var(--status-warning-text)]' : 'text-theme-text-muted'}>
                       TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
                       {supplier.tds_expiry_date ?? '-'}
                     </p>

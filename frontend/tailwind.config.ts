@@ -29,7 +29,19 @@ export default {
           border: 'var(--border)',
           success: 'var(--success)',
           warning: 'var(--warning)',
-          error: 'var(--error)'
+          error: 'var(--error)',
+          'status-success-bg': 'var(--status-success-bg)',
+          'status-success-text': 'var(--status-success-text)',
+          'status-success-border': 'var(--status-success-border)',
+          'status-warning-bg': 'var(--status-warning-bg)',
+          'status-warning-text': 'var(--status-warning-text)',
+          'status-warning-border': 'var(--status-warning-border)',
+          'status-error-bg': 'var(--status-error-bg)',
+          'status-error-text': 'var(--status-error-text)',
+          'status-error-border': 'var(--status-error-border)',
+          'status-info-bg': 'var(--status-info-bg)',
+          'status-info-text': 'var(--status-info-text)',
+          'status-info-border': 'var(--status-info-border)'
         }
       }
     }

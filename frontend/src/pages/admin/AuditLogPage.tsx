@@ -102,7 +102,7 @@ export function AuditLogPage() {
         {isLoading ? (
           <p className="p-4 text-sm text-theme-text-secondary">Loading audit logs</p>
         ) : isError ? (
-          <p className="p-4 text-sm text-red-700">Unable to load audit logs.</p>
+          <p className="p-4 text-sm text-[var(--status-error-text)]">Unable to load audit logs.</p>
         ) : data && data.items.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-theme-border text-sm">

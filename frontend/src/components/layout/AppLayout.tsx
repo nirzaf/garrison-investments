@@ -228,7 +228,7 @@ export function AppLayout() {
                       </div>
                     </div>
                     <button
-                      className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                      className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
                       onClick={() => void logout()}
                       type="button"
                     >

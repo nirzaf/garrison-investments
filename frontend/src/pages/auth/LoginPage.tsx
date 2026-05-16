@@ -86,11 +86,11 @@ export function LoginPage() {
             </label>
           )}
           {devOtp ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
               Development code: <span className="font-semibold tracking-widest">{devOtp}</span>
             </p>
           ) : null}
-          {error ? <p className="text-sm font-medium text-red-700">{error}</p> : null}
+          {error ? <p className="text-sm font-medium text-[var(--status-error-text)]">{error}</p> : null}
           <button
             className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isSubmitting}

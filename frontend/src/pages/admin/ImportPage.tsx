@@ -104,7 +104,7 @@ export function ImportPage() {
       </div>
 
       {error ? (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p>
       ) : null}
 
       {preview ? (
@@ -121,7 +121,7 @@ export function ImportPage() {
           {preview.errors.length > 0 ? (
             <div className="mt-4 divide-y divide-theme-border">
               {preview.errors.map((item) => (
-                <p className="py-2 text-sm text-red-700" key={`${item.row}-${item.field}`}>
+                <p className="py-2 text-sm text-[var(--status-error-text)]" key={`${item.row}-${item.field}`}>
                   Row {item.row}, {item.field}: {item.message}
                 </p>
               ))}
@@ -139,7 +139,7 @@ export function ImportPage() {
       ) : null}
 
       {result ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="alert-success rounded-lg border border-[var(--status-success-border)] p-4 text-sm">
           Import {result.status}: {result.row_count} rows, {result.error_count} errors.
         </div>
       ) : null}

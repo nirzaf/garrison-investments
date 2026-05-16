@@ -16,6 +16,18 @@
   --success: #16A34A;
   --warning: #B08900;
   --error: #B42318;
+  --status-success-bg: #ecfdf5;
+  --status-success-text: #065f46;
+  --status-success-border: #a7f3d0;
+  --status-warning-bg: #fffbeb;
+  --status-warning-text: #78350f;
+  --status-warning-border: #fde68a;
+  --status-error-bg: #fef2f2;
+  --status-error-text: #b91c1c;
+  --status-error-border: #fecaca;
+  --status-info-bg: #f0f9ff;
+  --status-info-text: #0369a1;
+  --status-info-border: #bae6fd;
 
   font-family:
     Inter,
@@ -43,6 +55,18 @@
   --success: #16A34A;
   --warning: #C9A227;
   --error: #B42318;
+  --status-success-bg: rgba(6, 78, 59, 0.20);
+  --status-success-text: #34d399;
+  --status-success-border: rgba(6, 78, 59, 0.30);
+  --status-warning-bg: rgba(120, 53, 15, 0.20);
+  --status-warning-text: #fbbf24;
+  --status-warning-border: rgba(120, 53, 15, 0.30);
+  --status-error-bg: rgba(127, 29, 29, 0.20);
+  --status-error-text: #f87171;
+  --status-error-border: rgba(127, 29, 29, 0.25);
+  --status-info-bg: rgba(12, 74, 110, 0.20);
+  --status-info-text: #38bdf8;
+  --status-info-border: rgba(12, 74, 110, 0.25);
 }
 
 body {
@@ -65,5 +89,34 @@ body {
   .form-field:disabled {
     background: var(--bg-card-elevated);
     color: var(--text-muted);
+  }
+
+  .alert-success {
+    background: var(--status-success-bg);
+    color: var(--status-success-text);
+  }
+
+  .alert-warning {
+    background: var(--status-warning-bg);
+    color: var(--status-warning-text);
+  }
+
+  .alert-error {
+    background: var(--status-error-bg);
+    color: var(--status-error-text);
+  }
+
+  .alert-info {
+    background: var(--status-info-bg);
+    color: var(--status-info-text);
+  }
+
+  .btn-reject {
+    border-color: var(--status-error-border);
+    color: var(--status-error-text);
+  }
+
+  .btn-reject:hover {
+    background: var(--status-error-bg);
   }
 }

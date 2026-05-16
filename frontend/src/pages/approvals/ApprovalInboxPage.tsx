@@ -141,13 +141,13 @@ export function ApprovalInboxPage() {
       </div>
 
       {notice ? (
-        <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div className="alert-success flex items-center gap-2 rounded-md px-3 py-2 text-sm">
           <Check className="h-4 w-4" />
           <span>{notice}</span>
         </div>
       ) : null}
       {error ? (
-        <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm">
           <AlertTriangle className="h-4 w-4" />
           <span>{error}</span>
         </div>
@@ -204,7 +204,7 @@ export function ApprovalInboxPage() {
                 </label>
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                    className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold"
                     onClick={() => void rejectWorkflow(approval)}
                     type="button"
                   >
@@ -296,7 +296,7 @@ export function ApprovalInboxPage() {
 
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                  className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold"
                   onClick={() => void reject(report)}
                   type="button"
                 >

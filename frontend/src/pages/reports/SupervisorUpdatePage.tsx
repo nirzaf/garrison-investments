@@ -263,13 +263,13 @@ export function SupervisorUpdatePage() {
         </div>
 
         {notice ? (
-          <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <div className="alert-success flex items-center gap-2 rounded-md px-3 py-2 text-sm">
             <Check className="h-4 w-4" />
             <span>{notice}</span>
           </div>
         ) : null}
         {error ? (
-          <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm">
             <AlertTriangle className="h-4 w-4" />
             <span>{error}</span>
           </div>
@@ -460,7 +460,7 @@ function Field({ children, error, label }: { children: ReactNode; error?: string
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-theme-text-secondary">{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-xs text-red-700">{error}</span> : null}
+      {error ? <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span> : null}
     </label>
   );
 }
