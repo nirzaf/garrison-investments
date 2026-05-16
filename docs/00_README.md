@@ -33,13 +33,14 @@ Inventory & Stores is a Phase 2 capability for consumable materials and trackabl
 | 3 | [API Specification](03_API_Specification.md) | FastAPI endpoint catalog, request/response schemas, auth flows |
 | 4 | [Work Breakdown Structure](04_Work_Breakdown_Structure.md) | Phase-based task breakdown with estimates and dependencies |
 | 5 | [UI Component Tree](05_UI_Component_Tree.md) | React component hierarchy, state management, routing |
-| 6 | [PostgreSQL Schema Reference](schema/README.md) | Implementation-intent database schema with one file per table and linked relations |
+| 6 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations |
 | 7 | [Operations Runbook](06_Operations_Runbook.md) | CI/CD, deployment approval, backup, restore, rollback, and alert procedures |
 | 8 | [UAT And Launch Readiness](07_UAT_Launch_Readiness.md) | Seed data, stakeholder test scenarios, blocker classification, and sign-off checklist |
 | 9 | [Architecture](ARCHITECTURE.md) | Codebase-derived architecture, layering rules, runtime boundaries, and deployment design |
 | 10 | [Requirements Clarifications](REQUIREMENTS_QUESTIONS.md) | Stakeholder answers and remaining requirement follow-up items |
 | 11 | [User Stories](user-stories/README.md) | Implementation-ready story files and build sequence |
 | 12 | [Implementation Review](USER_STORY_IMPLEMENTATION_REVIEW.md) | Strict completion evidence and current partial/external evidence status |
+| 13 | [Prototype Guide](PROTOTYPE.md) | Next.js requirements prototype structure, run commands, and stakeholder walkthrough map |
 
 ## Quick Start (Development)
 
