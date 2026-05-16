@@ -1,14 +1,14 @@
 # Construction Internal Portal TO-DO User Stories
 
-This folder breaks the Construction Internal Portal into implementation-ready user stories. The sequence follows [ARCHITECTURE.md](../ARCHITECTURE.md) as the implementation baseline and treats `REQUIREMENTS_QUESTIONS.md` as the latest requirement clarification where it overrides the earlier work breakdown.
+This folder breaks the Construction Internal Portal into implementation-ready user stories. The sequence follows [../ARCHITECTURE.md](../../ARCHITECTURE.md) as the implementation baseline and treats `REQUIREMENTS_QUESTIONS.md` as the latest requirement clarification where it overrides the earlier work breakdown.
 
 ## Source References
 
-- [Documentation Index](../docs/00_README.md)
-- [Architecture](../ARCHITECTURE.md)
-- [Technical Specification](../docs/01_Technical_Specification.md)
-- [API Specification](../docs/03_API_Specification.md)
-- [UI Component Tree](../docs/05_UI_Component_Tree.md)
+- [Documentation Index](../00_README.md)
+- [Architecture](../../ARCHITECTURE.md)
+- [Technical Specification](../01_Technical_Specification.md)
+- [API Specification](../03_API_Specification.md)
+- [UI Component Tree](../05_UI_Component_Tree.md)
 - [Requirements Clarifications](../REQUIREMENTS_QUESTIONS.md)
 - [Schema Reference](../schema/README.md)
 
@@ -50,7 +50,7 @@ This folder breaks the Construction Internal Portal into implementation-ready us
 
 ## Implementation Notes
 
-- Implementation must follow `ARCHITECTURE.md`: FastAPI routes stay thin, services own business workflows and transactions, repositories own async SQLAlchemy data access, Pydantic V2 serializes responses, React uses Context + TanStack Query, forms use React Hook Form + Zod, files use MinIO metadata plus presigned access, and background work runs through Celery.
+- Implementation must follow `../../ARCHITECTURE.md`: FastAPI routes stay thin, services own business workflows and transactions, repositories own async SQLAlchemy data access, Pydantic V2 serializes responses, React uses Context + TanStack Query, forms use React Hook Form + Zod, files use MinIO metadata plus presigned access, and background work runs through Celery.
 - Each story is intentionally small enough to implement, review, and test independently.
 - Document management is included in Phase 1 because the clarified requirements require upload, metadata, version history, superseded warnings, and approval before active status in the first release.
 - Full material request and inventory operations are Phase 2. Phase 1 dashboard low-stock indicators should be included only if the inventory slice is pulled forward.

@@ -53,7 +53,7 @@ Build login, logout, secure session handling, email OTP two-factor authenticatio
 - Store refresh tokens or session records server-side so logout can invalidate them.
 - Rate-limit auth and OTP endpoints more strictly than normal API endpoints.
 - Audit login success, failed login, lockout, logout, and password reset events.
-- Follow `ARCHITECTURE.md` auth flow: access token is kept in memory, refresh token is HttpOnly Secure SameSite=Strict cookie, refresh tokens rotate and are stored hashed server-side.
+- Follow `../../ARCHITECTURE.md` auth flow: access token is kept in memory, refresh token is HttpOnly Secure SameSite=Strict cookie, refresh tokens rotate and are stored hashed server-side.
 - Implement authentication through FastAPI dependencies and RBAC dependencies, not route-local business logic.
 - Return errors using the architecture error envelope with `detail`, `error_code`, and field errors where applicable.
 

@@ -48,7 +48,7 @@ Implement the first-release daily report approval workflow from supervisor updat
 - Add immutable state checks to report update APIs.
 - Add late/missing report detection and notification triggers.
 - Store approval actor, timestamp, decision, comments, and prior state.
-- Follow `ARCHITECTURE.md` immutability-after-approval rule for daily reports.
+- Follow `../../ARCHITECTURE.md` immutability-after-approval rule for daily reports.
 - Put approval transition rules in services; repositories should only persist and query approval/report data.
 - Late report checks should run through Celery Beat maintenance tasks, not blocking request handlers.
 

@@ -3,7 +3,7 @@
 Date: 2026-05-16
 Scope: current working tree, including all committed frontend, backend, prototype, and docs changes
 Reviewed areas: `frontend/`, `backend/`, `prototype/`, `docs/`, backend tests, frontend route tests, CI/ops-adjacent code paths, production readiness evidence
-Source stories: `TO-DO/[0-9][0-9]-*.md`
+Source stories: `docs/user-stories/[0-9][0-9]-*.md`
 Review rule: a story is `Complete` when the repo contains production implementation evidence for every acceptance criterion, business rule, UI/UX note, technical note, dependency closure item, and definition-of-done item, with relevant automated or documented verification evidence.
 
 ## Current Frontend, Backend, and Prototype Alignment

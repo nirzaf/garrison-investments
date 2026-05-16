@@ -46,7 +46,7 @@ Implement supplier records with categories, ratings, payment terms, TDS fields, 
 - Store compliance files in object storage with audit logging.
 - Add expiry reminder hooks for notifications.
 - Link suppliers to inventory items and invoices.
-- Follow `ARCHITECTURE.md` soft-delete pattern with `deleted_at` and active-only repository filters.
+- Follow `../../ARCHITECTURE.md` soft-delete pattern with `deleted_at` and active-only repository filters.
 - Supplier document downloads must use the same MinIO presigned URL and audit flow as other private files.
 - Supplier list APIs must use the standard pagination, filtering, and error response conventions.
 

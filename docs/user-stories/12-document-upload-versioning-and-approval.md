@@ -50,7 +50,7 @@ Implement first-release document management for MAR, MIR, WIR, delivery notes, d
 - Store documents in MinIO through authorized access only.
 - Use PostgreSQL full-text search for metadata and extracted text where feasible.
 - Audit all view and download actions.
-- Follow `ARCHITECTURE.md` file-access flow: FastAPI checks RBAC/project access, returns a short-lived MinIO presigned URL, and records the download audit event.
+- Follow `../../ARCHITECTURE.md` file-access flow: FastAPI checks RBAC/project access, returns a short-lived MinIO presigned URL, and records the download audit event.
 - Use `documents` plus `document_versions` with immutable active versions and superseded records instead of overwriting files.
 - Implement list/search endpoints with the architecture pagination and filtering conventions.
 

@@ -1,6 +1,8 @@
 # Construction Internal Portal
 
-Implementation workspace for the Construction Internal Portal described in `ARCHITECTURE.md` and the planning documents under `docs/`.
+Implementation workspace for the Construction Internal Portal.
+
+All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/00_README.md), then use [architecture](docs/ARCHITECTURE.md), [current database schema](docs/02_Database_Schema.md), [user stories](docs/user-stories/README.md), and the [implementation review](docs/USER_STORY_IMPLEMENTATION_REVIEW.md) as the source of truth.
 
 ## Local Development
 
@@ -53,12 +55,12 @@ npm run dev
 ## Current Implementation Status
 
 This repository contains production implementation work across the Phase 1 user
-stories in `TO-DO/`, including authentication, RBAC, projects/BOQ, daily
+stories in `docs/user-stories/`, including authentication, RBAC, projects/BOQ, daily
 reports, approvals, uploads, documents, notifications, audit logs, operations,
 inventory, suppliers, finance, analytics, PWA/offline primitives, and data
 imports.
 
-Strict completion status is tracked in `USER_STORY_IMPLEMENTATION_REVIEW.md`.
+Strict completion status is tracked in `docs/USER_STORY_IMPLEMENTATION_REVIEW.md`.
 That report uses a 100% acceptance standard: a story is marked complete only
 when every acceptance criterion, business rule, UI/UX note, technical note, and
 definition-of-done item has implementation evidence plus relevant verification

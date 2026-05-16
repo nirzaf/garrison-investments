@@ -44,7 +44,7 @@ Set up the backend, frontend, database, cache, object storage, and local configu
 - Scaffold FastAPI with health check, settings, database session, and API version routing.
 - Scaffold React with TypeScript, Tailwind, router, and shared styling foundation.
 - Configure Alembic for PostgreSQL migrations.
-- Follow `ARCHITECTURE.md` directory structure, Docker Compose service layout, `/health` and `/health/readiness` checks, and backend request lifecycle.
+- Follow `../../ARCHITECTURE.md` directory structure, Docker Compose service layout, `/health` and `/health/readiness` checks, and backend request lifecycle.
 - Use Python 3.12+, FastAPI, async SQLAlchemy 2.0, Pydantic V2, React 18, Vite, Tailwind, TanStack Query, Redis, Celery, PostgreSQL 16, and MinIO as the baseline stack.
 - Keep all production secrets out of Git.
 
