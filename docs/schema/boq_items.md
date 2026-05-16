@@ -1,34 +1,40 @@
-# boq_items
+# `boq_items`
 
-Stores project BOQ lines and approved quantity/value baselines used for progress and budget comparison.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique BOQ line identifier. |
-| `project_id` | `UUID` | FK | Parent project. References [projects](projects.md). |
-| `milestone_id` | `UUID` | FK | Optional linked milestone. References [project_milestones](project_milestones.md). |
-| `item_code` | `VARCHAR(50)` |  | BOQ line or imported spreadsheet code. |
-| `description` | `TEXT` |  | BOQ item description. |
-| `discipline` | `VARCHAR(50)` |  | Work discipline or trade. |
-| `unit` | `VARCHAR(20)` |  | Quantity unit. |
-| `planned_quantity` | `DECIMAL(14,3)` |  | Contract quantity. |
-| `approved_quantity` | `DECIMAL(14,3)` |  | Quantity approved through reports/WIRs. |
-| `unit_rate` | `DECIMAL(14,2)` |  | Contract unit rate. |
-| `planned_amount` | `DECIMAL(15,2)` |  | Planned quantity x unit rate. |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last update timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `project_id` | `UUID` | No | `` | projects.id |
+| `milestone_id` | `UUID` | Yes | `` | project_milestones.id |
+| `item_code` | `VARCHAR(50)` | No | `` |  |
+| `description` | `TEXT` | No | `` |  |
+| `discipline` | `VARCHAR(50)` | Yes | `` |  |
+| `phase` | `VARCHAR(100)` | Yes | `` |  |
+| `unit` | `VARCHAR(20)` | No | `` |  |
+| `planned_quantity` | `NUMERIC(14, 3)` | No | `` |  |
+| `approved_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
+| `unit_rate` | `NUMERIC(14, 2)` | No | `` |  |
+| `planned_amount` | `NUMERIC(15, 2)` | No | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [projects](projects.md).
-- Optionally belongs to [project_milestones](project_milestones.md).
-- Used by [daily_reports](daily_reports.md) and finance dashboards for progress and budget comparison.
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_boq_items_project` on `project_id`.
-- `idx_boq_items_milestone` on `milestone_id`.
-- Unique intended key: `(project_id, item_code)` where `deleted_at IS NULL`.
+| Column | References |
+|---|---|
+| `project_id` | `projects.id` |
+| `milestone_id` | `project_milestones.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `report_material_consumption.boq_item_id` | `boq_items.id` |

@@ -1,28 +1,36 @@
-# suppliers
+# `suppliers`
 
-Stores supplier master data for inventory purchasing, invoices, and compliance attachments.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique supplier identifier. |
-| `name` | `VARCHAR(200)` |  | Supplier company name. |
-| `contact_person` | `VARCHAR(150)` |  | Main contact. |
-| `phone` | `VARCHAR(20)` |  | Contact phone. |
-| `email` | `VARCHAR(255)` |  | Contact email. |
-| `address` | `TEXT` |  | Supplier address. |
-| `gst_number` | `VARCHAR(20)` |  | Tax/commercial registration reference, if used. |
-| `is_active` | `BOOLEAN` |  | Whether supplier can be selected in new records. |
-| `created_at` | `TIMESTAMPTZ` |  | Creation timestamp. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(200)` | No | `` |  |
+| `category` | `VARCHAR(80)` | No | `` |  |
+| `rating` | `VARCHAR(20)` | No | `` |  |
+| `payment_terms` | `VARCHAR(120)` | No | `` |  |
+| `contact_person` | `VARCHAR(150)` | No | `` |  |
+| `phone` | `VARCHAR(32)` | No | `` |  |
+| `email` | `VARCHAR(255)` | No | `` |  |
+| `address` | `TEXT` | No | `` |  |
+| `tax_registration_number` | `VARCHAR(80)` | No | `` |  |
+| `tds_certificate_number` | `VARCHAR(120)` | Yes | `` |  |
+| `tds_expiry_date` | `DATE` | Yes | `` |  |
+| `tds_document_key` | `VARCHAR(500)` | Yes | `` |  |
+| `compliance_status` | `VARCHAR(30)` | No | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Supplies [inventory_items](inventory_items.md).
-- Appears on [invoices](invoices.md).
-- Compliance files can be stored through [documents](documents.md) or [photos](photos.md) metadata where appropriate.
+- Primary key: `id`
 
-## Indexes
+## Referenced By
 
-- Intended `idx_suppliers_active` on `is_active` where `deleted_at IS NULL`.
+| Source | Target |
+|---|---|
+| `invoices.supplier_id` | `suppliers.id` |

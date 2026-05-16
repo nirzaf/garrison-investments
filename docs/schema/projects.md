@@ -1,37 +1,52 @@
-# projects
+# `projects`
 
-Stores construction project master data and the anchor record for reports, BOQ, documents, inventory site stores, and finance.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique project identifier. |
-| `name` | `VARCHAR(200)` |  | Project name shown to all roles. |
-| `code` | `VARCHAR(20)` | Unique | Short project code used in report/document numbering. |
-| `location` | `TEXT` |  | Physical project location. |
-| `description` | `TEXT` |  | Optional project summary. |
-| `status` | `VARCHAR(30)` |  | `planning`, `active`, `on_hold`, `completed`, or `cancelled`. |
-| `budget_amount` | `DECIMAL(15,2)` |  | Approved budget baseline. |
-| `start_date` | `DATE` |  | Planned start date. |
-| `target_end_date` | `DATE` |  | Planned completion date. |
-| `actual_end_date` | `DATE` |  | Actual completion date once closed. |
-| `client_name` | `VARCHAR(200)` |  | Client or customer name. |
-| `contract_number` | `VARCHAR(50)` |  | Contract reference. |
-| `progress_percentage` | `DECIMAL(5,2)` |  | Current project progress, calculated from approved quantities/milestones. |
-| `created_by` | `UUID` | FK | User who created the project. References [users](users.md). |
-| `created_at` | `TIMESTAMPTZ` |  | Project creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last project metadata update. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `name` | `VARCHAR(200)` | No | `` |  |
+| `code` | `VARCHAR(20)` | No | `` |  |
+| `location` | `TEXT` | Yes | `` |  |
+| `description` | `TEXT` | Yes | `` |  |
+| `scope_of_work` | `TEXT` | No | `` |  |
+| `status` | `VARCHAR(30)` | No | `'planning'` |  |
+| `budget_amount` | `NUMERIC(15, 2)` | Yes | `` |  |
+| `start_date` | `DATE` | Yes | `` |  |
+| `target_end_date` | `DATE` | No | `` |  |
+| `actual_end_date` | `DATE` | Yes | `` |  |
+| `client_name` | `VARCHAR(200)` | Yes | `` |  |
+| `contract_number` | `VARCHAR(50)` | Yes | `` |  |
+| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
+| `created_by` | `UUID` | Yes | `` | users.id |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Created by [users](users.md).
-- Has many [project_members](project_members.md), [project_milestones](project_milestones.md), and [boq_items](boq_items.md).
-- Has many [daily_reports](daily_reports.md), [documents](documents.md), [invoices](invoices.md), and optional site [storage_locations](storage_locations.md).
-- Can be linked to serialized [inventory_assets](inventory_assets.md) currently assigned to a project site.
+- Primary key: `id`
 
-## Indexes
+## Outbound Relationships
 
-- `idx_projects_status` on `status` where `deleted_at IS NULL`.
-- `idx_projects_code` on `code`.
+| Column | References |
+|---|---|
+| `created_by` | `users.id` |
+
+## Referenced By
+
+| Source | Target |
+|---|---|
+| `approvals.project_id` | `projects.id` |
+| `boq_items.project_id` | `projects.id` |
+| `daily_reports.project_id` | `projects.id` |
+| `documents.project_id` | `projects.id` |
+| `inventory_movements.project_id` | `projects.id` |
+| `invoices.project_id` | `projects.id` |
+| `material_requests.project_id` | `projects.id` |
+| `project_members.project_id` | `projects.id` |
+| `project_milestones.project_id` | `projects.id` |
+| `storage_locations.project_id` | `projects.id` |
+| `supervisor_updates.project_id` | `projects.id` |

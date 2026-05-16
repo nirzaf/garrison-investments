@@ -1,38 +1,59 @@
-# users
+# `users`
 
-Stores employee accounts, fixed MVP role, authentication state, and lifecycle status.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique user identifier. |
-| `email` | `VARCHAR(255)` | Unique | Login email; indexed for authentication lookup. |
-| `password_hash` | `VARCHAR(255)` |  | Bcrypt/argon hash of the password. Never store plaintext. |
-| `full_name` | `VARCHAR(150)` |  | Display name used across reports, approvals, and audit views. |
-| `phone` | `VARCHAR(20)` |  | Optional contact number for operational follow-up. |
-| `employee_code` | `VARCHAR(20)` | Unique | Internal employee identifier. |
-| `role` | `VARCHAR(50)` |  | Fixed MVP role: `admin`, `operation_manager`, `project_manager`, `civil_engineer`, `civil_supervisor`, `store_keeper`, `accounts`. |
-| `designation` | `VARCHAR(100)` |  | HR/job title text shown in admin screens. |
-| `is_active` | `BOOLEAN` |  | Deactivated users cannot log in, but historical records remain linked. |
-| `last_login_at` | `TIMESTAMPTZ` |  | Last successful login timestamp. |
-| `refresh_token_hash` | `VARCHAR(255)` |  | Hash of current refresh token for session rotation. |
-| `created_at` | `TIMESTAMPTZ` |  | Account creation timestamp. |
-| `updated_at` | `TIMESTAMPTZ` |  | Last account metadata update. |
-| `deleted_at` | `TIMESTAMPTZ` |  | Soft delete marker. Prefer deactivation for historical identity. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `email` | `VARCHAR(255)` | No | `` |  |
+| `full_name` | `VARCHAR(255)` | No | `` |  |
+| `role` | `VARCHAR(64)` | No | `` |  |
+| `employee_code` | `VARCHAR(64)` | Yes | `` |  |
+| `phone` | `VARCHAR(32)` | Yes | `` |  |
+| `designation` | `VARCHAR(100)` | Yes | `` |  |
+| `password_hash` | `VARCHAR(255)` | Yes | `` |  |
+| `is_active` | `BOOLEAN` | No | `true` |  |
+| `must_change_password` | `BOOLEAN` | No | `true` |  |
+| `failed_login_attempts` | `INTEGER` | No | `0` |  |
+| `locked_until` | `DATETIME` | Yes | `` |  |
+| `last_login_at` | `DATETIME` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Creates [projects](projects.md) through `projects.created_by`.
-- Assigned to [project_members](project_members.md) through `project_members.user_id`.
-- Submits and approves [daily_reports](daily_reports.md).
-- Uploads [documents](documents.md), [document_versions](document_versions.md), and [photos](photos.md).
-- Requests or decides [approvals](approvals.md).
-- Receives [notifications](notifications.md).
-- Performs [inventory_movements](inventory_movements.md).
-- Performs auditable actions in [activity_log](activity_log.md).
+- Primary key: `id`
 
-## Indexes
+## Referenced By
 
-- `idx_users_email` on `email` where `deleted_at IS NULL`.
-- `idx_users_role` on `role` where `deleted_at IS NULL`.
+| Source | Target |
+|---|---|
+| `activity_log.user_id` | `users.id` |
+| `approvals.submitter_id` | `users.id` |
+| `approvals.approver_id` | `users.id` |
+| `approvals.delegated_to_id` | `users.id` |
+| `approvals.escalation_user_id` | `users.id` |
+| `auth_otp_challenges.user_id` | `users.id` |
+| `auth_refresh_tokens.user_id` | `users.id` |
+| `daily_report_approval_history.actor_id` | `users.id` |
+| `daily_reports.engineer_id` | `users.id` |
+| `daily_reports.approved_by` | `users.id` |
+| `document_versions.uploaded_by` | `users.id` |
+| `document_versions.approved_by` | `users.id` |
+| `documents.uploaded_by` | `users.id` |
+| `import_batches.created_by` | `users.id` |
+| `inventory_movements.handled_by` | `users.id` |
+| `invoices.created_by` | `users.id` |
+| `invoices.approved_by` | `users.id` |
+| `material_requests.requester_id` | `users.id` |
+| `notifications.user_id` | `users.id` |
+| `payments.recorded_by` | `users.id` |
+| `photos.uploaded_by` | `users.id` |
+| `project_members.user_id` | `users.id` |
+| `projects.created_by` | `users.id` |
+| `report_exports.generated_by` | `users.id` |
+| `supervisor_updates.supervisor_id` | `users.id` |
+| `supervisor_updates.verified_by` | `users.id` |

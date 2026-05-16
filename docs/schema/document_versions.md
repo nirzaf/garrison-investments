@@ -1,25 +1,35 @@
-# document_versions
+# `document_versions`
 
-Stores immutable file versions for a document.
+Generated from the current SQLAlchemy model metadata in `backend/app/models`.
 
 ## Columns
 
-| Column | Type | Key | Explanation |
-|---|---|---|---|
-| `id` | `UUID` | PK | Unique version identifier. |
-| `document_id` | `UUID` | FK | Parent document. References [documents](documents.md). |
-| `version` | `INT` |  | Version number under the parent document. |
-| `storage_path` | `VARCHAR(500)` |  | Object storage key for this version. |
-| `size_bytes` | `BIGINT` |  | File size. |
-| `change_notes` | `TEXT` |  | Description of what changed in this version. |
-| `uploaded_by` | `UUID` | FK | Uploader. References [users](users.md). |
-| `created_at` | `TIMESTAMPTZ` |  | Upload timestamp. |
+| Column | Type | Nullable | Default | References |
+|---|---|---:|---|---|
+| `id` | `UUID` | No | `uuid_generate_v4()` |  |
+| `document_id` | `UUID` | No | `` | documents.id |
+| `version` | `INTEGER` | No | `` |  |
+| `status` | `VARCHAR(20)` | No | `'pending_approval'` |  |
+| `storage_path` | `VARCHAR(500)` | No | `` |  |
+| `original_name` | `VARCHAR(255)` | No | `` |  |
+| `mime_type` | `VARCHAR(80)` | No | `` |  |
+| `size_bytes` | `BIGINT` | No | `` |  |
+| `uploaded_by` | `UUID` | Yes | `` | users.id |
+| `approved_by` | `UUID` | Yes | `` | users.id |
+| `approved_at` | `DATETIME` | Yes | `` |  |
+| `approval_comments` | `TEXT` | Yes | `` |  |
+| `created_at` | `DATETIME` | No | `now()` |  |
+| `updated_at` | `DATETIME` | No | `now()` |  |
+| `deleted_at` | `DATETIME` | Yes | `` |  |
 
-## Relations
+## Keys
 
-- Belongs to [documents](documents.md).
-- Uploaded by [users](users.md).
+- Primary key: `id`
 
-## Constraints and Indexes
+## Outbound Relationships
 
-- Unique version per document: `(document_id, version)`.
+| Column | References |
+|---|---|
+| `document_id` | `documents.id` |
+| `uploaded_by` | `users.id` |
+| `approved_by` | `users.id` |
