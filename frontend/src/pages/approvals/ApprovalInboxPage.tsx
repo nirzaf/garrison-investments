@@ -312,7 +312,8 @@ export function ApprovalInboxPage() {
                           setDelegateByApproval({
                             ...delegateByApproval,
                             [approval.id]: {
-                              delegated_to_id: delegateByApproval[approval.id]?.delegated_to_id ?? '',
+                              delegated_to_id:
+                                delegateByApproval[approval.id]?.delegated_to_id ?? '',
                               reason: event.target.value
                             }
                           })

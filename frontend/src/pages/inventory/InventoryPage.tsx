@@ -486,7 +486,12 @@ export function InventoryPage() {
                 </option>
               ))}
             </select>
-            <LocationSelect locations={locations.data ?? []} name="from_location_id" label="Source" required />
+            <LocationSelect
+              locations={locations.data ?? []}
+              name="from_location_id"
+              label="Source"
+              required
+            />
             <select className="form-field" name="item_id" required>
               <option value="">Item</option>
               {items.data?.map((item) => (
@@ -513,7 +518,9 @@ export function InventoryPage() {
                 <article className="px-4 py-3 text-sm" key={request.id}>
                   <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div>
-                      <p className="font-medium text-theme-text-primary">{request.request_number}</p>
+                      <p className="font-medium text-theme-text-primary">
+                        {request.request_number}
+                      </p>
                       <p className="text-theme-text-muted">
                         {request.lines.length} line(s) · estimated {request.total_estimated_cost}
                       </p>
@@ -549,7 +556,10 @@ export function InventoryPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="No material requests" description="Create a request to reserve and issue stock." />
+            <EmptyState
+              title="No material requests"
+              description="Create a request to reserve and issue stock."
+            />
           )}
         </div>
       </div>
@@ -557,14 +567,18 @@ export function InventoryPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-theme-border bg-theme-card">
           <div className="border-b border-theme-border px-4 py-3">
-            <h3 className="text-base font-semibold text-theme-text-primary">Current tool locations</h3>
+            <h3 className="text-base font-semibold text-theme-text-primary">
+              Current tool locations
+            </h3>
           </div>
           {assets.data?.length ? (
             <div className="divide-y divide-theme-border">
               {assets.data.map((asset) => (
                 <div className="flex items-center justify-between px-4 py-3 text-sm" key={asset.id}>
                   <span>
-                    <span className="block font-medium text-theme-text-primary">{asset.asset_tag}</span>
+                    <span className="block font-medium text-theme-text-primary">
+                      {asset.asset_tag}
+                    </span>
                     <span className="text-theme-text-muted">
                       {locationName(locations.data, asset.current_location_id)} · {asset.condition}
                     </span>
@@ -576,7 +590,10 @@ export function InventoryPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="No assets tracked" description="Asset-tagged tools will appear here." />
+            <EmptyState
+              title="No assets tracked"
+              description="Asset-tagged tools will appear here."
+            />
           )}
         </div>
 
@@ -587,17 +604,23 @@ export function InventoryPage() {
           {movements.data?.length ? (
             <div className="divide-y divide-theme-border">
               {movements.data.slice(0, 8).map((movement) => (
-                <div className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_auto]" key={movement.id}>
+                <div
+                  className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_auto]"
+                  key={movement.id}
+                >
                   <div>
                     <p className="font-medium text-theme-text-primary">
                       {itemName(items.data, movement.item_id)} · {movement.quantity}
                     </p>
                     <p className="text-theme-text-muted">
-                      {movement.movement_type} from {locationName(locations.data, movement.from_location_id)} to{' '}
+                      {movement.movement_type} from{' '}
+                      {locationName(locations.data, movement.from_location_id)} to{' '}
                       {locationName(locations.data, movement.to_location_id)}
                     </p>
                   </div>
-                  <StatusBadge tone="info">{new Date(movement.created_at).toLocaleDateString()}</StatusBadge>
+                  <StatusBadge tone="info">
+                    {new Date(movement.created_at).toLocaleDateString()}
+                  </StatusBadge>
                 </div>
               ))}
             </div>
@@ -625,7 +648,11 @@ export function InventoryPage() {
                 >
                   <div>
                     <p className="font-medium text-theme-text-primary">{supplier.name}</p>
-                    <p className={isExpiring ? 'text-[var(--status-warning-text)]' : 'text-theme-text-muted'}>
+                    <p
+                      className={
+                        isExpiring ? 'text-[var(--status-warning-text)]' : 'text-theme-text-muted'
+                      }
+                    >
                       TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
                       {supplier.tds_expiry_date ?? '-'}
                     </p>

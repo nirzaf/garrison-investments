@@ -192,9 +192,7 @@ export function AppLayout() {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                <p className="text-xs font-medium text-theme-text-muted">
-                  Portal / {screenTitle}
-                </p>
+                <p className="text-xs font-medium text-theme-text-muted">Portal / {screenTitle}</p>
                 <h1 className="truncate text-lg font-semibold text-theme-text-primary">
                   {screenTitle}
                 </h1>

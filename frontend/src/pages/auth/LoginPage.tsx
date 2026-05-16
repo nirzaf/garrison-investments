@@ -76,7 +76,9 @@ export function LoginPage() {
             </label>
           ) : (
             <label className="block">
-              <span className="text-sm font-medium text-theme-text-secondary">Verification code</span>
+              <span className="text-sm font-medium text-theme-text-secondary">
+                Verification code
+              </span>
               <input
                 className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm tracking-widest text-theme-text-primary"
                 disabled={isSubmitting}
@@ -95,7 +97,9 @@ export function LoginPage() {
               Development code: <span className="font-semibold tracking-widest">{devOtp}</span>
             </p>
           ) : null}
-          {error ? <p className="text-sm font-medium text-[var(--status-error-text)]">{error}</p> : null}
+          {error ? (
+            <p className="text-sm font-medium text-[var(--status-error-text)]">{error}</p>
+          ) : null}
           <button
             className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isSubmitting}

@@ -66,9 +66,7 @@ export function NotificationsPage() {
         </button>
       </div>
 
-      {error ? (
-        <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p>
-      ) : null}
+      {error ? <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p> : null}
 
       {notifications.length === 0 ? (
         <EmptyState
@@ -94,7 +92,9 @@ export function NotificationsPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <StatusBadge
-                    tone={notification.muted ? 'warning' : notification.is_read ? 'neutral' : 'info'}
+                    tone={
+                      notification.muted ? 'warning' : notification.is_read ? 'neutral' : 'info'
+                    }
                   >
                     {notification.muted ? 'muted' : notification.is_read ? 'read' : 'unread'}
                   </StatusBadge>

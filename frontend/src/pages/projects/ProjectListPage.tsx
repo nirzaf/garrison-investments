@@ -119,9 +119,7 @@ export function ProjectListPage() {
         </div>
       </div>
 
-      {error ? (
-        <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p>
-      ) : null}
+      {error ? <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p> : null}
 
       {canManageProjects ? (
         <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">

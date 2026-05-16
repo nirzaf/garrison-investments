@@ -56,9 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string): Promise<void> => {
       await changePasswordRequest(currentPassword, newPassword);
-      setUser((current) =>
-        current ? { ...current, must_change_password: false } : current
-      );
+      setUser((current) => (current ? { ...current, must_change_password: false } : current));
     },
     []
   );

@@ -78,8 +78,8 @@ export function AnalyticsPage() {
                 <div className="mt-2 space-y-2">
                   {summary.data.projects.map((project) => (
                     <p className="text-xs text-theme-text-muted" key={project.project_id}>
-                      {project.project_name}: {project.report_count} reports, {project.invoice_total}{' '}
-                      invoiced
+                      {project.project_name}: {project.report_count} reports,{' '}
+                      {project.invoice_total} invoiced
                     </p>
                   ))}
                 </div>
