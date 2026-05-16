@@ -5,15 +5,21 @@ import {
   ClipboardList,
   FileText,
   Home,
+  Import,
+  LineChart,
+  ListChecks,
   Menu,
   Package,
+  Receipt,
   ShieldCheck,
   UserCog,
   X
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 
+import { getUnreadCount } from '../../api/notifications';
 import { useAuth } from '../../context/useAuth';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { OfflineIndicator } from '../shared/OfflineIndicator';
@@ -50,8 +56,12 @@ const navItems: NavItem[] = [
     icon: Package,
     mobile: true
   },
+  { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
+  { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:manage', icon: FileText },
   { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
+  { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
+  { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
   { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog }
 ];
 
@@ -60,6 +70,9 @@ function canAccess(item: NavItem, permissions: string[]) {
 }
 
 function labelFromPath(pathname: string) {
+  if (pathname.startsWith('/reports')) {
+    return 'Reports';
+  }
   const current = navItems.find(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`)
   );
@@ -70,14 +83,48 @@ export function AppLayout() {
   const { isAuthenticated, isLoading, logout, user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
 
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => canAccess(item, user?.permissions ?? [])),
-    [user?.permissions]
+    () =>
+      navItems
+        .filter((item) => canAccess(item, user?.permissions ?? []))
+        .map((item) =>
+          item.label === 'Reports'
+            ? {
+                ...item,
+                to:
+                  user?.role === 'civil_supervisor'
+                    ? '/reports/supervisor-update'
+                    : '/reports/daily'
+              }
+            : item
+        ),
+    [user?.permissions, user?.role]
   );
   const mobileNavItems = visibleNavItems.filter((item) => item.mobile).slice(0, 4);
   const screenTitle = labelFromPath(location.pathname);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    const loadCount = () => {
+      void getUnreadCount()
+        .then((count) => {
+          if (active) setUnreadCount(count);
+        })
+        .catch(() => {
+          if (active) setUnreadCount(0);
+        });
+    };
+    loadCount();
+    const interval = window.setInterval(loadCount, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [isAuthenticated, location.pathname]);
 
   if (isLoading) {
     return (
@@ -144,10 +191,15 @@ export function AppLayout() {
             <div className="flex items-center gap-2">
               <Link
                 aria-label="Notifications"
-                className="rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-100"
+                className="relative rounded-md border border-slate-300 p-2 text-slate-700 hover:bg-slate-100"
                 to="/notifications"
               >
                 <Bell className="h-5 w-5" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-2 -top-2 min-w-5 rounded-full bg-red-600 px-1 text-center text-xs font-semibold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
               </Link>
               <div className="relative">
                 <button

@@ -15,6 +15,7 @@ class BoqItemCreateRequest(BaseModel):
     planned_quantity: Decimal = Field(gt=0)
     unit_rate: Decimal = Field(ge=0)
 
+
 class MilestoneCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     discipline: str | None = Field(default=None, max_length=50)

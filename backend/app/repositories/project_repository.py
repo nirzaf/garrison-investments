@@ -67,6 +67,14 @@ class ProjectRepository:
         )
         return list(result.scalars().all())
 
+    async def list_project_ids_for_user(self, user_id: UUID) -> list[UUID]:
+        result = await self.session.execute(
+            select(ProjectMember.project_id)
+            .where(ProjectMember.user_id == user_id, ProjectMember.deleted_at.is_(None))
+            .order_by(ProjectMember.assigned_at.asc())
+        )
+        return list(result.scalars().all())
+
     async def add_milestone(self, milestone: ProjectMilestone) -> ProjectMilestone:
         self.session.add(milestone)
         await self.session.flush()

@@ -1,0 +1,384 @@
+from uuid import uuid4
+
+import httpx
+import pytest
+from sqlalchemy import select
+
+from app.database import AsyncSessionLocal, check_database, engine
+from app.main import create_app
+from app.models.report_export import ReportExport
+from app.models.user import User
+from app.repositories.user_repository import UserRepository
+from app.tasks.email import _send_report_email
+from app.utils.security import hash_password, utc_now
+
+pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+async def isolated_engine_pool():
+    await engine.dispose()
+    yield
+    await engine.dispose()
+
+
+async def skip_if_database_unavailable() -> None:
+    if not await check_database():
+        pytest.skip("database is not available")
+
+
+async def create_user(role: str, password: str = "Start123!") -> tuple[str, str]:
+    email = f"{role}-{uuid4().hex}@example.com"
+    async with AsyncSessionLocal() as session:
+        await UserRepository(session).add(
+            User(
+                email=email,
+                full_name=f"{role} User",
+                role=role,
+                employee_code=f"DR-{uuid4().hex[:8]}",
+                phone="+97455550000",
+                designation=role.replace("_", " ").title(),
+                password_hash=hash_password(password),
+                must_change_password=False,
+            )
+        )
+        await session.commit()
+    return email, password
+
+
+def create_test_client() -> httpx.AsyncClient:
+    transport = httpx.ASGITransport(app=create_app())
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+async def login_for_token(client: httpx.AsyncClient, email: str, password: str) -> str:
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    challenge = login_response.json()
+    verify_response = await client.post(
+        "/api/v1/auth/verify-otp",
+        json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+    )
+    return str(verify_response.json()["access_token"])
+
+
+def project_payload() -> dict:
+    return {
+        "name": f"Daily Report Flow {uuid4().hex[:6]}",
+        "scope_of_work": "Civil works.",
+        "target_end_date": "2026-12-31",
+        "milestones": [{"name": "Mobilization", "sort_order": 1}],
+        "boq_items": [
+            {
+                "item_code": "BOQ-001",
+                "description": "Site work",
+                "unit": "lot",
+                "planned_quantity": "1",
+                "unit_rate": "100",
+            }
+        ],
+    }
+
+
+async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
+    op_email, op_password = await create_user("operation_manager")
+    engineer_email, engineer_password = await create_user("civil_engineer")
+    supervisor_email, supervisor_password = await create_user("civil_supervisor")
+    manager_email, manager_password = await create_user("project_manager")
+    op_token = await login_for_token(client, op_email, op_password)
+    engineer_token = await login_for_token(client, engineer_email, engineer_password)
+    supervisor_token = await login_for_token(client, supervisor_email, supervisor_password)
+    manager_token = await login_for_token(client, manager_email, manager_password)
+    project = (
+        await client.post(
+            "/api/v1/projects",
+            json=project_payload(),
+            headers={"Authorization": f"Bearer {op_token}"},
+        )
+    ).json()
+    engineer = (
+        await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+    ).json()
+    supervisor = (
+        await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {supervisor_token}"},
+        )
+    ).json()
+    manager = (
+        await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {manager_token}"},
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/projects/{project['id']}/members",
+        json={"user_id": engineer["id"], "role_in_project": "civil_engineer"},
+        headers={"Authorization": f"Bearer {op_token}"},
+    )
+    await client.post(
+        f"/api/v1/projects/{project['id']}/members",
+        json={"user_id": supervisor["id"], "role_in_project": "site_supervisor"},
+        headers={"Authorization": f"Bearer {op_token}"},
+    )
+    await client.post(
+        f"/api/v1/projects/{project['id']}/members",
+        json={"user_id": manager["id"], "role_in_project": "project_manager"},
+        headers={"Authorization": f"Bearer {op_token}"},
+    )
+    supervisor_update = (
+        await client.post(
+            "/api/v1/supervisor-updates",
+            json={
+                "project_id": project["id"],
+                "update_date": str(utc_now().date()),
+                "day_type": "weekday",
+                "work_location": "Zone A",
+                "attendance_count": 8,
+                "overtime_hours": "1",
+                "progress_notes": "Completed excavation.",
+                "required_notes": "No incidents.",
+            },
+            headers={"Authorization": f"Bearer {supervisor_token}"},
+        )
+    ).json()
+    await client.post(
+        f"/api/v1/supervisor-updates/{supervisor_update['id']}/submit",
+        headers={"Authorization": f"Bearer {supervisor_token}"},
+    )
+    return {
+        "project_id": project["id"],
+        "project_code": project["code"],
+        "engineer_token": engineer_token,
+        "manager_token": manager_token,
+        "op_token": op_token,
+        "supervisor_update_id": supervisor_update["id"],
+    }
+
+
+def report_payload(project_id: str, supervisor_update_id: str | None = None) -> dict:
+    return {
+        "project_id": project_id,
+        "report_date": str(utc_now().date()),
+        "work_location": "Zone A",
+        "manpower_total": 18,
+        "overtime_hours": "2.5",
+        "work_completed": "Excavation and blinding completed.",
+        "progress_percentage": "35",
+        "safety_incidents": 0,
+        "safety_notes": "Toolbox talk completed.",
+        "wir_status": "passed",
+        "inspection_status": "completed",
+        "delay_notes": "None.",
+        "next_day_plan": "Start reinforcement fixing.",
+        "supervisor_update_ids": [supervisor_update_id] if supervisor_update_id else [],
+        "photo_refs": [{"name": "zone-a.jpg", "kind": "photo"}],
+        "attachment_refs": [{"name": "inspection.pdf", "kind": "file"}],
+        "manpower_entries": [{"trade": "Mason", "count": 10, "overtime_hours": "1"}],
+        "equipment_entries": [
+            {"equipment_name": "Excavator", "quantity": 1, "hours_used": "6", "remarks": "OK"}
+        ],
+        "material_consumption": [
+            {"material_name": "Concrete", "unit": "m3", "quantity": "12", "remarks": "Blinding"}
+        ],
+    }
+
+
+async def test_engineer_can_save_and_submit_daily_report() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        create_response = await client.post(
+            "/api/v1/reports",
+            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert create_response.status_code == 201
+        report = create_response.json()
+        assert report["status"] == "draft"
+        assert report["report_number"] is None
+        assert len(report["manpower_entries"]) == 1
+
+        submit_response = await client.post(
+            f"/api/v1/reports/{report['id']}/submit",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert submit_response.status_code == 200
+        submitted = submit_response.json()
+        assert submitted["status"] == "submitted"
+        assert submitted["report_number"].startswith(f"{setup['project_code']}-DR-")
+
+        updates_response = await client.get(
+            "/api/v1/supervisor-updates",
+            params={"project_id": setup["project_id"], "status": "verified"},
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert updates_response.status_code == 200
+        assert updates_response.json()["total"] >= 1
+
+
+async def test_non_engineer_cannot_create_daily_report() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        response = await client.post(
+            "/api/v1/reports",
+            json=report_payload(setup["project_id"]),
+            headers={"Authorization": f"Bearer {setup['op_token']}"},
+        )
+
+        assert response.status_code == 403
+
+
+async def test_daily_report_submit_requires_valid_supervisor_update() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], str(uuid4())),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        response = await client.post(
+            f"/api/v1/reports/{report['id']}/submit",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert response.status_code == 422
+
+
+async def test_project_manager_can_approve_report_and_lock_edits() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+
+        inbox_response = await client.get(
+            "/api/v1/reports",
+            params={"status": "submitted"},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        approve_response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/approve",
+            json={"comments": "Target covered."},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        edit_response = await client.put(
+            f"/api/v1/reports/{submitted['id']}",
+            json=report_payload(setup["project_id"]),
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert inbox_response.status_code == 200
+        assert inbox_response.json()["total"] >= 1
+        assert approve_response.status_code == 200
+        approved = approve_response.json()
+        assert approved["status"] == "approved"
+        assert any(item["decision"] == "approved" for item in approved["approval_history"])
+        assert edit_response.status_code == 409
+
+
+async def test_approved_report_can_be_downloaded_as_pdf() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        approved = (
+            await client.post(
+                f"/api/v1/reports/{submitted['id']}/approve",
+                json={"comments": "Ready for archive."},
+                headers={"Authorization": f"Bearer {setup['manager_token']}"},
+            )
+        ).json()
+        response = await client.get(
+            f"/api/v1/reports/{approved['id']}/pdf",
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.content.startswith(b"%PDF")
+
+        async with AsyncSessionLocal() as session:
+            export = await session.scalar(
+                select(ReportExport).where(ReportExport.report_id == approved["id"])
+            )
+        assert export is not None
+        assert await _send_report_email(str(export.id)) == "report email skipped"
+
+
+async def test_project_manager_rejects_with_required_reason() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        report = (
+            await client.post(
+                "/api/v1/reports",
+                json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+        submitted = (
+            await client.post(
+                f"/api/v1/reports/{report['id']}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).json()
+
+        missing_reason_response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/reject",
+            json={"comments": ""},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        reject_response = await client.post(
+            f"/api/v1/reports/{submitted['id']}/reject",
+            json={"comments": "Missing WIR evidence."},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+
+        assert missing_reason_response.status_code == 422
+        assert reject_response.status_code == 200
+        rejected = reject_response.json()
+        assert rejected["status"] == "draft"
+        assert rejected["rejection_comments"] == "Missing WIR evidence."
+        assert any(item["decision"] == "rejected" for item in rejected["approval_history"])

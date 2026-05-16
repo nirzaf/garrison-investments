@@ -1,6 +1,8 @@
 from uuid import UUID
 
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.activity_log import ActivityLog
 
@@ -35,3 +37,42 @@ class AuditService:
                 new_values=new_values,
             )
         )
+
+    async def list_logs(
+        self,
+        *,
+        action: str | None = None,
+        entity_type: str | None = None,
+        user_id: UUID | None = None,
+        search: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[ActivityLog], int]:
+        filters: list[ColumnElement[bool]] = [ActivityLog.deleted_at.is_(None)]
+        if action:
+            filters.append(ActivityLog.action == action)
+        if entity_type:
+            filters.append(ActivityLog.entity_type == entity_type)
+        if user_id:
+            filters.append(ActivityLog.user_id == user_id)
+        if search:
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    ActivityLog.action.ilike(pattern),
+                    ActivityLog.entity_type.ilike(pattern),
+                    ActivityLog.comments.ilike(pattern),
+                )
+            )
+
+        query: Select[tuple[ActivityLog]] = (
+            select(ActivityLog)
+            .where(*filters)
+            .order_by(ActivityLog.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        total_query = select(func.count()).select_from(ActivityLog).where(*filters)
+        logs = list((await self.session.scalars(query)).all())
+        total = int(await self.session.scalar(total_query) or 0)
+        return logs, total

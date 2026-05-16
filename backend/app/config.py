@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
-    database_url: str = "postgresql+asyncpg://garrison:garrison_dev_password@localhost:5432/garrison_portal"
+    database_url: str = (
+        "postgresql+asyncpg://garrison:garrison_dev_password@localhost:5432/garrison_portal"
+    )
     redis_url: str = "redis://localhost:6379/0"
 
     minio_endpoint: str = "localhost:9000"
@@ -18,6 +20,9 @@ class Settings(BaseSettings):
     minio_root_password: str = "garrison_minio_password"
     minio_bucket: str = "portal-files"
     minio_secure: bool = False
+
+    report_email_recipients: str = ""
+    report_pdf_template_name: str = "company-standard"
 
     backup_encryption_password: str | None = None
     backup_local_dir: str = "/tmp/garrison-backups"

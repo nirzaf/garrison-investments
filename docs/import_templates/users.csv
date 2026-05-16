@@ -1,0 +1,2 @@
+email,full_name,role,employee_code,phone,designation,temporary_password
+admin@example.com,System Admin,admin,ADMIN-001,+97450000000,System Administrator,ChangeMe123!

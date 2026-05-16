@@ -22,7 +22,7 @@ export function OfflineIndicator() {
 
   return (
     <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-900">
-      Connection lost. Draft-saving support will be enabled in the mobile/offline phase.
+      Connection lost. Report drafts and selected uploads are saving locally.
     </div>
   );
 }

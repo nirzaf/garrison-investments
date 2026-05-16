@@ -1,0 +1,2 @@
+name,category,rating,payment_terms,contact_person,phone,email,address,tax_registration_number,tds_certificate_number,tds_expiry_date,compliance_status
+Sample Supplier,Civil,A,30 days,Contact Name,+97450000000,supplier@example.com,Doha,TAX-001,TDS-001,2027-12-31,compliant

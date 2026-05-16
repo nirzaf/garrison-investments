@@ -1,9 +1,18 @@
 {
-  "name": "Construction Internal Portal",
-  "short_name": "Portal",
+  "name": "Garrisons Construction Internal Portal",
+  "short_name": "Garrisons",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0f766e",
-  "icons": []
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

@@ -1,0 +1,128 @@
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Query, status
+from fastapi.responses import Response
+
+from app.api.dependencies import CurrentUser, DbSession
+from app.schemas.daily_reports import (
+    DailyReportCreateRequest,
+    DailyReportDecisionRequest,
+    DailyReportListResponse,
+    DailyReportResponse,
+    DailyReportUpdateRequest,
+)
+from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
+from app.services.report_service import ReportService
+
+router = APIRouter(prefix="/reports", tags=["Daily Reports"])
+
+
+@router.get("", response_model=DailyReportListResponse)
+async def list_reports(
+    current_user: CurrentUser,
+    session: DbSession,
+    project_id: Annotated[UUID | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> DailyReportListResponse:
+    reports, total = await ReportService(session).list_reports(
+        actor=current_user,
+        project_id=project_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+    return DailyReportListResponse(
+        items=[DailyReportResponse.model_validate(report) for report in reports],
+        total=total,
+    )
+
+
+@router.post("", response_model=DailyReportResponse, status_code=status.HTTP_201_CREATED)
+async def create_report(
+    payload: DailyReportCreateRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).create_report(payload, current_user)
+    return DailyReportResponse.model_validate(report)
+
+
+@router.get("/{report_id}", response_model=DailyReportResponse)
+async def get_report(
+    report_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).get_report(report_id, current_user)
+    return DailyReportResponse.model_validate(report)
+
+
+@router.get("/{report_id}/pdf")
+async def download_report_pdf(
+    report_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> Response:
+    export, pdf_bytes = await ReportExportService(session).get_or_create_pdf(
+        report_id,
+        current_user,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type=PDF_CONTENT_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{export.file_name}"'},
+    )
+
+
+@router.put("/{report_id}", response_model=DailyReportResponse)
+async def update_report(
+    report_id: UUID,
+    payload: DailyReportUpdateRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).update_report(report_id, payload, current_user)
+    return DailyReportResponse.model_validate(report)
+
+
+@router.post("/{report_id}/submit", response_model=DailyReportResponse)
+async def submit_report(
+    report_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).submit_report(report_id, current_user)
+    return DailyReportResponse.model_validate(report)
+
+
+@router.post("/{report_id}/approve", response_model=DailyReportResponse)
+async def approve_report(
+    report_id: UUID,
+    payload: DailyReportDecisionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).approve_report(
+        report_id,
+        current_user,
+        comments=payload.comments,
+    )
+    return DailyReportResponse.model_validate(report)
+
+
+@router.post("/{report_id}/reject", response_model=DailyReportResponse)
+async def reject_report(
+    report_id: UUID,
+    payload: DailyReportDecisionRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> DailyReportResponse:
+    report = await ReportService(session).reject_report(
+        report_id,
+        current_user,
+        comments=payload.comments,
+    )
+    return DailyReportResponse.model_validate(report)
