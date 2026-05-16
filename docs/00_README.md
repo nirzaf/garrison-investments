@@ -34,6 +34,7 @@ Inventory & Stores is a Phase 2 capability for consumable materials and trackabl
 | 4 | [Work Breakdown Structure](04_Work_Breakdown_Structure.md) | Phase-based task breakdown with estimates and dependencies |
 | 5 | [UI Component Tree](05_UI_Component_Tree.md) | React component hierarchy, state management, routing |
 | 6 | [PostgreSQL Schema Reference](../schema/README.md) | Implementation-intent database schema with one file per table and linked relations |
+| 7 | [Operations Runbook](06_Operations_Runbook.md) | CI/CD, deployment approval, backup, restore, rollback, and alert procedures |
 
 ## Quick Start (Development)
 
