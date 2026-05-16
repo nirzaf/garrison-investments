@@ -1,7 +1,9 @@
 import {
   Bell,
   BriefcaseBusiness,
+  Camera,
   ChevronDown,
+  Cloud,
   ClipboardList,
   FileText,
   Home,
@@ -59,7 +61,10 @@ const navItems: NavItem[] = [
   { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:manage', icon: FileText },
+  { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
   { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
+  { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
+  { label: 'Delivery', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
   { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
   { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog }

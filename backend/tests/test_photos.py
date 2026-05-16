@@ -50,6 +50,22 @@ async def test_photo_upload_download_url_and_delete_lock() -> None:
         photo = upload_response.json()[0]
         assert photo["thumbnail_path"]
 
+        recent_response = await client.get(
+            "/api/v1/photos",
+            params={"kind": "photo"},
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        entity_response = await client.get(
+            "/api/v1/photos",
+            params={"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"},
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+
+        assert recent_response.status_code == 200
+        assert recent_response.json()["total"] >= 1
+        assert entity_response.status_code == 200
+        assert entity_response.json()["items"][0]["id"] == photo["id"]
+
         url_response = await client.get(
             f"/api/v1/photos/{photo['id']}/thumbnail",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},

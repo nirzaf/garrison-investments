@@ -112,6 +112,32 @@ class PhotoService:
             kind=kind,
         )
 
+    async def list_recent(
+        self,
+        *,
+        entity_type: str | None,
+        kind: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Photo], int]:
+        if entity_type:
+            self._validate_entity_type(entity_type)
+        if kind:
+            normalized_kind = kind.strip().lower()
+            if normalized_kind not in {"photo", "attachment"}:
+                raise AppException(
+                    "Invalid file kind.",
+                    status_code=422,
+                    error_code="INVALID_FILE_KIND",
+                )
+            kind = normalized_kind
+        return await self.photos.list_recent(
+            entity_type=entity_type,
+            kind=kind,
+            limit=limit,
+            offset=offset,
+        )
+
     async def get(self, photo_id: UUID) -> Photo:
         photo = await self.photos.get_by_id(photo_id)
         if not photo:

@@ -1,8 +1,12 @@
 import csv
+import re
+import zipfile
 from datetime import date
 from decimal import Decimal
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
+from uuid import UUID
+from xml.etree import ElementTree
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,19 +119,22 @@ class ImportService:
         file_name: str,
         content: bytes,
         actor: User,
+        batch_id: UUID | None = None,
     ) -> ImportRunResponse:
         rows = self._parse(template_type, content)
         errors = self._validate_rows(template_type, rows)
-        batch = ImportBatch(
-            template_type=template_type,
-            file_name=file_name,
-            status="failed" if errors else "completed",
-            created_by=actor.id,
-            row_count=len(rows),
-            error_count=len(errors),
-            summary={"errors": [error.model_dump() for error in errors]},
-        )
-        self.session.add(batch)
+        batch = await self.session.get(ImportBatch, batch_id) if batch_id else None
+        if not batch:
+            batch = ImportBatch(
+                template_type=template_type,
+                file_name=file_name,
+                created_by=actor.id,
+            )
+            self.session.add(batch)
+        batch.status = "failed" if errors else "completed"
+        batch.row_count = len(rows)
+        batch.error_count = len(errors)
+        batch.summary = {"errors": [error.model_dump() for error in errors]}
         await self.session.flush()
         created = 0
         try:
@@ -414,8 +421,53 @@ class ImportService:
 
     def _parse(self, template_type: str, content: bytes) -> list[dict[str, str]]:
         self._ensure_template(template_type)
+        if content.startswith(b"PK"):
+            return self._parse_xlsx(content)
         text = content.decode("utf-8-sig")
         return list(csv.DictReader(StringIO(text)))
+
+    def _parse_xlsx(self, content: bytes) -> list[dict[str, str]]:
+        namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                for item in root.findall("x:si", namespace):
+                    shared_strings.append(
+                        "".join(text.text or "" for text in item.findall(".//x:t", namespace))
+                    )
+
+            sheet_name = "xl/worksheets/sheet1.xml"
+            root = ElementTree.fromstring(archive.read(sheet_name))
+            table: list[list[str]] = []
+            for row in root.findall(".//x:sheetData/x:row", namespace):
+                values: list[str] = []
+                for cell in row.findall("x:c", namespace):
+                    column_index = self._xlsx_column_index(cell.attrib.get("r", ""))
+                    while len(values) < column_index:
+                        values.append("")
+                    value = cell.find("x:v", namespace)
+                    raw = value.text if value is not None and value.text is not None else ""
+                    if cell.attrib.get("t") == "s" and raw:
+                        raw = shared_strings[int(raw)]
+                    values.append(raw)
+                table.append(values)
+        if not table:
+            return []
+        headers = table[0]
+        return [
+            {header: row[index] if index < len(row) else "" for index, header in enumerate(headers)}
+            for row in table[1:]
+        ]
+
+    def _xlsx_column_index(self, cell_reference: str) -> int:
+        match = re.match(r"([A-Z]+)", cell_reference)
+        if not match:
+            return 0
+        index = 0
+        for character in match.group(1):
+            index = index * 26 + ord(character) - ord("A") + 1
+        return index - 1
 
     def _validate_rows(
         self, template_type: str, rows: list[dict[str, str]]

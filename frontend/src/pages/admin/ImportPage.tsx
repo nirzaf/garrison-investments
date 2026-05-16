@@ -3,8 +3,10 @@ import { Download, Upload } from 'lucide-react';
 
 import {
   downloadTemplate,
+  getImportBatchStatus,
   importTemplates,
   previewImport,
+  runImportAsync,
   runImport,
   type ImportPreview,
   type ImportRunResult
@@ -16,6 +18,7 @@ export function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportRunResult | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function previewSelected() {
@@ -36,6 +39,36 @@ export function ImportPage() {
       setResult(await runImport(template, file));
     } catch {
       setError('Unable to run import.');
+    }
+  }
+
+  async function runAsyncSelected() {
+    if (!file || !preview?.valid) return;
+    setError(null);
+    setResult(null);
+    try {
+      const queued = await runImportAsync(template, file);
+      setBatchId(queued.batch_id);
+      setResult({
+        batch_id: queued.batch_id,
+        template_type: queued.template_type,
+        status: queued.status,
+        row_count: 0,
+        error_count: 0,
+        summary: { task_id: queued.task_id }
+      });
+    } catch {
+      setError('Unable to queue import.');
+    }
+  }
+
+  async function refreshBatch() {
+    if (!batchId) return;
+    setError(null);
+    try {
+      setResult(await getImportBatchStatus(batchId));
+    } catch {
+      setError('Unable to refresh import status.');
     }
   }
 
@@ -79,7 +112,7 @@ export function ImportPage() {
             ))}
           </select>
           <input
-            accept=".csv"
+            accept=".csv,.xlsx"
             className="form-field"
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             type="file"
@@ -127,20 +160,42 @@ export function ImportPage() {
               ))}
             </div>
           ) : (
-            <button
-              className="mt-4 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
-              onClick={() => void runSelected()}
-              type="button"
-            >
-              Run import
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+                onClick={() => void runSelected()}
+                type="button"
+              >
+                Run import
+              </button>
+              <button
+                className="rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary"
+                onClick={() => void runAsyncSelected()}
+                type="button"
+              >
+                Queue async import
+              </button>
+            </div>
           )}
         </div>
       ) : null}
 
       {result ? (
         <div className="alert-success rounded-lg border border-[var(--status-success-border)] p-4 text-sm">
-          Import {result.status}: {result.row_count} rows, {result.error_count} errors.
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <span>
+              Import {result.status}: {result.row_count} rows, {result.error_count} errors.
+            </span>
+            {batchId ? (
+              <button
+                className="rounded-md border border-[var(--status-success-border)] px-3 py-1.5 text-xs font-semibold"
+                onClick={() => void refreshBatch()}
+                type="button"
+              >
+                Refresh status
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>

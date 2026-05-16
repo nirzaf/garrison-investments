@@ -11,13 +11,16 @@ import { PasswordResetPage } from './pages/auth/PasswordResetPage';
 import { UserManagementPage } from './pages/admin/UserManagementPage';
 import { ApprovalInboxPage } from './pages/approvals/ApprovalInboxPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
+import { DeliveryPlanPage } from './pages/delivery/DeliveryPlanPage';
 import { DocumentsPage } from './pages/documents/DocumentsPage';
 import { FinancePage } from './pages/finance/FinancePage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { NotificationsPage } from './pages/notifications/NotificationsPage';
+import { PhotosPage } from './pages/photos/PhotosPage';
 import { ProjectListPage } from './pages/projects/ProjectListPage';
 import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
+import { SecurityPage } from './pages/security/SecurityPage';
 
 export function App() {
   return (
@@ -68,6 +71,14 @@ export function App() {
           }
         />
         <Route
+          path="/photos"
+          element={
+            <RequirePermission permission="reports:view">
+              <PhotosPage />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="/materials"
           element={
             <RequirePermission permission="inventory:view">
@@ -88,6 +99,22 @@ export function App() {
           element={
             <RequirePermission permission="dashboard:company">
               <AnalyticsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/security"
+          element={
+            <RequirePermission permission="audit:view">
+              <SecurityPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/delivery"
+          element={
+            <RequirePermission permission="dashboard:company">
+              <DeliveryPlanPage />
             </RequirePermission>
           }
         />

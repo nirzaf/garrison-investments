@@ -1,4 +1,6 @@
+from io import BytesIO
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 from sqlalchemy import func, select
@@ -47,6 +49,49 @@ async def create_admin(password: str = "Start123!") -> User:
 
 def csv_bytes(header: str, row: str) -> bytes:
     return f"{header}\n{row}\n".encode()
+
+
+def xlsx_bytes(headers: list[str], row: list[str]) -> bytes:
+    shared_values = headers + row
+    shared_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + "".join(f"<si><t>{value}</t></si>" for value in shared_values)
+        + "</sst>"
+    )
+    header_cells = "".join(
+        f'<c r="{chr(65 + index)}1" t="s"><v>{index}</v></c>'
+        for index, _ in enumerate(headers)
+    )
+    row_cells = "".join(
+        f'<c r="{chr(65 + index)}2" t="s"><v>{len(headers) + index}</v></c>'
+        for index, _ in enumerate(row)
+    )
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData><row r=\"1\">{header_cells}</row><row r=\"2\">{row_cells}</row></sheetData>"
+        "</worksheet>"
+    )
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr("xl/sharedStrings.xml", shared_xml)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    return buffer.getvalue()
+
+
+async def test_import_preview_accepts_xlsx_files() -> None:
+    service = ImportService.__new__(ImportService)
+    preview = await service.preview(
+        "opening_stock",
+        xlsx_bytes(
+            ["item_code", "location_code", "quantity", "notes"],
+            ["CEM-001", "WH-001", "5", "Opening balance"],
+        ),
+    )
+
+    assert preview.valid is True
+    assert preview.row_count == 1
 
 
 async def test_import_templates_create_records_and_opening_stock_transactionally() -> None:
