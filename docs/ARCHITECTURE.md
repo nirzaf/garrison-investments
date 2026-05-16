@@ -1155,8 +1155,7 @@ garrison-investments/
 │
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                     # Lint + test on PR
-│       └── deploy.yml                 # Deploy to staging/production
+│       └── ci.yml                     # Lint, test, build, and compose validation
 │
 ├── nginx/
 │   ├── nginx.conf                     # Reverse proxy + TLS + security headers

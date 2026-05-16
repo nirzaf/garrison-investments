@@ -29,6 +29,14 @@ jobs:
         image: redis:7-alpine
         ports:
           - 6379:6379
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: garrison_minio
+          MINIO_ROOT_PASSWORD: garrison_minio_password
+          MINIO_DEFAULT_BUCKETS: portal-files
+        ports:
+          - 9000:9000
     defaults:
       run:
         working-directory: backend
@@ -64,6 +72,33 @@ jobs:
 
       - name: Launch import template validation
         run: python scripts/validate_import_sources.py --check
+
+      - name: Prepare MinIO bucket
+        run: |
+          python - <<'PY'
+          import time
+
+          from minio import Minio
+
+          client = Minio(
+              "localhost:9000",
+              access_key="garrison_minio",
+              secret_key="garrison_minio_password",
+              secure=False,
+          )
+          bucket_name = "portal-files"
+          deadline = time.monotonic() + 60
+
+          while True:
+              try:
+                  if not client.bucket_exists(bucket_name):
+                      client.make_bucket(bucket_name)
+                  break
+              except Exception:
+                  if time.monotonic() >= deadline:
+                      raise
+                  time.sleep(2)
+          PY
 
       - name: Pytest
         run: pytest -q
