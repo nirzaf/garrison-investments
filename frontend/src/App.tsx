@@ -5,7 +5,9 @@ import { RequirePermission } from './components/layout/RequirePermission';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { AuditLogPage } from './pages/admin/AuditLogPage';
 import { ImportPage } from './pages/admin/ImportPage';
+import { ChangePasswordPage } from './pages/auth/ChangePasswordPage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { PasswordResetPage } from './pages/auth/PasswordResetPage';
 import { UserManagementPage } from './pages/admin/UserManagementPage';
 import { ApprovalInboxPage } from './pages/approvals/ApprovalInboxPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
@@ -21,7 +23,9 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/password-reset" element={<PasswordResetPage />} />
       <Route element={<AppLayout />}>
+        <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
           path="/projects"

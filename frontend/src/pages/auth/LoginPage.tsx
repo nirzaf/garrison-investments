@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
 
@@ -104,6 +104,14 @@ export function LoginPage() {
             {challengeId ? 'Verify and sign in' : 'Continue'}
           </button>
         </form>
+        {!challengeId ? (
+          <Link
+            className="mt-4 inline-flex text-sm font-medium text-brand-700 hover:text-brand-800"
+            to="/password-reset"
+          >
+            Forgot password?
+          </Link>
+        ) : null}
       </section>
     </main>
   );

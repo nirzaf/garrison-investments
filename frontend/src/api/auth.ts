@@ -24,6 +24,14 @@ export type TokenResponse = {
   user: AuthUser;
 };
 
+export type PasswordResetChallenge = {
+  challenge_id?: string | null;
+  expires_at?: string | null;
+  expires_in_seconds?: number | null;
+  dev_otp?: string | null;
+  message: string;
+};
+
 export async function login(email: string, password: string): Promise<LoginChallenge> {
   const response = await apiClient.post<LoginChallenge>('/auth/login', { email, password });
   return response.data;
@@ -49,4 +57,33 @@ export async function logout(): Promise<void> {
 export async function getMe(): Promise<AuthUser> {
   const response = await apiClient.get<AuthUser>('/auth/me');
   return response.data;
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  await apiClient.post('/auth/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<PasswordResetChallenge> {
+  const response = await apiClient.post<PasswordResetChallenge>('/auth/password-reset/request', {
+    email
+  });
+  return response.data;
+}
+
+export async function confirmPasswordReset(
+  challengeId: string,
+  otp: string,
+  newPassword: string
+): Promise<void> {
+  await apiClient.post('/auth/password-reset/confirm', {
+    challenge_id: challengeId,
+    otp,
+    new_password: newPassword
+  });
 }

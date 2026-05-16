@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
+  changePassword as changePasswordRequest,
   login as loginRequest,
   logout as logoutRequest,
   refreshSession,
@@ -52,6 +53,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(session.user);
   }, []);
 
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<void> => {
+      await changePasswordRequest(currentPassword, newPassword);
+      setUser((current) =>
+        current ? { ...current, must_change_password: false } : current
+      );
+    },
+    []
+  );
+
   const logout = useCallback(async (): Promise<void> => {
     await logoutRequest();
     setAccessToken(null);
@@ -65,9 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       verifyOtp,
+      changePassword,
       logout
     }),
-    [isLoading, login, logout, user, verifyOtp]
+    [changePassword, isLoading, login, logout, user, verifyOtp]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
