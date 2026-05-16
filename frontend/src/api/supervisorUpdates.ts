@@ -50,6 +50,17 @@ export async function createSupervisorUpdate(
   return response.data;
 }
 
+export async function updateSupervisorUpdate(
+  updateId: string,
+  payload: SupervisorUpdatePayload
+): Promise<SupervisorUpdateRecord> {
+  const response = await apiClient.put<SupervisorUpdateRecord>(
+    `/supervisor-updates/${updateId}`,
+    payload
+  );
+  return response.data;
+}
+
 export async function submitSupervisorUpdate(updateId: string): Promise<SupervisorUpdateRecord> {
   const response = await apiClient.post<SupervisorUpdateRecord>(
     `/supervisor-updates/${updateId}/submit`

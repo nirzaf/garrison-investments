@@ -10,10 +10,11 @@ from app.models.daily_report import DailyReport
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.services.notification_service import NotificationService
 from app.tasks.celery_app import celery_app
-from app.utils.permissions import ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
+from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
 
 
@@ -115,6 +116,51 @@ async def _check_late_reports() -> str:
     return f"{missing_count} late daily report alerts recorded"
 
 
+@celery_app.task(name="check_supplier_tds_expiry", queue="maintenance")
+def check_supplier_tds_expiry() -> str:
+    return asyncio.run(_check_supplier_tds_expiry())
+
+
+async def _check_supplier_tds_expiry() -> str:
+    today = utc_now().date()
+    expiry_cutoff = today + timedelta(days=30)
+    async with AsyncSessionLocal() as session:
+        suppliers = list(
+            (
+                await session.scalars(
+                    select(Supplier).where(
+                        Supplier.is_active.is_(True),
+                        Supplier.deleted_at.is_(None),
+                        Supplier.tds_expiry_date.is_not(None),
+                        Supplier.tds_expiry_date <= expiry_cutoff,
+                    )
+                )
+            ).all()
+        )
+        recipients = await _supplier_compliance_recipients(session)
+        sent = 0
+        for supplier in suppliers:
+            if not supplier.tds_expiry_date:
+                continue
+            for user_id in recipients:
+                if await _recent_supplier_tds_notification_exists(session, user_id, supplier.id):
+                    continue
+                await NotificationService(session).create(
+                    user_id=user_id,
+                    title="Supplier TDS expiring",
+                    body=(
+                        f"{supplier.name} TDS certificate expires on "
+                        f"{supplier.tds_expiry_date.isoformat()}."
+                    ),
+                    notification_type="supplier_compliance",
+                    reference_type="suppliers",
+                    reference_id=supplier.id,
+                )
+                sent += 1
+        await session.commit()
+    return f"{sent} supplier TDS expiry notifications sent"
+
+
 async def _late_report_recipients(session, project_id) -> set:
     operation_managers = await session.scalars(
         select(User.id).where(
@@ -135,3 +181,33 @@ async def _late_report_recipients(session, project_id) -> set:
         )
     )
     return {*operation_managers.all(), *project_managers.all()}
+
+
+async def _supplier_compliance_recipients(session) -> set:
+    users = await session.scalars(
+        select(User.id).where(
+            User.role.in_({ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER}),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+    )
+    return set(users.all())
+
+
+async def _recent_supplier_tds_notification_exists(
+    session,
+    user_id,
+    supplier_id,
+) -> bool:
+    cutoff = utc_now() - timedelta(days=7)
+    existing = await session.scalar(
+        select(Notification.id).where(
+            Notification.user_id == user_id,
+            Notification.title == "Supplier TDS expiring",
+            Notification.reference_type == "suppliers",
+            Notification.reference_id == supplier_id,
+            Notification.created_at >= cutoff,
+            Notification.deleted_at.is_(None),
+        )
+    )
+    return existing is not None

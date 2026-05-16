@@ -138,8 +138,24 @@ class FinanceService:
     ) -> Invoice:
         invoice = await self.get_invoice(invoice_id, actor)
         if payload.status == "approved":
+            if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER}:
+                raise AppException(
+                    "Operation Manager approval is required before invoices are approved.",
+                    status_code=403,
+                    error_code="INVOICE_OPERATION_MANAGER_APPROVAL_REQUIRED",
+                )
             invoice.approved_by = actor.id
             invoice.approved_at = utc_now()
+        if payload.status == "rejected" and actor.role not in {
+            ROLE_ADMIN,
+            ROLE_OPERATION_MANAGER,
+            ROLE_ACCOUNTS,
+        }:
+            raise AppException(
+                "You cannot reject invoices.",
+                status_code=403,
+                error_code="INVOICE_REJECTION_FORBIDDEN",
+            )
         for key, value in payload.model_dump(exclude_unset=True).items():
             setattr(invoice, key, value)
         await self.audit.record(

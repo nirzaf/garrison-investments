@@ -78,6 +78,46 @@ class ReportingService:
             ) from exc
         return update
 
+    async def update_supervisor_update(
+        self,
+        update_id: UUID,
+        payload: SupervisorUpdateCreateRequest,
+        actor: User,
+    ) -> SupervisorUpdate:
+        update = await self.updates.get_by_id(update_id)
+        if not update:
+            raise NotFoundException("Supervisor update")
+        if update.supervisor_id != actor.id:
+            raise NotFoundException("Supervisor update")
+        if update.status != "draft":
+            raise AppException(
+                "Only draft updates can be autosaved.",
+                status_code=409,
+                error_code="SUPERVISOR_UPDATE_LOCKED",
+            )
+        await self._ensure_project_member(payload.project_id, actor)
+        self._validate_day_type(payload.day_type)
+        self._validate_previous_date(payload, actor)
+        update.project_id = payload.project_id
+        update.update_date = payload.update_date
+        update.day_type = payload.day_type
+        update.work_location = payload.work_location
+        update.attendance_count = payload.attendance_count
+        update.overtime_hours = payload.overtime_hours
+        update.progress_notes = payload.progress_notes
+        update.delay_notes = payload.delay_notes
+        update.required_notes = payload.required_notes
+        update.attachment_refs = [ref.model_dump() for ref in payload.attachment_refs]
+        await self.audit.record(
+            action="supervisor_updates.autosaved",
+            user_id=actor.id,
+            entity_type="supervisor_updates",
+            entity_id=update.id,
+            new_values={"project_id": str(update.project_id), "date": str(update.update_date)},
+        )
+        await self.session.commit()
+        return update
+
     async def submit_supervisor_update(self, update_id: UUID, actor: User) -> SupervisorUpdate:
         update = await self.updates.get_by_id(update_id)
         if not update:

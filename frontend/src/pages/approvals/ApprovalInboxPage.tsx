@@ -12,6 +12,7 @@ import {
 import {
   approveDailyReport,
   listDailyReports,
+  overrideDailyReport,
   rejectDailyReport,
   type DailyReportRecord
 } from '../../api/reports';
@@ -22,6 +23,10 @@ export function ApprovalInboxPage() {
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
   const [genericApprovals, setGenericApprovals] = useState<ApprovalRecord[]>([]);
   const [commentsByReport, setCommentsByReport] = useState<Record<string, string>>({});
+  const [targetCoveredByReport, setTargetCoveredByReport] = useState<Record<string, boolean>>({});
+  const [overrideByReport, setOverrideByReport] = useState<
+    Record<string, { decision: 'approved' | 'rejected'; reason: string; targetCovered: boolean }>
+  >({});
   const [commentsByApproval, setCommentsByApproval] = useState<Record<string, string>>({});
   const [delegateByApproval, setDelegateByApproval] = useState<
     Record<string, { delegated_to_id: string; reason: string }>
@@ -56,12 +61,45 @@ export function ApprovalInboxPage() {
   async function approve(report: DailyReportRecord) {
     setError(null);
     setNotice(null);
+    if (!targetCoveredByReport[report.id]) {
+      setError('Confirm that the report target was covered before approval.');
+      return;
+    }
     try {
-      const updated = await approveDailyReport(report.id, commentsByReport[report.id]);
+      const updated = await approveDailyReport(
+        report.id,
+        commentsByReport[report.id],
+        targetCoveredByReport[report.id]
+      );
       setNotice(`Approved ${updated.report_number}.`);
       await loadReports();
     } catch {
       setError('Unable to approve the report.');
+    }
+  }
+
+  async function overrideReport(report: DailyReportRecord) {
+    setError(null);
+    setNotice(null);
+    const payload = overrideByReport[report.id];
+    if (!payload?.reason.trim()) {
+      setError('Override reason is required.');
+      return;
+    }
+    if (payload.decision === 'approved' && !payload.targetCovered) {
+      setError('Admin approval override requires target-covered confirmation.');
+      return;
+    }
+    try {
+      await overrideDailyReport(report.id, {
+        decision: payload.decision,
+        reason: payload.reason.trim(),
+        targetCovered: payload.targetCovered
+      });
+      setNotice(`Report override ${payload.decision}.`);
+      await loadReports();
+    } catch {
+      setError('Unable to override the report.');
     }
   }
 
@@ -426,6 +464,85 @@ export function ApprovalInboxPage() {
                     value={commentsByReport[report.id] ?? ''}
                   />
                 </label>
+                <label className="mt-3 flex items-start gap-2 rounded-md border border-theme-border bg-theme-main p-3 text-sm text-theme-text-secondary">
+                  <input
+                    checked={targetCoveredByReport[report.id] ?? false}
+                    className="mt-1"
+                    onChange={(event) =>
+                      setTargetCoveredByReport({
+                        ...targetCoveredByReport,
+                        [report.id]: event.target.checked
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    Target covered confirmation reviewed against report content, attachments, and
+                    history.
+                  </span>
+                </label>
+                <div className="mt-4 rounded-md border border-theme-border bg-theme-main p-3">
+                  <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-[160px_1fr]">
+                    <select
+                      className="form-field"
+                      onChange={(event) =>
+                        setOverrideByReport({
+                          ...overrideByReport,
+                          [report.id]: {
+                            decision: event.target.value as 'approved' | 'rejected',
+                            reason: overrideByReport[report.id]?.reason ?? '',
+                            targetCovered: overrideByReport[report.id]?.targetCovered ?? false
+                          }
+                        })
+                      }
+                      value={overrideByReport[report.id]?.decision ?? 'approved'}
+                    >
+                      <option value="approved">Approve</option>
+                      <option value="rejected">Reject</option>
+                    </select>
+                    <input
+                      className="form-field"
+                      onChange={(event) =>
+                        setOverrideByReport({
+                          ...overrideByReport,
+                          [report.id]: {
+                            decision: overrideByReport[report.id]?.decision ?? 'approved',
+                            reason: event.target.value,
+                            targetCovered: overrideByReport[report.id]?.targetCovered ?? false
+                          }
+                        })
+                      }
+                      placeholder="Override reason"
+                      value={overrideByReport[report.id]?.reason ?? ''}
+                    />
+                  </div>
+                  <label className="mt-2 flex items-center gap-2 text-sm text-theme-text-secondary">
+                    <input
+                      checked={overrideByReport[report.id]?.targetCovered ?? false}
+                      onChange={(event) =>
+                        setOverrideByReport({
+                          ...overrideByReport,
+                          [report.id]: {
+                            decision: overrideByReport[report.id]?.decision ?? 'approved',
+                            reason: overrideByReport[report.id]?.reason ?? '',
+                            targetCovered: event.target.checked
+                          }
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>Target covered for override approval</span>
+                  </label>
+                  <button
+                    className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
+                    onClick={() => void overrideReport(report)}
+                    type="button"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Override report
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

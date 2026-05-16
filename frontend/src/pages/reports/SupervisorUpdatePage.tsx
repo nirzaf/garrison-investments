@@ -11,6 +11,7 @@ import {
   createSupervisorUpdate,
   listSupervisorUpdates,
   submitSupervisorUpdate,
+  updateSupervisorUpdate,
   type SupervisorUpdateRecord
 } from '../../api/supervisorUpdates';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -80,6 +81,7 @@ export function SupervisorUpdatePage() {
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
 
   const storedDraft = useMemo(() => {
@@ -93,6 +95,7 @@ export function SupervisorUpdatePage() {
 
   const {
     formState: { errors },
+    getValues,
     handleSubmit,
     register,
     reset,
@@ -151,6 +154,26 @@ export function SupervisorUpdatePage() {
       window.clearTimeout(timer);
     };
   }, [watch]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const parsed = updateSchema.safeParse(getValues());
+      if (!parsed.success || isSaving) return;
+      const payload = buildPayload(parsed.data);
+      const autosave = savedDraftId
+        ? updateSupervisorUpdate(savedDraftId, payload)
+        : createSupervisorUpdate(payload);
+      autosave
+        .then((update) => {
+          setSavedDraftId(update.id);
+          setLastAutosavedAt(new Date().toLocaleTimeString());
+        })
+        .catch(() => {
+          window.localStorage.setItem(draftKey, JSON.stringify(getValues()));
+        });
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [getValues, isSaving, savedDraftId]);
 
   useEffect(() => {
     void loadUpdates(selectedProjectId);
@@ -270,6 +293,11 @@ export function SupervisorUpdatePage() {
           <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm">
             <AlertTriangle className="h-4 w-4" />
             <span>{error}</span>
+          </div>
+        ) : null}
+        {lastAutosavedAt ? (
+          <div className="alert-info rounded-md px-3 py-2 text-sm">
+            Draft autosaved at {lastAutosavedAt}.
           </div>
         ) : null}
 

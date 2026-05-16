@@ -183,6 +183,17 @@ async def test_invoice_payment_budget_and_finance_visibility(
         )
         assert blocked_payment.status_code == 409
 
+        blocked_direct_approval = await client.patch(
+            f"/api/v1/finance/invoices/{invoice['id']}",
+            json={"status": "approved"},
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert blocked_direct_approval.status_code == 403
+        assert (
+            blocked_direct_approval.json()["error_code"]
+            == "INVOICE_OPERATION_MANAGER_APPROVAL_REQUIRED"
+        )
+
         approvals = await client.get(
             "/api/v1/approvals",
             headers={"Authorization": f"Bearer {op_token}"},

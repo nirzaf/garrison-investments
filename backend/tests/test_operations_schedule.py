@@ -18,3 +18,4 @@ def test_celery_beat_schedules_operational_maintenance_tasks() -> None:
     assert schedule["run-database-backup-monthly"]["task"] == "run_database_backup"
     assert schedule["run-database-backup-monthly"]["args"] == (True,)
     assert schedule["cleanup-old-notifications-daily"]["task"] == "cleanup_old_notifications"
+    assert schedule["check-supplier-tds-expiry-daily"]["task"] == "check_supplier_tds_expiry"
