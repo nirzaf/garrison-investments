@@ -47,7 +47,7 @@ Create import templates, validation rules, preview workflows, and migration scri
 - Use transactions and idempotency keys or natural keys to reduce duplicate risk.
 - Record import batches and imported row status.
 - Create opening stock movements rather than directly editing stock balances.
-- Follow `../../ARCHITECTURE.md` bulk operation model: imports are multipart CSV/XLSX uploads processed asynchronously through Celery when large.
+- Follow `../ARCHITECTURE.md` bulk operation model: imports are multipart CSV/XLSX uploads processed asynchronously through Celery when large.
 - Use service-layer validation and repository writes; do not put import business rules in route handlers.
 - Import APIs must return consistent error envelopes with row, field, and message details.
 

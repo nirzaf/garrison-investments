@@ -45,7 +45,7 @@ Generate printable daily report PDFs using company or client templates, allow PD
 - Queue email delivery through Celery.
 - Store generated PDF metadata and regeneration status if needed.
 - Add retry and error logging for email delivery.
-- Follow `../../ARCHITECTURE.md` task layer: `generate_report_pdf` and email notification work must run through Celery queues with retries.
+- Follow `../ARCHITECTURE.md` task layer: `generate_report_pdf` and email notification work must run through Celery queues with retries.
 - Large or asynchronous exports should return a task response and be polled through export task endpoints when generation cannot complete in-request.
 - Store generated files in MinIO with database metadata only.
 

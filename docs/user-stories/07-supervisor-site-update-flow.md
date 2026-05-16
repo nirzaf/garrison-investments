@@ -46,7 +46,7 @@ Implement the supervisor update flow as an input to the official daily report, n
 - Link updates to project, date, supervisor, attachments, and verification status.
 - Add API validation for assigned project access.
 - Prepare the data shape for engineer verification and report generation.
-- Implement backend logic in a reporting service following `../../ARCHITECTURE.md`; routes must not contain workflow rules.
+- Implement backend logic in a reporting service following `../ARCHITECTURE.md`; routes must not contain workflow rules.
 - Use React Hook Form + Zod for form state and validation, and TanStack Query mutations for save/submit.
 - Autosave and weak-network retry behavior should prepare for the architecture offline/idempotency model even before Phase 3 full offline support.
 

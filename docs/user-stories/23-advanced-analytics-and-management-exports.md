@@ -46,7 +46,7 @@ Implement Phase 3 analytics and export capabilities beyond the Phase 1 operation
 - Use server-side PDF generation for project summaries.
 - Ensure export APIs enforce the same permissions as screen views.
 - Keep forecasting simple until validated by real data.
-- Follow `../../ARCHITECTURE.md` bulk operation rule: large exports return `202 Accepted` with a task ID and client polling.
+- Follow `../ARCHITECTURE.md` bulk operation rule: large exports return `202 Accepted` with a task ID and client polling.
 - Export generation should run through Celery report queues, with generated files stored in MinIO.
 - Frontend analytics must use TanStack Query for server state and Recharts for charts.
 

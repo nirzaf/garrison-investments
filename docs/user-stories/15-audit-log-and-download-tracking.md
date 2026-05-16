@@ -45,7 +45,7 @@ Implement audit logging for authentication, create/update/delete, approval, view
 - Add middleware or service-level audit hooks.
 - Keep audit writes reliable but avoid blocking user workflows unnecessarily.
 - Include request metadata where allowed, such as IP, user agent, and entity identifiers.
-- Follow `../../ARCHITECTURE.md` audit design: use a custom APIRoute wrapper where response status is needed, because dependencies cannot capture final response outcomes.
+- Follow `../ARCHITECTURE.md` audit design: use a custom APIRoute wrapper where response status is needed, because dependencies cannot capture final response outcomes.
 - Record create, update, soft delete, login, logout, approve, reject, download, and admin override using the architecture field model.
 - Keep audit log access admin-only and never cache audit-log reads.
 

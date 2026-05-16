@@ -47,7 +47,7 @@ Implement structured accounts records for invoices, payments, budgets, cost summ
 - Integrate approval engine for invoice/payment approval.
 - Link invoices to project, supplier, attachment, approval, and payment status.
 - Keep OCR placeholder isolated from MVP requirements.
-- Follow `../../ARCHITECTURE.md` caching guidance: do not cache financial records aggressively.
+- Follow `../ARCHITECTURE.md` caching guidance: do not cache financial records aggressively.
 - FinanceService owns invoice/payment workflow and visibility rules; routes stay thin and repositories own data access.
 - Invoice attachments must use private MinIO presigned access and download audit logging.
 
