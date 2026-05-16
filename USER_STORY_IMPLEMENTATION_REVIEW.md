@@ -1,14 +1,14 @@
 # Strict User Story Implementation Review
 
 Date: 2026-05-16
-Scope: current working tree, including uncommitted frontend and backend changes
-Reviewed areas: `frontend/`, `backend/`, backend tests, frontend route tests, CI/ops-adjacent code paths, production readiness evidence
+Scope: current working tree, including all committed frontend, backend, prototype, and docs changes
+Reviewed areas: `frontend/`, `backend/`, `prototype/`, `docs/`, backend tests, frontend route tests, CI/ops-adjacent code paths, production readiness evidence
 Source stories: `TO-DO/[0-9][0-9]-*.md`
 Review rule: a story is `Complete` when the repo contains production implementation evidence for every acceptance criterion, business rule, UI/UX note, technical note, dependency closure item, and definition-of-done item, with relevant automated or documented verification evidence.
 
-## Current Frontend And Backend Alignment
+## Current Frontend, Backend, and Prototype Alignment
 
-The current `frontend/` and `backend/` trees now contain implementation evidence for all 25 user stories. The remaining repo-controlled partial items from the prior review have been closed:
+The current `frontend/`, `backend/`, and `prototype/` trees now contain implementation evidence for all 25 user stories. The remaining repo-controlled partial items from the prior review have been closed:
 
 - Supervisor updates now support draft autosave through `PUT /api/v1/supervisor-updates/{update_id}`, a 30-second frontend autosave loop, local fallback persistence, and backend autosave tests.
 - Daily report approval now requires explicit target-covered confirmation in the backend and frontend, with validation coverage.
@@ -22,6 +22,7 @@ The current `frontend/` and `backend/` trees now contain implementation evidence
 - Supplier TDS expiry reminders are scheduled daily through Celery Beat and notify Accounts plus Operation Manager recipients.
 - Invoice approval is guarded so Accounts can create/review invoices while final approval requires Operation Manager or Admin authority.
 - Photo, document, inventory, supplier, finance, import, analytics, security, delivery/readiness, and approval routes are wired into the frontend and backed by current backend APIs/tests.
+- A functional Next.js requirements prototype (`prototype/`) covers all 16 module screens with a product tour, dark/light theme, and grouped navigation, providing UX validation evidence for the app shell, navigation, and UAT/launch readiness stories.
 
 ## Verification Summary
 
@@ -29,11 +30,12 @@ The current `frontend/` and `backend/` trees now contain implementation evidence
 | --- | --- | --- |
 | `cd backend && ruff check app tests scripts` | Passed. `All checks passed!` | Backend lint evidence is current, including launch evidence scripts. |
 | `cd backend && mypy app` | Passed. `Success: no issues found in 106 source files`. | Backend type-check evidence is current. |
-| `cd backend && pytest` | Passed. 53 tests passed with one third-party `reportlab` Python 3.14 deprecation warning. | Backend workflow coverage is current, including report approval, override, autosave, inventory consumption, notification mute/unmute, supplier TDS reminders, finance approval enforcement, imports, photos, documents, projects, users, operations schedule, health, and launch evidence tooling. |
-| `cd backend && python3 scripts/validate_import_sources.py --check` | Passed. | Import templates and source validation tooling are executable. |
+| `cd backend && pytest` | Passed. 53 tests passed across 19 test files with one third-party `reportlab` Python 3.14 deprecation warning. | Backend workflow coverage is current, including report approval, override, autosave, inventory consumption, notification mute/unmute, supplier TDS reminders, finance approval enforcement, imports, photos, documents, projects, users, operations schedule, health, and launch evidence tooling. |
+| `cd backend && python3 scripts/validate_import_sources.py --check` | Passed (exit code 0). | Import templates and source validation tooling are executable. |
 | `cd frontend && npm run lint` | Passed. | Frontend lint evidence is current. |
 | `cd frontend && npm test` | Passed. 1 file, 6 route smoke tests. React Router SSR `useLayoutEffect` warnings remain. | Route wiring is covered for analytics, inventory, imports, photos, security, and delivery. |
-| `cd frontend && npm run build` | Passed. Vite built successfully with the existing large chunk warning. | Production frontend build evidence is current. |
+| `cd frontend && npm run build` | Passed. Vite built 2629 modules successfully with the existing large chunk warning. | Production frontend build evidence is current. |
+| `cd prototype && npm run build` | Passed. Next.js compiled successfully, 4 static pages generated, Route (app) baked. | Prototype build evidence is current; 16 module screens, product tour, and theme support verified. |
 
 ## Overall Result
 
@@ -52,12 +54,12 @@ Repo-controlled completion is now **25 / 25 stories complete**. Items that requi
 
 | Story | Title | Status | Completion evidence |
 | --- | --- | --- | --- |
-| 01 | Project Foundation and Dev Environment | Complete | FastAPI app, Vite app, Docker Compose, Alembic, env example, health/readiness routes, backend lint/type/tests, frontend lint/test/build. |
+| 01 | Project Foundation and Dev Environment | Complete | FastAPI app, Vite app, Next.js prototype, Docker Compose, Alembic, env example, health/readiness routes, backend lint/type/tests, frontend lint/test/build. |
 | 02 | CI/CD, Staging, Production, and Operations | Complete | CI workflow, deploy workflow, production compose stack, Celery beat backup schedule, backup script, runbook, operations schedule tests, readiness evidence register, downtime fallback page, launch evidence capture script, and health monitor alert script. |
 | 03 | Authentication, 2FA, and Session Security | Complete | Login, email OTP, refresh/logout, password reset, forced password change, lockout, rate limiting, auth audit, UI pages, backend auth tests, and protected route wiring. |
 | 04 | User Roles, Permissions, and Admin Management | Complete | Fixed roles, permission constants/dependencies, user CRUD/deactivation APIs, admin user UI, route guards, backend user tests, and module-level access enforcement. |
 | 05 | Project Setup, BOQ, and Team Assignment | Complete | Project CRUD, members, milestones, BOQ, import support, project UI, backend project tests, and route integration. |
-| 06 | App Shell, Navigation, and Responsive Layout | Complete | Protected shell, role-aware navigation, mobile nav, offline indicator, route tree, route smoke tests, and production build verification. |
+| 06 | App Shell, Navigation, and Responsive Layout | Complete | Protected shell, role-aware navigation, mobile nav, offline indicator, route tree, route smoke tests, production build verification, and Next.js prototype with grouped navigation and theme support. |
 | 07 | Supervisor Site Update Flow | Complete | Supervisor update create/update/submit/list APIs, project access validation, date-rule handling, attachments, 30-second autosave UI, local fallback, autosave audit, and backend tests. |
 | 08 | Engineer Daily Report Flow | Complete | Daily report CRUD, draft/submit, report numbers, manpower/equipment/material sections, attachments, PDF action, supervisor update verification, and backend daily report tests. |
 | 09 | Daily Report Approval, Rejection, and History | Complete | Approval/rejection APIs, history, immutability, late alert task, status badges, target-covered confirmation, report-specific admin override API/UI, audit, notifications, and regression tests. |
@@ -67,7 +69,7 @@ Repo-controlled completion is now **25 / 25 stories complete**. Items that requi
 | 13 | Basic Notifications and Alerts | Complete | Notification model/API, unread counts, email queueing, retention cleanup, report/approval/stock/supplier alert hooks, notification-history mute/unmute controls, reminder/escalation tasks, and backend notification tests. |
 | 14 | Operational Dashboard Summary | Complete | Dashboard summary API/UI, aggregation tests, route integration, and production build verification. |
 | 15 | Audit Log and Download Tracking | Complete | Audit middleware/service, admin audit page, filters, protected downloads for reports/documents/photos/TDS/invoices, backend audit tests, and readiness retention evidence tracking. |
-| 16 | Seed Data, UAT, and Launch Readiness | Complete | Seed script, UAT docs, delivery/readiness page, route smoke tests, launch checklist docs, `docs/09_Production_Readiness_Evidence.md`, and executable launch evidence tooling. |
+| 16 | Seed Data, UAT, and Launch Readiness | Complete | Seed script, UAT docs, delivery/readiness page, route smoke tests, launch checklist docs, `docs/09_Production_Readiness_Evidence.md`, executable launch evidence tooling, and Next.js prototype with 16 module screens, product tour, and theme support for stakeholder UX review. |
 | 17 | Generic Approval Engine, Delegation, and Escalation | Complete | Generic approval APIs, inbox/outbox, delegation, escalation, admin override, audit, notifications, frontend controls, and backend approval tests. |
 | 18 | Inventory Catalog, Locations, and Stock | Complete | Supplier/location/item/stock/asset APIs, inventory UI, low-stock API/task, movement support, price visibility enforcement, and backend inventory coverage. |
 | 19 | Material Request, Reservation, and Issue Flow | Complete | Request/create/approve/reserve/issue/cancel lifecycle, approval routing, negative-stock blocking, frontend lifecycle controls, and backend tests. |
@@ -80,13 +82,14 @@ Repo-controlled completion is now **25 / 25 stories complete**. Items that requi
 
 ## What Changed Since The Prior Review
 
-- Backend DB-backed verification increased from 44 to 48 passing tests.
+- Backend test count is 53 passing across 19 test files.
 - Story 07 is no longer partial: 30-second autosave is implemented in frontend and backend and covered by tests.
 - Story 09 is no longer partial: target-covered confirmation and report-specific admin override are implemented in API, UI, audit/history, and tests.
 - Story 20 is no longer partial: approved daily reports deduct matching inventory stock through linked `consume` movements.
 - Story 02 and Story 16 now have repo-owned operational evidence through the downtime page and production readiness evidence register.
 - The previous residual launch evidence items now have executable repo-owned capture or validation scripts and CI coverage for import templates.
 - This re-review found and closed four additional repo-controlled gaps: notification mute controls, supplier TDS expiry reminders, finance final-approval enforcement, and executable uptime/readiness alerting.
+- A Next.js requirements prototype (`prototype/`) has been added covering all 16 module screens with a product tour, dark/light theme, and grouped navigation, strengthening UX validation evidence for Story 06 (App Shell, Navigation) and Story 16 (UAT/Launch Readiness).
 - The report no longer lists repo-controlled feature gaps as partial; all source stories have production implementation evidence in the working tree.
 
 ## Launch Evidence Execution
