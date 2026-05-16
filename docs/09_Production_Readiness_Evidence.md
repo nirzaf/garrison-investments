@@ -8,22 +8,22 @@ This file records the repo-controlled evidence required by the strict user-story
 
 | Area | Repository evidence |
 | --- | --- |
-| CI | `.github/workflows/ci.yml` runs backend Ruff, mypy, Alembic validation, pytest, frontend lint, format check, tests, build, and Docker Compose validation/build. |
-| Deployment | `.github/workflows/deploy.yml` separates staging and production deployment and uses the GitHub `production` environment for production approval. |
+| CI | `.github/workflows/ci.yml` defines backend Ruff, mypy, Alembic migration, import-template validation, MinIO-backed pytest, frontend lint, format check, tests, build, and Docker Compose validation/build jobs. |
+| Deployment | No active deployment workflow is currently present. The removed SSH workflow depended on external host secrets; deployment approval and execution remain launch-owner responsibilities tracked by this evidence register. |
 | Runtime stack | `docker-compose.prod.yml` defines Nginx, backend, PostgreSQL, Redis, MinIO, Celery worker, and Celery beat. |
 | Downtime message | `nginx/nginx.conf` routes 500/502/503/504 failures to `frontend/public/50x.html`. |
-| Monitoring | `backend/scripts/health_monitor.py` checks `/health` and `/health/readiness`, exits non-zero on failure, and emails Admin/technical support plus Operation Manager recipients. |
+| Monitoring | `backend/scripts/health_monitor.py` checks supplied health/readiness URLs, exits non-zero on failure, and emails configured `MONITOR_ALERT_RECIPIENTS` or `--alert-to` recipients. |
 | Backups | `backend/app/tasks/celery_app.py`, `backend/app/tasks/backup.py`, and `backend/scripts/backup.py` implement daily and monthly backup scheduling. |
 | Restore procedure | `docs/06_Operations_Runbook.md` documents restore and rollback steps. |
-| UAT scenarios | `docs/07_UAT_Launch_Readiness.md` and the current route/backend tests cover the launch scenario baseline. |
+| UAT scenarios | `docs/07_UAT_Launch_Readiness.md` defines launch UAT scenarios; current route/backend tests provide automated coverage for part of that baseline, while signed browser/device UAT remains a launch-run requirement. |
 
 ## Launch Sign-Off Checklist
 
 | Sign-off item | Required owner | Evidence to attach during launch |
 | --- | --- | --- |
-| Production GitHub environment approver is the Operation Manager or delegated release approver | Admin / Operation Manager | Screenshot or GitHub environment settings export. |
-| Staging deployment completed from the current commit | Technical support | `backend/scripts/launch_evidence.py --target staging` output with GitHub Actions run URL. |
-| Production deployment approval completed | Operation Manager | `backend/scripts/launch_evidence.py --target production --approver ...` output with production approval URL. |
+| Production deployment approver is the Operation Manager or delegated release approver | Admin / Operation Manager | Screenshot, platform settings export, or signed release approval. |
+| Staging deployment completed from the current commit | Technical support | `backend/scripts/launch_evidence.py --target staging` output with deployment run URL or signed deployment record. |
+| Production deployment approval completed | Operation Manager | `backend/scripts/launch_evidence.py --target production --approver ...` output with production approval URL or signed approval record. |
 | `/health` and `/health/readiness` return healthy responses on production | Technical support | `backend/scripts/launch_evidence.py` runtime check output. |
 | Daily backup completed successfully | Technical support | Backup task log or object-storage path recorded in `backend/scripts/launch_evidence.py` output. |
 | Restore dry run completed | Technical support | `backend/scripts/restore_dry_run.py` output. |

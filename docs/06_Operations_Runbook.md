@@ -2,34 +2,22 @@
 
 ## Environments
 
-- `staging`: automatic deployment from the `develop` branch.
-- `production`: deployment from the `main` branch or manual workflow dispatch.
+- `staging`: deployment target for pre-production validation.
+- `production`: deployment target for approved launch and release runs.
 
-Production approval is enforced through the GitHub `production` environment. Configure the Operation Manager as a required reviewer in repository settings before enabling production deploys.
+The previous SSH-based GitHub deployment workflow has been removed because it depended on environment-specific secrets and failed when those secrets were not configured. Production approval still has to be enforced by the deployment owner through the selected deployment platform or GitHub environment settings before enabling production releases.
 
-## Required GitHub Secrets
+## Required Deployment Inputs
 
-### Staging
-
-- `STAGING_HOST`
-- `STAGING_USER`
-- `STAGING_SSH_KEY`
-- `STAGING_APP_PATH`
-
-### Production
-
-- `PRODUCTION_HOST`
-- `PRODUCTION_USER`
-- `PRODUCTION_SSH_KEY`
-- `PRODUCTION_APP_PATH`
+The repository does not currently contain an active deployment workflow. Before launch, the deployment owner must provide the target host or platform, environment files, production approver, backup location, and rollback owner.
 
 ## Deployment Flow
 
 1. Merge feature work through pull requests.
 2. CI runs backend lint, type checks, migrations, tests, frontend lint, formatting, tests, build, and Docker image build.
-3. Merging to `develop` deploys staging automatically.
-4. Merging to `main` starts production deployment and waits for the GitHub `production` environment approval gate.
-5. The deployment runs `docker compose -f docker-compose.prod.yml up -d --build`, applies Alembic migrations, and checks `/health`.
+3. The deployment owner runs the selected staging deployment process from the approved commit.
+4. The Operation Manager or delegated release approver signs off before production deployment.
+5. The production deployment should run `docker compose -f docker-compose.prod.yml up -d --build` or the equivalent platform rollout, apply Alembic migrations, and check `/health`.
 
 ## Backup Procedure
 

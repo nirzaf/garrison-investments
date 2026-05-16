@@ -52,8 +52,7 @@ garrison-investments/
 ├── .env.example
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml
-│       └── deploy.yml
+│       └── ci.yml
 │
 ├── backend/
 │   ├── Dockerfile
