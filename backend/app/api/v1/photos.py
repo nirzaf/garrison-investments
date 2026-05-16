@@ -39,16 +39,27 @@ async def upload_files(
 async def list_files(
     current_user: CurrentUser,
     session: DbSession,
-    entity_type: Annotated[str, Query()],
-    entity_id: Annotated[UUID, Query()],
+    entity_type: Annotated[str | None, Query()] = None,
+    entity_id: Annotated[UUID | None, Query()] = None,
     kind: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PhotoListResponse:
     del current_user
-    photos, total = await PhotoService(session).list_for_entity(
-        entity_type=entity_type,
-        entity_id=entity_id,
-        kind=kind,
-    )
+    service = PhotoService(session)
+    if entity_type and entity_id:
+        photos, total = await service.list_for_entity(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            kind=kind,
+        )
+    else:
+        photos, total = await service.list_recent(
+            entity_type=entity_type,
+            kind=kind,
+            limit=limit,
+            offset=offset,
+        )
     return PhotoListResponse(
         items=[PhotoResponse.model_validate(photo) for photo in photos],
         total=total,

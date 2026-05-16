@@ -44,3 +44,24 @@ class PhotoRepository:
             query.order_by(Photo.created_at.desc()).limit(limit).offset(offset)
         )
         return list(result.scalars().all()), int(total or 0)
+
+    async def list_recent(
+        self,
+        *,
+        entity_type: str | None = None,
+        kind: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[Photo], int]:
+        query: Select = select(Photo).where(Photo.deleted_at.is_(None))
+        if entity_type:
+            query = query.where(Photo.entity_type == entity_type)
+        if kind:
+            query = query.where(Photo.kind == kind)
+        total = await self.session.scalar(
+            select(func.count()).select_from(query.with_only_columns(Photo.id).subquery())
+        )
+        result = await self.session.execute(
+            query.order_by(Photo.created_at.desc()).limit(limit).offset(offset)
+        )
+        return list(result.scalars().all()), int(total or 0)

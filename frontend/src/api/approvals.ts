@@ -55,3 +55,19 @@ export async function rejectGenericApproval(id: string, comments: string) {
   });
   return data;
 }
+
+export async function delegateGenericApproval(
+  id: string,
+  payload: { delegated_to_id: string; reason: string }
+) {
+  const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/delegate`, payload);
+  return data;
+}
+
+export async function overrideGenericApproval(
+  id: string,
+  payload: { decision: 'approved' | 'rejected'; reason: string }
+) {
+  const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/override`, payload);
+  return data;
+}

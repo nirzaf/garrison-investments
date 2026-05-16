@@ -1,9 +1,11 @@
-import { AlertTriangle, Check, X } from 'lucide-react';
+import { AlertTriangle, Check, Forward, ShieldCheck, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
   approveGenericApproval,
+  delegateGenericApproval,
   listApprovals,
+  overrideGenericApproval,
   rejectGenericApproval,
   type ApprovalRecord
 } from '../../api/approvals';
@@ -21,6 +23,12 @@ export function ApprovalInboxPage() {
   const [genericApprovals, setGenericApprovals] = useState<ApprovalRecord[]>([]);
   const [commentsByReport, setCommentsByReport] = useState<Record<string, string>>({});
   const [commentsByApproval, setCommentsByApproval] = useState<Record<string, string>>({});
+  const [delegateByApproval, setDelegateByApproval] = useState<
+    Record<string, { delegated_to_id: string; reason: string }>
+  >({});
+  const [overrideByApproval, setOverrideByApproval] = useState<
+    Record<string, { decision: 'approved' | 'rejected'; reason: string }>
+  >({});
   const [tab, setTab] = useState<'reports' | 'workflow'>('reports');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +108,46 @@ export function ApprovalInboxPage() {
       await loadReports();
     } catch {
       setError('Unable to reject the workflow item.');
+    }
+  }
+
+  async function delegateWorkflow(approval: ApprovalRecord) {
+    setError(null);
+    setNotice(null);
+    const payload = delegateByApproval[approval.id];
+    if (!payload?.delegated_to_id.trim() || !payload.reason.trim()) {
+      setError('Delegate user ID and reason are required.');
+      return;
+    }
+    try {
+      await delegateGenericApproval(approval.id, {
+        delegated_to_id: payload.delegated_to_id.trim(),
+        reason: payload.reason.trim()
+      });
+      setNotice('Approval delegated.');
+      await loadReports();
+    } catch {
+      setError('Unable to delegate the workflow item.');
+    }
+  }
+
+  async function overrideWorkflow(approval: ApprovalRecord) {
+    setError(null);
+    setNotice(null);
+    const payload = overrideByApproval[approval.id];
+    if (!payload?.reason.trim()) {
+      setError('Override reason is required.');
+      return;
+    }
+    try {
+      await overrideGenericApproval(approval.id, {
+        decision: payload.decision,
+        reason: payload.reason.trim()
+      });
+      setNotice(`Approval override ${payload.decision}.`);
+      await loadReports();
+    } catch {
+      setError('Unable to override the workflow item.');
     }
   }
 
@@ -202,6 +250,92 @@ export function ApprovalInboxPage() {
                     value={commentsByApproval[approval.id] ?? ''}
                   />
                 </label>
+                <div className="mt-4 grid gap-3 rounded-md border border-theme-border bg-theme-main p-3 lg:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-theme-text-primary">Delegate</p>
+                    <div className="mt-2 grid gap-2">
+                      <input
+                        className="form-field"
+                        onChange={(event) =>
+                          setDelegateByApproval({
+                            ...delegateByApproval,
+                            [approval.id]: {
+                              delegated_to_id: event.target.value,
+                              reason: delegateByApproval[approval.id]?.reason ?? ''
+                            }
+                          })
+                        }
+                        placeholder="Delegate user UUID"
+                        value={delegateByApproval[approval.id]?.delegated_to_id ?? ''}
+                      />
+                      <input
+                        className="form-field"
+                        onChange={(event) =>
+                          setDelegateByApproval({
+                            ...delegateByApproval,
+                            [approval.id]: {
+                              delegated_to_id: delegateByApproval[approval.id]?.delegated_to_id ?? '',
+                              reason: event.target.value
+                            }
+                          })
+                        }
+                        placeholder="Reason"
+                        value={delegateByApproval[approval.id]?.reason ?? ''}
+                      />
+                      <button
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
+                        onClick={() => void delegateWorkflow(approval)}
+                        type="button"
+                      >
+                        <Forward className="h-4 w-4" />
+                        Delegate
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
+                    <div className="mt-2 grid gap-2">
+                      <select
+                        className="form-field"
+                        onChange={(event) =>
+                          setOverrideByApproval({
+                            ...overrideByApproval,
+                            [approval.id]: {
+                              decision: event.target.value as 'approved' | 'rejected',
+                              reason: overrideByApproval[approval.id]?.reason ?? ''
+                            }
+                          })
+                        }
+                        value={overrideByApproval[approval.id]?.decision ?? 'approved'}
+                      >
+                        <option value="approved">Approve override</option>
+                        <option value="rejected">Reject override</option>
+                      </select>
+                      <input
+                        className="form-field"
+                        onChange={(event) =>
+                          setOverrideByApproval({
+                            ...overrideByApproval,
+                            [approval.id]: {
+                              decision: overrideByApproval[approval.id]?.decision ?? 'approved',
+                              reason: event.target.value
+                            }
+                          })
+                        }
+                        placeholder="Override reason"
+                        value={overrideByApproval[approval.id]?.reason ?? ''}
+                      />
+                      <button
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
+                        onClick={() => void overrideWorkflow(approval)}
+                        type="button"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Override
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
                     className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold"

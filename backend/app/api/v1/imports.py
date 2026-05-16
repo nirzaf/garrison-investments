@@ -80,19 +80,34 @@ async def run_import(
 async def run_import_async_endpoint(
     template_type: str,
     current_user: CanManageImports,
+    session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> JSONResponse:
     content = await file.read()
+    batch = ImportBatch(
+        template_type=template_type,
+        file_name=file.filename or "import.csv",
+        status="queued",
+        created_by=current_user.id,
+        row_count=0,
+        error_count=0,
+        summary={},
+    )
+    session.add(batch)
+    await session.commit()
+    await session.refresh(batch)
     task = run_import_async.delay(
         template_type=template_type,
         file_name=file.filename or "import.csv",
         content=content,
         actor_id=str(current_user.id),
+        batch_id=str(batch.id),
     )
     return JSONResponse(
         status_code=202,
         content={
             "task_id": task.id,
+            "batch_id": str(batch.id),
             "template_type": template_type,
             "status": "queued",
         },

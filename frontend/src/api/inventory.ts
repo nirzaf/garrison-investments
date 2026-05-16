@@ -34,6 +34,50 @@ export type StockRecord = {
   available_qty: string;
 };
 
+export type AssetRecord = {
+  id: string;
+  item_id: string;
+  asset_tag: string;
+  current_location_id: string;
+  condition: string;
+  status: string;
+};
+
+export type MovementRecord = {
+  id: string;
+  item_id: string;
+  asset_id: string | null;
+  movement_type: string;
+  quantity: string;
+  from_location_id: string | null;
+  to_location_id: string | null;
+  project_id: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  handled_by: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type MaterialRequestRecord = {
+  id: string;
+  request_number: string;
+  project_id: string;
+  requester_id: string | null;
+  from_location_id: string | null;
+  status: string;
+  total_estimated_cost: string;
+  notes: string | null;
+  lines: Array<{
+    id: string;
+    item_id: string;
+    quantity: string;
+    reserved_quantity: string;
+    issued_quantity: string;
+    unit_cost: string | null;
+  }>;
+};
+
 export type SupplierRecord = {
   id: string;
   name: string;
@@ -153,5 +197,79 @@ export async function receiveStock(payload: {
 
 export async function listLowStock() {
   const { data } = await apiClient.get<StockRecord[]>('/inventory/low-stock');
+  return data;
+}
+
+export async function listAssets() {
+  const { data } = await apiClient.get<AssetRecord[]>('/inventory/assets');
+  return data;
+}
+
+export async function createAsset(payload: {
+  item_id: string;
+  asset_tag: string;
+  current_location_id: string;
+  condition: string;
+}) {
+  const { data } = await apiClient.post<AssetRecord>('/inventory/assets', payload);
+  return data;
+}
+
+export async function listMovements(params?: {
+  item_id?: string;
+  location_id?: string;
+  project_id?: string;
+}) {
+  const { data } = await apiClient.get<MovementRecord[]>('/inventory/movements', { params });
+  return data;
+}
+
+export async function createMovement(payload: {
+  item_id: string;
+  asset_id?: string;
+  movement_type: string;
+  quantity: string;
+  from_location_id?: string;
+  to_location_id?: string;
+  project_id?: string;
+  notes?: string;
+}) {
+  const { data } = await apiClient.post<MovementRecord>('/inventory/movements', payload);
+  return data;
+}
+
+export async function listMaterialRequests() {
+  const { data } = await apiClient.get<MaterialRequestRecord[]>('/inventory/requests');
+  return data;
+}
+
+export async function createMaterialRequest(payload: {
+  project_id: string;
+  from_location_id: string;
+  notes?: string;
+  lines: Array<{ item_id: string; quantity: string }>;
+}) {
+  const { data } = await apiClient.post<MaterialRequestRecord>('/inventory/requests', payload);
+  return data;
+}
+
+export async function reserveMaterialRequest(requestId: string) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/reserve`
+  );
+  return data;
+}
+
+export async function issueMaterialRequest(requestId: string) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/issue`
+  );
+  return data;
+}
+
+export async function cancelMaterialRequest(requestId: string) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/cancel`
+  );
   return data;
 }

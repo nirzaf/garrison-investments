@@ -12,16 +12,37 @@ vi.mock('./api/analytics', () => ({
 }));
 
 vi.mock('./api/inventory', () => ({
+  cancelMaterialRequest: vi.fn(),
+  createAsset: vi.fn(),
   createInventoryItem: vi.fn(),
   createLocation: vi.fn(),
+  createMaterialRequest: vi.fn(),
+  createMovement: vi.fn(),
   createSupplier: vi.fn(),
   getSupplierTdsDocumentUrl: vi.fn(),
+  issueMaterialRequest: vi.fn(),
+  listAssets: vi.fn(async () => []),
   listInventoryItems: vi.fn(async () => []),
   listLocations: vi.fn(async () => []),
   listLowStock: vi.fn(async () => []),
+  listMaterialRequests: vi.fn(async () => []),
+  listMovements: vi.fn(async () => []),
   listSuppliers: vi.fn(async () => []),
   receiveStock: vi.fn(),
+  reserveMaterialRequest: vi.fn(),
   uploadSupplierTdsDocument: vi.fn()
+}));
+
+vi.mock('./api/photos', () => ({
+  getPhotoDownloadUrl: vi.fn(),
+  getPhotoThumbnailUrl: vi.fn(),
+  listPhotos: vi.fn(async () => ({ items: [], total: 0 })),
+  uploadEntityFiles: vi.fn()
+}));
+
+vi.mock('./api/projects', () => ({
+  createProject: vi.fn(),
+  listProjects: vi.fn(async () => ({ items: [], total: 0 }))
 }));
 
 const baseAuthValue: Omit<AuthContextValue, 'user'> = {
@@ -95,5 +116,23 @@ describe('App route smoke tests', () => {
     const html = renderApp('/admin/imports', ['users:manage']);
 
     expect(html).toContain('Data Imports');
+  });
+
+  it('renders photos route for report viewers', () => {
+    const html = renderApp('/photos', ['reports:view']);
+
+    expect(html).toContain('Photos And Attachments');
+  });
+
+  it('renders security route for audit users', () => {
+    const html = renderApp('/security', ['audit:view']);
+
+    expect(html).toContain('Security And Audit');
+  });
+
+  it('renders delivery route for management users', () => {
+    const html = renderApp('/delivery', ['dashboard:company']);
+
+    expect(html).toContain('Delivery Plan');
   });
 });

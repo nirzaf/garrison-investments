@@ -34,3 +34,36 @@ export async function uploadEntityFiles(params: {
   });
   return response.data;
 }
+
+export async function listPhotos(params?: {
+  entityType?: string;
+  entityId?: string;
+  kind?: 'photo' | 'attachment';
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: PhotoRecord[]; total: number }> {
+  const response = await apiClient.get<{ items: PhotoRecord[]; total: number }>('/photos', {
+    params: {
+      entity_type: params?.entityType,
+      entity_id: params?.entityId,
+      kind: params?.kind,
+      limit: params?.limit,
+      offset: params?.offset
+    }
+  });
+  return response.data;
+}
+
+export async function getPhotoDownloadUrl(photoId: string): Promise<string> {
+  const response = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+    `/photos/${photoId}/download`
+  );
+  return response.data.url;
+}
+
+export async function getPhotoThumbnailUrl(photoId: string): Promise<string> {
+  const response = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+    `/photos/${photoId}/thumbnail`
+  );
+  return response.data.url;
+}
