@@ -96,7 +96,6 @@ class PhotoService:
             new_values={"photo_id": str(photo.id), "kind": normalized_kind},
         )
         await self.session.commit()
-        self._queue_processing(photo.id)
         return photo
 
     async def list_for_entity(
@@ -297,12 +296,3 @@ class PhotoService:
             length=len(data),
             content_type=content_type,
         )
-
-    def _queue_processing(self, photo_id: UUID) -> None:
-        try:
-            from app.tasks.image import compress_photo, generate_thumbnail
-
-            compress_photo.delay(str(photo_id))
-            generate_thumbnail.delay(str(photo_id))
-        except Exception:
-            return

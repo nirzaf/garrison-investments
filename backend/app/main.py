@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.database import check_database
+from app.middleware import AuthRateLimiter, audit_authenticated_request
 from app.utils.exceptions import AppException
 
 logger = structlog.get_logger("app.api")
@@ -24,6 +25,11 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    auth_rate_limiter = AuthRateLimiter(
+        redis_url=settings.redis_url,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+        max_requests=settings.auth_rate_limit_max_requests,
+    )
     app = FastAPI(
         title=settings.app_name,
         debug=settings.debug,
@@ -42,10 +48,43 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
+        request.state.request_id = request_id
         start = perf_counter()
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = f"{perf_counter() - start:.6f}"
+        return response
+
+    @app.middleware("http")
+    async def auth_rate_limit_middleware(request: Request, call_next):
+        if not auth_rate_limiter.applies_to(request):
+            return await call_next(request)
+
+        is_limited, remaining = await auth_rate_limiter.check(request)
+        headers = {
+            "X-RateLimit-Limit": str(settings.auth_rate_limit_max_requests),
+            "X-RateLimit-Remaining": str(remaining),
+        }
+        if is_limited:
+            headers["Retry-After"] = str(settings.auth_rate_limit_window_seconds)
+            return JSONResponse(
+                status_code=429,
+                headers=headers,
+                content={
+                    "detail": "Too many authentication requests. Please try again later.",
+                    "error_code": "RATE_LIMITED",
+                    "errors": [],
+                },
+            )
+
+        response = await call_next(request)
+        response.headers.update(headers)
+        return response
+
+    @app.middleware("http")
+    async def audit_request_middleware(request: Request, call_next):
+        response = await call_next(request)
+        await audit_authenticated_request(request, response)
         return response
 
     @app.exception_handler(AppException)

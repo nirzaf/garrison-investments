@@ -14,11 +14,11 @@ export function DashboardPage() {
   return (
     <section className="space-y-8">
       <div className="max-w-3xl">
-        <p className="text-sm font-medium text-brand-700">Operational overview</p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
+        <p className="text-sm font-medium text-brand-600">Operational overview</p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-normal text-theme-text-primary sm:text-3xl">
           Launch Operations
         </h2>
-        <p className="mt-3 text-base leading-7 text-slate-600">
+        <p className="mt-3 text-base leading-7 text-theme-text-secondary">
           Review pending approvals, recent reports, active projects, and unread workflow alerts.
         </p>
       </div>
@@ -47,11 +47,11 @@ export function DashboardPage() {
       </div>
 
       {data?.recent_activity.length ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-950">Recent Activity</h3>
-          <div className="mt-3 divide-y divide-slate-100">
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <h3 className="text-base font-semibold text-theme-text-primary">Recent Activity</h3>
+          <div className="mt-3 divide-y divide-theme-border">
             {data.recent_activity.map((item) => (
-              <p className="py-2 text-sm text-slate-600" key={item}>
+              <p className="py-2 text-sm text-theme-text-secondary" key={item}>
                 {item}
               </p>
             ))}
@@ -69,9 +69,9 @@ export function DashboardPage() {
 
 function StatusPanel({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-semibold text-slate-950">{value}</p>
+    <div className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+      <p className="text-sm font-medium text-theme-text-muted">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-theme-text-primary">{value}</p>
     </div>
   );
 }

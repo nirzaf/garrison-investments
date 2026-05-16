@@ -3,6 +3,20 @@
 @tailwind utilities;
 
 :root {
+  --bg-main: #F5F7F8;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-elevated: #F9FAFB;
+  --text-primary: #111820;
+  --text-secondary: #4B5563;
+  --text-muted: #7A8490;
+  --brand-primary: #0F766E;
+  --brand-primary-hover: #0B5F59;
+  --border: #D8DEE4;
+  --success: #16A34A;
+  --warning: #B08900;
+  --error: #B42318;
+
   font-family:
     Inter,
     ui-sans-serif,
@@ -11,8 +25,24 @@
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  color: #020617;
-  background: #f8fafc;
+  color: var(--text-primary);
+  background: var(--bg-main);
+}
+
+:root[data-theme='dark'] {
+  --bg-main: #0E1317;
+  --bg-sidebar: #111820;
+  --bg-card: #171E25;
+  --bg-card-elevated: #1D2630;
+  --text-primary: #E5E9ED;
+  --text-secondary: #A7B0BA;
+  --text-muted: #6F7A86;
+  --brand-primary: #0F766E;
+  --brand-primary-hover: #14A085;
+  --border: #2A333D;
+  --success: #16A34A;
+  --warning: #C9A227;
+  --error: #B42318;
 }
 
 body {
@@ -21,6 +51,19 @@ body {
 
 @layer components {
   .form-field {
-    @apply w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-brand-600 focus:ring-2 focus:ring-brand-50 disabled:bg-slate-100 disabled:text-slate-500;
+    @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
+    border-color: var(--border);
+    color: var(--text-primary);
+    background: var(--bg-card);
+  }
+
+  .form-field:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 10%, transparent);
+  }
+
+  .form-field:disabled {
+    background: var(--bg-card-elevated);
+    color: var(--text-muted);
   }
 }

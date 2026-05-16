@@ -62,8 +62,8 @@ export function InventoryPage() {
     <section className="space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Materials</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Inventory And Stores</h2>
+          <p className="text-sm font-medium text-brand-600">Materials</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Inventory And Stores</h2>
         </div>
         <StatusBadge tone={lowStock.data && lowStock.data.length > 0 ? 'warning' : 'success'}>
           {`${lowStock.data?.length ?? 0} low stock`}
@@ -72,7 +72,7 @@ export function InventoryPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <form
-          className="rounded-lg border border-slate-200 bg-white p-4"
+          className="rounded-lg border border-theme-border bg-theme-card p-4"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
@@ -92,7 +92,7 @@ export function InventoryPage() {
             event.currentTarget.reset();
           }}
         >
-          <h3 className="text-base font-semibold text-slate-950">Supplier</h3>
+          <h3 className="text-base font-semibold text-theme-text-primary">Supplier</h3>
           <div className="mt-3 grid gap-3">
             <input className="form-field" name="name" placeholder="Supplier name" required />
             <input className="form-field" name="category" placeholder="Category" required />
@@ -130,13 +130,13 @@ export function InventoryPage() {
               <option value="blocked">Blocked</option>
             </select>
           </div>
-          <button className="mt-3 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white">
+          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             Add supplier
           </button>
         </form>
 
         <form
-          className="rounded-lg border border-slate-200 bg-white p-4"
+          className="rounded-lg border border-theme-border bg-theme-card p-4"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
@@ -149,7 +149,7 @@ export function InventoryPage() {
             event.currentTarget.reset();
           }}
         >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
             <Warehouse className="h-4 w-4" />
             Storage location
           </h3>
@@ -163,13 +163,13 @@ export function InventoryPage() {
             </select>
             <input className="form-field" name="address" placeholder="Address" />
           </div>
-          <button className="mt-3 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white">
+          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             Add location
           </button>
         </form>
 
         <form
-          className="rounded-lg border border-slate-200 bg-white p-4"
+          className="rounded-lg border border-theme-border bg-theme-card p-4"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
@@ -187,7 +187,7 @@ export function InventoryPage() {
             event.currentTarget.reset();
           }}
         >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
             <PackagePlus className="h-4 w-4" />
             Inventory item
           </h3>
@@ -217,29 +217,29 @@ export function InventoryPage() {
               ))}
             </select>
           </div>
-          <button className="mt-3 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white">
+          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             Add item
           </button>
         </form>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h3 className="text-base font-semibold text-slate-950">Stock matrix</h3>
+        <div className="rounded-lg border border-theme-border bg-theme-card">
+          <div className="border-b border-theme-border px-4 py-3">
+            <h3 className="text-base font-semibold text-theme-text-primary">Stock matrix</h3>
           </div>
           {items.data && items.data.length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-theme-border">
               {items.data.map((item) => (
                 <button
-                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-theme-main"
                   key={item.id}
                   onClick={() => setSelectedItemId(item.id)}
                   type="button"
                 >
                   <span>
-                    <span className="block font-medium text-slate-950">{item.name}</span>
-                    <span className="text-sm text-slate-500">
+                    <span className="block font-medium text-theme-text-primary">{item.name}</span>
+                    <span className="text-sm text-theme-text-muted">
                       {item.item_code ?? 'No code'} - {item.category}
                     </span>
                   </span>
@@ -252,9 +252,9 @@ export function InventoryPage() {
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="text-base font-semibold text-slate-950">Quick receive</h3>
-          <p className="mt-1 text-sm text-slate-600">
+        <div className="rounded-lg border border-theme-border bg-theme-card p-4">
+          <h3 className="text-base font-semibold text-theme-text-primary">Quick receive</h3>
+          <p className="mt-1 text-sm text-theme-text-secondary">
             {selectedItem ? selectedItem.name : 'Select an item'} into{' '}
             {firstLocation ? firstLocation.name : 'a location'}.
           </p>
@@ -275,7 +275,7 @@ export function InventoryPage() {
           >
             <input className="form-field" name="quantity" placeholder="Quantity" required />
             <input className="form-field" name="notes" placeholder="Notes" />
-            <button className="w-full rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white">
+            <button className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
               Receive stock
             </button>
           </form>
@@ -283,11 +283,11 @@ export function InventoryPage() {
       </div>
 
       {suppliers.data && suppliers.data.length > 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h3 className="text-base font-semibold text-slate-950">Supplier compliance</h3>
+        <div className="rounded-lg border border-theme-border bg-theme-card">
+          <div className="border-b border-theme-border px-4 py-3">
+            <h3 className="text-base font-semibold text-theme-text-primary">Supplier compliance</h3>
           </div>
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-theme-border">
             {suppliers.data.map((supplier) => {
               const isExpiring =
                 supplier.tds_expiry_date &&
@@ -299,8 +299,8 @@ export function InventoryPage() {
                   key={supplier.id}
                 >
                   <div>
-                    <p className="font-medium text-slate-950">{supplier.name}</p>
-                    <p className={isExpiring ? 'text-amber-700' : 'text-slate-500'}>
+                    <p className="font-medium text-theme-text-primary">{supplier.name}</p>
+                    <p className={isExpiring ? 'text-amber-700' : 'text-theme-text-muted'}>
                       TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
                       {supplier.tds_expiry_date ?? '-'}
                     </p>
@@ -316,7 +316,7 @@ export function InventoryPage() {
                   />
                   {supplier.tds_document_key ? (
                     <button
-                      className="text-left text-xs font-semibold text-brand-700"
+                      className="text-left text-xs font-semibold text-brand-600"
                       onClick={() => void openSupplierTdsDocument(supplier.id)}
                       type="button"
                     >

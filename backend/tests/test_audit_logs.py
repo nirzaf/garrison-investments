@@ -99,3 +99,40 @@ async def test_admin_can_filter_audit_logs_and_non_admin_is_blocked() -> None:
         )
 
         assert blocked.status_code == 403
+
+
+async def test_authenticated_request_is_recorded_in_audit_log() -> None:
+    await skip_if_database_unavailable()
+    admin_email, admin_password = await create_user("admin")
+
+    async with create_test_client() as client:
+        admin_token = await login_for_token(client, admin_email, admin_password)
+
+        response = await client.get(
+            "/api/v1/auth/me",
+            headers={
+                "Authorization": f"Bearer {admin_token}",
+                "User-Agent": "pytest-audit-client",
+            },
+        )
+
+        assert response.status_code == 200
+
+    async with AsyncSessionLocal() as session:
+        admin = await UserRepository(session).get_by_email(admin_email)
+        assert admin is not None
+
+        logs, total = await AuditService(session).list_logs(
+            action="http.request",
+            user_id=admin.id,
+            search="/api/v1/auth/me",
+        )
+
+        assert total >= 1
+        assert any(
+            log.comments == "GET /api/v1/auth/me -> 200"
+            and log.new_values is not None
+            and log.new_values.get("status_code") == 200
+            and log.new_values.get("path") == "/api/v1/auth/me"
+            for log in logs
+        )

@@ -14,6 +14,16 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://garrison:garrison_dev_password@localhost:5432/garrison_portal"
     )
     redis_url: str = "redis://localhost:6379/0"
+    auth_rate_limit_window_seconds: int = 60
+    auth_rate_limit_max_requests: int = 10
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = False
+    smtp_from_email: str = "no-reply@garrisons.qa"
+    smtp_from_name: str = "Garrisons Investments"
+    notification_retention_days: int = 90
 
     minio_endpoint: str = "localhost:9000"
     minio_root_user: str = "garrison_minio"

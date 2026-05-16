@@ -11,6 +11,15 @@ class NotificationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def get_by_id(self, notification_id: UUID) -> Notification | None:
+        result = await self.session.execute(
+            select(Notification).where(
+                Notification.id == notification_id,
+                Notification.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def add(self, notification: Notification) -> Notification:
         self.session.add(notification)
         await self.session.flush()

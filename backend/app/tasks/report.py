@@ -42,8 +42,16 @@ async def _generate_report_pdf(report_id: str, actor_id: str | None) -> str:
 
 
 @celery_app.task(name="generate_excel_export", queue="report")
-def generate_excel_export() -> str:
-    return "excel export placeholder"
+def generate_excel_export(
+    export_type: str = "project-progress",
+    actor_id: str | None = None,
+    filters: dict | None = None,
+) -> str:
+    if actor_id is None:
+        return "export actor required"
+    if export_type == "management-summary":
+        raise ValueError("generate_excel_export only supports XLSX exports")
+    return asyncio.run(_generate_management_export(export_type, actor_id, filters or {}))
 
 
 @celery_app.task(name="generate_management_export", queue="report")

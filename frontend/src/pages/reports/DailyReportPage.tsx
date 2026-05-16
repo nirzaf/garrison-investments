@@ -243,6 +243,17 @@ export function DailyReportPage() {
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
     if (!files?.length) return;
+    const fileList = Array.from(files);
+    if (kind === 'photo' && fileList.length > 5) {
+      setError('Maximum 5 photos allowed per report.');
+      return;
+    }
+    const maxSize = kind === 'photo' ? 10 * 1024 * 1024 : 60 * 1024 * 1024;
+    const label = kind === 'photo' ? '10 MB' : '60 MB';
+    if (fileList.some((f) => f.size > maxSize)) {
+      setError(`File size exceeds the ${label} limit.`);
+      return;
+    }
     const payload = buildPayload();
     if (!navigator.onLine) {
       if (!validate()) return;
@@ -284,10 +295,10 @@ export function DailyReportPage() {
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <section className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-brand-700">Reports</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Engineer Daily Report</h2>
+          <p className="text-sm font-medium text-brand-600">Reports</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Engineer Daily Report</h2>
           {selectedProject ? (
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-theme-text-muted">
               {selectedProject.code} - {selectedProject.name}
             </p>
           ) : null}
@@ -306,7 +317,7 @@ export function DailyReportPage() {
         ) : null}
 
         <form className="space-y-4" onSubmit={submitReport}>
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Project" error={errors.project_id}>
                 <select
@@ -352,15 +363,15 @@ export function DailyReportPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <SectionHeader title="Supervisor Updates" />
             {supervisorUpdates.length === 0 ? (
-              <p className="text-sm text-slate-500">No submitted supervisor updates found.</p>
+              <p className="text-sm text-theme-text-muted">No submitted supervisor updates found.</p>
             ) : (
               <div className="grid gap-2">
                 {supervisorUpdates.map((update) => (
                   <label
-                    className="flex items-start gap-3 rounded-md border border-slate-200 p-3 text-sm"
+                    className="flex items-start gap-3 rounded-md border border-theme-border p-3 text-sm"
                     key={update.id}
                   >
                     <input
@@ -375,10 +386,12 @@ export function DailyReportPage() {
                       type="checkbox"
                     />
                     <span>
-                      <span className="block font-medium text-slate-950">
+                      <span className="block font-medium text-theme-text-primary">
                         {update.update_date} - {update.work_location}
                       </span>
-                      <span className="line-clamp-2 text-slate-500">{update.progress_notes}</span>
+                      <span className="line-clamp-2 text-theme-text-muted">
+                        {update.progress_notes}
+                      </span>
                     </span>
                   </label>
                 ))}
@@ -386,7 +399,7 @@ export function DailyReportPage() {
             )}
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <SectionHeader title="Work Summary" />
             <div className="grid gap-4">
               <Field label="Work completed" error={errors.work_completed}>
@@ -413,7 +426,7 @@ export function DailyReportPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <SectionHeader title="Safety And Inspection" />
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Safety incidents">
@@ -598,7 +611,10 @@ export function DailyReportPage() {
                 <input
                   className="form-field"
                   onChange={(event) =>
-                    updateRow('material_consumption', index, { ...entry, unit: event.target.value })
+                    updateRow('material_consumption', index, {
+                      ...entry,
+                      unit: event.target.value
+                    })
                   }
                   placeholder="Unit"
                   value={entry.unit}
@@ -642,7 +658,7 @@ export function DailyReportPage() {
             }
           />
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <SectionHeader title="Photos And Attachments" />
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Upload photos">
@@ -682,10 +698,10 @@ export function DailyReportPage() {
               </Field>
             </div>
             {uploadedFiles.length > 0 ? (
-              <div className="mt-4 grid gap-2 text-sm text-slate-600">
+              <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
                   <div
-                    className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2"
+                    className="flex items-center justify-between rounded-md border border-theme-border px-3 py-2"
                     key={file.id}
                   >
                     <span>{file.original_name}</span>
@@ -698,7 +714,7 @@ export function DailyReportPage() {
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-60"
               disabled={isSaving}
               onClick={() => void saveDraft()}
               type="button"
@@ -707,7 +723,7 @@ export function DailyReportPage() {
               Save draft
             </button>
             <button
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
               disabled={isSaving}
               type="submit"
             >
@@ -720,8 +736,8 @@ export function DailyReportPage() {
 
       <aside className="space-y-4">
         <div>
-          <p className="text-sm font-medium text-brand-700">Official Reports</p>
-          <h3 className="text-xl font-semibold text-slate-950">Recent Daily Reports</h3>
+          <p className="text-sm font-medium text-brand-600">Official Reports</p>
+          <h3 className="text-xl font-semibold text-theme-text-primary">Recent Daily Reports</h3>
         </div>
         {reports.length === 0 ? (
           <EmptyState
@@ -732,27 +748,27 @@ export function DailyReportPage() {
           <div className="space-y-3">
             {reports.map((report) => (
               <article
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
                 key={report.id}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">
+                    <p className="text-sm font-semibold text-theme-text-primary">
                       {report.report_number ?? 'Draft report'}
                     </p>
-                    <p className="text-xs text-slate-500">{report.report_date}</p>
+                    <p className="text-xs text-theme-text-muted">{report.report_date}</p>
                   </div>
                   <StatusBadge tone={report.status === 'submitted' ? 'info' : 'warning'}>
                     {report.status}
                   </StatusBadge>
                 </div>
-                <p className="mt-3 text-sm text-slate-700">{report.work_location}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-3 text-sm text-theme-text-secondary">{report.work_location}</p>
+                <p className="mt-1 text-xs text-theme-text-muted">
                   {report.progress_percentage}% progress
                 </p>
                 {report.status === 'approved' ? (
                   <button
-                    className="mt-3 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main"
                     onClick={() => void downloadPdf(report)}
                     type="button"
                   >
@@ -811,7 +827,7 @@ function Alert({ message, tone }: { message: string; tone: 'error' | 'success' }
 }
 
 function SectionHeader({ title }: { title: string }) {
-  return <h3 className="mb-3 text-base font-semibold text-slate-950">{title}</h3>;
+  return <h3 className="mb-3 text-base font-semibold text-theme-text-primary">{title}</h3>;
 }
 
 function Field({
@@ -825,7 +841,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-theme-text-secondary">{label}</span>
       {children}
       {error ? <span className="mt-1 block text-xs text-red-700">{error}</span> : null}
     </label>
@@ -848,11 +864,11 @@ function DynamicRows<T>({
   title: string;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+        <h3 className="text-base font-semibold text-theme-text-primary">{title}</h3>
         <button
-          className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="inline-flex items-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main"
           onClick={onAdd}
           type="button"
         >
@@ -870,7 +886,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       aria-label="Remove row"
-      className="inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 px-3 text-slate-600 hover:bg-slate-50"
+      className="inline-flex min-h-10 items-center justify-center rounded-md border border-theme-border px-3 text-theme-text-secondary hover:bg-theme-main"
       onClick={onClick}
       type="button"
     >

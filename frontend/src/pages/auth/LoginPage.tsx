@@ -39,15 +39,15 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm font-medium text-brand-700">Construction Internal Portal</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">Sign in</h1>
+    <main className="flex min-h-screen items-center justify-center bg-theme-main px-4">
+      <section className="w-full max-w-md rounded-lg border border-theme-border bg-theme-card p-6 shadow-sm">
+        <p className="text-sm font-medium text-brand-600">Construction Internal Portal</p>
+        <h1 className="mt-2 text-2xl font-semibold text-theme-text-primary">Sign in</h1>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Email</span>
+            <span className="text-sm font-medium text-theme-text-secondary">Email</span>
             <input
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               disabled={Boolean(challengeId) || isSubmitting}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@company.com"
@@ -58,9 +58,9 @@ export function LoginPage() {
           </label>
           {!challengeId ? (
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Password</span>
+              <span className="text-sm font-medium text-theme-text-secondary">Password</span>
               <input
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
                 disabled={isSubmitting}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Password"
@@ -71,9 +71,9 @@ export function LoginPage() {
             </label>
           ) : (
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Verification code</span>
+              <span className="text-sm font-medium text-theme-text-secondary">Verification code</span>
               <input
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm tracking-widest"
+                className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm tracking-widest text-theme-text-primary"
                 disabled={isSubmitting}
                 inputMode="numeric"
                 maxLength={6}
@@ -92,7 +92,7 @@ export function LoginPage() {
           ) : null}
           {error ? <p className="text-sm font-medium text-red-700">{error}</p> : null}
           <button
-            className="w-full rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isSubmitting}
             type="submit"
           >

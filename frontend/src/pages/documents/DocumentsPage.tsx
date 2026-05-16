@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Download, FileUp, Search } from 'lucide-react';
+import { AlertTriangle, Check, Download, Eye, FileUp, Search, X } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 import {
@@ -24,6 +24,8 @@ export function DocumentsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState('');
 
   const loadDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -53,6 +55,10 @@ export function DocumentsPage() {
     event.preventDefault();
     if (!file) {
       setError('Select a document file.');
+      return;
+    }
+    if (file.size > 60 * 1024 * 1024) {
+      setError('Document exceeds the 60 MB size limit.');
       return;
     }
     setError(null);
@@ -103,12 +109,22 @@ export function DocumentsPage() {
     }
   }
 
+  async function preview(document: DocumentRecord, versionId?: string) {
+    try {
+      const response = await getDocumentDownloadUrl(document.id, versionId);
+      setPreviewUrl(response.url);
+      setPreviewTitle(document.title);
+    } catch {
+      setError('Unable to load document preview.');
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
         <div>
-          <p className="text-sm font-medium text-brand-700">Documents</p>
-          <h2 className="text-2xl font-semibold text-slate-950">Document Library</h2>
+          <p className="text-sm font-medium text-brand-600">Documents</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Document Library</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-[220px_260px]">
           <select
@@ -124,7 +140,7 @@ export function DocumentsPage() {
             ))}
           </select>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-theme-text-muted" />
             <input
               className="form-field pl-9"
               onChange={(event) => setSearch(event.target.value)}
@@ -139,7 +155,7 @@ export function DocumentsPage() {
       {error ? <Alert tone="error" message={error} /> : null}
 
       <form
-        className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
+        className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
         onSubmit={submitUpload}
       >
         <input
@@ -176,7 +192,7 @@ export function DocumentsPage() {
           type="file"
         />
         <button
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           type="submit"
         >
           <FileUp className="h-4 w-4" />
@@ -200,25 +216,27 @@ export function DocumentsPage() {
             );
             return (
               <article
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
                 key={document.id}
               >
                 <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{document.title}</h3>
+                      <h3 className="text-base font-semibold text-theme-text-primary">
+                        {document.title}
+                      </h3>
                       <StatusBadge tone={document.status === 'active' ? 'success' : 'warning'}>
                         {document.status.replace('_', ' ')}
                       </StatusBadge>
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-theme-text-muted">
                       {document.document_type} - active v{document.active_version ?? '-'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {pending ? (
                       <button
-                        className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white"
+                        className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
                         onClick={() => void approve(document)}
                         type="button"
                       >
@@ -227,25 +245,35 @@ export function DocumentsPage() {
                       </button>
                     ) : null}
                     {active ? (
-                      <button
-                        className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
-                        onClick={() => void download(document)}
-                        type="button"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download
-                      </button>
+                      <>
+                        <button
+                          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary"
+                          onClick={() => void preview(document)}
+                          type="button"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </button>
+                        <button
+                          className="inline-flex min-h-10 items-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary"
+                          onClick={() => void download(document)}
+                          type="button"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download
+                        </button>
+                      </>
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-4 grid gap-2 text-sm text-slate-600">
+                <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                   {document.versions.map((version) => (
                     <div className="flex items-center justify-between gap-3" key={version.id}>
                       <span>
                         v{version.version} - {version.original_name}
                       </span>
                       <button
-                        className="text-sm font-semibold text-brand-700"
+                        className="text-sm font-semibold text-brand-600"
                         onClick={() => void download(document, version.id)}
                         type="button"
                       >
@@ -259,6 +287,30 @@ export function DocumentsPage() {
           })}
         </div>
       )}
+
+      {previewUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="relative max-h-[90vh] w-full max-w-4xl rounded-lg bg-theme-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-theme-border px-4 py-3">
+              <h3 className="text-sm font-semibold text-theme-text-primary truncate">
+                {previewTitle}
+              </h3>
+              <button
+                aria-label="Close preview"
+                className="rounded-md p-1 text-theme-text-muted hover:bg-theme-card-elevated"
+                onClick={() => {
+                  setPreviewUrl(null);
+                  setPreviewTitle('');
+                }}
+                type="button"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <iframe className="h-[80vh] w-full" src={previewUrl} title={previewTitle} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
