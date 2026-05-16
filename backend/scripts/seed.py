@@ -23,9 +23,9 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.utils.security import hash_password
 
-DEFAULT_ADMIN_EMAIL = "admin@garrisons.qa"
-DEFAULT_ADMIN_PASSWORD = "ChangeMe123!"
-DEFAULT_PASSWORD = "ChangeMe123!"
+DEFAULT_ADMIN_EMAIL = "fazrin@quadrate.lk"
+DEFAULT_ADMIN_PASSWORD = "YahmikAllah@123"
+DEFAULT_PASSWORD = "YahmikAllah@123"
 
 SEED_USERS = [
     {
