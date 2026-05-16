@@ -60,9 +60,25 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
-async def test_accounts_can_create_update_filter_and_deactivate_suppliers() -> None:
+class FakeMinioClient:
+    def presigned_get_object(self, bucket: str, object_key: str, expires=None) -> str:
+        del bucket, expires
+        return f"https://files.example.test/{object_key}"
+
+
+async def test_accounts_can_create_update_filter_deactivate_and_download_tds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
     accounts, password = await create_user("accounts")
+    monkeypatch.setattr(
+        "app.services.supplier_service.SupplierService._upload_object",
+        lambda self, object_key, data, content_type: None,
+    )
+    monkeypatch.setattr(
+        "app.services.supplier_service.SupplierService._client",
+        lambda self: FakeMinioClient(),
+    )
 
     async with create_test_client() as client:
         token = await login_for_token(client, accounts, password)
@@ -102,6 +118,21 @@ async def test_accounts_can_create_update_filter_and_deactivate_suppliers() -> N
         )
         assert filtered.status_code == 200
         assert any(item["id"] == supplier["id"] for item in filtered.json()["items"])
+
+        uploaded = await client.post(
+            f"/api/v1/suppliers/{supplier['id']}/tds-document",
+            files={"file": ("tds.pdf", b"%PDF-1.4 supplier tds", "application/pdf")},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert uploaded.status_code == 200
+        assert uploaded.json()["tds_document_key"].startswith("suppliers/")
+
+        download = await client.get(
+            f"/api/v1/suppliers/{supplier['id']}/tds-document",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert download.status_code == 200
+        assert download.json()["url"].startswith("https://files.example.test/")
 
         deactivated = await client.delete(
             f"/api/v1/suppliers/{supplier['id']}",

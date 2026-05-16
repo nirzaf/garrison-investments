@@ -243,15 +243,25 @@ export function DailyReportPage() {
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
     if (!files?.length) return;
-    const reportId = savedReportId ?? (await saveDraft());
-    if (!reportId) return;
+    const payload = buildPayload();
     if (!navigator.onLine) {
-      await queueFiles({ entityType: 'daily_report', entityId: reportId, kind, files });
+      if (!validate()) return;
+      await saveReportDraft(payload);
+      await queueFiles({
+        entityType: 'daily_report',
+        entityId: savedReportId ?? undefined,
+        draftPayload: savedReportId ? undefined : payload,
+        kind,
+        files
+      });
       const count = await queuedPhotoCount();
       setQueuedUploads(count);
+      setDraftStatus('local');
       setNotice(`${files.length} file${files.length > 1 ? 's' : ''} queued for upload.`);
       return;
     }
+    const reportId = savedReportId ?? (await saveDraft());
+    if (!reportId) return;
     setIsSaving(true);
     setError(null);
     try {

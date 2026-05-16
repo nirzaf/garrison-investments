@@ -60,3 +60,8 @@ class SupplierResponse(BaseModel):
 class SupplierListResponse(BaseModel):
     items: list[SupplierResponse]
     total: int
+
+
+class SupplierDocumentUrlResponse(BaseModel):
+    url: str
+    expires_in_seconds: int

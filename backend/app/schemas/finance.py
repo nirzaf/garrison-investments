@@ -77,3 +77,8 @@ class BudgetSummaryResponse(BaseModel):
     invoiced_total: Decimal
     paid_total: Decimal
     remaining_budget: Decimal
+
+
+class InvoiceAttachmentUrlResponse(BaseModel):
+    url: str
+    expires_in_seconds: int

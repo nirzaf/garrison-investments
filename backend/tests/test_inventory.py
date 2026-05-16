@@ -104,13 +104,14 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
     await skip_if_database_unavailable()
     store, store_password = await create_user("store_keeper")
     engineer, engineer_password = await create_user("civil_engineer")
-    pm, _ = await create_user("project_manager")
+    pm, pm_password = await create_user("project_manager")
     await create_user("operation_manager")
     project = await create_project(pm, engineer)
 
     async with create_test_client() as client:
         store_token = await login_for_token(client, store, store_password)
         engineer_token = await login_for_token(client, engineer, engineer_password)
+        pm_token = await login_for_token(client, pm, pm_password)
 
         location_response = await client.post(
             "/api/v1/inventory/locations",
@@ -197,6 +198,29 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         assert request_response.status_code == 201
         material_request = request_response.json()
         assert material_request["status"] == "requested"
+
+        blocked_reserve = await client.post(
+            f"/api/v1/inventory/requests/{material_request['id']}/reserve",
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+        assert blocked_reserve.status_code == 409
+
+        approvals = await client.get(
+            "/api/v1/approvals",
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        assert approvals.status_code == 200
+        approval = next(
+            item
+            for item in approvals.json()["items"]
+            if item["request_id"] == material_request["id"]
+        )
+        approved = await client.post(
+            f"/api/v1/approvals/{approval['id']}/approve",
+            json={"comments": "Approved for site work."},
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        assert approved.status_code == 200
 
         reserved = await client.post(
             f"/api/v1/inventory/requests/{material_request['id']}/reserve",

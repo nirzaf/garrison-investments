@@ -173,7 +173,11 @@ class InventoryService:
         )
 
     async def create_movement(
-        self, payload: MovementCreateRequest, actor: User
+        self,
+        payload: MovementCreateRequest,
+        actor: User,
+        *,
+        commit: bool = True,
     ) -> InventoryMovement:
         movement = await self._apply_movement(payload, actor)
         await self.audit.record(
@@ -183,7 +187,8 @@ class InventoryService:
             entity_id=payload.item_id,
             new_values=payload.model_dump(mode="json"),
         )
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
         return movement
 
     async def list_movements(
@@ -273,8 +278,12 @@ class InventoryService:
                 comments=payload.notes,
             ),
             actor,
+            commit=False,
         )
-        return await self._get_material_request(request.id)
+        request_id = request.id
+        await self.session.commit()
+        self.session.expire_all()
+        return await self._get_material_request(request_id)
 
     async def list_material_requests(self) -> list[MaterialRequest]:
         return list(
@@ -289,9 +298,9 @@ class InventoryService:
 
     async def reserve_request(self, request_id: UUID, actor: User) -> MaterialRequest:
         request = await self._get_material_request(request_id)
-        if request.status not in {"requested", "approved"}:
+        if request.status != "approved":
             raise AppException(
-                "Only requested or approved material requests can be reserved.",
+                "Only approved material requests can be reserved.",
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )

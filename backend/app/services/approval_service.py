@@ -6,6 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.approval import Approval
+from app.models.daily_report import DailyReport, DailyReportApprovalHistory
+from app.models.document import Document
+from app.models.finance import Invoice
+from app.models.inventory import MaterialRequest
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.approval_repository import ApprovalRepository
@@ -28,7 +32,13 @@ class ApprovalService:
         self.audit = AuditService(session)
         self.notifications = NotificationService(session)
 
-    async def create_approval(self, payload: ApprovalCreateRequest, actor: User) -> Approval:
+    async def create_approval(
+        self,
+        payload: ApprovalCreateRequest,
+        actor: User,
+        *,
+        commit: bool = True,
+    ) -> Approval:
         existing = await self.approvals.get_open_for_request(
             payload.request_type, payload.request_id
         )
@@ -77,7 +87,8 @@ class ApprovalService:
                 "amount": str(payload.amount) if payload.amount is not None else None,
             },
         )
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
         return approval
 
     async def list_for_user(
@@ -114,6 +125,7 @@ class ApprovalService:
         approval.status = "approved"
         approval.decision_comments = comments
         approval.decided_at = utc_now()
+        await self._apply_entity_decision(approval, actor, "approved", comments)
         await self._notify_submitter(
             approval, "Approval completed", f"{approval.title} was approved."
         )
@@ -138,6 +150,7 @@ class ApprovalService:
         approval.status = "rejected"
         approval.decision_comments = comments.strip()
         approval.decided_at = utc_now()
+        await self._apply_entity_decision(approval, actor, "rejected", comments.strip())
         await self._notify_submitter(
             approval, "Approval rejected", f"{approval.title} was rejected."
         )
@@ -212,6 +225,7 @@ class ApprovalService:
         approval.status = f"override_{decision}"
         approval.override_reason = reason
         approval.decided_at = utc_now()
+        await self._apply_entity_decision(approval, actor, decision, reason)
         await self._notify_submitter(
             approval,
             "Approval overridden",
@@ -324,7 +338,7 @@ class ApprovalService:
         return await self.session.scalar(
             select(User)
             .where(User.role == role, User.is_active.is_(True), User.deleted_at.is_(None))
-            .order_by(User.full_name.asc())
+            .order_by(User.created_at.desc(), User.full_name.asc())
         )
 
     def _can_view(self, approval: Approval, actor: User) -> bool:
@@ -337,6 +351,97 @@ class ApprovalService:
 
     def _can_act(self, approval: Approval, actor: User) -> bool:
         return actor.id in {approval.approver_id, approval.delegated_to_id}
+
+    async def _apply_entity_decision(
+        self,
+        approval: Approval,
+        actor: User,
+        decision: str,
+        comments: str | None,
+    ) -> None:
+        if approval.request_type == "material_request":
+            request = await self.session.scalar(
+                select(MaterialRequest).where(
+                    MaterialRequest.id == approval.request_id,
+                    MaterialRequest.deleted_at.is_(None),
+                )
+            )
+            if request and request.status not in {"reserved", "issued", "partially_issued"}:
+                request.status = "approved" if decision == "approved" else "cancelled"
+        elif approval.request_type == "invoice":
+            invoice = await self.session.scalar(
+                select(Invoice).where(
+                    Invoice.id == approval.request_id,
+                    Invoice.deleted_at.is_(None),
+                )
+            )
+            if invoice:
+                invoice.status = "approved" if decision == "approved" else "rejected"
+                if decision == "approved":
+                    invoice.approved_by = actor.id
+                    invoice.approved_at = utc_now()
+        elif approval.request_type == "daily_report":
+            report = await self.session.scalar(
+                select(DailyReport).where(
+                    DailyReport.id == approval.request_id,
+                    DailyReport.deleted_at.is_(None),
+                )
+            )
+            if report:
+                previous_status = report.status
+                report.status = "approved" if decision == "approved" else "draft"
+                if decision == "approved":
+                    report.approved_by = actor.id
+                    report.approved_at = utc_now()
+                    report.rejection_comments = None
+                else:
+                    report.rejection_comments = comments
+                self.session.add(
+                    DailyReportApprovalHistory(
+                        report_id=report.id,
+                        actor_id=actor.id,
+                        decision=decision,
+                        previous_status=previous_status,
+                        comments=comments,
+                        decided_at=utc_now(),
+                    )
+                )
+        elif approval.request_type == "document":
+            document = await self.session.scalar(
+                select(Document).where(
+                    Document.id == approval.request_id,
+                    Document.deleted_at.is_(None),
+                )
+            )
+            if document:
+                if decision == "approved":
+                    pending_versions = [
+                        version
+                        for version in document.versions
+                        if version.status == "pending_approval"
+                    ]
+                    if pending_versions:
+                        version = max(pending_versions, key=lambda item: item.version)
+                        for existing in document.versions:
+                            if existing.status == "active":
+                                existing.status = "superseded"
+                        version.status = "active"
+                        version.approved_by = actor.id
+                        version.approved_at = utc_now()
+                        version.approval_comments = comments
+                        document.active_version = version.version
+                    document.status = "active"
+                else:
+                    document.status = "rejected"
+        elif approval.request_type in {"payment", "project_change"}:
+            await self.audit.record(
+                action=f"{approval.request_type}.approval_decision",
+                user_id=actor.id,
+                entity_type=approval.request_type,
+                entity_id=approval.request_id,
+                new_values={"decision": decision, "approval_id": str(approval.id)},
+                comments=comments,
+            )
 
     async def _notify_submitter(self, approval: Approval, title: str, body: str) -> None:
         if approval.submitter_id:

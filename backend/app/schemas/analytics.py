@@ -23,3 +23,8 @@ class MaterialUsageRow(BaseModel):
 class AnalyticsSummaryResponse(BaseModel):
     projects: list[ProjectAnalyticsRow]
     material_usage: list[MaterialUsageRow]
+
+
+class ExportTaskResponse(BaseModel):
+    task_id: str
+    status: str

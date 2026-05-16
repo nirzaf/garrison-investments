@@ -1,18 +1,19 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 
 from app.api.dependencies import CurrentUser, DbSession
 from app.schemas.finance import (
     BudgetSummaryResponse,
+    InvoiceAttachmentUrlResponse,
     InvoiceCreateRequest,
     InvoiceListResponse,
     InvoiceResponse,
     InvoiceUpdateRequest,
     PaymentCreateRequest,
 )
-from app.services.finance_service import FinanceService
+from app.services.finance_service import SIGNED_URL_SECONDS, FinanceService
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
 
@@ -68,6 +69,31 @@ async def update_invoice(
 ) -> InvoiceResponse:
     invoice = await FinanceService(session).update_invoice(invoice_id, payload, current_user)
     return InvoiceResponse.model_validate(invoice)
+
+
+@router.post("/invoices/{invoice_id}/attachment", response_model=InvoiceResponse)
+async def upload_invoice_attachment(
+    invoice_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+    file: Annotated[UploadFile, File()],
+) -> InvoiceResponse:
+    invoice = await FinanceService(session).upload_invoice_attachment(
+        invoice_id,
+        file,
+        current_user,
+    )
+    return InvoiceResponse.model_validate(invoice)
+
+
+@router.get("/invoices/{invoice_id}/attachment", response_model=InvoiceAttachmentUrlResponse)
+async def get_invoice_attachment_url(
+    invoice_id: UUID,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> InvoiceAttachmentUrlResponse:
+    url = await FinanceService(session).signed_invoice_attachment_url(invoice_id, current_user)
+    return InvoiceAttachmentUrlResponse(url=url, expires_in_seconds=SIGNED_URL_SECONDS)
 
 
 @router.post("/invoices/{invoice_id}/payments", response_model=InvoiceResponse)

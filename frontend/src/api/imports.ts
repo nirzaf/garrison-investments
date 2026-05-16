@@ -26,8 +26,11 @@ export const importTemplates = [
   'opening_stock'
 ];
 
-export function templateUrl(template: string) {
-  return `${apiClient.defaults.baseURL}/imports/templates/${template}`;
+export async function downloadTemplate(template: string) {
+  const { data } = await apiClient.get<Blob>(`/imports/templates/${template}`, {
+    responseType: 'blob'
+  });
+  return data;
 }
 
 export async function previewImport(template: string, file: File) {

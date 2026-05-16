@@ -6,11 +6,13 @@ import {
   createInventoryItem,
   createLocation,
   createSupplier,
+  getSupplierTdsDocumentUrl,
   listInventoryItems,
   listLocations,
   listLowStock,
   listSuppliers,
-  receiveStock
+  receiveStock,
+  uploadSupplierTdsDocument
 } from '../../api/inventory';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
@@ -42,6 +44,16 @@ export function InventoryPage() {
       void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
     }
   });
+  const supplierTdsMutation = useMutation({
+    mutationFn: ({ supplierId, file }: { supplierId: string; file: File }) =>
+      uploadSupplierTdsDocument(supplierId, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  });
+
+  async function openSupplierTdsDocument(supplierId: string) {
+    const { url } = await getSupplierTdsDocumentUrl(supplierId);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 
   const selectedItem = items.data?.find((item) => item.id === selectedItemId) ?? items.data?.[0];
   const firstLocation = locations.data?.[0];
@@ -269,6 +281,54 @@ export function InventoryPage() {
           </form>
         </div>
       </div>
+
+      {suppliers.data && suppliers.data.length > 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-base font-semibold text-slate-950">Supplier compliance</h3>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {suppliers.data.map((supplier) => {
+              const isExpiring =
+                supplier.tds_expiry_date &&
+                new Date(supplier.tds_expiry_date).getTime() - Date.now() <
+                  1000 * 60 * 60 * 24 * 30;
+              return (
+                <div
+                  className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto]"
+                  key={supplier.id}
+                >
+                  <div>
+                    <p className="font-medium text-slate-950">{supplier.name}</p>
+                    <p className={isExpiring ? 'text-amber-700' : 'text-slate-500'}>
+                      TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
+                      {supplier.tds_expiry_date ?? '-'}
+                    </p>
+                  </div>
+                  <input
+                    accept=".pdf,image/png,image/jpeg"
+                    className="text-xs"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) supplierTdsMutation.mutate({ supplierId: supplier.id, file });
+                    }}
+                    type="file"
+                  />
+                  {supplier.tds_document_key ? (
+                    <button
+                      className="text-left text-xs font-semibold text-brand-700"
+                      onClick={() => void openSupplierTdsDocument(supplier.id)}
+                      type="button"
+                    >
+                      View TDS
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

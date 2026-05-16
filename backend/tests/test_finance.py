@@ -102,17 +102,34 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
-async def test_invoice_payment_budget_and_finance_visibility() -> None:
+class FakeMinioClient:
+    def presigned_get_object(self, bucket: str, object_key: str, expires=None) -> str:
+        del bucket, expires
+        return f"https://files.example.test/{object_key}"
+
+
+async def test_invoice_payment_budget_and_finance_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
+    monkeypatch.setattr(
+        "app.services.finance_service.FinanceService._upload_object",
+        lambda self, object_key, data, content_type: None,
+    )
+    monkeypatch.setattr(
+        "app.services.finance_service.FinanceService._client",
+        lambda self: FakeMinioClient(),
+    )
     admin, _ = await create_user("admin")
     accounts, accounts_password = await create_user("accounts")
     engineer, engineer_password = await create_user("civil_engineer")
-    await create_user("operation_manager")
+    operation_manager, op_password = await create_user("operation_manager")
     project, supplier = await create_project_and_supplier(admin)
 
     async with create_test_client() as client:
         accounts_token = await login_for_token(client, accounts, accounts_password)
         engineer_token = await login_for_token(client, engineer, engineer_password)
+        op_token = await login_for_token(client, operation_manager, op_password)
 
         created = await client.post(
             "/api/v1/finance/invoices",
@@ -133,13 +150,28 @@ async def test_invoice_payment_budget_and_finance_visibility() -> None:
         assert invoice["status"] == "submitted"
         assert invoice["payment_status"] == "unpaid"
 
+        attachment = await client.post(
+            f"/api/v1/finance/invoices/{invoice['id']}/attachment",
+            files={"file": ("invoice.pdf", b"%PDF-1.4 invoice", "application/pdf")},
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert attachment.status_code == 200
+        assert attachment.json()["attachment_key"].startswith("finance/invoices/")
+
+        attachment_url = await client.get(
+            f"/api/v1/finance/invoices/{invoice['id']}/attachment",
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert attachment_url.status_code == 200
+        assert attachment_url.json()["url"].startswith("https://files.example.test/")
+
         blocked = await client.get(
             "/api/v1/finance/invoices",
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         assert blocked.status_code == 403
 
-        paid = await client.post(
+        blocked_payment = await client.post(
             f"/api/v1/finance/invoices/{invoice['id']}/payments",
             json={
                 "payment_date": date.today().isoformat(),
@@ -149,9 +181,50 @@ async def test_invoice_payment_budget_and_finance_visibility() -> None:
             },
             headers={"Authorization": f"Bearer {accounts_token}"},
         )
+        assert blocked_payment.status_code == 409
+
+        approvals = await client.get(
+            "/api/v1/approvals",
+            headers={"Authorization": f"Bearer {op_token}"},
+        )
+        assert approvals.status_code == 200
+        approval = next(
+            item for item in approvals.json()["items"] if item["request_id"] == invoice["id"]
+        )
+        approved = await client.post(
+            f"/api/v1/approvals/{approval['id']}/approve",
+            json={"comments": "Approved for payment."},
+            headers={"Authorization": f"Bearer {op_token}"},
+        )
+        assert approved.status_code == 200
+
+        partial = await client.post(
+            f"/api/v1/finance/invoices/{invoice['id']}/payments",
+            json={
+                "payment_date": date.today().isoformat(),
+                "amount": "100.00",
+                "method": "bank_transfer",
+                "reference_number": "PAY-001",
+            },
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert partial.status_code == 200
+        assert partial.json()["payment_status"] == "partial"
+        assert len(partial.json()["payments"]) == 1
+
+        paid = await client.post(
+            f"/api/v1/finance/invoices/{invoice['id']}/payments",
+            json={
+                "payment_date": date.today().isoformat(),
+                "amount": "215.00",
+                "method": "bank_transfer",
+                "reference_number": "PAY-002",
+            },
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
         assert paid.status_code == 200
         assert paid.json()["payment_status"] == "paid"
-        assert len(paid.json()["payments"]) == 1
+        assert len(paid.json()["payments"]) == 2
 
         summary = await client.get(
             f"/api/v1/finance/projects/{project.id}/budget-summary",

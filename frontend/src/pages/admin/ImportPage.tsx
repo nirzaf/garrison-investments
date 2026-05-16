@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 
 import {
+  downloadTemplate,
   importTemplates,
   previewImport,
   runImport,
-  templateUrl,
   type ImportPreview,
   type ImportRunResult
 } from '../../api/imports';
@@ -39,6 +39,21 @@ export function ImportPage() {
     }
   }
 
+  async function downloadSelectedTemplate() {
+    setError(null);
+    try {
+      const blob = await downloadTemplate(template);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${template}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setError('Unable to download import template.');
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div>
@@ -69,13 +84,14 @@ export function ImportPage() {
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             type="file"
           />
-          <a
+          <button
             className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
-            href={templateUrl(template)}
+            onClick={() => void downloadSelectedTemplate()}
+            type="button"
           >
             <Download className="h-4 w-4" />
             Template
-          </a>
+          </button>
           <button
             className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white"
             onClick={() => void previewSelected()}

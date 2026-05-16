@@ -81,8 +81,13 @@ export async function listDailyReports(params: {
   return response.data;
 }
 
-export async function createDailyReport(payload: DailyReportPayload): Promise<DailyReportRecord> {
-  const response = await apiClient.post<DailyReportRecord>('/reports', payload);
+export async function createDailyReport(
+  payload: DailyReportPayload,
+  idempotencyKey?: string
+): Promise<DailyReportRecord> {
+  const response = await apiClient.post<DailyReportRecord>('/reports', payload, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+  });
   return response.data;
 }
 
