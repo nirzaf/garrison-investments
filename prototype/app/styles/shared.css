@@ -229,7 +229,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--rail);
+  background: var(--brand);
   color: #fff;
   font-weight: 800;
   font-size: 13px;

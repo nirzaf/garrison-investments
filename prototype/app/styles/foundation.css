@@ -4,8 +4,8 @@
   --surface: #171E25;
   --surface-2: #1D2630;
   --ink: #E5E9ED;
-  --ink-secondary: #A7B0BA;
-  --muted: #6F7A86;
+  --ink-secondary: #BCC5CE;
+  --muted: #8E9BAA;
   --line: #2A333D;
   --line-light: rgba(42, 51, 61, 0.5);
   --rail: #111820;
@@ -41,15 +41,15 @@
   /* Shell-specific */
   --rail-gradient: linear-gradient(180deg, #111820 0%, #0E1317 100%);
   --rail-color: #D7DDE3;
-  --rail-color-muted: rgba(215, 221, 227, 0.52);
-  --rail-group-heading: rgba(215, 221, 227, 0.46);
-  --nav-color: rgba(215, 221, 227, 0.7);
+  --rail-color-muted: rgba(215, 221, 227, 0.72);
+  --rail-group-heading: rgba(215, 221, 227, 0.62);
+  --nav-color: rgba(215, 221, 227, 0.86);
   --nav-color-hover: #fff;
-  --nav-hover-bg: rgba(255, 255, 255, 0.07);
-  --nav-active-bg: rgba(15, 118, 110, 0.18);
-  --nav-active-border: rgba(15, 118, 110, 0.35);
+  --nav-hover-bg: rgba(255, 255, 255, 0.09);
+  --nav-active-bg: rgba(15, 118, 110, 0.22);
+  --nav-active-border: rgba(15, 118, 110, 0.45);
   --nav-active-color: #fff;
-  --nav-badge-color: rgba(215, 221, 227, 0.4);
+  --nav-badge-color: rgba(215, 221, 227, 0.62);
   --status-panel-bg: rgba(255, 255, 255, 0.05);
   --status-panel-border: rgba(255, 255, 255, 0.08);
   --code-bg: #1e2a32;
@@ -68,12 +68,12 @@
   /* Pulse panel */
   --pulse-bg: linear-gradient(145deg, #171E25 0%, #111820 100%);
   --pulse-color: #E5E9ED;
-  --pulse-muted: rgba(215, 221, 227, 0.52);
-  --pulse-header-border: rgba(255, 255, 255, 0.1);
-  --pulse-metric-bg: rgba(42, 51, 61, 0.5);
+  --pulse-muted: rgba(215, 221, 227, 0.76);
+  --pulse-header-border: rgba(255, 255, 255, 0.14);
+  --pulse-metric-bg: rgba(42, 51, 61, 0.6);
   --pulse-metric-color: #E5E9ED;
-  --pulse-metric-muted: rgba(215, 221, 227, 0.52);
-  --pulse-timeline-color: rgba(215, 221, 227, 0.72);
+  --pulse-metric-muted: rgba(215, 221, 227, 0.76);
+  --pulse-timeline-color: rgba(215, 221, 227, 0.9);
 
   color-scheme: dark;
 }
@@ -84,8 +84,8 @@
   --surface: #FFFFFF;
   --surface-2: #F9FAFB;
   --ink: #111820;
-  --ink-secondary: #4B5563;
-  --muted: #7A8490;
+  --ink-secondary: #374151;
+  --muted: #58677A;
   --line: #D8DEE4;
   --line-light: rgba(216, 222, 228, 0.6);
   --rail: #FFFFFF;
@@ -116,15 +116,15 @@
 
   --rail-gradient: #FFFFFF;
   --rail-color: #111820;
-  --rail-color-muted: rgba(17, 24, 32, 0.48);
-  --rail-group-heading: rgba(17, 24, 32, 0.42);
-  --nav-color: rgba(17, 24, 32, 0.7);
+  --rail-color-muted: rgba(17, 24, 32, 0.65);
+  --rail-group-heading: rgba(17, 24, 32, 0.58);
+  --nav-color: rgba(17, 24, 32, 0.84);
   --nav-color-hover: #111820;
-  --nav-hover-bg: rgba(15, 118, 110, 0.06);
+  --nav-hover-bg: rgba(15, 118, 110, 0.07);
   --nav-active-bg: #E6F4F1;
-  --nav-active-border: rgba(15, 118, 110, 0.35);
-  --nav-active-color: #0F766E;
-  --nav-badge-color: rgba(17, 24, 32, 0.38);
+  --nav-active-border: rgba(15, 118, 110, 0.4);
+  --nav-active-color: #0B5F59;
+  --nav-badge-color: rgba(17, 24, 32, 0.56);
   --status-panel-bg: #F9FAFB;
   --status-panel-border: var(--line);
   --code-bg: #f1f5f9;
