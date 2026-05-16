@@ -47,3 +47,16 @@ This file records the repo-controlled evidence required by the strict user-story
 | Backup readability and optional isolated restore execution | `backend/scripts/restore_dry_run.py` |
 | Production source spreadsheet/header/value validation | `backend/scripts/validate_import_sources.py` |
 | Provider-neutral health/readiness alerting | `backend/scripts/health_monitor.py` |
+
+## Remaining Stakeholder Inputs (Prototype-Tracked)
+
+The following inputs are surfaced in the requirements prototype as outstanding prerequisites:
+
+| # | Input | Owner | Repository reference |
+| --- | --- | --- | --- |
+| 1 | Company logo, colors, typography, and paper forms | MD / Operation Manager | Prototype brand theme; `docs/08_Brand_Color_Theme.md` |
+| 2 | Final first-release module sign-off | Operation Manager | Prototype launch acceptance scenarios; UAT checklist in `docs/07_UAT_Launch_Readiness.md` |
+| 3 | General Manager approval/read-only authority scope | General Manager / Operation Manager | Prototype auth screen role matrix |
+| 4 | BOQ, report, and document numbering templates | Operation Manager / Accounts | Import templates in `docs/import_templates/` |
+| 5 | Hosting provider, backup location, and server owner | Technical support / Admin | `docs/06_Operations_Runbook.md` |
+| 6 | Source spreadsheets for users, projects, suppliers, inventory items, storage locations, BOQ, and opening stock | Operation Manager / Accounts | `backend/scripts/validate_import_sources.py` |
