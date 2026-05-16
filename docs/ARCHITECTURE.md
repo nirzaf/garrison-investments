@@ -528,7 +528,7 @@ Error response format:
 </App>
 ```
 
-The full component hierarchy is detailed in [docs/05_UI_Component_Tree.md](docs/05_UI_Component_Tree.md).
+The full component hierarchy is detailed in [05_UI_Component_Tree.md](05_UI_Component_Tree.md).
 
 ### 3.2 State Management Strategy
 
@@ -705,7 +705,7 @@ conflict_status    — null | "server_newer" | "rejected"
 | Accounts & Finance | `invoices`, `payments` |
 | Governance | `activity_log` |
 
-Full schema details in [docs/02_Database_Schema.md](docs/02_Database_Schema.md) and per-table references in [schema/](schema/).
+Full schema details in [02_Database_Schema.md](02_Database_Schema.md) and per-table references in [schema/](schema/).
 
 ### 4.2 Entity Relationship Summary
 
@@ -1132,7 +1132,7 @@ Audit logs retained for 7 years. Admin-only access.
 garrison-investments/
 │
 ├── README.md
-├── ARCHITECTURE.md
+├── docs/ARCHITECTURE.md
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml                 # Development

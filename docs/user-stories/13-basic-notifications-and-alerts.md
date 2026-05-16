@@ -48,7 +48,7 @@ Implement notification records, unread counts, notification history, email deliv
 - Dispatch emails with Celery.
 - Implement recipient matrix for missing report, approval, low stock, and new active document events.
 - Add scheduled jobs for reminders and retention cleanup.
-- Follow `ARCHITECTURE.md` notification flow: service layer creates in-app notifications, Celery sends email, client polls unread count every 60 seconds.
+- Follow `../../ARCHITECTURE.md` notification flow: service layer creates in-app notifications, Celery sends email, client polls unread count every 60 seconds.
 - Keep notification retention cleanup in Celery Beat maintenance tasks.
 - Notification APIs must use `/api/v1` REST conventions and Pydantic response envelopes where lists are returned.
 

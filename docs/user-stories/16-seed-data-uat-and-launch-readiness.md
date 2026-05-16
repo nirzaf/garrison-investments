@@ -45,7 +45,7 @@ Prepare sample users, projects, documents, report data, approval scenarios, noti
 - Add smoke tests for login to report submission to approval.
 - Document browser/device coverage for Chrome, Edge, iOS Safari, and Android Chrome.
 - Include low-speed network testing guidance.
-- Follow `ARCHITECTURE.md` migration rule: seed data belongs in `scripts/seed.py`, not Alembic migrations.
+- Follow `../../ARCHITECTURE.md` migration rule: seed data belongs in `scripts/seed.py`, not Alembic migrations.
 - UAT smoke tests should cover API response envelopes, RBAC enforcement, and frontend route error boundaries.
 - Keep seeded credentials development/staging-only and outside production secrets.
 

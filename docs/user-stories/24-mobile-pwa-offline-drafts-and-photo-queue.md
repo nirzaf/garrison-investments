@@ -48,7 +48,7 @@ Implement Phase 3 PWA behavior for installability, offline app shell, IndexedDB 
 - Implement background sync where browser support allows and foreground retry fallback otherwise.
 - Keep offline queue scoped to reports and photos.
 - Test browser differences, especially iOS Safari limitations.
-- Follow `ARCHITECTURE.md` offline strategy: client-generated UUIDs, `Idempotency-Key` headers, Redis-backed 24-hour idempotency cache, and explicit sync status fields.
+- Follow `../../ARCHITECTURE.md` offline strategy: client-generated UUIDs, `Idempotency-Key` headers, Redis-backed 24-hour idempotency cache, and explicit sync status fields.
 - Conflict handling must surface `server_newer` conflicts instead of silently overwriting approved or updated server records.
 - Use TanStack Query optimistic updates only where the server can safely reconcile them.
 

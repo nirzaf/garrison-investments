@@ -46,7 +46,7 @@ Implement automated checks, staging deployment, production approval, backups, an
 - Target a Docker Compose based VPS deployment unless the final provider changes.
 - Add basic uptime and error monitoring in Phase 1.
 - Document restore procedures and production rollback steps.
-- Align CI with `ARCHITECTURE.md`: backend `ruff`, `mypy`, `pytest`; frontend ESLint, Prettier, Vitest, React Testing Library, and Vite build.
+- Align CI with `../../ARCHITECTURE.md`: backend `ruff`, `mypy`, `pytest`; frontend ESLint, Prettier, Vitest, React Testing Library, and Vite build.
 - Production must run static frontend assets through Nginx, reverse proxy `/api/*` to FastAPI, and never serve private files directly.
 - Backups should follow the architecture retention model: daily pg_dump, WAL archive, monthly archive, MinIO bucket sync, and monthly restore test.
 

@@ -48,7 +48,7 @@ Implement the Civil Engineer reporting flow with required daily report fields, s
 - Implement report CRUD, draft save, submit, detail, and list APIs.
 - Add validation for required fields, project access, and workflow state.
 - Prepare material consumption linkage for future stock reduction.
-- Follow the `ARCHITECTURE.md` ReportService pattern: service generates report numbers, validates project/user rules, creates child rows, links photos, and commits transactions.
+- Follow the `../../ARCHITECTURE.md` ReportService pattern: service generates report numbers, validates project/user rules, creates child rows, links photos, and commits transactions.
 - Report repositories must use async SQLAlchemy, `selectinload` for child rows, and default soft-delete filtering.
 - Response models must be Pydantic V2 schemas with `from_attributes=True`.
 

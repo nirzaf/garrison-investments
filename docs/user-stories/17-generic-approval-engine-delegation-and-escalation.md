@@ -49,7 +49,7 @@ Generalize approval behavior beyond daily reports and documents to support multi
 - Implement approval services that entity modules can call.
 - Add inbox, outbox, detail, approve, reject, delegate, and override APIs.
 - Ensure entity modules enforce final approved immutability.
-- Follow `ARCHITECTURE.md` polymorphic association pattern with `request_type` and `request_id`.
+- Follow `../../ARCHITECTURE.md` polymorphic association pattern with `request_type` and `request_id`.
 - ApprovalService must own workflow rules, transaction boundaries, notifications, and cross-domain coordination.
 - Repository queries for inbox/outbox should use composite indexes such as approver plus status and avoid Redis caching for approval inboxes.
 

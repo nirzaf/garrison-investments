@@ -46,7 +46,7 @@ Implement project creation, generated project codes, project members, BOQ line i
 - Add endpoints for project CRUD, members, timeline, milestones, and BOQ.
 - Design import validation before saving BOQ rows.
 - Keep project location as text plus optional map image for MVP.
-- Follow `ARCHITECTURE.md` layering: project routes only validate and delegate, ProjectService owns project code generation and business rules, repositories own async SQLAlchemy queries.
+- Follow `../../ARCHITECTURE.md` layering: project routes only validate and delegate, ProjectService owns project code generation and business rules, repositories own async SQLAlchemy queries.
 - List endpoints must use the architecture pagination envelope and common filters.
 - Use partial unique indexes for active-only uniqueness such as project code and BOQ identifiers where needed.
 

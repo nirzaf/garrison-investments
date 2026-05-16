@@ -48,7 +48,7 @@ Implement the full inventory movement ledger, current location updates, low-stoc
 - Add low-stock detection and notification triggers.
 - Ensure asset movements update current asset location.
 - Link consumption to daily report material lines where applicable.
-- Follow `ARCHITECTURE.md` task layer: `check_low_stock` should run as an hourly Celery Beat maintenance task.
+- Follow `../../ARCHITECTURE.md` task layer: `check_low_stock` should run as an hourly Celery Beat maintenance task.
 - MovementService must own business rules, while repositories only persist movement and stock rows.
 - Low-stock notifications should use the notification service and Celery email flow.
 
