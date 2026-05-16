@@ -260,10 +260,22 @@ export function AppLayout() {
 
 function ShellBrand() {
   return (
-    <div className="border-b border-theme-border px-5 py-4">
-      <p className="text-sm font-semibold text-brand-600">Garrisons</p>
-      <p className="text-xs text-theme-text-muted">Construction Internal Portal</p>
-    </div>
+    <Link
+      className="flex items-center gap-3 border-b border-theme-border px-5 py-4 hover:bg-theme-card-elevated"
+      to="/dashboard"
+    >
+      <img
+        alt=""
+        className="h-11 w-11 rounded-md border border-theme-border object-cover"
+        src="/brand/logo-mark.png"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-brand-600">Garrisons</span>
+        <span className="block truncate text-xs text-theme-text-muted">
+          Construction Internal Portal
+        </span>
+      </span>
+    </Link>
   );
 }
 

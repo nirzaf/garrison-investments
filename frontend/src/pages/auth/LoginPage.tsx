@@ -41,7 +41,12 @@ export function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-theme-main px-4">
       <section className="w-full max-w-md rounded-lg border border-theme-border bg-theme-card p-6 shadow-sm">
-        <p className="text-sm font-medium text-brand-600">Construction Internal Portal</p>
+        <img
+          alt="Garrisons Investments Pvt Ltd"
+          className="h-auto w-full rounded-md border border-theme-border object-cover"
+          src="/brand/logo-full.jpg"
+        />
+        <p className="mt-5 text-sm font-medium text-brand-600">Construction Internal Portal</p>
         <h1 className="mt-2 text-2xl font-semibold text-theme-text-primary">Sign in</h1>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <label className="block">
