@@ -23,15 +23,15 @@ bun run build
 
 ## Main Files
 
-- `app/page.tsx` - route entrypoint.
-- `components/portal-prototype.tsx` - interactive shell, grouped navigation, and screen switching.
-- `components/screens/overview.tsx` - stakeholder-first story: project setup, daily report, approval, dashboard record.
-- `components/screens/*.tsx` - one file per overview/module screen, with `module-screens.tsx` as a small export barrel.
-- `components/tour-overlay.tsx` - guided tour behavior.
-- `components/shared.tsx` - reusable cards, tables, lists, status pills, and visual helpers.
-- `app/styles/*.css` - visual system split by foundation, shell, overview, shared components, tour, supporting widgets, and responsive rules.
-- `lib/portal-data.ts` - typed data bridge between JSON content and UI components.
-- `lib/data/*.json` - editable dummy requirements data, roles, modules, workflows, and decisions.
+- `prototype/app/page.tsx` - route entrypoint.
+- `prototype/components/portal-prototype.tsx` - interactive shell, grouped navigation, and screen switching.
+- `prototype/components/screens/overview.tsx` - stakeholder-first story: project setup, daily report, approval, dashboard record.
+- `prototype/components/screens/*.tsx` - one file per overview/module screen, with `module-screens.tsx` as a small export barrel.
+- `prototype/components/tour-overlay.tsx` - guided tour behavior.
+- `prototype/components/shared.tsx` - reusable cards, tables, lists, status pills, and visual helpers.
+- `prototype/app/styles/*.css` - visual system split by foundation, shell, overview, shared components, tour, supporting widgets, and responsive rules.
+- `prototype/lib/portal-data.ts` - typed data bridge between JSON content and UI components.
+- `prototype/lib/data/*.json` - editable dummy requirements data, roles, modules, workflows, and decisions.
 
 ## Prototype Map
 
