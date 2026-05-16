@@ -21,7 +21,7 @@ Inventory & Stores is a Phase 2 capability for consumable materials and trackabl
 | **Task Queue** | Celery + Redis broker | Async tasks (email, image processing, backups) |
 | **Reverse Proxy** | Nginx | Static files, SSL termination, load balancing |
 | **Container Runtime** | Docker + Docker Compose | Consistent dev/prod environments |
-| **CI/CD** | GitHub Actions | Automated testing and deployment |
+| **CI/CD** | GitHub Actions | Automated testing and build validation |
 | **Monitoring** | Prometheus + Grafana (optional) | Health metrics and dashboards |
 
 ## Document Index

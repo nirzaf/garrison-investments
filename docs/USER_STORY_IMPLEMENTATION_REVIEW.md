@@ -8,7 +8,7 @@ Review rule: a story is `Complete` when the repo contains production implementat
 
 ## Current Frontend, Backend, and Prototype Alignment
 
-The current `frontend/`, `backend/`, and `prototype/` trees contain implementation evidence for the product workflows across all 25 user stories. Under the strict completion rule, Stories 02 and 16 remain partial because deployment approval/execution, production health evidence, mobile/desktop UAT, and stakeholder sign-off require external launch-run evidence.
+The current `frontend/`, `backend/`, and `prototype/` trees contain implementation evidence for the product workflows across all 25 user stories. Under the strict completion rule, Stories 02 and 16 remain partial because deployment approval/execution, production health evidence, mobile/desktop UAT, and stakeholder sign-off require external launch-run evidence. Story 24 also remains partial because the repo proves offline storage and foreground retry behavior, but not Background Sync API registration or automatic queued-upload retry on connectivity return.
 
 - Supervisor updates now support draft autosave through `PUT /api/v1/supervisor-updates/{update_id}`, a 30-second frontend autosave loop, local fallback persistence, and backend autosave tests.
 - Daily report approval now requires explicit target-covered confirmation in the backend and frontend, with validation coverage.
@@ -21,6 +21,7 @@ The current `frontend/`, `backend/`, and `prototype/` trees contain implementati
 - Notifications now include mute/unmute APIs, notification-history mute controls, and unread counts exclude muted items.
 - Supplier TDS expiry reminders are scheduled daily through Celery Beat and notify Accounts plus Operation Manager recipients.
 - Invoice approval is guarded so Accounts can create/review invoices while final approval requires Operation Manager or Admin authority.
+- Mobile/PWA support currently proves service-worker caching, IndexedDB draft storage, visible queue state, and foreground retry helpers; automatic background sync remains unproven in repo source.
 - Photo, document, inventory, supplier, finance, import, analytics, security, delivery/readiness, and approval routes are wired into the frontend and backed by current backend APIs/tests.
 - A functional Next.js requirements prototype (`prototype/`) covers all 16 module screens (including overview, auth, dashboard, projects, reports, approvals, materials, documents, photos, accounts, notifications, admin, mobile, security, and delivery) with a guided product tour, dark/light theme, and grouped navigation (Core Flow, Management, Phase 2, Delivery). The prototype provides UX validation evidence for the app shell, navigation, and UAT/launch readiness stories.
 - The prototype includes a 13-module requirement coverage matrix mapping each module to its implementation phase (MVP/Phase 2/Phase 3/Ops), source story, prototype coverage, and final production behavior.
@@ -45,14 +46,15 @@ The current `frontend/`, `backend/`, and `prototype/` trees contain implementati
 
 ## Overall Result
 
-Implementation evidence exists for **25 / 25 stories**, but strict completion is proven for **23 / 25 stories**.
+Implementation evidence exists for **25 / 25 stories**, but strict completion is proven for **22 / 25 stories**.
 
-Repo-controlled product implementation is mostly present. Stories 02 and 16 remain **Partial / external evidence pending** because deployment execution/approval, production health checks, mobile/desktop UAT, signed stakeholder acceptance, and production migration inputs still require real launch-run evidence.
+Repo-controlled product implementation is mostly present. Stories 02 and 16 remain **Partial / external evidence pending** because deployment execution/approval, production health checks, mobile/desktop UAT, signed stakeholder acceptance, and production migration inputs still require real launch-run evidence. Story 24 remains **Partial / implementation gap** because offline queue persistence exists, but Background Sync API registration and automatic retry on connectivity return are not yet proven.
 
 | Status | Count |
 | --- | ---: |
-| Complete | 23 |
+| Complete | 22 |
 | Partial / external evidence pending | 2 |
+| Partial / implementation gap | 1 |
 | Missing | 0 |
 | Blocked by external dependency | 0 |
 
@@ -83,7 +85,7 @@ Repo-controlled product implementation is mostly present. Stories 02 and 16 rema
 | 21 | Supplier Management and Compliance | Complete | Supplier CRUD/deactivation, TDS metadata, file upload/download, compliance status, expiry highlight, scheduled TDS expiry reminders, audit logging, and backend supplier tests. |
 | 22 | Accounts, Invoices, Payments, and Budget Tracking | Complete | Invoice/payment/budget APIs, finance UI, protected attachment downloads, generic approval integration, Operation Manager final approval enforcement, audit, and backend finance tests. |
 | 23 | Advanced Analytics and Management Exports | Complete | Analytics API/UI, Recharts usage, Excel/PDF export endpoints, async export queue responses, backend analytics tests, and stakeholder format tracking in readiness evidence. |
-| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Complete | Manifest, service worker, IndexedDB daily-report draft/photo queue, visible sync states, offline indicator, queued upload hooks, scoped conflict handling, and build verification. |
+| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Partial / implementation gap | Manifest, service worker, IndexedDB daily-report draft/photo queue, visible sync states, offline indicator, queued upload hooks, scoped conflict handling, and build verification exist. Background Sync API registration and automatic queued-upload retry on connectivity return are not yet proven in repo source. |
 | 25 | Data Import Templates and Initial Migration | Complete | CSV templates, `.xlsx` preview parsing, dry-run validation, row errors, import batches, sync/async import APIs, status refresh UI, opening-stock movement import, backend import tests, and CLI validation for production source spreadsheets. |
 
 ## What Changed Since The Prior Review
@@ -92,11 +94,12 @@ Repo-controlled product implementation is mostly present. Stories 02 and 16 rema
 - Story 07 is no longer partial: 30-second autosave is implemented in frontend and backend and covered by tests.
 - Story 09 is no longer partial: target-covered confirmation and report-specific admin override are implemented in API, UI, audit/history, and tests.
 - Story 20 is no longer partial: approved daily reports deduct matching inventory stock through linked `consume` movements.
+- Story 24 remains partial under the strict rule: service worker caching and IndexedDB queueing exist, but Background Sync API registration and automatic retry on connectivity return are not yet proven.
 - Story 02 and Story 16 have repo-owned operational tooling and readiness registers, but remain partial until external deployment/UAT/sign-off evidence is captured.
 - The previous residual launch evidence items now have executable repo-owned capture or validation scripts and CI coverage for import templates; actual launch evidence remains pending.
 - This re-review found and closed four additional repo-controlled gaps: notification mute controls, supplier TDS expiry reminders, finance final-approval enforcement, and executable uptime/readiness alerting.
 - A Next.js requirements prototype (`prototype/`) has been added covering all 16 module screens with a product tour, dark/light theme, grouped navigation, 15 per-module feature guides, a 13-module requirement coverage matrix, 4 operating domains, 5 operating capabilities, a 5-step daily business flow, 9 representative API endpoints, and 6 tracked remaining stakeholder inputs — strengthening UX validation evidence for Story 06 (App Shell, Navigation) and Story 16 (UAT/Launch Readiness).
-- The report lists Story 02 and Story 16 as partial because strict completion requires external deployment and sign-off evidence.
+- The report lists Story 02 and Story 16 as partial because strict completion requires external deployment and sign-off evidence, and Story 24 as partial because automatic background sync behavior is not yet proven.
 
 ## Launch Evidence Execution
 

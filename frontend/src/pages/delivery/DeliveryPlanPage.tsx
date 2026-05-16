@@ -11,15 +11,15 @@ const deliveryItems = [
   },
   {
     label: 'Environments',
-    detail: 'Staging and production deploy workflows.',
+    detail: 'Staging and production targets exist, but launch runs are executed manually by the deployment owner.',
     icon: Route,
-    status: 'configured'
+    status: 'external proof'
   },
   {
     label: 'Deployment',
-    detail: 'GitHub Actions with production environment approval.',
+    detail: 'No active GitHub deployment workflow is enabled; deployment approval and execution are external launch-run evidence.',
     icon: Truck,
-    status: 'external proof'
+    status: 'partial'
   },
   {
     label: 'Backups',
@@ -55,7 +55,7 @@ const acceptanceScenarios = [
 ];
 
 const remainingInputs = [
-  'Operation Manager approver identity in the production GitHub environment',
+  'Operation Manager or delegated release approver sign-off for the launch run',
   'Hosting provider, backup destination, server owner, and monitoring provider',
   'Company-approved report, export, BOQ, and numbering templates',
   'Source spreadsheets for launch users, projects, suppliers, inventory, BOQ, and opening stock',

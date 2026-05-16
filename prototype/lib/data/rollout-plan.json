@@ -1,8 +1,8 @@
 {
   "deliveryItems": [
     { "label": "Hosting", "detail": "Cloud VPS with Docker Compose for MVP", "icon": "Cloud" },
-    { "label": "Environments", "detail": "Staging and production", "icon": "Route" },
-    { "label": "Deployment", "detail": "GitHub Actions to staging, production approval by OM", "icon": "Truck" },
+    { "label": "Environments", "detail": "Staging and production targets exist, but launch runs are executed manually by the deployment owner", "icon": "Route" },
+    { "label": "Deployment", "detail": "No active GitHub deployment workflow; approval and execution are recorded during the launch run", "icon": "Truck" },
     { "label": "Backups", "detail": "Daily 30 days, monthly 12 months, monthly restore test", "icon": "Database" },
     { "label": "Testing", "detail": "Chrome, Edge, Safari iOS, Android Chrome, low-speed network", "icon": "BookOpenCheck" },
     { "label": "Migration", "detail": "Import users, projects, suppliers, inventory items, storage locations, BOQ, and opening stock", "icon": "Archive" }

@@ -130,7 +130,7 @@
 | Object Storage | MinIO | S3-compatible self-hosted file storage |
 | Reverse Proxy | Nginx | TLS termination, static files, security headers |
 | Container Runtime | Docker + Docker Compose | Consistent dev/prod environments |
-| CI/CD | GitHub Actions | Lint, test, build, deploy pipeline |
+| CI/CD | GitHub Actions + launch-owner deployment | Lint, test, build, and Docker validation; deployment execution remains manual |
 | Monitoring | Prometheus + Grafana | Metrics and dashboards (optional, Phase 2+) |
 | Logging | structlog | Structured JSON logging |
 

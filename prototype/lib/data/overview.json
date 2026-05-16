@@ -20,7 +20,7 @@
     { "label": "Approval workflows", "value": "Role-based routing", "detail": "Reports, material requests, documents, invoices, and payments follow predefined approval chains with 24h reminders and 48h escalation." },
     { "label": "Document control", "value": "Active-version enforcement", "detail": "Each document has metadata, revision history, approval status, superseded warnings, and full-text search." },
     { "label": "Financial tracking", "value": "Project-level cost view", "detail": "Manpower costs, material consumption, tool movements, supplier invoices, and payments connect directly to field activity and project P&L." },
-    { "label": "Mobile field use", "value": "PWA with offline support", "detail": "Phone-first forms with autosave, offline draft storage, photo capture queue, and background sync for construction site conditions." }
+    { "label": "Mobile field use", "value": "PWA with offline support", "detail": "Phone-first forms with autosave, offline draft storage, photo capture queue, and manual retry sync for construction site conditions." }
   ],
   "operatingDomains": [
     { "area": "Daily site reporting", "description": "A guided form captures attendance, overtime, materials consumed, equipment used, safety incidents, WIR status, delays, photos, and attachments. The supervisor provides field input; the engineer verifies work quality and submits the official report. Reports are numbered, locked after approval, and exported as PDF.", "sections": "Manpower, equipment, material consumption, safety, WIR/inspection status, delays, next-day plan, photos, attachments" },
