@@ -47,6 +47,7 @@ export type SupplierRecord = {
   tax_registration_number: string;
   tds_certificate_number: string | null;
   tds_expiry_date: string | null;
+  tds_document_key: string | null;
   compliance_status: string;
   is_active: boolean;
 };
@@ -73,6 +74,24 @@ export async function createSupplier(payload: {
   compliance_status: string;
 }) {
   const { data } = await apiClient.post<SupplierRecord>('/suppliers', payload);
+  return data;
+}
+
+export async function uploadSupplierTdsDocument(supplierId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await apiClient.post<SupplierRecord>(
+    `/suppliers/${supplierId}/tds-document`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data;
+}
+
+export async function getSupplierTdsDocumentUrl(supplierId: string) {
+  const { data } = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+    `/suppliers/${supplierId}/tds-document`
+  );
   return data;
 }
 

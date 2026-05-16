@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Receipt } from 'lucide-react';
 
-import { createInvoice, createPayment, listInvoices } from '../../api/finance';
+import {
+  createInvoice,
+  createPayment,
+  getInvoiceAttachmentUrl,
+  listInvoices,
+  uploadInvoiceAttachment
+} from '../../api/finance';
 import { listProjects } from '../../api/projects';
 import { listSuppliers } from '../../api/inventory';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -25,6 +31,16 @@ export function FinancePage() {
       }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['invoices'] })
   });
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: ({ invoiceId, file }: { invoiceId: string; file: File }) =>
+      uploadInvoiceAttachment(invoiceId, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+  });
+
+  async function openAttachment(invoiceId: string) {
+    const { url } = await getInvoiceAttachmentUrl(invoiceId);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 
   return (
     <section className="space-y-6">
@@ -98,6 +114,7 @@ export function FinancePage() {
                 <th className="px-4 py-3">Amount</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Payment</th>
+                <th className="px-4 py-3">Attachment</th>
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
@@ -113,10 +130,39 @@ export function FinancePage() {
                     <StatusBadge tone={invoice.payment_status === 'paid' ? 'success' : 'warning'}>
                       {invoice.payment_status}
                     </StatusBadge>
+                    {invoice.payments.length > 0 ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {invoice.payments.length} payment{invoice.payments.length > 1 ? 's' : ''}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-2">
+                      <input
+                        accept=".pdf,image/png,image/jpeg"
+                        className="text-xs"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file)
+                            uploadAttachmentMutation.mutate({ invoiceId: invoice.id, file });
+                        }}
+                        type="file"
+                      />
+                      {invoice.attachment_key ? (
+                        <button
+                          className="text-left text-xs font-semibold text-brand-700"
+                          onClick={() => void openAttachment(invoice.id)}
+                          type="button"
+                        >
+                          View attachment
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700"
+                      className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={invoice.status !== 'approved'}
                       onClick={() =>
                         createPaymentMutation.mutate({
                           invoiceId: invoice.id,

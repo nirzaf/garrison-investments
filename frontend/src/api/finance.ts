@@ -59,3 +59,21 @@ export async function createPayment(
   );
   return data;
 }
+
+export async function uploadInvoiceAttachment(invoiceId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await apiClient.post<InvoiceRecord>(
+    `/finance/invoices/${invoiceId}/attachment`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data;
+}
+
+export async function getInvoiceAttachmentUrl(invoiceId: string) {
+  const { data } = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+    `/finance/invoices/${invoiceId}/attachment`
+  );
+  return data;
+}

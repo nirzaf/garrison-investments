@@ -5,7 +5,10 @@ import { downloadExport, getAnalyticsSummary } from '../../api/analytics';
 import { EmptyState } from '../../components/shared/EmptyState';
 
 export function AnalyticsPage() {
-  const summary = useQuery({ queryKey: ['analytics-summary'], queryFn: getAnalyticsSummary });
+  const summary = useQuery({
+    queryKey: ['analytics-summary'],
+    queryFn: () => getAnalyticsSummary()
+  });
   const maxProgress = Math.max(
     1,
     ...(summary.data?.projects.map((project) => Number(project.progress_percentage)) ?? [1])
@@ -34,6 +37,14 @@ export function AnalyticsPage() {
           >
             <Download className="h-4 w-4" />
             Material XLSX
+          </button>
+          <button
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
+            onClick={() => void downloadExport('management-summary')}
+            type="button"
+          >
+            <Download className="h-4 w-4" />
+            Summary PDF
           </button>
         </div>
       </div>

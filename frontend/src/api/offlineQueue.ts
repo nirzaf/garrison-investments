@@ -1,5 +1,5 @@
 import { uploadEntityFiles } from './photos';
-import type { DailyReportPayload } from './reports';
+import { createDailyReport, type DailyReportPayload } from './reports';
 
 const DB_NAME = 'garrisons-offline';
 const DB_VERSION = 1;
@@ -10,10 +10,11 @@ type QueuedPhoto = {
   id: string;
   entityType: string;
   entityId: string;
+  draftPayload?: DailyReportPayload;
   kind: 'photo' | 'attachment';
   file: File;
   createdAt: string;
-  status: 'queued' | 'syncing' | 'failed';
+  status: 'queued' | 'syncing' | 'failed' | 'synced' | 'server_newer';
 };
 
 function openDb(): Promise<IDBDatabase> {
@@ -69,17 +70,20 @@ export async function clearReportDraft() {
 
 export async function queueFiles(args: {
   entityType: string;
-  entityId: string;
+  entityId?: string;
+  draftPayload?: DailyReportPayload;
   kind: 'photo' | 'attachment';
   files: FileList;
 }) {
+  const entityId = args.entityId ?? `local-${crypto.randomUUID()}`;
   await Promise.all(
     Array.from(args.files).map((file) =>
       store(PHOTO_QUEUE, 'readwrite', (queue) =>
         queue.put({
           id: crypto.randomUUID(),
           entityType: args.entityType,
-          entityId: args.entityId,
+          entityId,
+          draftPayload: args.draftPayload,
           kind: args.kind,
           file,
           createdAt: new Date().toISOString(),
@@ -98,11 +102,20 @@ export async function flushPhotoQueue() {
   const queued = await store<QueuedPhoto[]>(PHOTO_QUEUE, 'readonly', (queue) => queue.getAll());
   for (const item of queued) {
     try {
+      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put({ ...item, status: 'syncing' }));
+      let entityId = item.entityId;
+      if (item.entityId.startsWith('local-')) {
+        if (!item.draftPayload) {
+          throw new Error('Missing offline draft payload');
+        }
+        const report = await createDailyReport(item.draftPayload, item.entityId);
+        entityId = report.id;
+      }
       const dataTransfer = new DataTransfer();
       dataTransfer.items.add(item.file);
       await uploadEntityFiles({
         entityType: item.entityType,
-        entityId: item.entityId,
+        entityId,
         kind: item.kind,
         files: dataTransfer.files
       });

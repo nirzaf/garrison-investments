@@ -24,11 +24,11 @@
 .tourSpotlight {
   position: fixed;
   z-index: 910;
-  border: 2px solid #ff8b4b;
+  border: 2px solid var(--brand);
   border-radius: 12px;
   box-shadow:
-    0 0 0 6px rgba(255, 139, 75, 0.14),
-    0 20px 60px rgba(0, 0, 0, 0.35);
+    0 0 0 6px rgba(15, 118, 110, 0.2),
+    0 20px 60px rgba(0, 0, 0, 0.5);
   pointer-events: none;
   transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
 }
@@ -41,11 +41,11 @@
   display: flex;
   flex-direction: column;
   padding: 20px;
-  border: 1px solid rgba(31, 34, 38, 0.12);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   pointer-events: auto;
   animation: tourPop 180ms ease both;
@@ -67,13 +67,13 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #f5f6f8;
+  background: var(--surface-2);
   color: var(--ink);
   transition: 140ms;
 }
 
 .tourCloseButton:hover {
-  background: #e8eaed;
+  background: rgba(42, 51, 61, 0.8);
 }
 
 .tourEyebrow {
@@ -83,8 +83,8 @@
   max-width: calc(100% - 44px);
   padding: 0 9px;
   border-radius: 999px;
-  background: var(--orange-soft);
-  color: #9e421d;
+  background: rgba(15, 118, 110, 0.15);
+  color: var(--brand-hover);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -155,11 +155,11 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.12);
+  background: rgba(42, 51, 61, 0.8);
 }
 
 .tourProgress button.isActive {
-  background: var(--orange);
+  background: var(--brand);
 }
 
 .tourInstructionModal .tourButtons {
@@ -168,7 +168,7 @@
   margin-top: 2px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
 }
 
 .tourInstructionModal .tourButtons button {
@@ -180,7 +180,7 @@
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--orange), #c45d26);
+  background: linear-gradient(135deg, var(--brand), var(--brand-hover));
   color: #fff;
   font-weight: 700;
   font-size: 13.5px;
@@ -188,17 +188,17 @@
 }
 
 .tourInstructionModal .tourButtons button:hover {
-  box-shadow: 0 4px 14px rgba(216, 109, 47, 0.25);
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.3);
 }
 
 .tourInstructionModal .tourButtons .ghostButton {
-  background: #f5f6f8;
+  background: var(--surface-2);
   color: var(--ink);
   border-color: var(--line);
 }
 
 .tourInstructionModal .tourButtons .ghostButton:hover {
-  background: #e8eaed;
+  background: rgba(42, 51, 61, 0.8);
   box-shadow: none;
 }
 
@@ -212,7 +212,7 @@
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #123343, #0c1f2c);
+  background: linear-gradient(135deg, var(--brand), var(--brand-hover));
   color: #fff;
   font-weight: 700;
   font-size: 13.5px;

@@ -1,10 +1,17 @@
+from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from uuid import UUID, uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from minio import Minio
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.daily_report import DailyReport
 from app.models.finance import Invoice, Payment
 from app.models.inventory import InventoryItem, InventoryMovement
@@ -21,6 +28,7 @@ MANAGEMENT_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}
 class AnalyticsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self.settings = get_settings()
 
     def ensure_management_access(self, actor: User) -> None:
         if actor.role not in MANAGEMENT_ROLES and actor.role not in FINANCE_ROLES:
@@ -30,14 +38,34 @@ class AnalyticsService:
                 error_code="ANALYTICS_FORBIDDEN",
             )
 
-    async def summary(self, actor: User) -> AnalyticsSummaryResponse:
+    async def summary(
+        self,
+        actor: User,
+        *,
+        project_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        location: str | None = None,
+        department: str | None = None,
+    ) -> AnalyticsSummaryResponse:
         self.ensure_management_access(actor)
-        projects = await self._project_rows()
-        usage = await self._material_rows()
+        projects = await self._project_rows(project_id, date_from, date_to, location, department)
+        usage = await self._material_rows(project_id, date_from, date_to, department)
         return AnalyticsSummaryResponse(projects=projects, material_usage=usage)
 
-    async def project_progress_export(self, actor: User) -> bytes:
-        rows = await self._project_rows_for_export(actor)
+    async def project_progress_export(
+        self,
+        actor: User,
+        *,
+        project_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        location: str | None = None,
+        department: str | None = None,
+    ) -> bytes:
+        rows = await self._project_rows_for_export(
+            actor, project_id, date_from, date_to, location, department
+        )
         return build_xlsx(
             "Project Progress",
             [["Project", "Progress %", "Reports", "Invoice Total", "Paid Total"]]
@@ -53,9 +81,17 @@ class AnalyticsService:
             ],
         )
 
-    async def material_usage_export(self, actor: User) -> bytes:
+    async def material_usage_export(
+        self,
+        actor: User,
+        *,
+        project_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        department: str | None = None,
+    ) -> bytes:
         self.ensure_management_access(actor)
-        rows = await self._material_rows()
+        rows = await self._material_rows(project_id, date_from, date_to, department)
         return build_xlsx(
             "Material Usage",
             [["Item", "Issued Quantity", "Consumed Quantity"]]
@@ -65,12 +101,92 @@ class AnalyticsService:
             ],
         )
 
-    async def _project_rows_for_export(self, actor: User) -> list[ProjectAnalyticsRow]:
-        self.ensure_management_access(actor)
-        return await self._project_rows()
+    async def management_pdf_summary(
+        self,
+        actor: User,
+        *,
+        project_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        location: str | None = None,
+        department: str | None = None,
+    ) -> bytes:
+        summary = await self.summary(
+            actor,
+            project_id=project_id,
+            date_from=date_from,
+            date_to=date_to,
+            location=location,
+            department=department,
+        )
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph("Garrisons Investments - Management Summary", styles["Title"]),
+            Spacer(1, 12),
+            Paragraph("Project Progress", styles["Heading2"]),
+            Table(
+                [["Project", "Progress", "Reports", "Invoiced", "Paid"]]
+                + [
+                    [
+                        row.project_name,
+                        f"{row.progress_percentage}%",
+                        str(row.report_count),
+                        str(row.invoice_total),
+                        str(row.paid_total),
+                    ]
+                    for row in summary.projects
+                ]
+            ),
+            Spacer(1, 12),
+            Paragraph("Material Usage", styles["Heading2"]),
+            Table(
+                [["Item", "Issued", "Consumed"]]
+                + [
+                    [row.item_name, str(row.issued_quantity), str(row.consumed_quantity)]
+                    for row in summary.material_usage
+                ]
+            ),
+        ]
+        doc.build(story)
+        return buffer.getvalue()
 
-    async def _project_rows(self) -> list[ProjectAnalyticsRow]:
-        result = await self.session.execute(
+    def upload_export(self, export_type: str, data: bytes, content_type: str) -> str:
+        object_key = f"exports/{export_type}/{uuid4().hex}"
+        client = self._client()
+        if not client.bucket_exists(self.settings.minio_bucket):
+            client.make_bucket(self.settings.minio_bucket)
+        client.put_object(
+            self.settings.minio_bucket,
+            object_key,
+            BytesIO(data),
+            length=len(data),
+            content_type=content_type,
+        )
+        return object_key
+
+    async def _project_rows_for_export(
+        self,
+        actor: User,
+        project_id: UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+        location: str | None,
+        department: str | None,
+    ) -> list[ProjectAnalyticsRow]:
+        self.ensure_management_access(actor)
+        return await self._project_rows(project_id, date_from, date_to, location, department)
+
+    async def _project_rows(
+        self,
+        project_id: UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+        location: str | None,
+        department: str | None,
+    ) -> list[ProjectAnalyticsRow]:
+        query = (
             select(
                 Project.id,
                 Project.name,
@@ -83,8 +199,19 @@ class AnalyticsService:
             .outerjoin(Invoice, Invoice.project_id == Project.id)
             .outerjoin(Payment, Payment.invoice_id == Invoice.id)
             .where(Project.deleted_at.is_(None))
-            .group_by(Project.id)
-            .order_by(Project.name.asc())
+        )
+        if project_id:
+            query = query.where(Project.id == project_id)
+        if location:
+            query = query.where(func.lower(Project.location).like(f"%{location.lower()}%"))
+        if date_from:
+            query = query.where(DailyReport.report_date >= date_from)
+        if date_to:
+            query = query.where(DailyReport.report_date <= date_to)
+        if department:
+            query = query.where(func.lower(Project.scope_of_work).like(f"%{department.lower()}%"))
+        result = await self.session.execute(
+            query.group_by(Project.id).order_by(Project.name.asc())
         )
         return [
             ProjectAnalyticsRow(
@@ -98,8 +225,14 @@ class AnalyticsService:
             for row in result.all()
         ]
 
-    async def _material_rows(self) -> list[MaterialUsageRow]:
-        result = await self.session.execute(
+    async def _material_rows(
+        self,
+        project_id: UUID | None,
+        date_from: date | None,
+        date_to: date | None,
+        department: str | None,
+    ) -> list[MaterialUsageRow]:
+        query = (
             select(
                 InventoryItem.id,
                 InventoryItem.name,
@@ -118,8 +251,17 @@ class AnalyticsService:
             )
             .outerjoin(InventoryMovement, InventoryMovement.item_id == InventoryItem.id)
             .where(InventoryItem.deleted_at.is_(None))
-            .group_by(InventoryItem.id)
-            .order_by(InventoryItem.name.asc())
+        )
+        if project_id:
+            query = query.where(InventoryMovement.project_id == project_id)
+        if date_from:
+            query = query.where(func.date(InventoryMovement.created_at) >= date_from)
+        if date_to:
+            query = query.where(func.date(InventoryMovement.created_at) <= date_to)
+        if department:
+            query = query.where(func.lower(InventoryItem.category).like(f"%{department.lower()}%"))
+        result = await self.session.execute(
+            query.group_by(InventoryItem.id).order_by(InventoryItem.name.asc())
         )
         return [
             MaterialUsageRow(
@@ -130,6 +272,14 @@ class AnalyticsService:
             )
             for row in result.all()
         ]
+
+    def _client(self) -> Minio:
+        return Minio(
+            self.settings.minio_endpoint,
+            access_key=self.settings.minio_root_user,
+            secret_key=self.settings.minio_root_password,
+            secure=self.settings.minio_secure,
+        )
 
 
 def build_xlsx(sheet_name: str, rows: list[list[str]]) -> bytes:

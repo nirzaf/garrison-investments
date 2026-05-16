@@ -7,8 +7,11 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.boq_item import BoqItem
+from app.models.document import Document
 from app.models.import_batch import ImportBatch
 from app.models.inventory import InventoryItem, StorageLocation
+from app.models.project import Project
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.imports import ImportErrorItem, ImportPreviewResponse, ImportRunResponse
@@ -16,6 +19,8 @@ from app.schemas.inventory import MovementCreateRequest
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
+from app.utils.permissions import validate_role
+from app.utils.security import hash_password, validate_password_policy
 
 TEMPLATE_COLUMNS = {
     "users": [
@@ -125,26 +130,25 @@ class ImportService:
         self.session.add(batch)
         await self.session.flush()
         created = 0
-        if not errors:
-            if template_type == "suppliers":
-                created = await self._import_suppliers(rows)
-            elif template_type == "opening_stock":
-                created = await self._import_opening_stock(rows, actor)
-            else:
-                batch.status = "validated"
-            batch.summary = {"created": created}
-        await self.audit.record(
-            action="imports.run",
-            user_id=actor.id,
-            entity_type="import_batches",
-            entity_id=batch.id,
-            new_values={
-                "template_type": template_type,
-                "row_count": len(rows),
-                "error_count": len(errors),
-            },
-        )
-        await self.session.commit()
+        try:
+            if not errors:
+                created = await self._import_rows(template_type, rows, actor)
+                batch.summary = {"created": created, "skipped": len(rows) - created}
+            await self.audit.record(
+                action="imports.run",
+                user_id=actor.id,
+                entity_type="import_batches",
+                entity_id=batch.id,
+                new_values={
+                    "template_type": template_type,
+                    "row_count": len(rows),
+                    "error_count": len(errors),
+                },
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
         return ImportRunResponse(
             batch_id=batch.id,
             template_type=template_type,
@@ -153,6 +157,81 @@ class ImportService:
             error_count=batch.error_count,
             summary=batch.summary or {},
         )
+
+    async def _import_rows(
+        self,
+        template_type: str,
+        rows: list[dict[str, str]],
+        actor: User,
+    ) -> int:
+        if template_type == "users":
+            return await self._import_users(rows)
+        if template_type == "projects":
+            return await self._import_projects(rows, actor)
+        if template_type == "suppliers":
+            return await self._import_suppliers(rows)
+        if template_type == "materials":
+            return await self._import_materials(rows)
+        if template_type == "documents":
+            return await self._import_documents(rows, actor)
+        if template_type == "boq":
+            return await self._import_boq(rows)
+        if template_type == "opening_stock":
+            return await self._import_opening_stock(rows, actor)
+        raise AppException("Unknown import template.", status_code=404, error_code="IMPORT_UNKNOWN")
+
+    async def _import_users(self, rows: list[dict[str, str]]) -> int:
+        created = 0
+        for row in rows:
+            email = row["email"].strip().lower()
+            existing = await self.session.scalar(
+                select(User).where(User.email == email, User.deleted_at.is_(None))
+            )
+            if existing:
+                continue
+            validate_password_policy(row["temporary_password"])
+            self.session.add(
+                User(
+                    email=email,
+                    full_name=row["full_name"].strip(),
+                    role=validate_role(row["role"]),
+                    employee_code=row["employee_code"].strip(),
+                    phone=row["phone"].strip(),
+                    designation=row.get("designation") or None,
+                    password_hash=hash_password(row["temporary_password"]),
+                    must_change_password=True,
+                )
+            )
+            created += 1
+        return created
+
+    async def _import_projects(self, rows: list[dict[str, str]], actor: User) -> int:
+        created = 0
+        for row in rows:
+            code = row["code"].strip()
+            existing = await self.session.scalar(
+                select(Project).where(Project.code == code, Project.deleted_at.is_(None))
+            )
+            if existing:
+                continue
+            self.session.add(
+                Project(
+                    code=code,
+                    name=row["name"].strip(),
+                    location=row.get("location") or None,
+                    description=row.get("scope_of_work") or None,
+                    scope_of_work=row["scope_of_work"],
+                    status=row["status"],
+                    budget_amount=Decimal(row["budget_amount"]),
+                    start_date=date.fromisoformat(row["start_date"]),
+                    target_end_date=date.fromisoformat(row["target_end_date"]),
+                    client_name=row.get("client_name") or None,
+                    contract_number=row.get("contract_number") or None,
+                    created_by=actor.id,
+                )
+            )
+            created += 1
+        return created
 
     async def _import_suppliers(self, rows: list[dict[str, str]]) -> int:
         created = 0
@@ -188,6 +267,119 @@ class ImportService:
             created += 1
         return created
 
+    async def _import_materials(self, rows: list[dict[str, str]]) -> int:
+        created = 0
+        for row in rows:
+            item_code = row["item_code"].strip()
+            existing = await self.session.scalar(
+                select(InventoryItem).where(
+                    InventoryItem.item_code == item_code,
+                    InventoryItem.deleted_at.is_(None),
+                )
+            )
+            if existing:
+                continue
+            supplier = await self.session.scalar(
+                select(Supplier).where(
+                    Supplier.name == row["supplier_name"],
+                    Supplier.deleted_at.is_(None),
+                )
+            )
+            if not supplier:
+                continue
+            self.session.add(
+                InventoryItem(
+                    name=row["name"],
+                    item_code=item_code,
+                    category=row["category"],
+                    item_type=row["item_type"],
+                    unit=row["unit"],
+                    minimum_stock=Decimal(row["minimum_stock"]),
+                    reorder_level=Decimal(row["reorder_level"]),
+                    unit_cost=Decimal(row["unit_cost"]),
+                    supplier_id=supplier.id,
+                )
+            )
+            created += 1
+        return created
+
+    async def _import_documents(self, rows: list[dict[str, str]], actor: User) -> int:
+        created = 0
+        for row in rows:
+            project = await self.session.scalar(
+                select(Project).where(
+                    Project.code == row["project_code"],
+                    Project.deleted_at.is_(None),
+                )
+            )
+            if not project:
+                continue
+            existing = await self.session.scalar(
+                select(Document).where(
+                    Document.title == row["title"],
+                    Document.project_id == project.id,
+                    Document.deleted_at.is_(None),
+                )
+            )
+            if existing:
+                continue
+            self.session.add(
+                Document(
+                    title=row["title"],
+                    document_type=row["document_type"],
+                    project_id=project.id,
+                    status="pending_approval",
+                    active_version=None,
+                    metadata_json={
+                        "revision": row["revision"],
+                        "description": row.get("description"),
+                        "file_name": row.get("file_name"),
+                    },
+                    uploaded_by=actor.id,
+                )
+            )
+            created += 1
+        return created
+
+    async def _import_boq(self, rows: list[dict[str, str]]) -> int:
+        created = 0
+        for row in rows:
+            project = await self.session.scalar(
+                select(Project).where(
+                    Project.code == row["project_code"],
+                    Project.deleted_at.is_(None),
+                )
+            )
+            if not project:
+                continue
+            item_code = row["item_code"].strip()
+            existing = await self.session.scalar(
+                select(BoqItem).where(
+                    BoqItem.project_id == project.id,
+                    BoqItem.item_code == item_code,
+                    BoqItem.deleted_at.is_(None),
+                )
+            )
+            if existing:
+                continue
+            planned_quantity = Decimal(row["planned_quantity"])
+            unit_rate = Decimal(row["unit_rate"])
+            self.session.add(
+                BoqItem(
+                    project_id=project.id,
+                    item_code=item_code,
+                    description=row["description"],
+                    discipline=row.get("discipline") or None,
+                    phase=row.get("phase") or None,
+                    unit=row["unit"],
+                    planned_quantity=planned_quantity,
+                    unit_rate=unit_rate,
+                    planned_amount=planned_quantity * unit_rate,
+                )
+            )
+            created += 1
+        return created
+
     async def _import_opening_stock(self, rows: list[dict[str, str]], actor: User) -> int:
         created = 0
         inventory = InventoryService(self.session)
@@ -215,6 +407,7 @@ class ImportService:
                     notes=row.get("notes") or "Opening stock import",
                 ),
                 actor,
+                commit=False,
             )
             created += 1
         return created
@@ -252,6 +445,35 @@ class ImportService:
                             row=index, field="quantity", message="Must be positive number."
                         )
                     )
+            for field in {
+                "budget_amount",
+                "minimum_stock",
+                "reorder_level",
+                "unit_cost",
+                "planned_quantity",
+                "unit_rate",
+            }.intersection(required):
+                if row.get(field):
+                    try:
+                        Decimal(row[field])
+                    except Exception:
+                        errors.append(
+                            ImportErrorItem(row=index, field=field, message="Must be a number.")
+                        )
+            for field in {"start_date", "target_end_date", "tds_expiry_date"}.intersection(
+                required
+            ):
+                if row.get(field):
+                    try:
+                        date.fromisoformat(row[field])
+                    except Exception:
+                        errors.append(
+                            ImportErrorItem(
+                                row=index,
+                                field=field,
+                                message="Must be an ISO date in YYYY-MM-DD format.",
+                            )
+                        )
         return errors
 
     def _ensure_template(self, template_type: str) -> None:

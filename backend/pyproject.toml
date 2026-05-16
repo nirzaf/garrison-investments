@@ -18,6 +18,7 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.12"
 plugins = []
 files = ["app"]
+exclude = ["scripts"]
 ignore_missing_imports = true
 strict_optional = true
 warn_unused_ignores = true

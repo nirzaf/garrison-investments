@@ -8,10 +8,10 @@
   flex-direction: column;
   gap: 16px;
   padding: 18px 14px;
-  background: linear-gradient(180deg, #112331 0%, #0c1924 100%);
-  color: #eef2f6;
+  background: linear-gradient(180deg, #111820 0%, #0E1317 100%);
+  color: #D7DDE3;
   overflow: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(42, 51, 61, 0.8);
 }
 
 .brandBlock {
@@ -28,11 +28,11 @@
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--orange), #c45d26);
+  background: linear-gradient(135deg, var(--brand), #0B5F59);
   color: #fff;
   font-weight: 800;
   font-size: 15px;
-  box-shadow: 0 2px 8px rgba(216, 109, 47, 0.25);
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.35);
 }
 
 .brandBlock strong {
@@ -43,7 +43,7 @@
 
 .brandBlock span {
   display: block;
-  color: rgba(238, 242, 246, 0.52);
+  color: rgba(215, 221, 227, 0.52);
   font-size: 11px;
   margin-top: 2px;
   letter-spacing: 0.02em;
@@ -62,7 +62,7 @@
 .moduleGroup h2 {
   margin: 0 0 4px;
   padding: 0 10px;
-  color: rgba(238, 242, 246, 0.46);
+  color: rgba(215, 221, 227, 0.46);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -76,7 +76,7 @@
   align-items: center;
   gap: 9px;
   padding: 0 10px;
-  color: rgba(238, 242, 246, 0.7);
+  color: rgba(215, 221, 227, 0.7);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -92,17 +92,17 @@
 
 .moduleNav button.isActive {
   color: #fff;
-  background: rgba(216, 109, 47, 0.15);
-  border-color: rgba(216, 109, 47, 0.25);
+  background: rgba(15, 118, 110, 0.18);
+  border-color: rgba(15, 118, 110, 0.35);
 }
 
 .moduleNav button.isTourTarget {
-  border-color: rgba(216, 109, 47, 0.5);
-  box-shadow: inset 3px 0 0 var(--orange), 0 0 20px rgba(216, 109, 47, 0.12);
+  border-color: rgba(15, 118, 110, 0.5);
+  box-shadow: inset 3px 0 0 var(--brand), 0 0 20px rgba(15, 118, 110, 0.15);
 }
 
 .moduleNav small {
-  color: rgba(238, 242, 246, 0.4);
+  color: rgba(215, 221, 227, 0.4);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -118,7 +118,7 @@
 }
 
 .prototypeStatus span {
-  color: rgba(238, 242, 246, 0.48);
+  color: rgba(215, 221, 227, 0.48);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -133,7 +133,7 @@
 
 .prototypeStatus p {
   margin: 0;
-  color: rgba(238, 242, 246, 0.52);
+  color: rgba(215, 221, 227, 0.52);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -160,8 +160,7 @@
   height: 40px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
+  background: var(--surface-2);
 }
 
 .breadcrumb {
@@ -208,17 +207,16 @@
 }
 
 .topActions button {
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(12px);
+  background: var(--surface-2);
   color: var(--ink);
-  border-color: rgba(31, 34, 38, 0.12);
+  border-color: var(--line);
 }
 
 .topActions .tourButton {
-  background: linear-gradient(135deg, var(--orange), #c45d26);
+  background: linear-gradient(135deg, var(--brand), var(--brand-hover));
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 8px rgba(216, 109, 47, 0.2);
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.3);
 }
 
 .topActions button:hover,
@@ -237,10 +235,9 @@
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border: 1px solid rgba(31, 34, 38, 0.12);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(12px);
+  background: var(--surface);
   color: var(--muted);
   font-size: 13px;
 }

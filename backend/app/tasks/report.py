@@ -1,7 +1,10 @@
 import asyncio
+from datetime import date
 from uuid import UUID
 
 from app.database import AsyncSessionLocal
+from app.models.user import User
+from app.services.analytics_service import AnalyticsService
 from app.services.report_export_service import ReportExportService
 from app.tasks.celery_app import celery_app
 from app.tasks.email import send_report_email
@@ -41,3 +44,55 @@ async def _generate_report_pdf(report_id: str, actor_id: str | None) -> str:
 @celery_app.task(name="generate_excel_export", queue="report")
 def generate_excel_export() -> str:
     return "excel export placeholder"
+
+
+@celery_app.task(name="generate_management_export", queue="report")
+def generate_management_export(export_type: str, actor_id: str, filters: dict) -> str:
+    return asyncio.run(_generate_management_export(export_type, actor_id, filters))
+
+
+async def _generate_management_export(export_type: str, actor_id: str, filters: dict) -> str:
+    async with AsyncSessionLocal() as session:
+        actor = await session.get(User, UUID(actor_id))
+        if actor is None:
+            raise ValueError("Export actor not found")
+        service = AnalyticsService(session)
+        project_id = UUID(filters["project_id"]) if filters.get("project_id") else None
+        date_from = (
+            date.fromisoformat(filters["date_from"]) if filters.get("date_from") else None
+        )
+        date_to = date.fromisoformat(filters["date_to"]) if filters.get("date_to") else None
+        location = filters.get("location")
+        department = filters.get("department")
+        if export_type == "project-progress":
+            data = await service.project_progress_export(
+                actor,
+                project_id=project_id,
+                date_from=date_from,
+                date_to=date_to,
+                location=location,
+                department=department,
+            )
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif export_type == "material-usage":
+            data = await service.material_usage_export(
+                actor,
+                project_id=project_id,
+                date_from=date_from,
+                date_to=date_to,
+                department=department,
+            )
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif export_type == "management-summary":
+            data = await service.management_pdf_summary(
+                actor,
+                project_id=project_id,
+                date_from=date_from,
+                date_to=date_to,
+                location=location,
+                department=department,
+            )
+            content_type = "application/pdf"
+        else:
+            raise ValueError("Unknown management export type")
+        return service.upload_export(export_type, data, content_type)
