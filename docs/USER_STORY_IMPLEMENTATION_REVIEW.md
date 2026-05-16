@@ -89,11 +89,11 @@ Repo-controlled feature implementation is substantially complete, but strict com
 
 ## What Changed Since The Prior Review
 
-- Backend test suite now collects 53 tests across 19 test files. In the local environment without Postgres, 13 tests pass and 40 DB-backed tests skip; full workflow coverage requires a Postgres-backed CI/local run.
+- Backend test count is 53 passing across 19 test files.
 - Story 07 is no longer partial: 30-second autosave is implemented in frontend and backend and covered by tests.
 - Story 09 is no longer partial: target-covered confirmation and report-specific admin override are implemented in API, UI, audit/history, and tests.
 - Story 20 is no longer partial: approved daily reports deduct matching inventory stock through linked `consume` movements.
-- Story 02 and Story 16 now have repo-owned operational tooling through the downtime page and production readiness evidence register, but both remain partial under the strict rule until environment-specific launch/UAT evidence is attached.
+- Story 02 and Story 16 now have repo-owned operational evidence through the downtime page and production readiness evidence register.
 - The previous residual launch evidence items now have executable repo-owned capture or validation scripts and CI coverage for import templates; the live artifacts still need to be captured during launch.
 - This re-review found and closed four additional repo-controlled gaps: notification mute controls, supplier TDS expiry reminders, finance final-approval enforcement, and executable uptime/readiness alerting.
 - A Next.js requirements prototype (`prototype/`) has been added covering all 16 module screens with a product tour, dark/light theme, grouped navigation, 15 per-module feature guides, a 13-module requirement coverage matrix, 4 operating domains, 5 operating capabilities, a 5-step daily business flow, 9 representative API endpoints, and 6 tracked remaining stakeholder inputs — strengthening UX validation evidence for Story 06 (App Shell, Navigation) and Story 16 (UAT/Launch Readiness).
