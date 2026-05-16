@@ -430,7 +430,7 @@ This document updates the original requirements-question checklist with the answ
 - Basic uptime/error monitoring should be implemented in Phase 1. Full monitoring dashboards can come later.
 - System error alerts should go to Admin/technical support, and Operation Manager for business-critical outages.
 - Staging and production environments are required.
-- Deployment should use GitHub Actions to staging, with manual production approval by Operation Manager.
+- Staging and production deployments should run from the approved commit, with Operation Manager approval required before production release.
 
 ### Remaining Follow-Up
 

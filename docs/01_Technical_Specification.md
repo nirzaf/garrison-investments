@@ -306,7 +306,7 @@ garrison-investments/
 | **Reverse proxy** | Nginx (TLS termination, static asset caching, gzip) |
 | **Object storage** | MinIO (S3 API-compatible, self-hosted, open source) |
 | **Cache/Queue** | Redis 7 (session cache, rate-limit counters, Celery broker) |
-| **CI** | GitHub Actions (lint → test → build → deploy) |
+| **CI** | GitHub Actions (lint → test → build → Docker image validation) |
 | **Monitoring** | Prometheus metrics endpoint + optional Grafana dashboards |
 
 ## 4. Security Architecture
@@ -368,7 +368,7 @@ Since this is a mobile-responsive PWA (not a native app):
 
 1. **Service Worker** caches the app shell (HTML/CSS/JS) for instant loads
 2. **IndexedDB** (via `idb` library) stores draft daily reports when offline
-3. Drafts auto-sync when connectivity returns (Background Sync API where supported)
+3. Drafts and queued uploads retry in the foreground when connectivity returns; Background Sync API remains a future enhancement
 4. Camera access via `<input capture="environment">` for direct photo capture
 5. Optimistic UI updates with rollback on server rejection
 
