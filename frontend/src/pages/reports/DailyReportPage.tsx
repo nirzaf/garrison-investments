@@ -366,7 +366,9 @@ export function DailyReportPage() {
           <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
             <SectionHeader title="Supervisor Updates" />
             {supervisorUpdates.length === 0 ? (
-              <p className="text-sm text-theme-text-muted">No submitted supervisor updates found.</p>
+              <p className="text-sm text-theme-text-muted">
+                No submitted supervisor updates found.
+              </p>
             ) : (
               <div className="grid gap-2">
                 {supervisorUpdates.map((update) => (
@@ -843,7 +845,9 @@ function Field({
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-theme-text-secondary">{label}</span>
       {children}
-      {error ? <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span> : null}
+      {error ? (
+        <span className="mt-1 block text-xs text-[var(--status-error-text)]">{error}</span>
+      ) : null}
     </label>
   );
 }
