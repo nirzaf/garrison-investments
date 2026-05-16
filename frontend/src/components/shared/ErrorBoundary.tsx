@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
   render() {
     if (this.state.hasError) {
       return (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-800">
+        <div className="alert-error rounded-lg border border-[var(--status-error-border)] px-4 py-6 text-sm">
           This screen could not be loaded. Refresh the page or try again later.
         </div>
       );

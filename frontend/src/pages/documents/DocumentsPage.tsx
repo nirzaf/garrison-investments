@@ -317,9 +317,9 @@ export function DocumentsPage() {
 
 function Alert({ message, tone }: { message: string; tone: 'error' | 'success' }) {
   const Icon = tone === 'success' ? Check : AlertTriangle;
-  const colors = tone === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700';
+  const cls = tone === 'success' ? 'alert-success' : 'alert-error';
   return (
-    <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${colors}`}>
+    <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${cls}`}>
       <Icon className="h-4 w-4" />
       <span>{message}</span>
     </div>

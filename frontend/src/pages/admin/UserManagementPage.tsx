@@ -136,7 +136,7 @@ export function UserManagementPage() {
       </div>
 
       {error ? (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p>
       ) : null}
 
       <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
@@ -234,7 +234,7 @@ export function UserManagementPage() {
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-semibold ${
                         user.is_active
-                          ? 'bg-emerald-50 text-emerald-700'
+                          ? 'bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
                           : 'bg-theme-card-elevated text-theme-text-secondary'
                       }`}
                     >
@@ -244,7 +244,7 @@ export function UserManagementPage() {
                   <td className="px-4 py-3 text-right">
                     {user.is_active ? (
                       <button
-                        className="text-sm font-medium text-red-700 hover:text-red-900"
+                        className="text-sm font-medium text-[var(--status-error-text)] hover:opacity-80"
                         onClick={() => void handleDeactivate(user)}
                         type="button"
                       >
