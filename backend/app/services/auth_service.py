@@ -10,6 +10,7 @@ from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
+from app.services.email_service import EmailService
 from app.utils.exceptions import AppException
 from app.utils.security import (
     create_access_token,
@@ -54,6 +55,7 @@ class AuthService:
         self.users = UserRepository(session)
         self.auth = AuthRepository(session)
         self.audit = AuditService(session)
+        self.email = EmailService()
 
     async def login(self, email: str, password: str, meta: RequestMeta) -> OtpChallengeResult:
         user = await self.users.get_by_email(email)
@@ -86,6 +88,11 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
+        self.email.send(
+            recipients=[user.email],
+            subject="Your Verification Code",
+            body=f"Your verification code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+        )
         return OtpChallengeResult(
             challenge=challenge,
             otp=otp if self.settings.should_expose_dev_otp else None,
@@ -231,6 +238,11 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
+        self.email.send(
+            recipients=[user.email],
+            subject="Password Reset Code",
+            body=f"Your password reset code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+        )
         return OtpChallengeResult(
             challenge=challenge,
             otp=otp if self.settings.should_expose_dev_otp else None,
