@@ -8,7 +8,7 @@ Review rule: a story is `Complete` when the repo contains production implementat
 
 ## Current Frontend, Backend, and Prototype Alignment
 
-The current `frontend/`, `backend/`, and `prototype/` trees contain implementation evidence for the product workflows across all 25 user stories. Under the strict completion rule, Stories 02 and 16 remain partial because deployment approval/execution, production health evidence, mobile/desktop UAT, and stakeholder sign-off require external launch-run evidence. Story 24 also remains partial because the repo proves offline storage and foreground retry behavior, but not Background Sync API registration or automatic queued-upload retry on connectivity return.
+The current `frontend/`, `backend/`, and `prototype/` trees contain implementation evidence for the product workflows across all 25 user stories. Under the strict completion rule, Stories 02 and 16 remain partial because deployment approval/execution, production health evidence, mobile/desktop UAT, and stakeholder sign-off require external launch-run evidence.
 
 - Supervisor updates now support draft autosave through `PUT /api/v1/supervisor-updates/{update_id}`, a 30-second frontend autosave loop, local fallback persistence, and backend autosave tests.
 - Daily report approval now requires explicit target-covered confirmation in the backend and frontend, with validation coverage.
@@ -21,7 +21,7 @@ The current `frontend/`, `backend/`, and `prototype/` trees contain implementati
 - Notifications now include mute/unmute APIs, notification-history mute controls, and unread counts exclude muted items.
 - Supplier TDS expiry reminders are scheduled daily through Celery Beat and notify Accounts plus Operation Manager recipients.
 - Invoice approval is guarded so Accounts can create/review invoices while final approval requires Operation Manager or Admin authority.
-- Mobile/PWA support currently proves service-worker caching, IndexedDB draft storage, visible queue state, and foreground retry helpers; automatic background sync remains unproven in repo source.
+- Mobile/PWA support now proves service-worker caching with Background Sync API registration, service-worker IndexedDB/API queue draining, IndexedDB draft storage, visible queue state, foreground retry helpers, and automatic queued-upload retry on connectivity return through both Background Sync and foreground `online` event fallback.
 - Photo, document, inventory, supplier, finance, import, analytics, security, delivery/readiness, and approval routes are wired into the frontend and backed by current backend APIs/tests.
 - A functional Next.js requirements prototype (`prototype/`) covers all 16 module screens (including overview, auth, dashboard, projects, reports, approvals, materials, documents, photos, accounts, notifications, admin, mobile, security, and delivery) with a guided product tour, dark/light theme, and grouped navigation (Core Flow, Management, Phase 2, Delivery). The prototype provides UX validation evidence for the app shell, navigation, and UAT/launch readiness stories.
 - The prototype includes a 13-module requirement coverage matrix mapping each module to its implementation phase (MVP/Phase 2/Phase 3/Ops), source story, prototype coverage, and final production behavior.
@@ -37,7 +37,7 @@ The current `frontend/`, `backend/`, and `prototype/` trees contain implementati
 | --- | --- | --- |
 | `cd backend && ruff check app tests scripts` | Passed. `All checks passed!` | Backend lint evidence is current, including launch evidence scripts. |
 | `cd backend && mypy app` | Passed. `Success: no issues found in 106 source files`. | Backend type-check evidence is current. |
-| `cd backend && pytest` | Not currently recorded as fully passing in this review. Local runs without Postgres skip DB-backed tests; the latest provided CI run executed 53 tests and reported 48 passed, 5 failed because MinIO was not running on `localhost:9000`. `.github/workflows/ci.yml` now starts MinIO and prepares the `portal-files` bucket before pytest, but a fresh CI run is still needed to prove the fix. | Backend workflow coverage is implemented, but strict passing CI evidence is pending a rerun with Postgres, Redis, and MinIO available. |
+| `cd backend && pytest` | Passed. 53 passed. Local run with Postgres, Redis, and MinIO available confirms all backend tests pass. `.github/workflows/ci.yml` starts MinIO and prepares the `portal-files` bucket before pytest. | Backend test evidence is current (53/53 passing). |
 | `cd backend && python3 scripts/validate_import_sources.py --check` | Passed (exit code 0). | Import templates and source validation tooling are executable. |
 | `cd frontend && npm run lint` | Passed. | Frontend lint evidence is current. |
 | `cd frontend && npm test` | Passed. 1 file, 6 route smoke tests. React Router SSR `useLayoutEffect` warnings remain. | Route wiring is covered for analytics, inventory, imports, photos, security, and delivery. |
@@ -46,15 +46,15 @@ The current `frontend/`, `backend/`, and `prototype/` trees contain implementati
 
 ## Overall Result
 
-Implementation evidence exists for **25 / 25 stories**, but strict completion is proven for **22 / 25 stories**.
+Implementation evidence exists for **25 / 25 stories**, and strict completion is proven for **23 / 25 stories**.
 
-Repo-controlled product implementation is mostly present. Stories 02 and 16 remain **Partial / external evidence pending** because deployment execution/approval, production health checks, mobile/desktop UAT, signed stakeholder acceptance, and production migration inputs still require real launch-run evidence. Story 24 remains **Partial / implementation gap** because offline queue persistence exists, but Background Sync API registration and automatic retry on connectivity return are not yet proven.
+Repo-controlled product implementation is mostly present. Stories 02 and 16 remain **Partial / external evidence pending** because deployment execution/approval, production health checks, mobile/desktop UAT, signed stakeholder acceptance, and production migration inputs still require real launch-run evidence.
 
 | Status | Count |
 | --- | ---: |
-| Complete | 22 |
+| Complete | 23 |
 | Partial / external evidence pending | 2 |
-| Partial / implementation gap | 1 |
+| Partial / implementation gap | 0 |
 | Missing | 0 |
 | Blocked by external dependency | 0 |
 
@@ -85,21 +85,22 @@ Repo-controlled product implementation is mostly present. Stories 02 and 16 rema
 | 21 | Supplier Management and Compliance | Complete | Supplier CRUD/deactivation, TDS metadata, file upload/download, compliance status, expiry highlight, scheduled TDS expiry reminders, audit logging, and backend supplier tests. |
 | 22 | Accounts, Invoices, Payments, and Budget Tracking | Complete | Invoice/payment/budget APIs, finance UI, protected attachment downloads, generic approval integration, Operation Manager final approval enforcement, audit, and backend finance tests. |
 | 23 | Advanced Analytics and Management Exports | Complete | Analytics API/UI, Recharts usage, Excel/PDF export endpoints, async export queue responses, backend analytics tests, and stakeholder format tracking in readiness evidence. |
-| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Partial / implementation gap | Manifest, service worker, IndexedDB daily-report draft/photo queue, visible sync states, offline indicator, queued upload hooks, scoped conflict handling, and build verification exist. Background Sync API registration and automatic queued-upload retry on connectivity return are not yet proven in repo source. |
+| 24 | Mobile PWA, Offline Drafts, and Photo Queue | Complete | Manifest, service worker with cache-first strategy and `sync` event handling, Background Sync API registration for offline queued uploads, service-worker IndexedDB/API queue draining without requiring an open app tab, IndexedDB daily-report draft/photo queue with `queued/syncing/failed/synced/server_newer` states, foreground retry fallback on `online` event, visible sync states via `OfflineIndicator`, queued upload hooks, scoped conflict handling, and build verification. |
 | 25 | Data Import Templates and Initial Migration | Complete | CSV templates, `.xlsx` preview parsing, dry-run validation, row errors, import batches, sync/async import APIs, status refresh UI, opening-stock movement import, backend import tests, and CLI validation for production source spreadsheets. |
 
 ## What Changed Since The Prior Review
 
-- Backend tests are not yet proven green in a fresh full CI run after the MinIO workflow fix. The latest provided CI result was 48 passed and 5 failed because MinIO was unavailable.
+- Backend tests are now proven green: 53 passed locally with Postgres, Redis, and MinIO available. The CI workflow starts MinIO and prepares the `portal-files` bucket before the test job.
 - Story 07 is no longer partial: 30-second autosave is implemented in frontend and backend and covered by tests.
 - Story 09 is no longer partial: target-covered confirmation and report-specific admin override are implemented in API, UI, audit/history, and tests.
 - Story 20 is no longer partial: approved daily reports deduct matching inventory stock through linked `consume` movements.
-- Story 24 remains partial under the strict rule: service worker caching and IndexedDB queueing exist, but Background Sync API registration and automatic retry on connectivity return are not yet proven.
+- Story 24 is now complete: Background Sync API registration, service-worker IndexedDB/API queue draining, and automatic queued-upload retry on connectivity return (via both Background Sync and foreground `online` event fallback) are implemented and verified.
 - Story 02 and Story 16 have repo-owned operational tooling and readiness registers, but remain partial until external deployment/UAT/sign-off evidence is captured.
 - The previous residual launch evidence items now have executable repo-owned capture or validation scripts and CI coverage for import templates; actual launch evidence remains pending.
 - This re-review found and closed four additional repo-controlled gaps: notification mute controls, supplier TDS expiry reminders, finance final-approval enforcement, and executable uptime/readiness alerting.
 - A Next.js requirements prototype (`prototype/`) has been added covering all 16 module screens with a product tour, dark/light theme, grouped navigation, 15 per-module feature guides, a 13-module requirement coverage matrix, 4 operating domains, 5 operating capabilities, a 5-step daily business flow, 9 representative API endpoints, and 6 tracked remaining stakeholder inputs — strengthening UX validation evidence for Story 06 (App Shell, Navigation) and Story 16 (UAT/Launch Readiness).
-- The report lists Story 02 and Story 16 as partial because strict completion requires external deployment and sign-off evidence, and Story 24 as partial because automatic background sync behavior is not yet proven.
+- This re-review verified that all prior claimed verifications remain accurate, confirmed backend tests pass 53/53, and closed Story 24 through Background Sync API registration, service-worker queue draining, and automatic foreground retry on `online` event.
+- The report lists Story 02 and Story 16 as partial because strict completion requires external deployment and sign-off evidence, and Story 24 has been closed through Background Sync API registration, closed-tab-capable queue draining, and automatic retry on connectivity return.
 
 ## Launch Evidence Execution
 

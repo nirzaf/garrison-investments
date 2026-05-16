@@ -7,6 +7,7 @@ import {
   getReportDraft,
   queueFiles,
   queuedPhotoCount,
+  registerBackgroundSync,
   saveReportDraft
 } from '../../api/offlineQueue';
 import { uploadEntityFiles, type PhotoRecord } from '../../api/photos';
@@ -132,9 +133,16 @@ export function DailyReportPage() {
         .then(() => queuedPhotoCount())
         .then(setQueuedUploads);
     };
+    const refreshQueuedCount = () => {
+      void queuedPhotoCount().then(setQueuedUploads);
+    };
     window.addEventListener('online', syncQueued);
+    window.addEventListener('photo-queue-sync-complete', refreshQueuedCount);
     if (navigator.onLine) syncQueued();
-    return () => window.removeEventListener('online', syncQueued);
+    return () => {
+      window.removeEventListener('online', syncQueued);
+      window.removeEventListener('photo-queue-sync-complete', refreshQueuedCount);
+    };
   }, []);
 
   useEffect(() => {
@@ -265,6 +273,7 @@ export function DailyReportPage() {
         kind,
         files
       });
+      await registerBackgroundSync();
       const count = await queuedPhotoCount();
       setQueuedUploads(count);
       setDraftStatus('local');

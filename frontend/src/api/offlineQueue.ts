@@ -17,6 +17,8 @@ type QueuedPhoto = {
   status: 'queued' | 'syncing' | 'failed' | 'synced' | 'server_newer';
 };
 
+let flushPromise: Promise<void> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -98,30 +100,91 @@ export async function queuedPhotoCount(): Promise<number> {
   return await store(PHOTO_QUEUE, 'readonly', (queue) => queue.count());
 }
 
+export async function registerBackgroundSync() {
+  if (!('serviceWorker' in navigator) || !('SyncManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.sync.register('flush-photo-queue');
+  } catch {
+    // Background Sync unsupported (Safari, Firefox) — foreground retry will handle it
+  }
+}
+
+export function listenForSyncMessages() {
+  if (!('serviceWorker' in navigator)) return () => {};
+
+  const handler = (event: MessageEvent) => {
+    if (event.data?.type === 'SYNC_FLUSH_PHOTOS') {
+      void flushPhotoQueue();
+    } else if (event.data?.type === 'SYNC_PHOTOS_DONE') {
+      window.dispatchEvent(new Event('photo-queue-sync-complete'));
+    }
+  };
+  navigator.serviceWorker.addEventListener('message', handler);
+  return () => navigator.serviceWorker.removeEventListener('message', handler);
+}
+
 export async function flushPhotoQueue() {
+  flushPromise ??= drainPhotoQueue().finally(() => {
+    flushPromise = null;
+  });
+  return flushPromise;
+}
+
+async function claimQueuedPhoto(id: string): Promise<QueuedPhoto | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
+    const queue = tx.objectStore(PHOTO_QUEUE);
+    const getRequest = queue.get(id);
+    let claimed: QueuedPhoto | null = null;
+
+    getRequest.onsuccess = () => {
+      const item = getRequest.result as QueuedPhoto | undefined;
+      if (!item || item.status === 'syncing') {
+        resolve(null);
+        return;
+      }
+      claimed = { ...item, status: 'syncing' };
+      queue.put(claimed);
+    };
+    getRequest.onerror = () => reject(getRequest.error);
+    tx.oncomplete = () => {
+      db.close();
+      resolve(claimed);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+async function drainPhotoQueue() {
   const queued = await store<QueuedPhoto[]>(PHOTO_QUEUE, 'readonly', (queue) => queue.getAll());
   for (const item of queued) {
+    const claimed = await claimQueuedPhoto(item.id);
+    if (!claimed) continue;
     try {
-      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put({ ...item, status: 'syncing' }));
-      let entityId = item.entityId;
-      if (item.entityId.startsWith('local-')) {
-        if (!item.draftPayload) {
+      let entityId = claimed.entityId;
+      if (claimed.entityId.startsWith('local-')) {
+        if (!claimed.draftPayload) {
           throw new Error('Missing offline draft payload');
         }
-        const report = await createDailyReport(item.draftPayload, item.entityId);
+        const report = await createDailyReport(claimed.draftPayload, claimed.entityId);
         entityId = report.id;
       }
       const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(item.file);
+      dataTransfer.items.add(claimed.file);
       await uploadEntityFiles({
-        entityType: item.entityType,
+        entityType: claimed.entityType,
         entityId,
-        kind: item.kind,
+        kind: claimed.kind,
         files: dataTransfer.files
       });
-      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.delete(item.id));
+      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.delete(claimed.id));
     } catch {
-      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put({ ...item, status: 'failed' }));
+      await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put({ ...claimed, status: 'failed' }));
     }
   }
 }
