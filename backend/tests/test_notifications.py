@@ -3,23 +3,20 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, engine
 from app.models.notification import Notification
 from app.repositories.user_repository import UserRepository
 from app.services.notification_service import NotificationService
 from app.tasks.email import _send_email_notification, send_email_notification
 from app.tasks.maintenance import _cleanup_old_notifications
-from app.database import engine
+from app.utils.security import utc_now
 from tests.test_daily_reports import (
-    create_user,
     create_test_client,
+    create_user,
     report_payload,
     setup_project_team,
     skip_if_database_unavailable,
 )
-from app.utils.security import utc_now
-
-pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +26,7 @@ async def isolated_engine_pool():
     await engine.dispose()
 
 
+@pytest.mark.asyncio
 async def test_report_submission_and_decision_create_notifications() -> None:
     await skip_if_database_unavailable()
 
@@ -81,6 +79,7 @@ async def test_report_submission_and_decision_create_notifications() -> None:
         assert engineer_count.json()["unread_count"] >= 1
 
 
+@pytest.mark.asyncio
 async def test_notification_email_updates_status_when_delivery_succeeds(monkeypatch) -> None:
     await skip_if_database_unavailable()
     user_email, _ = await create_user("project_manager")
@@ -115,7 +114,9 @@ async def test_notification_email_updates_status_when_delivery_succeeds(monkeypa
     assert sent_payload["subject"] == "Approval required"
 
     async with AsyncSessionLocal() as session:
-        refreshed = await session.scalar(select(Notification).where(Notification.id == notification.id))
+        refreshed = await session.scalar(
+            select(Notification).where(Notification.id == notification.id)
+        )
         assert refreshed is not None
         assert refreshed.email_status == "sent"
 
@@ -124,6 +125,7 @@ def test_send_email_notification_requires_notification_id() -> None:
     assert send_email_notification() == "notification id required"
 
 
+@pytest.mark.asyncio
 async def test_cleanup_old_notifications_soft_deletes_stale_items() -> None:
     await skip_if_database_unavailable()
     user_email, _ = await create_user("project_manager")
@@ -153,8 +155,12 @@ async def test_cleanup_old_notifications_soft_deletes_stale_items() -> None:
     assert result == "1 notifications cleaned up"
 
     async with AsyncSessionLocal() as session:
-        stale_db = await session.scalar(select(Notification).where(Notification.title == "Old notification"))
-        fresh_db = await session.scalar(select(Notification).where(Notification.title == "Fresh notification"))
+        stale_db = await session.scalar(
+            select(Notification).where(Notification.title == "Old notification")
+        )
+        fresh_db = await session.scalar(
+            select(Notification).where(Notification.title == "Fresh notification")
+        )
         assert stale_db is not None
         assert stale_db.deleted_at is not None
         assert fresh_db is not None

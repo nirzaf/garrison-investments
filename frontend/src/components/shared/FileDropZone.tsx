@@ -3,6 +3,7 @@ import { type DragEvent, useState } from 'react';
 
 type FileDropZoneProps = {
   accept?: string;
+  capture?: boolean | 'user' | 'environment';
   multiple?: boolean;
   onFiles: (files: FileList) => void;
   label: string;
@@ -12,6 +13,7 @@ type FileDropZoneProps = {
 
 export function FileDropZone({
   accept,
+  capture,
   disabled,
   hint,
   label,
@@ -56,6 +58,7 @@ export function FileDropZone({
       {hint ? <span className="text-xs text-theme-text-muted">{hint}</span> : null}
       <input
         accept={accept}
+        capture={capture}
         className="sr-only"
         disabled={disabled}
         multiple={multiple}

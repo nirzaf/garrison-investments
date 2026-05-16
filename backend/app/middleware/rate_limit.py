@@ -71,7 +71,11 @@ class AuthRateLimiter:
     async def _increment(self, key: str) -> int:
         try:
             if self._redis is None:
-                self._redis = redis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
+                self._redis = redis.from_url(
+                    self.redis_url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                )
 
             count = int(await self._redis.incr(key))
             ttl = await self._redis.ttl(key)
