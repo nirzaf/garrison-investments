@@ -10,8 +10,6 @@ from app.repositories.user_repository import UserRepository
 from app.tasks.report import generate_excel_export
 from app.utils.security import hash_password
 
-pytestmark = pytest.mark.asyncio
-
 
 @pytest.fixture(autouse=True)
 async def isolated_engine_pool():
@@ -61,6 +59,7 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
+@pytest.mark.asyncio
 async def test_management_analytics_and_exports_are_restricted() -> None:
     await skip_if_database_unavailable()
     manager, manager_password = await create_user("general_manager")

@@ -52,11 +52,28 @@ npm run dev
 
 ## Current Implementation Status
 
-This repository currently implements story `TO-DO/01-project-foundation-and-dev-environment.md`:
+This repository contains production implementation work across the Phase 1 user
+stories in `TO-DO/`, including authentication, RBAC, projects/BOQ, daily
+reports, approvals, uploads, documents, notifications, audit logs, operations,
+inventory, suppliers, finance, analytics, PWA/offline primitives, and data
+imports.
 
-- Docker Compose development services
-- FastAPI app skeleton with `/health`, `/health/readiness`, and `/api/v1`
-- PostgreSQL async SQLAlchemy configuration
-- Alembic baseline migration for `users`
-- React + Vite + TypeScript + Tailwind starter shell
-- Environment template without production secrets
+Strict completion status is tracked in `USER_STORY_IMPLEMENTATION_REVIEW.md`.
+That report uses a 100% acceptance standard: a story is marked complete only
+when every acceptance criterion, business rule, UI/UX note, technical note, and
+definition-of-done item has implementation evidence plus relevant verification
+evidence.
+
+Current local verification commands:
+
+```bash
+cd backend
+pytest
+ruff check .
+mypy .
+
+cd ../frontend
+npm run lint
+npm test
+npm run build
+```

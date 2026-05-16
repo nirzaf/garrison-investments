@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -81,8 +81,6 @@ export function SupervisorUpdatePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
-  const photoInputRef = useRef<HTMLInputElement>(null);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const storedDraft = useMemo(() => {
     try {
@@ -345,33 +343,35 @@ export function SupervisorUpdatePage() {
             </Field>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Upload photos">
-                <input
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-theme-text-secondary">
+                  <Image className="h-4 w-4" />
+                  <span>Upload photos</span>
+                </div>
+                <FileDropZone
                   accept="image/jpeg,image/png,image/heic"
                   capture="environment"
-                  className="form-field"
+                  disabled={isSaving}
+                  hint="Max 5 photos at 10 MB each. JPG, PNG, or HEIC."
+                  label="Drop photos here or tap to use camera"
                   multiple
-                  onChange={(e) => void uploadFiles(e.target.files, 'photo')}
-                  ref={photoInputRef}
-                  type="file"
+                  onFiles={(files) => void uploadFiles(files, 'photo')}
                 />
-                <p className="mt-1 text-xs text-theme-text-muted">
-                  Max 5 photos at 10 MB each. JPG, PNG, or HEIC.
-                </p>
-              </Field>
-              <Field label="Upload attachments">
-                <input
+              </div>
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-theme-text-secondary">
+                  <Paperclip className="h-4 w-4" />
+                  <span>Upload attachments</span>
+                </div>
+                <FileDropZone
                   accept="application/pdf,image/jpeg,image/png"
-                  className="form-field"
+                  disabled={isSaving}
+                  hint="Supporting documents up to 60 MB."
+                  label="Drop attachments here or tap to browse"
                   multiple
-                  onChange={(e) => void uploadFiles(e.target.files, 'attachment')}
-                  ref={attachmentInputRef}
-                  type="file"
+                  onFiles={(files) => void uploadFiles(files, 'attachment')}
                 />
-                <p className="mt-1 text-xs text-theme-text-muted">
-                  Supporting documents up to 60 MB.
-                </p>
-              </Field>
+              </div>
             </div>
             {uploadedFiles.length > 0 ? (
               <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
