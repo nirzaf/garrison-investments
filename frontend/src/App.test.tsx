@@ -27,6 +27,7 @@ vi.mock('./api/inventory', () => ({
 const baseAuthValue: Omit<AuthContextValue, 'user'> = {
   isAuthenticated: true,
   isLoading: false,
+  changePassword: vi.fn(async () => {}),
   login: vi.fn(async () => ({
     challengeId: 'challenge-id',
     expiresAt: '2026-01-01T00:00:00Z',

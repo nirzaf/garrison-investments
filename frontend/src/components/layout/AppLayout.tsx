@@ -138,6 +138,10 @@ export function AppLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  if (user?.must_change_password && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-theme-main text-theme-text-primary lg:grid lg:grid-cols-[256px_1fr]">
       <aside className="sticky top-0 hidden h-screen border-r border-theme-border bg-theme-sidebar lg:block">

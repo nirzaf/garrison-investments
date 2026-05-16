@@ -17,6 +17,7 @@ export type AuthContextValue = {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   verifyOtp: (challengeId: string, otp: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
