@@ -3,19 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --bg-main: #F5F7F8;
-  --bg-sidebar: #FFFFFF;
-  --bg-card: #FFFFFF;
-  --bg-card-elevated: #F9FAFB;
+  --bg-main: #f5f7f8;
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-elevated: #f9fafb;
   --text-primary: #111820;
-  --text-secondary: #4B5563;
-  --text-muted: #7A8490;
-  --brand-primary: #0F766E;
-  --brand-primary-hover: #0B5F59;
-  --border: #D8DEE4;
-  --success: #16A34A;
-  --warning: #B08900;
-  --error: #B42318;
+  --text-secondary: #4b5563;
+  --text-muted: #7a8490;
+  --brand-primary: #0f766e;
+  --brand-primary-hover: #0b5f59;
+  --border: #d8dee4;
+  --success: #16a34a;
+  --warning: #b08900;
+  --error: #b42318;
   --status-success-bg: #ecfdf5;
   --status-success-text: #065f46;
   --status-success-border: #a7f3d0;
@@ -42,29 +42,29 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-main: #0E1317;
+  --bg-main: #0e1317;
   --bg-sidebar: #111820;
-  --bg-card: #171E25;
-  --bg-card-elevated: #1D2630;
-  --text-primary: #E5E9ED;
-  --text-secondary: #A7B0BA;
-  --text-muted: #6F7A86;
-  --brand-primary: #0F766E;
-  --brand-primary-hover: #14A085;
-  --border: #2A333D;
-  --success: #16A34A;
-  --warning: #C9A227;
-  --error: #B42318;
-  --status-success-bg: rgba(6, 78, 59, 0.20);
+  --bg-card: #171e25;
+  --bg-card-elevated: #1d2630;
+  --text-primary: #e5e9ed;
+  --text-secondary: #a7b0ba;
+  --text-muted: #6f7a86;
+  --brand-primary: #0f766e;
+  --brand-primary-hover: #14a085;
+  --border: #2a333d;
+  --success: #16a34a;
+  --warning: #c9a227;
+  --error: #b42318;
+  --status-success-bg: rgba(6, 78, 59, 0.2);
   --status-success-text: #34d399;
-  --status-success-border: rgba(6, 78, 59, 0.30);
-  --status-warning-bg: rgba(120, 53, 15, 0.20);
+  --status-success-border: rgba(6, 78, 59, 0.3);
+  --status-warning-bg: rgba(120, 53, 15, 0.2);
   --status-warning-text: #fbbf24;
-  --status-warning-border: rgba(120, 53, 15, 0.30);
-  --status-error-bg: rgba(127, 29, 29, 0.20);
+  --status-warning-border: rgba(120, 53, 15, 0.3);
+  --status-error-bg: rgba(127, 29, 29, 0.2);
   --status-error-text: #f87171;
   --status-error-border: rgba(127, 29, 29, 0.25);
-  --status-info-bg: rgba(12, 74, 110, 0.20);
+  --status-info-bg: rgba(12, 74, 110, 0.2);
   --status-info-text: #38bdf8;
   --status-info-border: rgba(12, 74, 110, 0.25);
 }

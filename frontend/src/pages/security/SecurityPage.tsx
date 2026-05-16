@@ -29,13 +29,15 @@ const controls = [
   },
   {
     label: 'Audit',
-    detail: 'Create, update, login, download, approve, reject, and override paths record audit events.',
+    detail:
+      'Create, update, login, download, approve, reject, and override paths record audit events.',
     icon: ShieldCheck,
     status: 'partial'
   },
   {
     label: 'Retention',
-    detail: 'Notification cleanup and soft delete paths exist; audit 7-year lifecycle still needs production policy enforcement.',
+    detail:
+      'Notification cleanup and soft delete paths exist; audit 7-year lifecycle still needs production policy enforcement.',
     icon: Archive,
     status: 'partial'
   }
@@ -61,14 +63,19 @@ export function SecurityPage() {
         {controls.map((control) => {
           const Icon = control.icon;
           return (
-            <article className="rounded-lg border border-theme-border bg-theme-card p-4" key={control.label}>
+            <article
+              className="rounded-lg border border-theme-border bg-theme-card p-4"
+              key={control.label}
+            >
               <div className="flex items-start justify-between gap-3">
                 <Icon className="h-5 w-5 text-brand-600" />
                 <StatusBadge tone={control.status === 'implemented' ? 'success' : 'warning'}>
                   {control.status}
                 </StatusBadge>
               </div>
-              <h3 className="mt-3 text-base font-semibold text-theme-text-primary">{control.label}</h3>
+              <h3 className="mt-3 text-base font-semibold text-theme-text-primary">
+                {control.label}
+              </h3>
               <p className="mt-1 text-sm text-theme-text-secondary">{control.detail}</p>
             </article>
           );
