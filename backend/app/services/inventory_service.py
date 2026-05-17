@@ -465,11 +465,27 @@ class InventoryService:
         elif payload.movement_type == "transfer":
             if not payload.from_location_id or not payload.to_location_id:
                 raise AppException("Transfer requires source and destination.", status_code=422)
-            await self._decrease_available(
-                payload.item_id, payload.from_location_id, payload.quantity
-            )
-            destination = await self._get_or_create_stock(payload.item_id, payload.to_location_id)
-            destination.on_hand_qty += payload.quantity
+
+            first_loc = sorted(
+                [str(payload.from_location_id), str(payload.to_location_id)]
+            )[0]
+
+            if first_loc == str(payload.from_location_id):
+                await self._decrease_available(
+                    payload.item_id, payload.from_location_id, payload.quantity
+                )
+                destination = await self._get_or_create_stock(
+                    payload.item_id, payload.to_location_id
+                )
+                destination.on_hand_qty += payload.quantity
+            else:
+                destination = await self._get_or_create_stock(
+                    payload.item_id, payload.to_location_id
+                )
+                destination.on_hand_qty += payload.quantity
+                await self._decrease_available(
+                    payload.item_id, payload.from_location_id, payload.quantity
+                )
             await self._move_asset(payload)
         elif payload.movement_type == "return":
             if not payload.to_location_id:

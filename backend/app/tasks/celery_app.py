@@ -1,7 +1,9 @@
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_failure
 
 from app.config import get_settings
+from app.services.exception_reporter import report_celery_task_failure
 
 settings = get_settings()
 
@@ -16,6 +18,7 @@ celery_app = Celery(
         "app.tasks.report",
         "app.tasks.backup",
         "app.tasks.maintenance",
+        "app.tasks.imports",
     ],
 )
 
@@ -53,3 +56,25 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=0),
     },
 }
+
+
+@task_failure.connect
+def report_failed_task(
+    sender=None,
+    task_id=None,
+    exception=None,
+    args=None,
+    kwargs=None,
+    einfo=None,
+    **_,
+) -> None:
+    if exception is None:
+        return
+    report_celery_task_failure(
+        task_name=getattr(sender, "name", None),
+        task_id=task_id,
+        exc=exception,
+        args=args,
+        kwargs=kwargs,
+        traceback_text=str(einfo) if einfo else None,
+    )

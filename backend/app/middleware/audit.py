@@ -6,6 +6,7 @@ from fastapi import Request, Response
 from app.database import AsyncSessionLocal
 from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException
+from app.utils.request import get_client_ip
 from app.utils.security import decode_access_token
 
 logger = structlog.get_logger("app.middleware.audit")
@@ -14,12 +15,7 @@ _SKIPPED_PATHS = {"/health", "/health/readiness"}
 
 
 def _client_ip(request: Request) -> str | None:
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
+    return get_client_ip(request)
 
 
 def _authenticated_user_id(request: Request) -> UUID | None:

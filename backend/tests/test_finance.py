@@ -107,6 +107,9 @@ class FakeMinioClient:
         del bucket, expires
         return f"https://files.example.test/{object_key}"
 
+    def remove_object(self, bucket: str, object_key: str) -> None:
+        del bucket, object_key
+
 
 async def test_invoice_payment_budget_and_finance_visibility(
     monkeypatch: pytest.MonkeyPatch,
@@ -124,12 +127,14 @@ async def test_invoice_payment_budget_and_finance_visibility(
     accounts, accounts_password = await create_user("accounts")
     engineer, engineer_password = await create_user("civil_engineer")
     operation_manager, op_password = await create_user("operation_manager")
+    project_manager, pm_password = await create_user("project_manager")
     project, supplier = await create_project_and_supplier(admin)
 
     async with create_test_client() as client:
         accounts_token = await login_for_token(client, accounts, accounts_password)
         engineer_token = await login_for_token(client, engineer, engineer_password)
         op_token = await login_for_token(client, operation_manager, op_password)
+        pm_token = await login_for_token(client, project_manager, pm_password)
 
         created = await client.post(
             "/api/v1/finance/invoices",
@@ -183,6 +188,13 @@ async def test_invoice_payment_budget_and_finance_visibility(
         )
         assert blocked.status_code == 403
         assert list_invoices_called is False
+
+        project_manager_visible = await client.get(
+            "/api/v1/finance/invoices",
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        assert project_manager_visible.status_code == 200
+        assert any(item["id"] == invoice["id"] for item in project_manager_visible.json()["items"])
 
         blocked_payment = await client.post(
             f"/api/v1/finance/invoices/{invoice['id']}/payments",
@@ -257,3 +269,68 @@ async def test_invoice_payment_budget_and_finance_visibility(
         assert summary.status_code == 200
         assert summary.json()["invoiced_total"] == "315.00"
         assert summary.json()["paid_total"] == "315.00"
+
+
+async def test_invoice_attachment_upload_is_compensated_when_commit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    uploaded_keys: list[str] = []
+    deleted_keys: list[str] = []
+
+    def fake_upload(self, object_key: str, data: bytes, content_type: str) -> None:
+        del self, data, content_type
+        uploaded_keys.append(object_key)
+
+    def fake_delete(self, object_key: str) -> None:
+        del self
+        deleted_keys.append(object_key)
+
+    async def fail_audit(*args, **kwargs) -> None:
+        del args, kwargs
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(
+        "app.services.finance_service.FinanceService._upload_object",
+        fake_upload,
+    )
+    monkeypatch.setattr(
+        "app.services.finance_service.FinanceService._delete_object",
+        fake_delete,
+    )
+    monkeypatch.setattr(
+        "app.services.audit_service.AuditService.record",
+        fail_audit,
+    )
+
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    project, supplier = await create_project_and_supplier(admin)
+
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        created = await client.post(
+            "/api/v1/finance/invoices",
+            json={
+                "invoice_number": f"INV-{uuid4().hex[:8]}",
+                "project_id": str(project.id),
+                "supplier_id": str(supplier.id),
+                "invoice_date": date.today().isoformat(),
+                "due_date": (date.today() + timedelta(days=30)).isoformat(),
+                "amount": "300.00",
+                "tax_amount": "15.00",
+            },
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert created.status_code == 201
+        invoice = created.json()
+
+        with pytest.raises(RuntimeError, match="audit write failed"):
+            await client.post(
+                f"/api/v1/finance/invoices/{invoice['id']}/attachment",
+                files={"file": ("invoice.pdf", b"%PDF-1.4 invoice", "application/pdf")},
+                headers={"Authorization": f"Bearer {accounts_token}"},
+            )
+
+    assert len(uploaded_keys) == 1
+    assert deleted_keys == uploaded_keys

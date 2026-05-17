@@ -91,7 +91,8 @@ async def test_management_analytics_and_exports_are_restricted() -> None:
 
 
 def test_generate_excel_export_requires_actor_id() -> None:
-    assert generate_excel_export() == "export actor required"
+    with pytest.raises(ValueError, match="Export actor is required"):
+        generate_excel_export()
 
 
 def test_generate_excel_export_delegates_to_management_export(monkeypatch) -> None:

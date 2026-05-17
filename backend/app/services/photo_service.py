@@ -18,7 +18,7 @@ from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import ROLE_ADMIN
 from app.utils.security import utc_now
 
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 30 * 1024 * 1024
 MAX_REPORT_PHOTOS = 5
 SIGNED_URL_SECONDS = 300
 ALLOWED_MAGIC = {

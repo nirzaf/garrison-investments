@@ -5,6 +5,8 @@ from time import monotonic
 import redis.asyncio as redis
 from fastapi import Request
 
+from app.utils.request import get_client_ip
+
 
 class AuthRateLimiter:
     protected_paths = {
@@ -32,13 +34,7 @@ class AuthRateLimiter:
         return count > self.max_requests, remaining
 
     async def _key_for(self, request: Request) -> str:
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_id = forwarded_for.split(",")[0].strip()
-        elif request.client:
-            client_id = request.client.host
-        else:
-            client_id = "unknown"
+        client_id = get_client_ip(request) or "unknown"
         identity = await self._request_identity(request)
         return f"rate-limit:auth:{request.url.path}:{client_id}:{identity}"
 

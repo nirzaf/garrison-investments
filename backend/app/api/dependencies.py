@@ -9,18 +9,15 @@ from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService, RequestMeta
 from app.utils.permissions import ensure_permission
+from app.utils.request import get_client_ip
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_request_meta(request: Request) -> RequestMeta:
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else None
-    if not ip_address and request.client:
-        ip_address = request.client.host
     return RequestMeta(
-        ip_address=ip_address,
+        ip_address=get_client_ip(request),
         user_agent=request.headers.get("User-Agent"),
     )
 

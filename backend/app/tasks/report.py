@@ -55,7 +55,7 @@ def generate_excel_export(
     filters: dict | None = None,
 ) -> str:
     if actor_id is None:
-        return "export actor required"
+        raise ValueError("Export actor is required")
     if export_type == "management-summary":
         raise ValueError("generate_excel_export only supports XLSX exports")
     return asyncio.run(_generate_management_export(export_type, actor_id, filters or {}))
