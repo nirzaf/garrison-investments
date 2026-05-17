@@ -1,20 +1,9 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type ImportPreview = {
-  template_type: string;
-  row_count: number;
-  valid: boolean;
-  errors: Array<{ row: number; field: string; message: string }>;
-};
+export type ImportPreview = components['schemas']['ImportPreviewResponse'];
 
-export type ImportRunResult = {
-  batch_id: string;
-  template_type: string;
-  status: string;
-  row_count: number;
-  error_count: number;
-  summary: Record<string, unknown>;
-};
+export type ImportRunResult = components['schemas']['ImportRunResponse'];
 
 export type AsyncImportResult = {
   task_id: string;

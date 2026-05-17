@@ -12,6 +12,7 @@ const initialProject: ProjectPayload = {
   name: '',
   scope_of_work: '',
   target_end_date: '',
+  status: 'planning',
   location: '',
   client_name: '',
   contract_number: '',
@@ -40,7 +41,7 @@ const initialProject: ProjectPayload = {
 
 export function ProjectListPage() {
   const { user } = useAuth();
-  const canManageProjects = user?.permissions.includes('projects:manage');
+  const canManageProjects = user?.permissions?.includes('projects:manage');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
@@ -135,13 +136,13 @@ export function ProjectListPage() {
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, client_name: event.target.value })}
               placeholder="Client"
-              value={form.client_name}
+              value={form.client_name ?? ''}
             />
             <input
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, location: event.target.value })}
               placeholder="Location"
-              value={form.location}
+              value={form.location ?? ''}
             />
             <input
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"

@@ -1,58 +1,23 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type InvoiceRecord = {
-  id: string;
-  invoice_number: string;
-  project_id: string;
-  supplier_id: string | null;
-  invoice_date: string;
-  due_date: string;
-  amount: string;
-  tax_amount: string;
-  total_amount: string;
-  status: string;
-  payment_status: string;
-  attachment_key: string | null;
-  notes: string | null;
-  payments: Array<{
-    id: string;
-    payment_date: string;
-    amount: string;
-    method: string;
-    reference_number: string | null;
-  }>;
-};
+export type InvoiceRecord = components['schemas']['InvoiceResponse'];
+export type InvoiceListResponse = components['schemas']['InvoiceListResponse'];
+export type InvoiceCreatePayload = components['schemas']['InvoiceCreateRequest'];
+export type PaymentCreatePayload = components['schemas']['PaymentCreateRequest'];
+export type InvoiceAttachmentUrl = components['schemas']['InvoiceAttachmentUrlResponse'];
 
 export async function listInvoices() {
-  const { data } = await apiClient.get<{ items: InvoiceRecord[]; total: number }>(
-    '/finance/invoices'
-  );
+  const { data } = await apiClient.get<InvoiceListResponse>('/finance/invoices');
   return data;
 }
 
-export async function createInvoice(payload: {
-  invoice_number: string;
-  project_id: string;
-  supplier_id?: string;
-  invoice_date: string;
-  due_date: string;
-  amount: string;
-  tax_amount: string;
-  notes?: string;
-}) {
+export async function createInvoice(payload: InvoiceCreatePayload) {
   const { data } = await apiClient.post<InvoiceRecord>('/finance/invoices', payload);
   return data;
 }
 
-export async function createPayment(
-  invoiceId: string,
-  payload: {
-    payment_date: string;
-    amount: string;
-    method: string;
-    reference_number?: string;
-  }
-) {
+export async function createPayment(invoiceId: string, payload: PaymentCreatePayload) {
   const { data } = await apiClient.post<InvoiceRecord>(
     `/finance/invoices/${invoiceId}/payments`,
     payload
@@ -72,7 +37,7 @@ export async function uploadInvoiceAttachment(invoiceId: string, file: File) {
 }
 
 export async function getInvoiceAttachmentUrl(invoiceId: string) {
-  const { data } = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+  const { data } = await apiClient.get<InvoiceAttachmentUrl>(
     `/finance/invoices/${invoiceId}/attachment`
   );
   return data;

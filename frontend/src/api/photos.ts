@@ -1,22 +1,9 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type PhotoRecord = {
-  id: string;
-  filename: string;
-  original_name: string;
-  storage_path: string;
-  compressed_path: string | null;
-  thumbnail_path: string | null;
-  mime_type: string;
-  size_bytes: number;
-  width: number | null;
-  height: number | null;
-  entity_type: string;
-  entity_id: string;
-  kind: string;
-  caption: string | null;
-  processing_status: string;
-};
+export type PhotoRecord = components['schemas']['PhotoResponse'];
+export type PhotoListResponse = components['schemas']['PhotoListResponse'];
+export type ProtectedFileUrl = components['schemas']['ProtectedFileUrlResponse'];
 
 export async function uploadEntityFiles(params: {
   entityType: string;
@@ -41,8 +28,8 @@ export async function listPhotos(params?: {
   kind?: 'photo' | 'attachment';
   limit?: number;
   offset?: number;
-}): Promise<{ items: PhotoRecord[]; total: number }> {
-  const response = await apiClient.get<{ items: PhotoRecord[]; total: number }>('/photos', {
+}): Promise<PhotoListResponse> {
+  const response = await apiClient.get<PhotoListResponse>('/photos', {
     params: {
       entity_type: params?.entityType,
       entity_id: params?.entityId,
@@ -55,14 +42,14 @@ export async function listPhotos(params?: {
 }
 
 export async function getPhotoDownloadUrl(photoId: string): Promise<string> {
-  const response = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+  const response = await apiClient.get<ProtectedFileUrl>(
     `/photos/${photoId}/download`
   );
   return response.data.url;
 }
 
 export async function getPhotoThumbnailUrl(photoId: string): Promise<string> {
-  const response = await apiClient.get<{ url: string; expires_in_seconds: number }>(
+  const response = await apiClient.get<ProtectedFileUrl>(
     `/photos/${photoId}/thumbnail`
   );
   return response.data.url;

@@ -1,23 +1,9 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type AuditLogRecord = {
-  id: string;
-  user_id: string | null;
-  action: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  comments: string | null;
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
-  created_at: string;
-};
+export type AuditLogRecord = components['schemas']['AuditLogResponse'];
 
-export type AuditLogListResponse = {
-  items: AuditLogRecord[];
-  total: number;
-};
+export type AuditLogListResponse = components['schemas']['AuditLogListResponse'];
 
 export type AuditLogFilters = {
   action?: string;

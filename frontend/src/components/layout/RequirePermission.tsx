@@ -11,7 +11,7 @@ export function RequirePermission({
 }) {
   const { user } = useAuth();
 
-  if (!user?.permissions.includes(permission)) {
+  if (!user?.permissions?.includes(permission)) {
     return <Navigate to="/dashboard" replace />;
   }
 

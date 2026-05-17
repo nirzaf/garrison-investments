@@ -1,31 +1,17 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type NotificationRecord = {
-  id: string;
-  title: string;
-  body: string;
-  notification_type: string;
-  reference_type: string | null;
-  reference_id: string | null;
-  is_read: boolean;
-  muted: boolean;
-  email_status: string | null;
-  read_at: string | null;
-  created_at: string;
-};
+export type NotificationRecord = components['schemas']['NotificationResponse'];
+export type NotificationListResponse = components['schemas']['NotificationListResponse'];
+export type UnreadCountResponse = components['schemas']['UnreadCountResponse'];
 
-export async function listNotifications(): Promise<{
-  items: NotificationRecord[];
-  total: number;
-}> {
-  const response = await apiClient.get<{ items: NotificationRecord[]; total: number }>(
-    '/notifications'
-  );
+export async function listNotifications(): Promise<NotificationListResponse> {
+  const response = await apiClient.get<NotificationListResponse>('/notifications');
   return response.data;
 }
 
 export async function getUnreadCount(): Promise<number> {
-  const response = await apiClient.get<{ unread_count: number }>('/notifications/unread-count');
+  const response = await apiClient.get<UnreadCountResponse>('/notifications/unread-count');
   return response.data.unread_count;
 }
 

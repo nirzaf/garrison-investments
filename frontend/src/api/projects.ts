@@ -1,49 +1,21 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type BoqItemPayload = {
-  item_code: string;
-  description: string;
-  discipline?: string;
-  phase?: string;
-  milestone_name?: string;
-  unit: string;
-  planned_quantity: string;
-  unit_rate: string;
-};
+export type BoqItemPayload = components['schemas']['BoqItemCreateRequest'];
 
-export type ProjectPayload = {
-  name: string;
-  scope_of_work: string;
-  target_end_date: string;
+type ProjectCreateSchema = components['schemas']['ProjectCreateRequest'];
+
+export type ProjectPayload = ProjectCreateSchema & {
   location?: string;
   client_name?: string;
   contract_number?: string;
-  milestones: Array<{
-    name: string;
-    discipline?: string;
-    planned_start_date?: string;
-    planned_end_date?: string;
-    sort_order: number;
-  }>;
-  boq_items: BoqItemPayload[];
+  milestones: NonNullable<ProjectCreateSchema['milestones']>;
+  boq_items: NonNullable<ProjectCreateSchema['boq_items']>;
 };
 
-export type ProjectRecord = {
-  id: string;
-  name: string;
-  code: string;
-  location: string | null;
-  scope_of_work: string;
-  status: string;
-  target_end_date: string;
-  client_name: string | null;
-  progress_percentage: string;
-};
+export type ProjectRecord = components['schemas']['ProjectResponse'];
 
-export type ProjectListResponse = {
-  items: ProjectRecord[];
-  total: number;
-};
+export type ProjectListResponse = components['schemas']['ProjectListResponse'];
 
 export async function listProjects(params: {
   status?: string;
