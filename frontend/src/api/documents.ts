@@ -1,32 +1,12 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type DocumentVersionRecord = {
-  id: string;
-  document_id: string;
-  version: number;
-  status: string;
-  original_name: string;
-  mime_type: string;
-  size_bytes: number;
-  approved_at: string | null;
-  approval_comments: string | null;
-};
+export type DocumentVersionRecord = components['schemas']['DocumentVersionResponse'];
 
-export type DocumentRecord = {
-  id: string;
-  title: string;
-  document_type: string;
-  project_id: string | null;
-  status: string;
-  active_version: number | null;
-  expiry_date: string | null;
-  versions: DocumentVersionRecord[];
-};
+export type DocumentRecord = components['schemas']['DocumentResponse'];
 
-export type DocumentListResponse = {
-  items: DocumentRecord[];
-  total: number;
-};
+export type DocumentListResponse = components['schemas']['DocumentListResponse'];
+export type DocumentDownloadUrl = components['schemas']['DocumentDownloadResponse'];
 
 export async function listDocuments(params: {
   project_id?: string;
@@ -71,8 +51,8 @@ export async function approveDocumentVersion(params: {
 export async function getDocumentDownloadUrl(
   documentId: string,
   versionId?: string
-): Promise<{ url: string; superseded_warning: boolean }> {
-  const response = await apiClient.get<{ url: string; superseded_warning: boolean }>(
+): Promise<DocumentDownloadUrl> {
+  const response = await apiClient.get<DocumentDownloadUrl>(
     `/documents/${documentId}/download`,
     { params: { version_id: versionId } }
   );

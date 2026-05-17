@@ -1,31 +1,11 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type UserRecord = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  employee_code: string | null;
-  phone: string | null;
-  designation: string | null;
-  is_active: boolean;
-  must_change_password: boolean;
-};
+export type UserRecord = components['schemas']['UserResponse'];
 
-export type UserListResponse = {
-  items: UserRecord[];
-  total: number;
-};
+export type UserListResponse = components['schemas']['UserListResponse'];
 
-export type CreateUserPayload = {
-  email: string;
-  full_name: string;
-  role: string;
-  employee_code: string;
-  phone: string;
-  designation?: string;
-  temporary_password: string;
-};
+export type CreateUserPayload = components['schemas']['UserCreateRequest'];
 
 export async function listUsers(params: {
   active?: boolean;

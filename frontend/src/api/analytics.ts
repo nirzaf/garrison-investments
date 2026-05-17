@@ -1,21 +1,7 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type AnalyticsSummary = {
-  projects: Array<{
-    project_id: string;
-    project_name: string;
-    progress_percentage: string;
-    report_count: number;
-    invoice_total: string;
-    paid_total: string;
-  }>;
-  material_usage: Array<{
-    item_id: string;
-    item_name: string;
-    issued_quantity: string;
-    consumed_quantity: string;
-  }>;
-};
+export type AnalyticsSummary = components['schemas']['AnalyticsSummaryResponse'];
 
 export type AnalyticsFilters = {
   project_id?: string;

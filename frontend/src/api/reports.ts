@@ -1,45 +1,17 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type ReportFileRef = {
-  name: string;
-  kind: string;
-};
+export type ReportFileRef = components['schemas']['ReportFileRef'];
 
-export type ReportManpower = {
-  trade: string;
-  count: number;
-  overtime_hours: string;
-};
+export type ReportManpower = components['schemas']['ReportManpowerInput'];
 
-export type ReportEquipment = {
-  equipment_name: string;
-  quantity: number;
-  hours_used: string;
-  remarks?: string | null;
-};
+export type ReportEquipment = components['schemas']['ReportEquipmentInput'];
 
-export type ReportMaterialConsumption = {
-  boq_item_id?: string | null;
-  material_name: string;
-  unit: string;
-  quantity: string;
-  remarks?: string | null;
-};
+export type ReportMaterialConsumption = components['schemas']['ReportMaterialConsumptionInput'];
 
-export type DailyReportPayload = {
-  project_id: string;
-  report_date: string;
-  work_location: string;
-  manpower_total: number;
-  overtime_hours: string;
-  work_completed: string;
-  progress_percentage: string;
-  safety_incidents: number;
-  safety_notes?: string | null;
-  wir_status: string;
-  inspection_status: string;
-  delay_notes?: string | null;
-  next_day_plan: string;
+type DailyReportCreateSchema = components['schemas']['DailyReportCreateRequest'];
+
+export type DailyReportPayload = DailyReportCreateSchema & {
   supervisor_update_ids: string[];
   photo_refs: ReportFileRef[];
   attachment_refs: ReportFileRef[];
@@ -49,29 +21,9 @@ export type DailyReportPayload = {
   extra_fields: Record<string, unknown>;
 };
 
-export type DailyReportRecord = DailyReportPayload & {
-  id: string;
-  engineer_id: string;
-  report_number: string | null;
-  status: string;
-  submitted_at: string | null;
-  approved_by: string | null;
-  approved_at: string | null;
-  rejection_comments: string | null;
-  approval_history: Array<{
-    id: string;
-    actor_id: string | null;
-    decision: string;
-    previous_status: string;
-    comments: string | null;
-    decided_at: string;
-  }>;
-};
+export type DailyReportRecord = components['schemas']['DailyReportResponse'];
 
-export type DailyReportListResponse = {
-  items: DailyReportRecord[];
-  total: number;
-};
+export type DailyReportListResponse = components['schemas']['DailyReportListResponse'];
 
 export async function listDailyReports(params: {
   project_id?: string;

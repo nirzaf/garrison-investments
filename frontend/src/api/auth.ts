@@ -1,36 +1,13 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  is_active: boolean;
-  must_change_password: boolean;
-  permissions: string[];
-};
+export type AuthUser = components['schemas']['AuthUserResponse'];
 
-export type LoginChallenge = {
-  challenge_id: string;
-  expires_at: string;
-  expires_in_seconds: number;
-  dev_otp?: string | null;
-};
+export type LoginChallenge = components['schemas']['LoginChallengeResponse'];
 
-export type TokenResponse = {
-  access_token: string;
-  token_type: 'bearer';
-  expires_in_seconds: number;
-  user: AuthUser;
-};
+export type TokenResponse = components['schemas']['TokenResponse'];
 
-export type PasswordResetChallenge = {
-  challenge_id?: string | null;
-  expires_at?: string | null;
-  expires_in_seconds?: number | null;
-  dev_otp?: string | null;
-  message: string;
-};
+export type PasswordResetChallenge = components['schemas']['PasswordResetChallengeResponse'];
 
 export async function login(email: string, password: string): Promise<LoginChallenge> {
   const response = await apiClient.post<LoginChallenge>('/auth/login', { email, password });

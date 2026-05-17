@@ -1,37 +1,13 @@
 import { apiClient } from './client';
+import type { components } from './schema';
 
-export type AttachmentRef = {
-  name: string;
-  kind: string;
-};
+export type AttachmentRef = components['schemas']['AttachmentRef'];
 
-export type SupervisorUpdatePayload = {
-  project_id: string;
-  update_date: string;
-  day_type: string;
-  work_location: string;
-  attendance_count: number;
-  overtime_hours: string;
-  progress_notes: string;
-  delay_notes?: string | null;
-  required_notes: string;
-  attachment_refs: AttachmentRef[];
-};
+export type SupervisorUpdatePayload = components['schemas']['SupervisorUpdateCreateRequest'];
 
-export type SupervisorUpdateRecord = SupervisorUpdatePayload & {
-  id: string;
-  supervisor_id: string;
-  status: string;
-  submitted_at: string | null;
-  verified_by: string | null;
-  verified_at: string | null;
-  verification_notes: string | null;
-};
+export type SupervisorUpdateRecord = components['schemas']['SupervisorUpdateResponse'];
 
-export type SupervisorUpdateListResponse = {
-  items: SupervisorUpdateRecord[];
-  total: number;
-};
+export type SupervisorUpdateListResponse = components['schemas']['SupervisorUpdateListResponse'];
 
 export async function listSupervisorUpdates(params: {
   project_id?: string;
