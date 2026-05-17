@@ -165,11 +165,24 @@ async def test_invoice_payment_budget_and_finance_visibility(
         assert attachment_url.status_code == 200
         assert attachment_url.json()["url"].startswith("https://files.example.test/")
 
+        list_invoices_called = False
+
+        async def fail_if_route_dependency_is_bypassed(*args, **kwargs):
+            nonlocal list_invoices_called
+            del args, kwargs
+            list_invoices_called = True
+            raise AssertionError("finance service should not be reached")
+
+        monkeypatch.setattr(
+            "app.services.finance_service.FinanceService.list_invoices",
+            fail_if_route_dependency_is_bypassed,
+        )
         blocked = await client.get(
             "/api/v1/finance/invoices",
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         assert blocked.status_code == 403
+        assert list_invoices_called is False
 
         blocked_payment = await client.post(
             f"/api/v1/finance/invoices/{invoice['id']}/payments",

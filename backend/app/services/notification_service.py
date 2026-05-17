@@ -1,13 +1,52 @@
+import asyncio
 from uuid import UUID
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session as SyncSession
 
+from app.database import AsyncSessionLocal
 from app.models.notification import Notification
 from app.models.user import User
 from app.repositories.notification_repository import NotificationRepository
 from app.tasks.email import send_email_notification
 from app.utils.exceptions import NotFoundException
 from app.utils.security import utc_now
+
+PENDING_EMAIL_NOTIFICATION_IDS = "pending_email_notification_ids"
+
+
+async def _mark_email_enqueue_failed(notification_id: UUID) -> None:
+    async with AsyncSessionLocal() as session:
+        notification = await session.get(Notification, notification_id)
+        if not notification:
+            return
+        notification.email_status = "failed"
+        await session.commit()
+
+
+def _schedule_email_enqueue_failure_update(notification_id: UUID) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_mark_email_enqueue_failed(notification_id))
+        return
+    loop.create_task(_mark_email_enqueue_failed(notification_id))
+
+
+@event.listens_for(SyncSession, "after_commit")
+def _enqueue_pending_notification_emails(session: SyncSession) -> None:
+    notification_ids = session.info.pop(PENDING_EMAIL_NOTIFICATION_IDS, set())
+    for notification_id in notification_ids:
+        try:
+            send_email_notification.delay(str(notification_id))
+        except Exception:
+            _schedule_email_enqueue_failure_update(notification_id)
+
+
+@event.listens_for(SyncSession, "after_rollback")
+def _discard_pending_notification_emails(session: SyncSession) -> None:
+    session.info.pop(PENDING_EMAIL_NOTIFICATION_IDS, None)
 
 
 class NotificationService:
@@ -36,10 +75,9 @@ class NotificationService:
                 email_status="queued",
             )
         )
-        try:
-            send_email_notification.delay(str(notification.id))
-        except Exception:
-            notification.email_status = "failed"
+        pending_ids = self.session.info.setdefault(PENDING_EMAIL_NOTIFICATION_IDS, set())
+        pending_ids.add(notification.id)
+        self.session.sync_session.info[PENDING_EMAIL_NOTIFICATION_IDS] = pending_ids
         return notification
 
     async def list_for_user(self, user: User) -> tuple[list[Notification], int]:

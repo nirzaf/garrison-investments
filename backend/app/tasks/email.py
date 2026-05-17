@@ -11,7 +11,14 @@ from app.tasks.celery_app import celery_app
 from app.utils.security import utc_now
 
 
-@celery_app.task(name="send_email_notification", queue="email")
+@celery_app.task(
+    name="send_email_notification",
+    queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def send_email_notification(notification_id: str | None = None) -> str:
     if notification_id is None:
         return "notification id required"
@@ -37,11 +44,16 @@ async def _send_email_notification(notification_id: str) -> str:
             await session.commit()
             return "notification recipient not found"
 
-        delivered = EmailService().send(
-            recipients=[user.email],
-            subject=notification.title,
-            body=notification.body,
-        )
+        try:
+            delivered = EmailService().send(
+                recipients=[user.email],
+                subject=notification.title,
+                body=notification.body,
+            )
+        except Exception:
+            notification.email_status = "failed"
+            await session.commit()
+            raise
         notification.email_status = "sent"
         await session.commit()
     return f"notification email sent to {delivered} recipient"
@@ -73,16 +85,22 @@ async def _send_report_email(export_id: str) -> str:
             await session.commit()
             return "report email skipped"
 
-        delivered = EmailService().send(
-            recipients=recipients,
-            subject=f"Daily report export ready: {export.file_name}",
-            body=(
-                "A daily report export is ready.\n\n"
-                f"File: {export.file_name}\n"
-                f"Object key: {export.object_key}\n"
-                f"Content type: {export.content_type}\n"
-            ),
-        )
+        try:
+            delivered = EmailService().send(
+                recipients=recipients,
+                subject=f"Daily report export ready: {export.file_name}",
+                body=(
+                    "A daily report export is ready.\n\n"
+                    f"File: {export.file_name}\n"
+                    f"Object key: {export.object_key}\n"
+                    f"Content type: {export.content_type}\n"
+                ),
+            )
+        except Exception as exc:
+            export.email_status = "failed"
+            export.email_error = str(exc)
+            await session.commit()
+            raise
         export.email_status = "sent"
         export.email_error = None
         export.emailed_at = utc_now()

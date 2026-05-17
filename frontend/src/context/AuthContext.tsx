@@ -11,13 +11,46 @@ import {
 import { setAccessToken } from '../api/client';
 import { AuthContext, type AuthContextValue, type LoginResult } from './auth-context';
 
+const refreshRetryDelaysMs = [300, 900];
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function getResponseStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return undefined;
+  }
+  return (error as { response?: { status?: number } }).response?.status;
+}
+
+async function refreshSessionWithRetry() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await refreshSession();
+    } catch (error) {
+      const status = getResponseStatus(error);
+      const isTerminalAuthFailure = status === 401 || status === 403;
+      const isNonRetryableClientFailure = status !== undefined && status < 500;
+      const hasAttemptsRemaining = attempt < refreshRetryDelaysMs.length;
+      if (isTerminalAuthFailure || isNonRetryableClientFailure || !hasAttemptsRemaining) {
+        throw error;
+      }
+      await delay(refreshRetryDelaysMs[attempt]);
+    }
+  }
+  throw new Error('Session refresh failed');
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    refreshSession()
+    refreshSessionWithRetry()
       .then((session) => {
         if (!active) return;
         setAccessToken(session.access_token);

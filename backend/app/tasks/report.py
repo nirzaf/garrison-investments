@@ -41,7 +41,14 @@ async def _generate_report_pdf(report_id: str, actor_id: str | None) -> str:
         return str(export.id)
 
 
-@celery_app.task(name="generate_excel_export", queue="report")
+@celery_app.task(
+    name="generate_excel_export",
+    queue="report",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def generate_excel_export(
     export_type: str = "project-progress",
     actor_id: str | None = None,
@@ -54,7 +61,14 @@ def generate_excel_export(
     return asyncio.run(_generate_management_export(export_type, actor_id, filters or {}))
 
 
-@celery_app.task(name="generate_management_export", queue="report")
+@celery_app.task(
+    name="generate_management_export",
+    queue="report",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def generate_management_export(export_type: str, actor_id: str, filters: dict) -> str:
     return asyncio.run(_generate_management_export(export_type, actor_id, filters))
 

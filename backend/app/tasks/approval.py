@@ -17,7 +17,14 @@ from app.utils.permissions import ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER, 
 from app.utils.security import utc_now
 
 
-@celery_app.task(name="process_approval_reminders", queue="maintenance")
+@celery_app.task(
+    name="process_approval_reminders",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def process_approval_reminders() -> dict[str, int]:
     async def run() -> dict[str, int]:
         async with AsyncSessionLocal() as session:
@@ -27,7 +34,14 @@ def process_approval_reminders() -> dict[str, int]:
     return asyncio.run(run())
 
 
-@celery_app.task(name="check_low_stock", queue="maintenance")
+@celery_app.task(
+    name="check_low_stock",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def check_low_stock() -> dict[str, int]:
     async def run() -> dict[str, int]:
         async with AsyncSessionLocal() as session:

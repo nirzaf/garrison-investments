@@ -157,20 +157,34 @@ async def test_generic_approval_chain_delegation_rejection_and_override() -> Non
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "rejected"
 
-        high_value = await client.post(
+        blocked_entity_approval = await client.post(
             "/api/v1/approvals",
             json={
                 "request_type": "material_request",
                 "request_id": str(uuid4()),
                 "project_id": str(project.id),
-                "title": "High value steel request",
+                "title": "Direct material request approval",
+                "amount": "1500.00",
+                "currency": "USD",
+            },
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert blocked_entity_approval.status_code == 403
+        assert blocked_entity_approval.json()["error_code"] == "APPROVAL_TYPE_FORBIDDEN"
+
+        high_value = await client.post(
+            "/api/v1/approvals",
+            json={
+                "request_type": "project_change",
+                "request_id": str(uuid4()),
+                "project_id": str(project.id),
+                "title": "High priority sequence override",
                 "amount": "1500.00",
                 "currency": "USD",
             },
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         assert high_value.status_code == 201
-        assert high_value.json()["approver_id"] != str(project_manager.id)
 
         overridden = await client.post(
             f"/api/v1/approvals/{high_value.json()['id']}/override",

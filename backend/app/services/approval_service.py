@@ -22,6 +22,7 @@ from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJE
 from app.utils.security import utc_now
 
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
+ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
 
 
 class ApprovalService:
@@ -38,7 +39,14 @@ class ApprovalService:
         actor: User,
         *,
         commit: bool = True,
+        internal: bool = False,
     ) -> Approval:
+        if payload.request_type in ENTITY_BACKED_REQUEST_TYPES and not internal:
+            raise AppException(
+                "This approval type must be created by its owning workflow.",
+                status_code=403,
+                error_code="APPROVAL_TYPE_FORBIDDEN",
+            )
         existing = await self.approvals.get_open_for_request(
             payload.request_type, payload.request_id
         )
@@ -215,7 +223,7 @@ class ApprovalService:
                 status_code=403,
                 error_code="APPROVAL_OVERRIDE_FORBIDDEN",
             )
-        approval = await self._get(approval_id)
+        approval = await self._get(approval_id, for_update=True)
         if approval.status not in APPROVAL_PENDING_STATUSES:
             raise AppException(
                 "Only pending approvals can be overridden.",
@@ -276,14 +284,14 @@ class ApprovalService:
         await self.session.commit()
         return reminded, escalated
 
-    async def _get(self, approval_id: UUID) -> Approval:
-        approval = await self.approvals.get_by_id(approval_id)
+    async def _get(self, approval_id: UUID, *, for_update: bool = False) -> Approval:
+        approval = await self.approvals.get_by_id(approval_id, for_update=for_update)
         if not approval:
             raise NotFoundException("Approval")
         return approval
 
     async def _get_actionable(self, approval_id: UUID, actor: User) -> Approval:
-        approval = await self._get(approval_id)
+        approval = await self._get(approval_id, for_update=True)
         if approval.status not in APPROVAL_PENDING_STATUSES:
             raise AppException(
                 "Approval is already final.",
@@ -361,19 +369,23 @@ class ApprovalService:
     ) -> None:
         if approval.request_type == "material_request":
             request = await self.session.scalar(
-                select(MaterialRequest).where(
+                select(MaterialRequest)
+                .where(
                     MaterialRequest.id == approval.request_id,
                     MaterialRequest.deleted_at.is_(None),
                 )
+                .with_for_update()
             )
             if request and request.status not in {"reserved", "issued", "partially_issued"}:
                 request.status = "approved" if decision == "approved" else "cancelled"
         elif approval.request_type == "invoice":
             invoice = await self.session.scalar(
-                select(Invoice).where(
+                select(Invoice)
+                .where(
                     Invoice.id == approval.request_id,
                     Invoice.deleted_at.is_(None),
                 )
+                .with_for_update()
             )
             if invoice:
                 invoice.status = "approved" if decision == "approved" else "rejected"
@@ -382,10 +394,12 @@ class ApprovalService:
                     invoice.approved_at = utc_now()
         elif approval.request_type == "daily_report":
             report = await self.session.scalar(
-                select(DailyReport).where(
+                select(DailyReport)
+                .where(
                     DailyReport.id == approval.request_id,
                     DailyReport.deleted_at.is_(None),
                 )
+                .with_for_update()
             )
             if report:
                 previous_status = report.status
@@ -408,10 +422,12 @@ class ApprovalService:
                 )
         elif approval.request_type == "document":
             document = await self.session.scalar(
-                select(Document).where(
+                select(Document)
+                .where(
                     Document.id == approval.request_id,
                     Document.deleted_at.is_(None),
                 )
+                .with_for_update()
             )
             if document:
                 if decision == "approved":

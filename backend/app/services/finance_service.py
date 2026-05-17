@@ -75,6 +75,7 @@ class FinanceService:
             ),
             actor,
             commit=False,
+            internal=True,
         )
         await self.audit.record(
             action="finance.invoices.created",
@@ -136,7 +137,7 @@ class FinanceService:
         payload: InvoiceUpdateRequest,
         actor: User,
     ) -> Invoice:
-        invoice = await self.get_invoice(invoice_id, actor)
+        invoice = await self._get_invoice_for_update(invoice_id, actor)
         if payload.status == "approved":
             if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER}:
                 raise AppException(
@@ -168,13 +169,24 @@ class FinanceService:
         await self.session.commit()
         return invoice
 
+    async def _get_invoice_for_update(self, invoice_id: UUID, actor: User) -> Invoice:
+        self.ensure_finance_access(actor)
+        invoice = await self.session.scalar(
+            select(Invoice)
+            .where(Invoice.id == invoice_id, Invoice.deleted_at.is_(None))
+            .with_for_update()
+        )
+        if not invoice:
+            raise NotFoundException("Invoice")
+        return invoice
+
     async def upload_invoice_attachment(
         self,
         invoice_id: UUID,
         file: UploadFile,
         actor: User,
     ) -> Invoice:
-        invoice = await self.get_invoice(invoice_id, actor)
+        invoice = await self._get_invoice_for_update(invoice_id, actor)
         data = await file.read()
         mime_type = self._validate_file(file.filename or "invoice-attachment", data)
         extension = ".pdf" if mime_type == "application/pdf" else Path(file.filename or "").suffix
@@ -195,7 +207,7 @@ class FinanceService:
         return await self.get_invoice(invoice_id, actor)
 
     async def signed_invoice_attachment_url(self, invoice_id: UUID, actor: User) -> str:
-        invoice = await self.get_invoice(invoice_id, actor)
+        invoice = await self._get_invoice_for_update(invoice_id, actor)
         if not invoice.attachment_key:
             raise NotFoundException("Invoice attachment")
         await self.audit.record(
@@ -218,7 +230,7 @@ class FinanceService:
         payload: PaymentCreateRequest,
         actor: User,
     ) -> Invoice:
-        invoice = await self.get_invoice(invoice_id, actor)
+        invoice = await self._get_invoice_for_update(invoice_id, actor)
         if invoice.status != "approved":
             raise AppException(
                 "Invoice must be approved before recording payments.",

@@ -16,10 +16,11 @@ class ApprovalRepository:
         await self.session.flush()
         return approval
 
-    async def get_by_id(self, approval_id: UUID) -> Approval | None:
-        return await self.session.scalar(
-            select(Approval).where(Approval.id == approval_id, Approval.deleted_at.is_(None))
-        )
+    async def get_by_id(self, approval_id: UUID, *, for_update: bool = False) -> Approval | None:
+        query = select(Approval).where(Approval.id == approval_id, Approval.deleted_at.is_(None))
+        if for_update:
+            query = query.with_for_update()
+        return await self.session.scalar(query)
 
     async def get_open_for_request(self, request_type: str, request_id: UUID) -> Approval | None:
         return await self.session.scalar(
