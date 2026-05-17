@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,10 +30,12 @@ from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
+    PERMISSION_INVENTORY_MANAGE,
     ROLE_ACCOUNTS,
     ROLE_ADMIN,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
+    has_permission,
 )
 
 PRICE_VISIBLE_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_ACCOUNTS}
@@ -288,10 +290,10 @@ class InventoryService:
         actor: User,
     ) -> MaterialRequest:
         sequence = int(
-            await self.session.scalar(select(func.count()).select_from(MaterialRequest)) or 0
+            await self.session.scalar(text("select nextval('material_request_number_seq')"))
         )
         request = MaterialRequest(
-            request_number=f"MR-{sequence + 1:05d}",
+            request_number=f"MR-{sequence:05d}",
             project_id=payload.project_id,
             requester_id=actor.id,
             from_location_id=payload.from_location_id,
@@ -328,6 +330,7 @@ class InventoryService:
             ),
             actor,
             commit=False,
+            internal=True,
         )
         request_id = request.id
         await self.session.commit()
@@ -340,13 +343,14 @@ class InventoryService:
                 await self.session.scalars(
                     select(MaterialRequest)
                     .where(MaterialRequest.deleted_at.is_(None))
+                    .options(selectinload(MaterialRequest.lines))
                     .order_by(MaterialRequest.created_at.desc())
                 )
             ).all()
         )
 
     async def reserve_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        request = await self._get_material_request(request_id)
+        request = await self._get_material_request(request_id, for_update=True)
         if request.status != "approved":
             raise AppException(
                 "Only approved material requests can be reserved.",
@@ -376,7 +380,7 @@ class InventoryService:
         return request
 
     async def issue_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        request = await self._get_material_request(request_id)
+        request = await self._get_material_request(request_id, for_update=True)
         if request.status not in {"reserved", "partially_issued"}:
             raise AppException(
                 "Only reserved material requests can be issued.",
@@ -388,7 +392,7 @@ class InventoryService:
             remaining = line.quantity - line.issued_quantity
             if remaining <= 0:
                 continue
-            stock = await self._get_stock(line.item_id, request.from_location_id)
+            stock = await self._get_stock(line.item_id, request.from_location_id, for_update=True)
             if stock.reserved_qty < remaining:
                 fully_issued = False
                 continue
@@ -412,7 +416,16 @@ class InventoryService:
         return request
 
     async def cancel_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        request = await self._get_material_request(request_id)
+        request = await self._get_material_request(request_id, for_update=True)
+        if request.requester_id != actor.id and not has_permission(
+            actor,
+            PERMISSION_INVENTORY_MANAGE,
+        ):
+            raise AppException(
+                "You cannot cancel this material request.",
+                status_code=403,
+                error_code="REQUEST_CANCEL_FORBIDDEN",
+            )
         if request.status in {"issued", "cancelled"}:
             raise AppException(
                 "Material request cannot be cancelled.",
@@ -421,7 +434,11 @@ class InventoryService:
             )
         for line in request.lines:
             if line.reserved_quantity > 0:
-                stock = await self._get_stock(line.item_id, request.from_location_id)
+                stock = await self._get_stock(
+                    line.item_id,
+                    request.from_location_id,
+                    for_update=True,
+                )
                 stock.reserved_qty -= line.reserved_quantity
                 line.reserved_quantity = Decimal("0")
         request.status = "cancelled"
@@ -495,7 +512,7 @@ class InventoryService:
     async def _decrease_available(
         self, item_id: UUID, location_id: UUID, quantity: Decimal
     ) -> None:
-        stock = await self._get_stock(item_id, location_id)
+        stock = await self._get_stock(item_id, location_id, for_update=True)
         available = stock.on_hand_qty - stock.reserved_qty
         if available < quantity:
             raise AppException(
@@ -510,7 +527,7 @@ class InventoryService:
     ) -> None:
         if not location_id:
             raise AppException("Reservation requires source location.", status_code=422)
-        stock = await self._get_stock(item_id, location_id)
+        stock = await self._get_stock(item_id, location_id, for_update=True)
         available = stock.on_hand_qty - stock.reserved_qty
         if available < quantity:
             raise AppException(
@@ -520,16 +537,23 @@ class InventoryService:
             )
         stock.reserved_qty += quantity
 
-    async def _get_stock(self, item_id: UUID, location_id: UUID | None) -> InventoryLocationStock:
+    async def _get_stock(
+        self,
+        item_id: UUID,
+        location_id: UUID | None,
+        *,
+        for_update: bool = False,
+    ) -> InventoryLocationStock:
         if not location_id:
             raise AppException("Location is required.", status_code=422)
-        stock = await self.session.scalar(
-            select(InventoryLocationStock).where(
-                InventoryLocationStock.item_id == item_id,
-                InventoryLocationStock.location_id == location_id,
-                InventoryLocationStock.deleted_at.is_(None),
-            )
+        query = select(InventoryLocationStock).where(
+            InventoryLocationStock.item_id == item_id,
+            InventoryLocationStock.location_id == location_id,
+            InventoryLocationStock.deleted_at.is_(None),
         )
+        if for_update:
+            query = query.with_for_update()
+        stock = await self.session.scalar(query)
         if not stock:
             raise AppException("Stock is not available at this location.", status_code=409)
         return stock
@@ -539,12 +563,18 @@ class InventoryService:
         item_id: UUID,
         location_id: UUID,
     ) -> InventoryLocationStock:
+        await self.session.execute(
+            text("select pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"inventory-stock:{item_id}:{location_id}"},
+        )
         stock = await self.session.scalar(
-            select(InventoryLocationStock).where(
+            select(InventoryLocationStock)
+            .where(
                 InventoryLocationStock.item_id == item_id,
                 InventoryLocationStock.location_id == location_id,
                 InventoryLocationStock.deleted_at.is_(None),
             )
+            .with_for_update()
         )
         if stock:
             return stock
@@ -610,8 +640,13 @@ class InventoryService:
                 return stock
         return None
 
-    async def _get_material_request(self, request_id: UUID) -> MaterialRequest:
-        request = await self.session.scalar(
+    async def _get_material_request(
+        self,
+        request_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> MaterialRequest:
+        query = (
             select(MaterialRequest)
             .where(
                 MaterialRequest.id == request_id,
@@ -619,6 +654,18 @@ class InventoryService:
             )
             .options(selectinload(MaterialRequest.lines))
         )
+        if for_update:
+            query = query.with_for_update()
+        request = await self.session.scalar(query)
         if not request:
             raise NotFoundException("Material request")
+        if for_update:
+            await self.session.scalars(
+                select(MaterialRequestLine)
+                .where(
+                    MaterialRequestLine.request_id == request.id,
+                    MaterialRequestLine.deleted_at.is_(None),
+                )
+                .with_for_update()
+            )
         return request

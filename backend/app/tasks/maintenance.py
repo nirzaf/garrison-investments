@@ -18,7 +18,14 @@ from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PR
 from app.utils.security import utc_now
 
 
-@celery_app.task(name="cleanup_old_notifications", queue="maintenance")
+@celery_app.task(
+    name="cleanup_old_notifications",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def cleanup_old_notifications() -> str:
     return asyncio.run(_cleanup_old_notifications())
 
@@ -45,7 +52,14 @@ async def _cleanup_old_notifications() -> str:
     return f"{len(notifications)} notifications cleaned up"
 
 
-@celery_app.task(name="check_late_reports", queue="maintenance")
+@celery_app.task(
+    name="check_late_reports",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def check_late_reports() -> str:
     return asyncio.run(_check_late_reports())
 
@@ -116,7 +130,14 @@ async def _check_late_reports() -> str:
     return f"{missing_count} late daily report alerts recorded"
 
 
-@celery_app.task(name="check_supplier_tds_expiry", queue="maintenance")
+@celery_app.task(
+    name="check_supplier_tds_expiry",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def check_supplier_tds_expiry() -> str:
     return asyncio.run(_check_supplier_tds_expiry())
 

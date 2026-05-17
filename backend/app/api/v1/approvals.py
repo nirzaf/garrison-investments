@@ -12,7 +12,8 @@ from app.schemas.approvals import (
     ApprovalOverrideRequest,
     ApprovalResponse,
 )
-from app.services.approval_service import ApprovalService
+from app.services.approval_service import ENTITY_BACKED_REQUEST_TYPES, ApprovalService
+from app.utils.exceptions import AppException
 
 router = APIRouter(prefix="/approvals", tags=["Approvals"])
 
@@ -45,6 +46,13 @@ async def create_approval(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
+    # Entity-backed approvals are opened by their owning services with internal=True.
+    if payload.request_type in ENTITY_BACKED_REQUEST_TYPES:
+        raise AppException(
+            "This approval type must be created by its owning workflow.",
+            status_code=403,
+            error_code="APPROVAL_TYPE_FORBIDDEN",
+        )
     approval = await ApprovalService(session).create_approval(payload, current_user)
     return ApprovalResponse.model_validate(approval)
 

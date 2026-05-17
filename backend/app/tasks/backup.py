@@ -11,12 +11,20 @@ def backup_command(monthly: bool = False) -> list[str]:
     return command
 
 
-@celery_app.task(name="run_database_backup", queue="backup")
+@celery_app.task(
+    name="run_database_backup",
+    queue="backup",
+    autoretry_for=(subprocess.CalledProcessError, subprocess.TimeoutExpired),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
 def run_database_backup(monthly: bool = False) -> str:
     result = subprocess.run(
         backup_command(monthly),
         check=True,
         capture_output=True,
         text=True,
+        timeout=900,
     )
     return result.stdout.strip()

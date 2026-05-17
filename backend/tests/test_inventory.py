@@ -254,3 +254,132 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
             headers={"Authorization": f"Bearer {store_token}"},
         )
         assert low_stock.status_code == 200
+
+
+async def test_reserve_request_concurrency() -> None:
+    await skip_if_database_unavailable()
+    import asyncio
+
+    store, store_password = await create_user("store_keeper")
+    engineer, engineer_password = await create_user("civil_engineer")
+    pm, pm_password = await create_user("project_manager")
+    await create_user("operation_manager")
+    project = await create_project(pm, engineer)
+
+    async with create_test_client() as client:
+        store_token = await login_for_token(client, store, store_password)
+        engineer_token = await login_for_token(client, engineer, engineer_password)
+        pm_token = await login_for_token(client, pm, pm_password)
+
+        location_response = await client.post(
+            "/api/v1/inventory/locations",
+            json={
+                "name": "Concurrency Warehouse",
+                "code": f"CW2-{uuid4().hex[:6]}",
+                "location_type": "warehouse",
+                "address": "Industrial Area",
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+        location = location_response.json()
+
+        supplier_response = await client.post(
+            "/api/v1/suppliers",
+            json={
+                "name": "Concurrency Supplier",
+                "category": "Civil",
+                "rating": "A",
+                "payment_terms": "30 days",
+                "contact_person": "Supplier Contact",
+                "phone": "+97455550666",
+                "email": f"supp-con-{uuid4().hex}@example.com",
+                "address": "Industrial Area",
+                "tax_registration_number": f"TAX2-{uuid4().hex[:8]}",
+                "tds_certificate_number": "TDS-002",
+                "tds_expiry_date": "2027-05-16",
+                "compliance_status": "compliant",
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+        supplier = supplier_response.json()
+
+        item_response = await client.post(
+            "/api/v1/inventory/items",
+            json={
+                "name": "Concurrency Item",
+                "item_code": f"CITEM-{uuid4().hex[:6]}",
+                "category": "Civil",
+                "item_type": "consumable",
+                "unit": "Nos",
+                "minimum_stock": "5",
+                "reorder_level": "5",
+                "unit_cost": "12.50",
+                "supplier_id": supplier["id"],
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+        item = item_response.json()
+
+        await client.post(
+            "/api/v1/inventory/movements",
+            json={
+                "item_id": item["id"],
+                "movement_type": "receive",
+                "quantity": "5",
+                "to_location_id": location["id"],
+                "notes": "Opening stock",
+            },
+            headers={"Authorization": f"Bearer {store_token}"},
+        )
+
+        request_response = await client.post(
+            "/api/v1/inventory/requests",
+            json={
+                "project_id": str(project.id),
+                "from_location_id": location["id"],
+                "notes": "Site pour",
+                "lines": [{"item_id": item["id"], "quantity": "5"}],
+            },
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        material_request = request_response.json()
+
+        approvals = await client.get(
+            "/api/v1/approvals",
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        approval = next(
+            item
+            for item in approvals.json()["items"]
+            if item["request_id"] == material_request["id"]
+        )
+        await client.post(
+            f"/api/v1/approvals/{approval['id']}/approve",
+            json={"comments": "Approved for site work."},
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+
+        async def make_reserve_request():
+            async with create_test_client() as new_client:
+                return await new_client.post(
+                    f"/api/v1/inventory/requests/{material_request['id']}/reserve",
+                    headers={"Authorization": f"Bearer {store_token}"},
+        )
+
+        reserve_responses = await asyncio.gather(*[make_reserve_request() for _ in range(5)])
+
+        success_count = sum(1 for r in reserve_responses if r.status_code == 200)
+        assert success_count == 1, (
+            f"Expected exactly 1 successful reservation, got {success_count}."
+        )
+
+        async def make_issue_request():
+            async with create_test_client() as new_client:
+                return await new_client.post(
+                    f"/api/v1/inventory/requests/{material_request['id']}/issue",
+                    headers={"Authorization": f"Bearer {store_token}"},
+                )
+
+        issue_responses = await asyncio.gather(*[make_issue_request() for _ in range(5)])
+        issue_success = sum(1 for r in issue_responses if r.status_code == 200)
+        assert issue_success == 1, f"Expected exactly 1 successful issuance, got {issue_success}."

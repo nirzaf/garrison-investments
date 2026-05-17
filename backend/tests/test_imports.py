@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.import_service import ImportService
+from app.tasks.imports import _run_import_async
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -198,3 +199,45 @@ async def test_import_templates_create_records_and_opening_stock_transactionally
         )
         assert failed.status == "failed"
         assert await session.scalar(select(func.count()).select_from(ImportBatch)) is not None
+
+
+async def test_async_import_marks_existing_batch_failed_on_unexpected_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    actor = await create_admin()
+    async with AsyncSessionLocal() as session:
+        batch = ImportBatch(
+            template_type="materials",
+            file_name="materials.csv",
+            status="queued",
+            created_by=actor.id,
+        )
+        session.add(batch)
+        await session.commit()
+        await session.refresh(batch)
+        batch_id = batch.id
+
+    async def raise_unexpected_import_error(self, **kwargs):
+        del self, kwargs
+        raise RuntimeError("storage temporarily unavailable")
+
+    monkeypatch.setattr(
+        "app.services.import_service.ImportService.run_import",
+        raise_unexpected_import_error,
+    )
+
+    with pytest.raises(RuntimeError, match="storage temporarily unavailable"):
+        await _run_import_async(
+            template_type="materials",
+            file_name="materials.csv",
+            content=b"name,item_code\n",
+            actor_id=str(actor.id),
+            batch_id=str(batch_id),
+        )
+
+    async with AsyncSessionLocal() as session:
+        failed_batch = await session.get(ImportBatch, batch_id)
+        assert failed_batch is not None
+        assert failed_batch.status == "failed"
+        assert failed_batch.summary == {"error": "storage temporarily unavailable"}

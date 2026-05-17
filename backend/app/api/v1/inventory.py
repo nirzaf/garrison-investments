@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.api.dependencies import DbSession, require_permission
 from app.models.inventory import InventoryLocationStock
 from app.models.user import User
 from app.schemas.inventory import (
@@ -146,7 +146,7 @@ async def low_stock(_: CanViewInventory, session: DbSession) -> list[StockRespon
 
 @router.get("/requests", response_model=list[MaterialRequestResponse])
 async def list_material_requests(
-    _: CurrentUser,
+    _: CanViewInventory,
     session: DbSession,
 ) -> list[MaterialRequestResponse]:
     requests = await InventoryService(session).list_material_requests()
@@ -158,7 +158,7 @@ async def list_material_requests(
 )
 async def create_material_request(
     payload: MaterialRequestCreateRequest,
-    current_user: CurrentUser,
+    current_user: CanViewInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).create_material_request(payload, current_user)
@@ -188,7 +188,7 @@ async def issue_material_request(
 @router.post("/requests/{request_id}/cancel", response_model=MaterialRequestResponse)
 async def cancel_material_request(
     request_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanViewInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).cancel_request(request_id, current_user)
