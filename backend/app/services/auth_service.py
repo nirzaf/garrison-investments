@@ -88,22 +88,26 @@ class AuthService:
         await self.session.commit()
         return OtpChallengeResult(
             challenge=challenge,
-            otp=otp if self.settings.dev_expose_otp else None,
+            otp=otp if self.settings.should_expose_dev_otp else None,
         )
 
     async def verify_otp(self, challenge_id: UUID, otp: str, meta: RequestMeta) -> SessionResult:
-        challenge = await self.auth.get_otp_challenge(challenge_id)
+        challenge = await self.auth.get_otp_challenge(challenge_id, for_update=True)
         now = utc_now()
+        max_attempts = self.settings.auth_failed_attempt_limit
+        if not challenge or challenge.attempts >= max_attempts:
+            raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
+
         if (
-            not challenge
-            or challenge.purpose != "login"
+            challenge.purpose != "login"
             or challenge.consumed_at is not None
             or challenge.expires_at <= now
             or challenge.otp_hash != hash_secret(otp)
         ):
-            if challenge:
-                challenge.attempts += 1
-                await self.session.commit()
+            challenge.attempts += 1
+            if challenge.attempts >= max_attempts:
+                challenge.consumed_at = now
+            await self.session.commit()
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
         user = await self.users.get_by_id(challenge.user_id)
@@ -125,7 +129,10 @@ class AuthService:
         return result
 
     async def refresh(self, refresh_token: str, meta: RequestMeta) -> SessionResult:
-        token = await self.auth.get_refresh_token_by_hash(hash_secret(refresh_token))
+        token = await self.auth.get_refresh_token_by_hash(
+            hash_secret(refresh_token),
+            for_update=True,
+        )
         now = utc_now()
         if not token or token.revoked_at or token.expires_at <= now:
             raise AppException(
@@ -226,7 +233,7 @@ class AuthService:
         await self.session.commit()
         return OtpChallengeResult(
             challenge=challenge,
-            otp=otp if self.settings.dev_expose_otp else None,
+            otp=otp if self.settings.should_expose_dev_otp else None,
         )
 
     async def confirm_password_reset(
@@ -237,18 +244,25 @@ class AuthService:
         meta: RequestMeta,
     ) -> None:
         validate_password_policy(new_password)
-        challenge = await self.auth.get_otp_challenge(challenge_id)
+        challenge = await self.auth.get_otp_challenge(challenge_id, for_update=True)
         now = utc_now()
+        max_attempts = self.settings.auth_failed_attempt_limit
+        if not challenge or challenge.attempts >= max_attempts:
+            raise AppException(
+                "Invalid or expired password reset code.",
+                status_code=401,
+                error_code="PASSWORD_RESET_FAILED",
+            )
         if (
-            not challenge
-            or challenge.purpose != "password_reset"
+            challenge.purpose != "password_reset"
             or challenge.consumed_at is not None
             or challenge.expires_at <= now
             or challenge.otp_hash != hash_secret(otp)
         ):
-            if challenge:
-                challenge.attempts += 1
-                await self.session.commit()
+            challenge.attempts += 1
+            if challenge.attempts >= max_attempts:
+                challenge.consumed_at = now
+            await self.session.commit()
             raise AppException(
                 "Invalid or expired password reset code.",
                 status_code=401,

@@ -1,3 +1,4 @@
+from contextlib import suppress
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -24,11 +25,18 @@ from app.utils.permissions import (
     ROLE_ADMIN,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
+    ROLE_PROJECT_MANAGER,
 )
 from app.utils.security import utc_now
 
-FINANCE_ROLES = {ROLE_ADMIN, ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_GENERAL_MANAGER}
-MAX_INVOICE_FILE_SIZE = 10 * 1024 * 1024
+FINANCE_ROLES = {
+    ROLE_ADMIN,
+    ROLE_ACCOUNTS,
+    ROLE_OPERATION_MANAGER,
+    ROLE_GENERAL_MANAGER,
+    ROLE_PROJECT_MANAGER,
+}
+MAX_INVOICE_FILE_SIZE = 30 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
 ALLOWED_INVOICE_FILE_MAGIC = {
     "application/pdf": (b"%PDF-",),
@@ -194,16 +202,22 @@ class FinanceService:
         self._upload_object(object_key, data, mime_type)
         old_key = invoice.attachment_key
         invoice.attachment_key = object_key
-        await self.audit.record(
-            action="finance.invoices.attachment_uploaded",
-            user_id=actor.id,
-            entity_type="invoices",
-            entity_id=invoice.id,
-            old_values={"attachment_key": old_key},
-            new_values={"attachment_key": object_key},
-        )
         invoice_id = invoice.id
-        await self.session.commit()
+        try:
+            await self.audit.record(
+                action="finance.invoices.attachment_uploaded",
+                user_id=actor.id,
+                entity_type="invoices",
+                entity_id=invoice.id,
+                old_values={"attachment_key": old_key},
+                new_values={"attachment_key": object_key},
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            with suppress(Exception):
+                self._delete_object(object_key)
+            raise
         return await self.get_invoice(invoice_id, actor)
 
     async def signed_invoice_attachment_url(self, invoice_id: UUID, actor: User) -> str:
@@ -331,3 +345,6 @@ class FinanceService:
             length=len(data),
             content_type=content_type,
         )
+
+    def _delete_object(self, object_key: str) -> None:
+        self._client().remove_object(self.settings.minio_bucket, object_key)

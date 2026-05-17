@@ -43,6 +43,35 @@ Inventory & Stores is a Phase 2 capability for consumable materials and trackabl
 | 13 | [Prototype Guide](PROTOTYPE.md) | Next.js requirements prototype structure, run commands, and stakeholder walkthrough map |
 | 14 | [Deployment Environment](DEPLOYMENT_ENVIRONMENT.md) | Docker Compose production prerequisites, environment variables, and verification commands |
 
+## Backend Architecture
+
+The backend follows a layered architecture utilizing FastAPI, organizing concerns into discrete layers for maintainability and testing.
+
+```mermaid
+flowchart TD
+    Client((Client App)) -->|HTTP Requests| API[API Routers<br/>app/api]
+    API -->|Pydantic Validation| Services[Business Services<br/>app/services]
+    Services -->|Background Tasks| Celery[Celery Tasks<br/>app/tasks]
+    Services -->|Entity Models| Repositories[Data Repositories<br/>app/repositories]
+    Repositories -->|SQLAlchemy| Models[ORM Models<br/>app/models]
+    Models <--> Database[(PostgreSQL)]
+    Celery --> Redis[(Redis Broker)]
+```
+
+### Directory Structure
+
+```text
+backend/app/
+├── api/          # FastAPI routers & endpoint handlers
+├── middleware/   # Custom middlewares (CORS, metrics, logging)
+├── models/       # SQLAlchemy ORM definitions
+├── repositories/ # Data access layer for database queries
+├── schemas/      # Pydantic models for Input/Output validation
+├── services/     # Business logic orchestration
+├── tasks/        # Celery async background tasks
+└── utils/        # Shared helper utilities and exceptions
+```
+
 ## Quick Start (Development)
 
 ```bash

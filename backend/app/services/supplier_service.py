@@ -16,7 +16,7 @@ from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.security import utc_now
 
-MAX_TDS_FILE_SIZE = 10 * 1024 * 1024
+MAX_TDS_FILE_SIZE = 30 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
 ALLOWED_SUPPLIER_FILE_MAGIC = {
     "application/pdf": (b"%PDF-",),

@@ -154,6 +154,74 @@ async def test_change_password_clears_forced_change_flag() -> None:
         assert login_after_change.status_code == 200
 
 
+async def test_refresh_token_cannot_be_reused_after_rotation() -> None:
+    await skip_if_database_unavailable()
+    email = f"refresh-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, password=password)
+
+    async with create_test_client() as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        challenge = login_response.json()
+        await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+        )
+
+        original_refresh_token = client.cookies.get("refresh_token")
+        assert original_refresh_token
+
+        refresh_response = await client.post("/api/v1/auth/refresh")
+
+        assert refresh_response.status_code == 200
+        rotated_refresh_token = client.cookies.get("refresh_token")
+        assert rotated_refresh_token
+        assert rotated_refresh_token != original_refresh_token
+
+        reuse_response = await client.post(
+            "/api/v1/auth/refresh",
+            cookies={"refresh_token": original_refresh_token},
+        )
+
+        assert reuse_response.status_code == 401
+        assert reuse_response.json()["error_code"] == "REFRESH_TOKEN_INVALID"
+
+
+async def test_login_otp_is_invalidated_after_max_failed_attempts() -> None:
+    await skip_if_database_unavailable()
+    email = f"otp-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, password=password)
+
+    async with create_test_client() as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+
+        assert login_response.status_code == 200
+        challenge = login_response.json()
+
+        for _ in range(3):
+            failed_response = await client.post(
+                "/api/v1/auth/verify-otp",
+                json={"challenge_id": challenge["challenge_id"], "otp": "000000"},
+            )
+            assert failed_response.status_code == 401
+            assert failed_response.json()["error_code"] == "OTP_FAILED"
+
+        locked_response = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+        )
+
+        assert locked_response.status_code == 401
+        assert locked_response.json()["error_code"] == "OTP_FAILED"
+
+
 async def test_auth_rate_limit_blocks_repeated_login_attempts(monkeypatch) -> None:
     await skip_if_database_unavailable()
     email = f"limited-{uuid4().hex}@example.com"

@@ -11,6 +11,7 @@ from app.api.v1.router import api_router
 from app.config import get_settings
 from app.database import check_database
 from app.middleware import AuthRateLimiter, audit_authenticated_request
+from app.services.exception_reporter import report_unhandled_exception
 from app.utils.exceptions import AppException
 
 logger = structlog.get_logger("app.api")
@@ -95,6 +96,26 @@ def create_app() -> FastAPI:
                 "detail": exc.message,
                 "error_code": exc.error_code,
                 "errors": exc.errors,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.error(
+            "unhandled_request_exception",
+            request_id=getattr(request.state, "request_id", None),
+            method=request.method,
+            path=request.url.path,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc),
+        )
+        await report_unhandled_exception(request, exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error.",
+                "error_code": "INTERNAL_SERVER_ERROR",
+                "errors": [],
             },
         )
 

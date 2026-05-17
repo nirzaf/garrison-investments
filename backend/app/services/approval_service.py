@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.approval import Approval
 from app.models.daily_report import DailyReport, DailyReportApprovalHistory
@@ -427,6 +428,7 @@ class ApprovalService:
                     Document.id == approval.request_id,
                     Document.deleted_at.is_(None),
                 )
+                .options(selectinload(Document.versions))
                 .with_for_update()
             )
             if document:

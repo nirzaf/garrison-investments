@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     smtp_from_email: str = "no-reply@garrisons.qa"
     smtp_from_name: str = "Garrisons Investments"
+    exception_email_recipients: str = "quadrate.lk@gmail.com"
+    exception_email_enabled: bool | None = None
     notification_retention_days: int = 90
 
     minio_endpoint: str = "localhost:9000"
@@ -47,7 +49,8 @@ class Settings(BaseSettings):
     otp_expire_minutes: int = 10
     account_lockout_minutes: int = 30
     auth_failed_attempt_limit: int = 3
-    dev_expose_otp: bool = True
+    dev_expose_otp: bool | None = None
+    trusted_proxy_ips: str = "127.0.0.1,::1"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -59,6 +62,30 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def trusted_proxy_ips_list(self) -> list[str]:
+        return [ip.strip() for ip in self.trusted_proxy_ips.split(",") if ip.strip()]
+
+    @property
+    def should_expose_dev_otp(self) -> bool:
+        if self.dev_expose_otp is not None:
+            return self.dev_expose_otp
+        return self.app_env.lower() in {"development", "test", "local"}
+
+    @property
+    def exception_email_recipients_list(self) -> list[str]:
+        return [
+            recipient.strip()
+            for recipient in self.exception_email_recipients.split(",")
+            if recipient.strip()
+        ]
+
+    @property
+    def should_send_exception_emails(self) -> bool:
+        if self.exception_email_enabled is not None:
+            return self.exception_email_enabled
+        return self.app_env.lower() in {"production", "prod", "staging"}
 
 
 @lru_cache
