@@ -222,6 +222,73 @@ async def test_login_otp_is_invalidated_after_max_failed_attempts() -> None:
         assert locked_response.json()["error_code"] == "OTP_FAILED"
 
 
+async def test_staging_generic_login_otp_allows_login(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    email = f"staging-otp-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, password=password)
+
+    custom_settings = Settings(
+        app_env="staging",
+        staging_login_otp="246810",
+        dev_expose_otp=False,
+    )
+    monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
+
+    async with create_test_client() as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+
+        assert login_response.status_code == 200
+        challenge = login_response.json()
+        assert challenge["dev_otp"] is None
+
+        otp_response = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": challenge["challenge_id"], "otp": "246810"},
+        )
+
+        assert otp_response.status_code == 200
+        assert otp_response.json()["user"]["email"] == email
+
+
+async def test_generic_login_otp_is_ignored_outside_staging(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    email = f"prod-otp-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, password=password)
+
+    custom_settings = Settings(
+        app_env="production",
+        staging_login_otp="246810",
+        dev_expose_otp=True,
+    )
+    monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
+
+    async with create_test_client() as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+
+        assert login_response.status_code == 200
+        challenge = login_response.json()
+
+        generic_response = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": challenge["challenge_id"], "otp": "246810"},
+        )
+        valid_response = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+        )
+
+        assert generic_response.status_code == 401
+        assert valid_response.status_code == 200
+
+
 async def test_auth_rate_limit_blocks_repeated_login_attempts(monkeypatch) -> None:
     await skip_if_database_unavailable()
     email = f"limited-{uuid4().hex}@example.com"

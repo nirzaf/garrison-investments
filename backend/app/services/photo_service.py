@@ -14,6 +14,7 @@ from app.models.user import User
 from app.repositories.photo_repository import PhotoRepository
 from app.services.audit_service import AuditService
 from app.services.report_service import ReportService
+from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import ROLE_ADMIN
 from app.utils.security import utc_now
@@ -156,7 +157,7 @@ class PhotoService:
             new_values={"photo_id": str(photo.id), "object_key": object_key},
         )
         await self.session.commit()
-        return self._client().presigned_get_object(
+        return minio_signed_url_client(self.settings).presigned_get_object(
             self.settings.minio_bucket,
             object_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
@@ -333,12 +334,7 @@ class PhotoService:
         return photo.storage_path
 
     def _client(self) -> Minio:
-        return Minio(
-            self.settings.minio_endpoint,
-            access_key=self.settings.minio_root_user,
-            secret_key=self.settings.minio_root_password,
-            secure=self.settings.minio_secure,
-        )
+        return minio_client(self.settings)
 
     def _upload_object(self, object_key: str, data: bytes, content_type: str) -> None:
         client = self._client()

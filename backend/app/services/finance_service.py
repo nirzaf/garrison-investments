@@ -20,6 +20,7 @@ from app.schemas.approvals import ApprovalCreateRequest
 from app.schemas.finance import InvoiceCreateRequest, InvoiceUpdateRequest, PaymentCreateRequest
 from app.services.approval_service import ApprovalService
 from app.services.audit_service import AuditService
+from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ROLE_ACCOUNTS,
@@ -246,7 +247,7 @@ class FinanceService:
             new_values={"attachment_key": invoice.attachment_key},
         )
         await self.session.commit()
-        return self._client().presigned_get_object(
+        return minio_signed_url_client(self.settings).presigned_get_object(
             self.settings.minio_bucket,
             invoice.attachment_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
@@ -343,12 +344,7 @@ class FinanceService:
         raise AppException("Unsupported invoice attachment type.", status_code=422)
 
     def _client(self) -> Minio:
-        return Minio(
-            self.settings.minio_endpoint,
-            access_key=self.settings.minio_root_user,
-            secret_key=self.settings.minio_root_password,
-            secure=self.settings.minio_secure,
-        )
+        return minio_client(self.settings)
 
     def _upload_object(self, object_key: str, data: bytes, content_type: str) -> None:
         client = self._client()

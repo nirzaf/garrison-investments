@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
 
 export type DocumentVersionRecord = components['schemas']['DocumentVersionResponse'];
@@ -56,5 +57,5 @@ export async function getDocumentDownloadUrl(
     `/documents/${documentId}/download`,
     { params: { version_id: versionId } }
   );
-  return response.data;
+  return { ...response.data, url: normalizeProtectedFileUrl(response.data.url) };
 }

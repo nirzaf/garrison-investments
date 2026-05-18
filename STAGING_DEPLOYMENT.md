@@ -27,6 +27,8 @@ Staging uses its own Compose file and private Docker resources:
 
 The staging SMTP settings are stored only in the VPS `.env.staging` file. They use Office365 SMTP through `smtp.office365.com:587`, TLS enabled, and the sender identity `Quadrate Mail Service <mail@quadrate.lk>`. Do not commit SMTP passwords or Contabo/API secrets to this repository.
 
+For UAT speed, staging can accept a shared login OTP by setting `APP_ENV=staging` and `STAGING_LOGIN_OTP=<six-digit-code>` in `/opt/garrison-investments-staging/.env.staging`. This shortcut applies only to login OTP verification and is ignored outside `APP_ENV=staging`.
+
 ## Deploy Commands
 
 From the local repo:
@@ -60,14 +62,32 @@ docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.
 docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml exec -T backend python scripts/seed.py
 ```
 
-## Sample Credentials
+## Staging Test Credentials
 
-Temporary staging login created by `scripts/seed.py`:
+Shared staging login verification OTP:
+
+- OTP: `123456`
+
+Role-specific staging users:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `stg-admin@garrisons.qa` | `StageTest123!` |
+| General Manager | `stg-general-manager@garrisons.qa` | `StageTest123!` |
+| Operation Manager | `stg-operation-manager@garrisons.qa` | `StageTest123!` |
+| Project Manager | `stg-project-manager@garrisons.qa` | `StageTest123!` |
+| Civil Engineer | `stg-civil-engineer@garrisons.qa` | `StageTest123!` |
+| Civil Supervisor | `stg-civil-supervisor@garrisons.qa` | `StageTest123!` |
+| Store Keeper | `stg-store-keeper@garrisons.qa` | `StageTest123!` |
+| Accounts | `stg-accounts@garrisons.qa` | `StageTest123!` |
+
+Legacy temporary staging login created by `scripts/seed.py`:
 
 - Admin email: `fazrin@quadrate.lk`
 - Temporary password: `Dob280884@`
 
 These credentials are for staging smoke tests only. Change or remove them before any production deployment.
+Use the configured staging shared OTP for login verification when `STAGING_LOGIN_OTP` is set.
 
 ## Verification
 

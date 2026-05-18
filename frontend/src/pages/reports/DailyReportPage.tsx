@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   clearReportDraft,
@@ -87,6 +87,35 @@ function formatApiError(error: unknown) {
   return 'Unable to save the daily report.';
 }
 
+function formHasDraftContent(payload: DailyReportPayload) {
+  return Boolean(
+    payload.project_id ||
+      payload.work_location.trim() ||
+      payload.work_completed.trim() ||
+      payload.delay_notes?.trim() ||
+      payload.next_day_plan.trim() ||
+      payload.safety_notes?.trim() ||
+      payload.report_date !== today ||
+      payload.progress_percentage !== emptyPayload.progress_percentage ||
+      payload.safety_incidents !== emptyPayload.safety_incidents ||
+      payload.supervisor_update_ids.length > 0 ||
+      payload.photo_refs.length > 0 ||
+      payload.attachment_refs.length > 0 ||
+      payload.equipment_entries.length > 0 ||
+      payload.material_consumption.length > 0 ||
+      payload.manpower_entries.some(
+        (entry) =>
+          entry.trade.trim() ||
+          Number(entry.count || 0) > 0 ||
+          Number(entry.overtime_hours || 0) > 0
+      ) ||
+      Object.entries(payload.extra_fields ?? {}).some(([key, value]) => {
+        if (key === 'day_type') return value !== emptyPayload.extra_fields?.day_type;
+        return typeof value === 'string' ? value.trim() : Boolean(value);
+      })
+  );
+}
+
 export function DailyReportPage() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
@@ -102,6 +131,9 @@ export function DailyReportPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const persistedDraftSnapshot = useRef(JSON.stringify(emptyPayload));
+  const serverSavedSnapshot = useRef(JSON.stringify(emptyPayload));
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === form.project_id),
@@ -124,26 +156,48 @@ export function DailyReportPage() {
 
   useEffect(() => {
     void getReportDraft().then((draft) => {
-      if (draft?.payload && !savedReportId) {
+      if (draft?.payload && formHasDraftContent(draft.payload)) {
         setForm(draft.payload);
+        persistedDraftSnapshot.current = JSON.stringify(draft.payload);
         setDraftStatus('local');
       }
+      setDraftHydrated(true);
     });
     void queuedPhotoCount().then(setQueuedUploads);
-  }, [savedReportId]);
+  }, []);
 
   useEffect(() => {
+    if (!draftHydrated) return;
+    const snapshot = JSON.stringify(form);
+    if (snapshot === persistedDraftSnapshot.current || snapshot === serverSavedSnapshot.current) {
+      return;
+    }
+    if (!formHasDraftContent(form)) {
+      const timer = window.setTimeout(() => {
+        void clearReportDraft().then(() => {
+          persistedDraftSnapshot.current = JSON.stringify(emptyPayload);
+          setDraftStatus('idle');
+        });
+      }, 800);
+      return () => window.clearTimeout(timer);
+    }
     const timer = window.setTimeout(() => {
-      void saveReportDraft(form).then(() => setDraftStatus('local'));
+      void saveReportDraft(form).then(() => {
+        persistedDraftSnapshot.current = snapshot;
+        setDraftStatus('local');
+      });
     }, 800);
     const interval = window.setInterval(() => {
-      void saveReportDraft(form).then(() => setDraftStatus('local'));
+      void saveReportDraft(form).then(() => {
+        persistedDraftSnapshot.current = JSON.stringify(form);
+        setDraftStatus('local');
+      });
     }, 30_000);
     return () => {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
-  }, [form]);
+  }, [draftHydrated, form]);
 
   useEffect(() => {
     const syncQueued = () => {
@@ -238,6 +292,8 @@ export function DailyReportPage() {
         : await createDailyReport(payload);
       setSavedReportId(report.id);
       await clearReportDraft();
+      serverSavedSnapshot.current = JSON.stringify(payload);
+      persistedDraftSnapshot.current = JSON.stringify(payload);
       setDraftStatus('idle');
       setNotice('Daily report draft saved.');
       await loadReports(payload.project_id);
@@ -264,6 +320,8 @@ export function DailyReportPage() {
       setAttachmentNames('');
       setSavedReportId(null);
       await clearReportDraft();
+      serverSavedSnapshot.current = JSON.stringify(emptyPayload);
+      persistedDraftSnapshot.current = JSON.stringify(emptyPayload);
       setDraftStatus('idle');
       setNotice(`Daily report ${report.report_number} submitted.`);
       await loadReports(report.project_id);
