@@ -42,6 +42,7 @@ Inventory & Stores is a Phase 2 capability for consumable materials and trackabl
 | 12 | [Implementation Review](USER_STORY_IMPLEMENTATION_REVIEW.md) | Strict completion evidence and current partial/external evidence status |
 | 13 | [Prototype Guide](PROTOTYPE.md) | Next.js requirements prototype structure, run commands, and stakeholder walkthrough map |
 | 14 | [Deployment Environment](DEPLOYMENT_ENVIRONMENT.md) | Docker Compose production prerequisites, environment variables, and verification commands |
+| 15 | [User Roles And Permissions](10_User_Roles_and_Permissions.md) | Current code-derived RBAC roles, permissions, frontend visibility, backend enforcement, and mismatch notes |
 
 ## Backend Architecture
 
