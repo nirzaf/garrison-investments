@@ -14,6 +14,8 @@ from app.schemas.projects import (
     ProjectMemberCreateRequest,
     ProjectMemberResponse,
     ProjectResponse,
+    ProjectTaskCreateRequest,
+    ProjectTaskResponse,
     ProjectTimelineResponse,
     ProjectUpdateRequest,
 )
@@ -119,8 +121,26 @@ async def get_project_timeline(
     current_user: CanReadProjects,
     session: DbSession,
 ) -> ProjectTimelineResponse:
-    project, milestones = await ProjectService(session).list_timeline(project_id, current_user)
+    project, milestones, tasks = await ProjectService(session).list_timeline(
+        project_id, current_user
+    )
     return ProjectTimelineResponse(
         project=ProjectResponse.model_validate(project),
         milestones=[MilestoneResponse.model_validate(milestone) for milestone in milestones],
+        tasks=[ProjectTaskResponse.model_validate(task) for task in tasks],
     )
+
+
+@router.post(
+    "/{project_id}/tasks",
+    response_model=ProjectTaskResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_project_task(
+    project_id: UUID,
+    payload: ProjectTaskCreateRequest,
+    current_user: CanManageProjects,
+    session: DbSession,
+) -> ProjectTaskResponse:
+    task = await ProjectService(session).create_task(project_id, payload, current_user)
+    return ProjectTaskResponse.model_validate(task)

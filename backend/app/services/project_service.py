@@ -8,6 +8,7 @@ from app.models.boq_item import BoqItem
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.project_milestone import ProjectMilestone
+from app.models.project_task import ProjectTask
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.user_repository import UserRepository
@@ -15,6 +16,7 @@ from app.schemas.projects import (
     BoqItemCreateRequest,
     ProjectCreateRequest,
     ProjectMemberCreateRequest,
+    ProjectTaskCreateRequest,
     ProjectUpdateRequest,
 )
 from app.services.audit_service import AuditService
@@ -27,6 +29,7 @@ from app.utils.permissions import (
 )
 
 PROJECT_STATUSES = {"planning", "active", "on_hold", "completed", "cancelled"}
+PROJECT_TASK_STATUSES = {"not_started", "in_progress", "blocked", "completed", "cancelled"}
 READ_ONLY_STATUSES = {"completed", "cancelled"}
 UNRESTRICTED_PROJECT_ROLES = {
     ROLE_ADMIN,
@@ -202,7 +205,74 @@ class ProjectService:
     async def list_timeline(self, project_id: UUID, current_user: User):
         project = await self._get_authorized_project(project_id, current_user)
         milestones = await self.projects.list_milestones(project.id)
-        return project, milestones
+        tasks = await self.projects.list_tasks(project.id)
+        return project, milestones, tasks
+
+    async def create_task(
+        self,
+        project_id: UUID,
+        payload: ProjectTaskCreateRequest,
+        actor: User,
+    ) -> ProjectTask:
+        project = await self._get_authorized_project(project_id, actor)
+        if project.status in READ_ONLY_STATUSES:
+            raise AppException(
+                "Completed or cancelled projects are read-only.",
+                status_code=409,
+                error_code="PROJECT_READ_ONLY",
+            )
+        self._validate_task_status(payload.status)
+        if payload.milestone_id and not await self.projects.get_milestone(
+            project.id, payload.milestone_id
+        ):
+            raise AppException(
+                "Milestone does not belong to this project.",
+                status_code=422,
+                error_code="PROJECT_TASK_INVALID_MILESTONE",
+            )
+        if payload.dependency_task_id and not await self.projects.get_task(
+            project.id, payload.dependency_task_id
+        ):
+            raise AppException(
+                "Dependency task does not belong to this project.",
+                status_code=422,
+                error_code="PROJECT_TASK_INVALID_DEPENDENCY",
+            )
+        if payload.owner_id:
+            owner = await self.users.get_by_id(payload.owner_id)
+            if not owner or not owner.is_active:
+                raise NotFoundException("User")
+        task = ProjectTask(
+            project_id=project.id,
+            milestone_id=payload.milestone_id,
+            dependency_task_id=payload.dependency_task_id,
+            owner_id=payload.owner_id,
+            name=payload.name.strip(),
+            baseline_start_date=payload.baseline_start_date,
+            baseline_end_date=payload.baseline_end_date,
+            planned_start_date=payload.planned_start_date,
+            planned_end_date=payload.planned_end_date,
+            actual_start_date=payload.actual_start_date,
+            actual_end_date=payload.actual_end_date,
+            status=payload.status,
+            progress_percentage=payload.progress_percentage,
+            delay_reason=payload.delay_reason,
+            sort_order=payload.sort_order,
+        )
+        await self.projects.add_task(task)
+        await self.audit.record(
+            action="projects.task_created",
+            user_id=actor.id,
+            entity_type="project_tasks",
+            entity_id=task.id,
+            new_values={
+                "project_id": str(project.id),
+                "owner_id": str(payload.owner_id) if payload.owner_id else None,
+                "status": task.status,
+            },
+        )
+        await self.session.commit()
+        return task
 
     async def _create_milestones(
         self,
@@ -280,4 +350,12 @@ class ProjectService:
                 "Invalid project status.",
                 status_code=422,
                 error_code="INVALID_PROJECT_STATUS",
+            )
+
+    def _validate_task_status(self, status: str | None) -> None:
+        if status and status not in PROJECT_TASK_STATUSES:
+            raise AppException(
+                "Invalid project task status.",
+                status_code=422,
+                error_code="INVALID_PROJECT_TASK_STATUS",
             )

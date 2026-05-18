@@ -1,4 +1,5 @@
 from datetime import time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 
@@ -66,11 +67,13 @@ def check_late_reports() -> str:
 
 async def _check_late_reports() -> str:
     cutoff = time(hour=10)
+    settings = get_settings()
     now = utc_now()
-    if now.time() < cutoff:
+    local_now = _business_now(settings.business_timezone)
+    if local_now.time() < cutoff:
         return "late report cutoff has not passed"
 
-    report_date = now.date() - timedelta(days=1)
+    report_date = local_now.date() - timedelta(days=1)
     if report_date.weekday() == 4:
         return "late report check skipped for Friday"
 
@@ -128,6 +131,13 @@ async def _check_late_reports() -> str:
             )
         await session.commit()
     return f"{missing_count} late daily report alerts recorded"
+
+
+def _business_now(timezone_name: str):
+    try:
+        return utc_now().astimezone(ZoneInfo(timezone_name))
+    except ZoneInfoNotFoundError:
+        return utc_now()
 
 
 @celery_app.task(

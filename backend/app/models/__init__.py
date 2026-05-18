@@ -27,6 +27,7 @@ from app.models.photo import Photo
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.project_milestone import ProjectMilestone
+from app.models.project_task import ProjectTask
 from app.models.report_export import ReportExport
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
@@ -57,6 +58,7 @@ __all__ = [
     "Project",
     "ProjectMember",
     "ProjectMilestone",
+    "ProjectTask",
     "ReportEquipment",
     "ReportExport",
     "ReportManpower",

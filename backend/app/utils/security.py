@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
@@ -13,20 +11,45 @@ from app.config import get_settings
 from app.utils.exceptions import AppException, ErrorDetail
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-_dev_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-_dev_private_pem = _dev_private_key.private_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PrivateFormat.PKCS8,
-    encryption_algorithm=serialization.NoEncryption(),
-).decode("utf-8")
-_dev_public_pem = (
-    _dev_private_key.public_key()
-    .public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-    .decode("utf-8")
-)
+_dev_private_pem = """-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDAthkEzasri5OW
+a54Xb1kAFDuvacVLfpwrBFMVVIj1l/lsSvp4fHi0vx+ZKvhWBGZDb+/lx8fiErZK
+xsFsjrDybqnxUOnaWo/xzllzhlb9ddJcjfkz7x6EPjO5oJX2NTda8fY0u2YBqCfo
+DCZMIUQPhfy1bKxZlnb5LHQVTJDSzSUEje5xNEmx2K79kyO+0RWxHhAtVVmmKp+4
+NDTiIivYbThIS/NIPRC9Yny8tGqFpk8CjJ85AXsdjAIuEwIXQvxv3Pijf2Xves6x
+waS49FbGXdTsurhMlYrTolSDzLbj7dKqaOL6DGdphBEmpRuY0KZoLgTgAdndjufY
+RAq2oFBpAgMBAAECggEAEasweIsF2GB79+TmkgX8vj/cqAzV0MHrPhtvpatCQmg8
+b2QhelYJOCM02bWBnttY5/J1p5btWeo2yfzWo6YijZu9W5l8U2+NtpEhjPDCfYsl
+riQ7NrqEDQJp+ilBzpja+izokrWi2OCKxiEFCuJa6+RwQs8Tr0QXJOnhO8mxFo6d
+SY08uxwSsSV/nA0HNRQQks70lBbCvhnounQ0SViJqNU22rIrr/zXsUGtFQ0167sQ
+gVKw6LH1ta04RU5BIkqPcQZg3zpoQYbhreouBZqBAC8eHV0DIlXx18/iH8Qzgskh
+rUgjDbCbvUZ/Ysp21BLaBQUTUddFRMlneiierPl6vQKBgQDkIssm4mb7zZAQxQ9y
+G3CDXPtkU8v8/XoySndRf06lPafSAqCG7Y9NqiP7WcgHpTP4YmKUn4gaXVjsvfns
+5H0zmyfHMKkH3o19FjQGsA1tW7MZIWzAwNwiy6BSrVUa9QU3f4c04z1XsR3U0Kk3
+O+uce8SCyBkNNGqUBoCy8YOaVQKBgQDYP6u9XweCsNHmdx2tTy3YLG1BXlTDX6tP
+v/I4B0mKRiny6d3O3tY1FKfc1odqJ2pvk0zJQnh6BSW4BAUVIeoKrC1f0a85pxds
+sQVvQ6RTvSpipR1l3babsGHI7trokZaE+WeCBadTNfoOT4knJ46JdHnwZmz5sPaP
+FGG7dedZxQKBgHQrM3+NchtuxZmEfyT/y/9Ybbrc4NbmzD6npLKfPRDvoHFUXSHX
+/kzyAniPc0hRW3Fzx/cedVPXjNygsI9smkSZEVxg7vHO5gV4NO3i4DN7qmt1lcdh
+bbdaMT1ofhnIAuwLyHGp9SaeTi58Qm6Z2JRKgfqGohsTQeI2nXqBeR4xAoGAaCZi
+RJacO2mF7oW4GVxlLBRZmn4gPOi6zXIY6rs3xAz+7yuL1LKmYHJOVqJMHehV7t72
+wIfvFnWcMQBeokrvOayrPdbzmcTMF2E6yNe/MUWOQGxduE4MQPe2YNwJOrHD2M91
+9r1aVU1N3c6Ys+7tS255vDrYiXmdhlO+rlae0jECgYAxFCG0WCn07TbZakx8fEhu
+9n5rRxnK/zo5VJv9V3GqFRH69nShtzKhFRCoG3ecJyYv+0mP/MF5YIk4FTdhpL2R
+5FnAC0zJzd/9rl9gfI/BRcqe1ZcuuMs2AEjuyYmHiZ4Jy+s7VK6b0S0C1We/1x5v
+EVNElSGB90F/tPpCCtBl9Q==
+-----END PRIVATE KEY-----
+"""
+_dev_public_pem = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwLYZBM2rK4uTlmueF29Z
+ABQ7r2nFS36cKwRTFVSI9Zf5bEr6eHx4tL8fmSr4VgRmQ2/v5cfH4hK2SsbBbI6w
+8m6p8VDp2lqP8c5Zc4ZW/XXSXI35M+8ehD4zuaCV9jU3WvH2NLtmAagn6AwmTCFE
+D4X8tWysWZZ2+Sx0FUyQ0s0lBI3ucTRJsdiu/ZMjvtEVsR4QLVVZpiqfuDQ04iIr
+2G04SEvzSD0QvWJ8vLRqhaZPAoyfOQF7HYwCLhMCF0L8b9z4o39l73rOscGkuPRW
+xl3U7Lq4TJWK06JUg8y24+3Sqmji+gxnaYQRJqUbmNCmaC4E4AHZ3Y7n2EQKtqBQ
+aQIDAQAB
+-----END PUBLIC KEY-----
+"""
 
 
 def utc_now() -> datetime:

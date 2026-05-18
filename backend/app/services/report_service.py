@@ -40,6 +40,7 @@ class ReportService:
 
     async def create_report(self, payload: DailyReportCreateRequest, actor: User) -> DailyReport:
         self._ensure_engineer(actor)
+        self._validate_report_date(payload.report_date, actor)
         project = await self._ensure_project_member(payload.project_id, actor)
         report = DailyReport(
             engineer_id=actor.id,
@@ -81,6 +82,7 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_SUBMITTED_LOCKED",
             )
+        self._validate_report_date(payload.report_date, actor)
         await self._ensure_project_member(payload.project_id, actor)
         for key, value in self._report_values(payload).items():
             setattr(report, key, value)
@@ -107,6 +109,7 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_LOCKED",
             )
+        self._validate_report_date(report.report_date, actor)
         project = await self._ensure_project_member(report.project_id, actor)
         await self._verify_supervisor_updates(report, actor)
         if not report.report_number:
@@ -479,11 +482,21 @@ class ReportService:
         await InventoryService(self.session).consume_daily_report_materials(report, actor)
 
     def _ensure_engineer(self, actor: User) -> None:
-        if actor.role != ROLE_CIVIL_ENGINEER:
+        if actor.role not in {ROLE_ADMIN, ROLE_CIVIL_ENGINEER}:
             raise AppException(
                 "Only Civil Engineers can manage official daily reports.",
                 status_code=403,
                 error_code="DAILY_REPORT_ENGINEER_REQUIRED",
+            )
+
+    def _validate_report_date(self, report_date, actor: User) -> None:
+        if actor.role == ROLE_ADMIN:
+            return
+        if report_date < utc_now().date():
+            raise AppException(
+                "Past-dated daily reports require Admin submission.",
+                status_code=422,
+                error_code="DAILY_REPORT_PAST_DATE_REQUIRES_ADMIN",
             )
 
     def _report_values(self, payload: DailyReportCreateRequest | DailyReportUpdateRequest) -> dict:

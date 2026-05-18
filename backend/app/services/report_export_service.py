@@ -90,7 +90,7 @@ class ReportExportService:
         try:
             return export, self._download_pdf(export.object_key)
         except S3Error as exc:
-            if exc.code != "NoSuchKey":
+            if exc.code not in {"NoSuchKey", "NoSuchBucket"}:
                 raise
             export = await self.generate_pdf_export(report.id, actor)
             return export, self._download_pdf(export.object_key)

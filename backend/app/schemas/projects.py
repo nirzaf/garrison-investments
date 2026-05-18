@@ -127,6 +127,45 @@ class BoqItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProjectTaskCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    milestone_id: UUID | None = None
+    dependency_task_id: UUID | None = None
+    owner_id: UUID | None = None
+    baseline_start_date: date | None = None
+    baseline_end_date: date | None = None
+    planned_start_date: date | None = None
+    planned_end_date: date | None = None
+    actual_start_date: date | None = None
+    actual_end_date: date | None = None
+    status: str = "not_started"
+    progress_percentage: Decimal = Field(default=0, ge=0, le=100)
+    delay_reason: str | None = None
+    sort_order: int = Field(default=0, ge=0)
+
+
+class ProjectTaskResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    milestone_id: UUID | None
+    dependency_task_id: UUID | None
+    owner_id: UUID | None
+    name: str
+    baseline_start_date: date | None
+    baseline_end_date: date | None
+    planned_start_date: date | None
+    planned_end_date: date | None
+    actual_start_date: date | None
+    actual_end_date: date | None
+    status: str
+    progress_percentage: Decimal
+    delay_reason: str | None
+    sort_order: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProjectDetailResponse(ProjectResponse):
     members: list[ProjectMemberResponse]
     milestones: list[MilestoneResponse]
@@ -137,3 +176,4 @@ class ProjectDetailResponse(ProjectResponse):
 class ProjectTimelineResponse(BaseModel):
     project: ProjectResponse
     milestones: list[MilestoneResponse]
+    tasks: list[ProjectTaskResponse]
