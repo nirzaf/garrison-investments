@@ -159,6 +159,7 @@ class ImportService:
         return ImportRunResponse(
             batch_id=batch.id,
             template_type=template_type,
+            file_name=batch.file_name,
             status=batch.status,
             row_count=batch.row_count,
             error_count=batch.error_count,

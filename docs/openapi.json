@@ -1741,7 +1741,9 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {},
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentVersionResponse"
+                  },
                   "title": "Response List Document Versions Api V1 Documents  Document Id  Versions Get"
                 }
               }
@@ -2435,6 +2437,32 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/imports/batches": {
+      "get": {
+        "tags": [
+          "Imports"
+        ],
+        "summary": "List Import Batches",
+        "operationId": "list_import_batches_api_v1_imports_batches_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/imports/{template_type}/preview": {
@@ -6361,6 +6389,39 @@
             "type": "string",
             "title": "Role"
           },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "designation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -7792,6 +7853,27 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImportBatchListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRunResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ImportBatchListResponse"
+      },
       "ImportErrorItem": {
         "properties": {
           "row": {
@@ -7856,6 +7938,17 @@
           "template_type": {
             "type": "string",
             "title": "Template Type"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
           },
           "status": {
             "type": "string",

@@ -187,6 +187,9 @@ async def test_import_templates_create_records_and_opening_stock_transactionally
         assert boq.summary["created"] == 1
         assert document.summary["created"] == 1
         assert stock.summary["created"] == 1
+        assert supplier.file_name == "suppliers.csv"
+        assert document.file_name == "documents.csv"
+        assert stock.file_name == "opening_stock.csv"
 
         failed = await service.run_import(
             template_type="opening_stock",
