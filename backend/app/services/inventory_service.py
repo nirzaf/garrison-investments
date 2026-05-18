@@ -15,6 +15,8 @@ from app.models.inventory import (
     MaterialRequestLine,
     StorageLocation,
 )
+from app.models.notification import Notification
+from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.approvals import ApprovalCreateRequest
 from app.schemas.inventory import (
@@ -35,6 +37,8 @@ from app.utils.permissions import (
     ROLE_ADMIN,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
+    ROLE_PROJECT_MANAGER,
+    ROLE_STORE_KEEPER,
     has_permission,
 )
 
@@ -190,6 +194,7 @@ class InventoryService:
             entity_id=payload.item_id,
             new_values=payload.model_dump(mode="json"),
         )
+        await self._notify_low_stock_for_movement(payload)
         if commit:
             await self.session.commit()
         return movement
@@ -398,6 +403,11 @@ class InventoryService:
                 continue
             stock.reserved_qty -= remaining
             stock.on_hand_qty -= remaining
+            await self._notify_low_stock(
+                item_id=line.item_id,
+                location_id=request.from_location_id,
+                project_id=request.project_id,
+            )
             line.issued_quantity += remaining
             self.session.add(
                 InventoryMovement(
@@ -552,6 +562,82 @@ class InventoryService:
                 error_code="INSUFFICIENT_STOCK",
             )
         stock.reserved_qty += quantity
+
+    async def _notify_low_stock_for_movement(self, payload: MovementCreateRequest) -> None:
+        if payload.movement_type not in STOCK_OUT_TYPES:
+            return
+        await self._notify_low_stock(
+            item_id=payload.item_id,
+            location_id=payload.from_location_id,
+            project_id=payload.project_id,
+        )
+
+    async def _notify_low_stock(
+        self,
+        *,
+        item_id: UUID,
+        location_id: UUID | None,
+        project_id: UUID | None,
+    ) -> None:
+        if not location_id:
+            return
+        item = await self._get_item(item_id)
+        if not item.reorder_level or item.reorder_level <= 0:
+            return
+        stock = await self._get_stock(item_id, location_id)
+        if stock.on_hand_qty > item.reorder_level:
+            return
+        recipients = await self._low_stock_recipients(project_id)
+        for user_id in recipients:
+            existing = await self.session.scalar(
+                select(Notification.id).where(
+                    Notification.user_id == user_id,
+                    Notification.title == "Low Stock Alert",
+                    Notification.reference_type == "inventory_item",
+                    Notification.reference_id == item.id,
+                    Notification.deleted_at.is_(None),
+                )
+            )
+            if existing:
+                continue
+            await self.notifications.create(
+                user_id=user_id,
+                title="Low Stock Alert",
+                body=f"{item.name} stock is at or below reorder level.",
+                notification_type="inventory",
+                reference_type="inventory_item",
+                reference_id=item.id,
+            )
+
+    async def _low_stock_recipients(self, project_id: UUID | None) -> set[UUID]:
+        recipients = set(
+            (
+                await self.session.scalars(
+                    select(User.id).where(
+                        User.role.in_([ROLE_STORE_KEEPER, ROLE_OPERATION_MANAGER]),
+                        User.is_active.is_(True),
+                        User.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+        )
+        if project_id:
+            recipients.update(
+                (
+                    await self.session.scalars(
+                        select(ProjectMember.user_id)
+                        .join(User, User.id == ProjectMember.user_id)
+                        .where(
+                            ProjectMember.project_id == project_id,
+                            ProjectMember.deleted_at.is_(None),
+                            User.role == ROLE_PROJECT_MANAGER,
+                            User.is_active.is_(True),
+                            User.deleted_at.is_(None),
+                        )
+                    )
+                ).all()
+            )
+        return recipients
 
     async def _get_stock(
         self,

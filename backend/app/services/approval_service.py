@@ -309,6 +309,10 @@ class ApprovalService:
         return approval
 
     async def _resolve_approver(self, payload: ApprovalCreateRequest) -> User:
+        if payload.request_type == "invoice":
+            approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
+            if approver:
+                return approver
         if (
             payload.request_type == "material_request"
             and payload.amount is not None
