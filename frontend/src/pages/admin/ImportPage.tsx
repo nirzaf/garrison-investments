@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 
@@ -5,6 +6,7 @@ import {
   downloadTemplate,
   getImportBatchStatus,
   importTemplates,
+  listImportBatches,
   previewImport,
   runImportAsync,
   runImport,
@@ -20,6 +22,10 @@ export function ImportPage() {
   const [result, setResult] = useState<ImportRunResult | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const batches = useQuery({
+    queryKey: ['import-batches'],
+    queryFn: () => listImportBatches()
+  });
 
   async function previewSelected() {
     if (!file) return;
@@ -199,6 +205,42 @@ export function ImportPage() {
           </div>
         </div>
       ) : null}
+
+      <div className="rounded-lg border border-theme-border bg-theme-card">
+        <div className="border-b border-theme-border px-4 py-3">
+          <h3 className="text-base font-semibold text-theme-text-primary">Recent imports</h3>
+        </div>
+        {batches.data?.items.length ? (
+          <div className="divide-y divide-theme-border">
+            {batches.data.items.map((batch) => (
+              <article
+                className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto]"
+                key={batch.batch_id}
+              >
+                <div>
+                  <p className="font-medium text-theme-text-primary">
+                    {batch.file_name ?? 'Import batch'}
+                  </p>
+                  <p className="text-theme-text-muted">
+                    {batch.template_type.replace('_', ' ')} - {batch.row_count} rows -{' '}
+                    {batch.error_count} errors
+                  </p>
+                </div>
+                <StatusBadge tone={batch.status === 'completed' ? 'success' : 'warning'}>
+                  {batch.status}
+                </StatusBadge>
+                <span className="self-center text-xs text-theme-text-muted">
+                  {batch.batch_id.slice(0, 8)}
+                </span>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="px-4 py-6 text-sm text-theme-text-muted">
+            {batches.isLoading ? 'Loading import batches.' : 'No import batches found.'}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

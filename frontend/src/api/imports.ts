@@ -2,7 +2,6 @@ import { apiClient } from './client';
 import type { components } from './schema';
 
 export type ImportPreview = components['schemas']['ImportPreviewResponse'];
-
 export type ImportRunResult = components['schemas']['ImportRunResponse'];
 
 export type AsyncImportResult = {
@@ -62,5 +61,12 @@ export async function runImportAsync(template: string, file: File) {
 
 export async function getImportBatchStatus(batchId: string) {
   const { data } = await apiClient.get<ImportRunResult>(`/imports/batches/${batchId}`);
+  return data;
+}
+
+export async function listImportBatches() {
+  const { data } = await apiClient.get<{ items: ImportRunResult[]; total: number }>(
+    '/imports/batches'
+  );
   return data;
 }

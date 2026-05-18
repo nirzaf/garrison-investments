@@ -117,6 +117,7 @@ class ApprovalService:
             status=status,
             limit=limit,
             offset=offset,
+            include_all_inbox=actor.role == ROLE_ADMIN and box == "inbox",
         )
 
     async def get_for_actor(self, approval_id: UUID, actor: User) -> Approval:

@@ -10,8 +10,8 @@ from sqlalchemy import select
 from app.api.dependencies import DbSession, require_permission
 from app.models.import_batch import ImportBatch
 from app.models.user import User
-from app.schemas.imports import ImportPreviewResponse, ImportRunResponse
-from app.services.import_service import ImportService, TEMPLATE_COLUMNS
+from app.schemas.imports import ImportBatchListResponse, ImportPreviewResponse, ImportRunResponse
+from app.services.import_service import TEMPLATE_COLUMNS, ImportService
 from app.tasks.imports import run_import_async
 from app.utils.permissions import PERMISSION_USERS_MANAGE
 
@@ -51,11 +51,42 @@ async def get_batch_status(
     return {
         "batch_id": str(batch.id),
         "template_type": batch.template_type,
+        "file_name": batch.file_name,
         "status": batch.status,
         "row_count": batch.row_count,
         "error_count": batch.error_count,
         "summary": batch.summary,
     }
+
+
+@router.get("/batches", response_model=ImportBatchListResponse)
+async def list_import_batches(
+    _: CanManageImports,
+    session: DbSession,
+) -> ImportBatchListResponse:
+    batches = (
+        await session.scalars(
+            select(ImportBatch)
+            .where(ImportBatch.deleted_at.is_(None))
+            .order_by(ImportBatch.created_at.desc())
+            .limit(25)
+        )
+    ).all()
+    return ImportBatchListResponse(
+        items=[
+            ImportRunResponse(
+                batch_id=batch.id,
+                template_type=batch.template_type,
+                file_name=batch.file_name,
+                status=batch.status,
+                row_count=batch.row_count,
+                error_count=batch.error_count,
+                summary=batch.summary,
+            )
+            for batch in batches
+        ],
+        total=len(batches),
+    )
 
 
 @router.post("/{template_type}/preview", response_model=ImportPreviewResponse)
