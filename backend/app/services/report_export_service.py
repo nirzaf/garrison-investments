@@ -1,7 +1,7 @@
 from io import BytesIO
 from uuid import UUID
 
-from minio import Minio
+from minio import Minio, S3Error
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -87,7 +87,13 @@ class ReportExportService:
             },
         )
         await self.session.commit()
-        return export, self._download_pdf(export.object_key)
+        try:
+            return export, self._download_pdf(export.object_key)
+        except S3Error as exc:
+            if exc.code != "NoSuchKey":
+                raise
+            export = await self.generate_pdf_export(report.id, actor)
+            return export, self._download_pdf(export.object_key)
 
     def build_pdf(self, report: DailyReport) -> bytes:
         buffer = BytesIO()
@@ -109,7 +115,9 @@ class ReportExportService:
                     ["Report Number", report.report_number or "-"],
                     ["Status", report.status],
                     ["Report Date", report.report_date.isoformat()],
+                    ["Day Type", str(report.extra_fields.get("day_type") or "-")],
                     ["Work Location", report.work_location],
+                    ["Weather", str(report.extra_fields.get("weather_condition") or "-")],
                     ["Progress", f"{report.progress_percentage}%"],
                     [
                         "Submitted At",
@@ -125,11 +133,20 @@ class ReportExportService:
             Paragraph("Next-Day Plan", styles["Heading2"]),
             Paragraph(report.next_day_plan, styles["BodyText"]),
             Spacer(1, 8),
+            Paragraph("Site Coordination", styles["Heading2"]),
+            self._table(
+                [
+                    ["Site Visitors", str(report.extra_fields.get("site_visitors") or "-")],
+                    ["Subcontractors", str(report.extra_fields.get("subcontractors") or "-")],
+                ]
+            ),
+            Spacer(1, 8),
             Paragraph("Safety And Inspections", styles["Heading2"]),
             self._table(
                 [
                     ["Safety Incidents", str(report.safety_incidents)],
                     ["Safety Notes", report.safety_notes or "-"],
+                    ["WIR Number", str(report.extra_fields.get("wir_number") or "-")],
                     ["WIR Status", report.wir_status],
                     ["Inspection Status", report.inspection_status],
                     ["Delay Notes", report.delay_notes or "-"],

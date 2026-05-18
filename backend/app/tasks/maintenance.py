@@ -1,4 +1,3 @@
-import asyncio
 from datetime import time, timedelta
 
 from sqlalchemy import select
@@ -13,6 +12,7 @@ from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.services.notification_service import NotificationService
+from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
@@ -27,7 +27,7 @@ from app.utils.security import utc_now
     max_retries=3,
 )
 def cleanup_old_notifications() -> str:
-    return asyncio.run(_cleanup_old_notifications())
+    return run_async_task(_cleanup_old_notifications())
 
 
 async def _cleanup_old_notifications() -> str:
@@ -61,7 +61,7 @@ async def _cleanup_old_notifications() -> str:
     max_retries=3,
 )
 def check_late_reports() -> str:
-    return asyncio.run(_check_late_reports())
+    return run_async_task(_check_late_reports())
 
 
 async def _check_late_reports() -> str:
@@ -139,7 +139,7 @@ async def _check_late_reports() -> str:
     max_retries=3,
 )
 def check_supplier_tds_expiry() -> str:
-    return asyncio.run(_check_supplier_tds_expiry())
+    return run_async_task(_check_supplier_tds_expiry())
 
 
 async def _check_supplier_tds_expiry() -> str:

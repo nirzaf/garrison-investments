@@ -82,6 +82,9 @@ function renderApp(route: string, permissions: string[]) {
       email: 'manager@example.com',
       full_name: 'Manager User',
       role: 'general_manager',
+      employee_code: 'MGR-001',
+      phone: '+97450000000',
+      designation: 'Manager',
       is_active: true,
       must_change_password: false,
       permissions
@@ -134,5 +137,12 @@ describe('App route smoke tests', () => {
     const html = renderApp('/delivery', ['dashboard:company']);
 
     expect(html).toContain('Delivery Plan');
+  });
+
+  it('renders profile route for signed-in users', () => {
+    const html = renderApp('/profile', []);
+
+    expect(html).toContain('Profile');
+    expect(html).toContain('MGR-001');
   });
 });

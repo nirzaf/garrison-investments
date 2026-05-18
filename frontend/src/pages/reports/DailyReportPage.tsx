@@ -48,8 +48,26 @@ const emptyPayload: DailyReportPayload = {
   manpower_entries: [{ trade: '', count: 0, overtime_hours: '0' }],
   equipment_entries: [],
   material_consumption: [],
-  extra_fields: {}
+  extra_fields: {
+    day_type: 'weekday',
+    weather_condition: '',
+    site_visitors: '',
+    subcontractors: '',
+    wir_number: ''
+  }
 };
+
+type ReportExtraField =
+  | 'day_type'
+  | 'weather_condition'
+  | 'site_visitors'
+  | 'subcontractors'
+  | 'wir_number';
+
+function extraValue(form: DailyReportPayload, key: ReportExtraField) {
+  const value = form.extra_fields?.[key];
+  return typeof value === 'string' ? value : '';
+}
 
 function parseRefs(value: string, kind: string) {
   return value
@@ -165,6 +183,18 @@ export function DailyReportPage() {
     if (!form.work_location.trim()) nextErrors.work_location = 'Enter the work location.';
     if (!form.work_completed.trim()) nextErrors.work_completed = 'Enter work completed.';
     if (!form.next_day_plan.trim()) nextErrors.next_day_plan = 'Enter the next-day plan.';
+    if (!extraValue(form, 'weather_condition').trim()) {
+      nextErrors.weather_condition = 'Select or enter the weather condition.';
+    }
+    if (!extraValue(form, 'site_visitors').trim()) {
+      nextErrors.site_visitors = 'Enter site visitors or write none.';
+    }
+    if (!extraValue(form, 'subcontractors').trim()) {
+      nextErrors.subcontractors = 'Enter subcontractors or write none.';
+    }
+    if (!extraValue(form, 'wir_number').trim()) {
+      nextErrors.wir_number = 'Enter the WIR number or write not required.';
+    }
     if (Number(form.progress_percentage) < 0 || Number(form.progress_percentage) > 100) {
       nextErrors.progress_percentage = 'Progress must be between 0 and 100.';
     }
@@ -184,6 +214,16 @@ export function DailyReportPage() {
       equipment_entries: form.equipment_entries.filter((entry) => entry.equipment_name.trim()),
       material_consumption: form.material_consumption.filter((entry) => entry.material_name.trim())
     };
+  }
+
+  function updateExtraField(key: ReportExtraField, value: string) {
+    setForm({
+      ...form,
+      extra_fields: {
+        ...form.extra_fields,
+        [key]: value
+      }
+    });
   }
 
   async function saveDraft() {
@@ -369,6 +409,33 @@ export function DailyReportPage() {
                   value={form.progress_percentage}
                 />
               </Field>
+              <Field label="Day type">
+                <select
+                  className="form-field"
+                  onChange={(event) => updateExtraField('day_type', event.target.value)}
+                  value={extraValue(form, 'day_type') || 'weekday'}
+                >
+                  <option value="weekday">Weekday</option>
+                  <option value="friday">Friday</option>
+                  <option value="public_holiday">Public holiday</option>
+                </select>
+              </Field>
+              <Field label="Weather" error={errors.weather_condition}>
+                <input
+                  className="form-field"
+                  list="weather-options"
+                  onChange={(event) => updateExtraField('weather_condition', event.target.value)}
+                  placeholder="Sunny, cloudy, rainy, windy"
+                  value={extraValue(form, 'weather_condition')}
+                />
+                <datalist id="weather-options">
+                  <option value="Sunny" />
+                  <option value="Cloudy" />
+                  <option value="Rainy" />
+                  <option value="Windy" />
+                  <option value="Dusty" />
+                </datalist>
+              </Field>
             </div>
           </section>
 
@@ -434,6 +501,24 @@ export function DailyReportPage() {
                   value={form.next_day_plan}
                 />
               </Field>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Site visitors" error={errors.site_visitors}>
+                  <textarea
+                    className="form-field min-h-20"
+                    onChange={(event) => updateExtraField('site_visitors', event.target.value)}
+                    placeholder="Client engineer, consultant, none"
+                    value={extraValue(form, 'site_visitors')}
+                  />
+                </Field>
+                <Field label="Subcontractors" error={errors.subcontractors}>
+                  <textarea
+                    className="form-field min-h-20"
+                    onChange={(event) => updateExtraField('subcontractors', event.target.value)}
+                    placeholder="MEP subcontractor, plaster crew, none"
+                    value={extraValue(form, 'subcontractors')}
+                  />
+                </Field>
+              </div>
             </div>
           </section>
 
@@ -474,6 +559,14 @@ export function DailyReportPage() {
                   <option value="failed">Failed</option>
                   <option value="not_required">Not required</option>
                 </select>
+              </Field>
+              <Field label="WIR number" error={errors.wir_number}>
+                <input
+                  className="form-field"
+                  onChange={(event) => updateExtraField('wir_number', event.target.value)}
+                  placeholder="GAR-WIR-2026-001 or not required"
+                  value={extraValue(form, 'wir_number')}
+                />
               </Field>
               <Field label="Safety notes">
                 <textarea

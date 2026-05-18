@@ -1,4 +1,3 @@
-import asyncio
 from datetime import timedelta
 from uuid import UUID
 
@@ -12,6 +11,7 @@ from app.models.user import User
 from app.services.approval_service import ApprovalService
 from app.services.inventory_service import InventoryService
 from app.services.notification_service import NotificationService
+from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER, ROLE_STORE_KEEPER
 from app.utils.security import utc_now
@@ -31,7 +31,7 @@ def process_approval_reminders() -> dict[str, int]:
             reminded, escalated = await ApprovalService(session).send_reminders_and_escalations()
             return {"reminded": reminded, "escalated": escalated}
 
-    return asyncio.run(run())
+    return run_async_task(run())
 
 
 @celery_app.task(
@@ -68,7 +68,7 @@ def check_low_stock() -> dict[str, int]:
             await session.commit()
             return {"low_stock_items": len(rows), "notifications_sent": sent}
 
-    return asyncio.run(run())
+    return run_async_task(run())
 
 
 async def _low_stock_recipients(session, row: InventoryLocationStock) -> set[UUID]:
