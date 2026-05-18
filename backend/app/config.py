@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     exception_email_recipients: str = "quadrate.lk@gmail.com"
     exception_email_enabled: bool | None = None
     notification_retention_days: int = 90
+    business_timezone: str = "Asia/Qatar"
 
     minio_endpoint: str = "localhost:9000"
     minio_root_user: str = "garrison_minio"

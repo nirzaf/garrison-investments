@@ -1,7 +1,11 @@
 import smtplib
 from email.message import EmailMessage
 
+import structlog
+
 from app.config import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 class EmailService:
@@ -18,11 +22,24 @@ class EmailService:
         message["To"] = ", ".join(recipients)
         message.set_content(body)
 
-        with smtplib.SMTP(self.settings.smtp_host, self.settings.smtp_port, timeout=10) as client:
-            if self.settings.smtp_use_tls:
-                client.starttls()
-            if self.settings.smtp_username and self.settings.smtp_password:
-                client.login(self.settings.smtp_username, self.settings.smtp_password)
-            client.send_message(message)
+        try:
+            with smtplib.SMTP(
+                self.settings.smtp_host,
+                self.settings.smtp_port,
+                timeout=10,
+            ) as client:
+                if self.settings.smtp_use_tls:
+                    client.starttls()
+                if self.settings.smtp_username and self.settings.smtp_password:
+                    client.login(self.settings.smtp_username, self.settings.smtp_password)
+                client.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            logger.warning(
+                "email_delivery_failed",
+                recipients=len(recipients),
+                subject=subject,
+                error=str(exc),
+            )
+            return 0
 
         return len(recipients)

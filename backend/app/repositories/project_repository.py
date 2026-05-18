@@ -7,6 +7,7 @@ from app.models.boq_item import BoqItem
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.project_milestone import ProjectMilestone
+from app.models.project_task import ProjectTask
 
 
 class ProjectRepository:
@@ -85,6 +86,39 @@ class ProjectRepository:
             select(ProjectMilestone)
             .where(ProjectMilestone.project_id == project_id, ProjectMilestone.deleted_at.is_(None))
             .order_by(ProjectMilestone.sort_order.asc(), ProjectMilestone.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_milestone(self, project_id: UUID, milestone_id: UUID) -> ProjectMilestone | None:
+        result = await self.session.execute(
+            select(ProjectMilestone).where(
+                ProjectMilestone.id == milestone_id,
+                ProjectMilestone.project_id == project_id,
+                ProjectMilestone.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def add_task(self, task: ProjectTask) -> ProjectTask:
+        self.session.add(task)
+        await self.session.flush()
+        return task
+
+    async def get_task(self, project_id: UUID, task_id: UUID) -> ProjectTask | None:
+        result = await self.session.execute(
+            select(ProjectTask).where(
+                ProjectTask.id == task_id,
+                ProjectTask.project_id == project_id,
+                ProjectTask.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_tasks(self, project_id: UUID) -> list[ProjectTask]:
+        result = await self.session.execute(
+            select(ProjectTask)
+            .where(ProjectTask.project_id == project_id, ProjectTask.deleted_at.is_(None))
+            .order_by(ProjectTask.sort_order.asc(), ProjectTask.created_at.asc())
         )
         return list(result.scalars().all())
 

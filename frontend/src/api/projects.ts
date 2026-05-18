@@ -16,6 +16,9 @@ export type ProjectPayload = ProjectCreateSchema & {
 export type ProjectRecord = components['schemas']['ProjectResponse'];
 
 export type ProjectListResponse = components['schemas']['ProjectListResponse'];
+export type ProjectTimelineResponse = components['schemas']['ProjectTimelineResponse'];
+export type ProjectTaskPayload = components['schemas']['ProjectTaskCreateRequest'];
+export type ProjectTaskRecord = components['schemas']['ProjectTaskResponse'];
 
 export async function listProjects(params: {
   status?: string;
@@ -27,5 +30,18 @@ export async function listProjects(params: {
 
 export async function createProject(payload: ProjectPayload): Promise<ProjectRecord> {
   const response = await apiClient.post<ProjectRecord>('/projects', payload);
+  return response.data;
+}
+
+export async function getProjectTimeline(projectId: string): Promise<ProjectTimelineResponse> {
+  const response = await apiClient.get<ProjectTimelineResponse>(`/projects/${projectId}/timeline`);
+  return response.data;
+}
+
+export async function createProjectTask(
+  projectId: string,
+  payload: ProjectTaskPayload
+): Promise<ProjectTaskRecord> {
+  const response = await apiClient.post<ProjectTaskRecord>(`/projects/${projectId}/tasks`, payload);
   return response.data;
 }

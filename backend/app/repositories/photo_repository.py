@@ -21,6 +21,12 @@ class PhotoRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_deleted_by_id(self, photo_id: UUID) -> Photo | None:
+        result = await self.session.execute(
+            select(Photo).where(Photo.id == photo_id, Photo.deleted_at.is_not(None))
+        )
+        return result.scalar_one_or_none()
+
     async def list_for_entity(
         self,
         *,

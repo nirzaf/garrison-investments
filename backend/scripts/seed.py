@@ -35,6 +35,7 @@ from app.models.photo import Photo
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.project_milestone import ProjectMilestone
+from app.models.project_task import ProjectTask
 from app.models.report_export import ReportExport
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
@@ -544,6 +545,7 @@ async def seed_launch_data() -> None:
                     boq_item.planned_amount = planned_amount
 
         await seed_daily_reports(session, user_by_email, project_objects)
+        await seed_project_tasks(session, user_by_email, project_objects)
         suppliers = await seed_suppliers(session, user_by_email)
         inventory_items, locations = await seed_inventory(
             session, user_by_email, project_objects, suppliers
@@ -617,6 +619,99 @@ async def seed_suppliers(session, user_by_email: dict) -> dict[str, Supplier]:
         created += 1
     print(f"Seeded suppliers: {created} created, {len(SEED_SUPPLIERS) - created} updated")
     return supplier_map
+
+
+async def seed_project_tasks(
+    session,
+    user_by_email: dict,
+    project_objects: dict[str, Project],
+) -> None:
+    project = project_objects.get("GIP-001")
+    if not project:
+        return
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    milestone = await session.scalar(
+        select(ProjectMilestone).where(
+            ProjectMilestone.project_id == project.id,
+            ProjectMilestone.name == "Blockwork And Plaster",
+            ProjectMilestone.deleted_at.is_(None),
+        )
+    )
+    first_task = await upsert_project_task(
+        session,
+        project_id=project.id,
+        name="Complete level 1 blockwork",
+        milestone_id=milestone.id if milestone else None,
+        owner_id=supervisor.id if supervisor else None,
+        dependency_task_id=None,
+        baseline_start_date=date.today() - timedelta(days=10),
+        baseline_end_date=date.today() + timedelta(days=5),
+        actual_start_date=date.today() - timedelta(days=9),
+        actual_end_date=None,
+        progress_percentage=Decimal("65.00"),
+        status="in_progress",
+        delay_reason="Awaiting final MEP sleeve clearance in corridor B.",
+        sort_order=1,
+    )
+    await upsert_project_task(
+        session,
+        project_id=project.id,
+        name="Engineer plaster inspection sign-off",
+        milestone_id=milestone.id if milestone else None,
+        owner_id=engineer.id if engineer else None,
+        dependency_task_id=first_task.id,
+        baseline_start_date=date.today() + timedelta(days=6),
+        baseline_end_date=date.today() + timedelta(days=10),
+        actual_start_date=None,
+        actual_end_date=None,
+        progress_percentage=Decimal("0.00"),
+        status="not_started",
+        delay_reason=None,
+        sort_order=2,
+    )
+
+
+async def upsert_project_task(
+    session,
+    *,
+    project_id,
+    name: str,
+    milestone_id,
+    owner_id,
+    dependency_task_id,
+    baseline_start_date,
+    baseline_end_date,
+    actual_start_date,
+    actual_end_date,
+    progress_percentage: Decimal,
+    status: str,
+    delay_reason: str | None,
+    sort_order: int,
+) -> ProjectTask:
+    task = await session.scalar(
+        select(ProjectTask).where(
+            ProjectTask.project_id == project_id,
+            ProjectTask.name == name,
+            ProjectTask.deleted_at.is_(None),
+        )
+    )
+    if not task:
+        task = ProjectTask(project_id=project_id, name=name)
+        session.add(task)
+        await session.flush()
+    task.milestone_id = milestone_id
+    task.owner_id = owner_id
+    task.dependency_task_id = dependency_task_id
+    task.baseline_start_date = baseline_start_date
+    task.baseline_end_date = baseline_end_date
+    task.actual_start_date = actual_start_date
+    task.actual_end_date = actual_end_date
+    task.progress_percentage = progress_percentage
+    task.status = status
+    task.delay_reason = delay_reason
+    task.sort_order = sort_order
+    return task
 
 
 async def seed_inventory(
@@ -1128,12 +1223,6 @@ async def seed_supervisor_updates(
             )
         )
         if existing:
-            existing.extra_fields = {
-                **(existing.extra_fields or {}),
-                "seed_data": True,
-                "uat_scenario": r["status"],
-                **r["extra_fields"],
-            }
             continue
         update = SupervisorUpdate(
             project_id=gip001.id,
@@ -1795,6 +1884,25 @@ async def seed_notifications(
 ) -> None:
     now = datetime.now(UTC)
     notifications = [
+        {
+            "user_email": DEFAULT_ADMIN_EMAIL,
+            "title": "Daily Report Submitted",
+            "body": "Engineer submitted daily report DR-GIP-001-SEED for Lusail Villa Fit-Out.",
+            "notification_type": "report_submitted",
+            "reference_type": "daily_report",
+            "is_read": False,
+        },
+        {
+            "user_email": DEFAULT_ADMIN_EMAIL,
+            "title": "Low Stock Alert",
+            "body": (
+                "Safety Helmets at GIP-001 Site Store dropped below reorder level "
+                "(40 remaining, reorder at 50)."
+            ),
+            "notification_type": "low_stock",
+            "reference_type": "inventory",
+            "is_read": False,
+        },
         {
             "user_email": "pm@garrisons.qa",
             "title": "Daily Report Submitted",

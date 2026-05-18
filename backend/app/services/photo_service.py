@@ -18,8 +18,9 @@ from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import ROLE_ADMIN
 from app.utils.security import utc_now
 
-MAX_FILE_SIZE = 30 * 1024 * 1024
+MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_REPORT_PHOTOS = 5
+PHOTO_RECOVERY_DAYS = 30
 SIGNED_URL_SECONDS = 300
 ALLOWED_MAGIC = {
     "image/jpeg": (b"\xff\xd8\xff",),
@@ -180,6 +181,34 @@ class PhotoService:
             new_values={"photo_id": str(photo.id)},
         )
         await self.session.commit()
+
+    async def recover(self, photo_id: UUID, actor: User) -> Photo:
+        if actor.role != ROLE_ADMIN:
+            raise AppException(
+                "Only Admin can recover deleted photos.",
+                status_code=403,
+                error_code="PHOTO_RECOVERY_FORBIDDEN",
+            )
+        photo = await self.photos.get_deleted_by_id(photo_id)
+        if not photo:
+            raise NotFoundException("Photo")
+        recovery_cutoff = utc_now() - timedelta(days=PHOTO_RECOVERY_DAYS)
+        if photo.deleted_at and photo.deleted_at < recovery_cutoff:
+            raise AppException(
+                "Photo recovery window has expired.",
+                status_code=409,
+                error_code="PHOTO_RECOVERY_EXPIRED",
+            )
+        photo.deleted_at = None
+        await self.audit.record(
+            action="photos.recovered",
+            user_id=actor.id,
+            entity_type=photo.entity_type,
+            entity_id=photo.entity_id,
+            new_values={"photo_id": str(photo.id)},
+        )
+        await self.session.commit()
+        return photo
 
     async def _ensure_upload_allowed(
         self,

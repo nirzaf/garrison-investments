@@ -2,9 +2,10 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 
-from app.api.dependencies import CurrentUser, DbSession
+from app.api.dependencies import DbSession, require_permission
+from app.models.user import User
 from app.schemas.documents import (
     DocumentDecisionRequest,
     DocumentDownloadResponse,
@@ -13,13 +14,15 @@ from app.schemas.documents import (
     DocumentVersionResponse,
 )
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
+from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+CanManageDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_MANAGE))]
 
 
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
     project_id: Annotated[UUID | None, Query()] = None,
     document_type: Annotated[str | None, Query()] = None,
@@ -39,7 +42,7 @@ async def list_documents(
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
     title: Annotated[str, Form()],
     document_type: Annotated[str, Form()],
@@ -61,7 +64,7 @@ async def upload_document(
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
 ) -> DocumentResponse:
     del current_user
@@ -72,7 +75,7 @@ async def get_document(
 @router.post("/{document_id}/versions", response_model=DocumentResponse)
 async def upload_document_version(
     document_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
@@ -83,7 +86,7 @@ async def upload_document_version(
 @router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])
 async def list_document_versions(
     document_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
 ) -> list[DocumentVersionResponse]:
     del current_user
@@ -96,7 +99,7 @@ async def approve_document_version(
     document_id: UUID,
     version_id: UUID,
     payload: DocumentDecisionRequest,
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
 ) -> DocumentResponse:
     document = await DocumentService(session).approve_version(
@@ -111,7 +114,7 @@ async def approve_document_version(
 @router.get("/{document_id}/download", response_model=DocumentDownloadResponse)
 async def get_document_download_url(
     document_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanManageDocuments,
     session: DbSession,
     version_id: Annotated[UUID | None, Query()] = None,
 ) -> DocumentDownloadResponse:

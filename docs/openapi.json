@@ -3939,6 +3939,54 @@
         }
       }
     },
+    "/api/v1/photos/{photo_id}/recover": {
+      "post": {
+        "tags": [
+          "Photos"
+        ],
+        "summary": "Recover File",
+        "operationId": "recover_file_api_v1_photos__photo_id__recover_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -4320,6 +4368,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectTimelineResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks": {
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Create Project Task",
+        "operationId": "create_project_task_api_v1_projects__project_id__tasks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTaskCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskResponse"
                 }
               }
             }
@@ -10443,6 +10549,342 @@
         ],
         "title": "ProjectResponse"
       },
+      "ProjectTaskCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "dependency_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Task Id"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "baseline_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Start Date"
+          },
+          "baseline_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline End Date"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "planned_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_started"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Progress Percentage",
+            "default": 0
+          },
+          "delay_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Reason"
+          },
+          "sort_order": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ProjectTaskCreateRequest"
+      },
+      "ProjectTaskResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Project Id"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "dependency_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Task Id"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "baseline_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Start Date"
+          },
+          "baseline_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline End Date"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "planned_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "progress_percentage": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Progress Percentage"
+          },
+          "delay_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Reason"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "milestone_id",
+          "dependency_task_id",
+          "owner_id",
+          "name",
+          "baseline_start_date",
+          "baseline_end_date",
+          "planned_start_date",
+          "planned_end_date",
+          "actual_start_date",
+          "actual_end_date",
+          "status",
+          "progress_percentage",
+          "delay_reason",
+          "sort_order",
+          "created_at"
+        ],
+        "title": "ProjectTaskResponse"
+      },
       "ProjectTimelineResponse": {
         "properties": {
           "project": {
@@ -10454,12 +10896,20 @@
             },
             "type": "array",
             "title": "Milestones"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectTaskResponse"
+            },
+            "type": "array",
+            "title": "Tasks"
           }
         },
         "type": "object",
         "required": [
           "project",
-          "milestones"
+          "milestones",
+          "tasks"
         ],
         "title": "ProjectTimelineResponse"
       },
