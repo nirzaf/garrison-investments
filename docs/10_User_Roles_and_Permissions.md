@@ -470,6 +470,59 @@ This section explains what each role can do in practical terms.
 - Manage suppliers
 - View finance features and finance-linked supplier data
 
+## Staging Role Verification Accounts
+
+For UAT, smoke testing, and role-based walkthroughs, staging currently includes one test account for each implemented role.
+
+Source reference:
+
+- [STAGING_DEPLOYMENT.md](../STAGING_DEPLOYMENT.md)
+
+These accounts are environment-specific and do not change the RBAC model described above. They exist to help testers verify that each role sees the correct routes, navigation items, and workflows.
+
+### Staging Login Details
+
+Shared staging login OTP:
+
+- `123456`
+
+Role-specific staging accounts:
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `stg-admin@garrisons.qa` | `StageTest123!` |
+| General Manager | `stg-general-manager@garrisons.qa` | `StageTest123!` |
+| Operation Manager | `stg-operation-manager@garrisons.qa` | `StageTest123!` |
+| Project Manager | `stg-project-manager@garrisons.qa` | `StageTest123!` |
+| Civil Engineer | `stg-civil-engineer@garrisons.qa` | `StageTest123!` |
+| Civil Supervisor | `stg-civil-supervisor@garrisons.qa` | `StageTest123!` |
+| Store Keeper | `stg-store-keeper@garrisons.qa` | `StageTest123!` |
+| Accounts | `stg-accounts@garrisons.qa` | `StageTest123!` |
+
+### What These Accounts Are For
+
+These staging users are suitable for validating:
+
+- role-specific frontend navigation visibility
+- route access controlled by `RequirePermission`
+- backend permission enforcement for the main feature areas
+- role-specific workflow differences such as report submission versus approval access
+- the civil supervisor redirect to the supervisor update report flow
+
+### Staging Verification Already Completed
+
+The staging deployment notes confirm the following:
+
+- one active staging user exists for each implemented role
+- login was verified successfully for `stg-civil-engineer@garrisons.qa`
+- the verified staging login used password `StageTest123!` and OTP `123456`
+- `must_change_password=false` was confirmed for the tested account so UAT users are not blocked by forced password reset
+- the updated staging deployment document was synced back to the staging server path
+
+### Usage Note
+
+These credentials are intended for staging only. They should be rotated, changed, or removed before any production release process.
+
 ## Functional Access By Business Area
 
 This table summarizes which permission drives each major functional area.

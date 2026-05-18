@@ -26,10 +26,18 @@ import {
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useAuth } from '../../context/useAuth';
 
 export function InventoryPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
+  const canCreateMaterialRequest =
+    user?.role === 'admin' ||
+    user?.role === 'project_manager' ||
+    user?.role === 'civil_engineer' ||
+    user?.role === 'store_keeper';
   const locations = useQuery({ queryKey: ['inventory-locations'], queryFn: listLocations });
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
   const items = useQuery({ queryKey: ['inventory-items'], queryFn: () => listInventoryItems() });
@@ -123,6 +131,7 @@ export function InventoryPage() {
         </StatusBadge>
       </div>
 
+      {canManageInventory ? (
       <div className="grid gap-4 lg:grid-cols-3">
         <form
           className="rounded-lg border border-theme-border bg-theme-card p-4"
@@ -275,6 +284,7 @@ export function InventoryPage() {
           </button>
         </form>
       </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border border-theme-border bg-theme-card">
@@ -305,6 +315,7 @@ export function InventoryPage() {
           )}
         </div>
 
+        {canManageInventory ? (
         <div className="rounded-lg border border-theme-border bg-theme-card p-4">
           <h3 className="text-base font-semibold text-theme-text-primary">Quick receive</h3>
           <p className="mt-1 text-sm text-theme-text-secondary">
@@ -333,8 +344,10 @@ export function InventoryPage() {
             </button>
           </form>
         </div>
+        ) : null}
       </div>
 
+      {canManageInventory ? (
       <div className="grid gap-4 lg:grid-cols-2">
         <form
           className="rounded-lg border border-theme-border bg-theme-card p-4"
@@ -452,8 +465,10 @@ export function InventoryPage() {
           </button>
         </form>
       </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        {canCreateMaterialRequest ? (
         <form
           className="rounded-lg border border-theme-border bg-theme-card p-4"
           onSubmit={(event) => {
@@ -507,6 +522,7 @@ export function InventoryPage() {
             Create request
           </button>
         </form>
+        ) : null}
 
         <div className="rounded-lg border border-theme-border bg-theme-card">
           <div className="border-b border-theme-border px-4 py-3">
@@ -516,6 +532,11 @@ export function InventoryPage() {
             <div className="divide-y divide-theme-border">
               {materialRequests.data.map((request) => (
                 <article className="px-4 py-3 text-sm" key={request.id}>
+                  {(() => {
+                    const canReserve = canManageInventory && request.status === 'approved';
+                    const canIssue = canManageInventory && request.status === 'reserved';
+                    return (
+                      <>
                   <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div>
                       <p className="font-medium text-theme-text-primary">
@@ -531,27 +552,34 @@ export function InventoryPage() {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
-                      className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-theme-text-secondary hover:bg-theme-main"
+                      className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-theme-text-secondary hover:bg-theme-main disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canReserve || reserveRequestMutation.isPending}
                       onClick={() => reserveRequestMutation.mutate(request.id)}
                       type="button"
                     >
                       Reserve
                     </button>
                     <button
-                      className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+                      className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canIssue || issueRequestMutation.isPending}
                       onClick={() => issueRequestMutation.mutate(request.id)}
                       type="button"
                     >
                       Issue
                     </button>
-                    <button
-                      className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-[var(--status-error-text)] hover:bg-theme-main"
-                      onClick={() => cancelRequestMutation.mutate(request.id)}
-                      type="button"
-                    >
-                      Cancel
-                    </button>
+                    {canManageInventory ? (
+                      <button
+                        className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-[var(--status-error-text)] hover:bg-theme-main"
+                        onClick={() => cancelRequestMutation.mutate(request.id)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
+                      </>
+                    );
+                  })()}
                 </article>
               ))}
             </div>

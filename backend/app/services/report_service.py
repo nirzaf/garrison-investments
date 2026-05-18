@@ -19,6 +19,7 @@ from app.services.notification_service import NotificationService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ROLE_ADMIN,
+    ROLE_ACCOUNTS,
     ROLE_CIVIL_ENGINEER,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
@@ -341,7 +342,12 @@ class ReportService:
                 await self._ensure_project_member(project_id, actor)
         elif actor.role == ROLE_CIVIL_ENGINEER and project_id:
             await self._ensure_project_member(project_id, actor)
-        elif actor.role not in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        elif actor.role not in {
+            ROLE_ADMIN,
+            ROLE_ACCOUNTS,
+            ROLE_GENERAL_MANAGER,
+            ROLE_OPERATION_MANAGER,
+        }:
             if actor.role != ROLE_CIVIL_ENGINEER:
                 raise AppException(
                     "You do not have access to daily reports.",

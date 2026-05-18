@@ -11,6 +11,8 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.approvals import ApprovalCreateRequest
+from app.services.approval_service import ApprovalService
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -93,7 +95,7 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     challenge = login_response.json()
     verify_response = await client.post(
         "/api/v1/auth/verify-otp",
-        json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+        json={"challenge_id": challenge["challenge_id"], "otp": challenge.get("dev_otp") or "123456"},
     )
     return str(verify_response.json()["access_token"])
 
@@ -193,3 +195,28 @@ async def test_generic_approval_chain_delegation_rejection_and_override() -> Non
         )
         assert overridden.status_code == 200
         assert overridden.json()["status"] == "override_approved"
+
+
+async def test_project_manager_material_request_approval_routes_to_operations() -> None:
+    await skip_if_database_unavailable()
+    operation_manager, _ = await create_user("operation_manager")
+    project_manager, _ = await create_user("project_manager")
+    engineer, _ = await create_user("civil_engineer")
+    project = await create_project(project_manager, engineer)
+
+    async with AsyncSessionLocal() as session:
+        actor = await session.get(User, project_manager.id)
+        approval = await ApprovalService(session).create_approval(
+            ApprovalCreateRequest(
+                request_type="material_request",
+                request_id=uuid4(),
+                project_id=project.id,
+                title="PM submitted material request",
+                amount=Decimal("50.00"),
+                currency="USD",
+            ),
+            actor,
+            internal=True,
+        )
+
+    assert approval.approver_id == operation_manager.id

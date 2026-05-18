@@ -11,8 +11,10 @@ import {
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useAuth } from '../../context/useAuth';
 
 export function DocumentsPage() {
+  const { user } = useAuth();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [search, setSearch] = useState('');
@@ -26,6 +28,7 @@ export function DocumentsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
+  const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
 
   const loadDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -154,51 +157,53 @@ export function DocumentsPage() {
       {notice ? <Alert tone="success" message={notice} /> : null}
       {error ? <Alert tone="error" message={error} /> : null}
 
-      <form
-        className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
-        onSubmit={submitUpload}
-      >
-        <input
-          className="form-field"
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Document title"
-          required
-          value={title}
-        />
-        <select
-          className="form-field"
-          onChange={(event) => setDocumentType(event.target.value)}
-          value={documentType}
+      {canManageDocuments ? (
+        <form
+          className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
+          onSubmit={submitUpload}
         >
-          <option value="mar">MAR</option>
-          <option value="mir">MIR</option>
-          <option value="wir">WIR</option>
-          <option value="delivery_note">Delivery note</option>
-          <option value="drawing">Drawing</option>
-          <option value="contract">Contract</option>
-          <option value="invoice">Invoice</option>
-        </select>
-        <input
-          className="form-field"
-          onChange={(event) => setExpiryDate(event.target.value)}
-          type="date"
-          value={expiryDate}
-        />
-        <input
-          accept="application/pdf,image/jpeg,image/png"
-          className="form-field"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          required
-          type="file"
-        />
-        <button
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-          type="submit"
-        >
-          <FileUp className="h-4 w-4" />
-          Upload
-        </button>
-      </form>
+          <input
+            className="form-field"
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Document title"
+            required
+            value={title}
+          />
+          <select
+            className="form-field"
+            onChange={(event) => setDocumentType(event.target.value)}
+            value={documentType}
+          >
+            <option value="mar">MAR</option>
+            <option value="mir">MIR</option>
+            <option value="wir">WIR</option>
+            <option value="delivery_note">Delivery note</option>
+            <option value="drawing">Drawing</option>
+            <option value="contract">Contract</option>
+            <option value="invoice">Invoice</option>
+          </select>
+          <input
+            className="form-field"
+            onChange={(event) => setExpiryDate(event.target.value)}
+            type="date"
+            value={expiryDate}
+          />
+          <input
+            accept="application/pdf,image/jpeg,image/png"
+            className="form-field"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            required
+            type="file"
+          />
+          <button
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            type="submit"
+          >
+            <FileUp className="h-4 w-4" />
+            Upload
+          </button>
+        </form>
+      ) : null}
 
       {documents.length === 0 ? (
         <EmptyState
@@ -234,7 +239,7 @@ export function DocumentsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {pending ? (
+                    {canManageDocuments && pending ? (
                       <button
                         className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
                         onClick={() => void approve(document)}

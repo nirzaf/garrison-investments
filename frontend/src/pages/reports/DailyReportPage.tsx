@@ -25,6 +25,7 @@ import {
 import { listSupervisorUpdates, type SupervisorUpdateRecord } from '../../api/supervisorUpdates';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useAuth } from '../../context/useAuth';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -117,6 +118,7 @@ function formHasDraftContent(payload: DailyReportPayload) {
 }
 
 export function DailyReportPage() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
@@ -139,6 +141,7 @@ export function DailyReportPage() {
     () => projects.find((project) => project.id === form.project_id),
     [form.project_id, projects]
   );
+  const canSubmitReports = user?.permissions?.includes('reports:submit') ?? false;
 
   const loadReports = useCallback(async (projectId?: string) => {
     const response = await listDailyReports({ project_id: projectId || undefined });
@@ -396,6 +399,98 @@ export function DailyReportPage() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  if (!canSubmitReports) {
+    return (
+      <section className="space-y-4">
+        <div>
+          <p className="text-sm font-medium text-brand-600">Reports</p>
+          <h2 className="text-2xl font-semibold text-theme-text-primary">Daily Reports</h2>
+          <p className="mt-1 text-sm text-theme-text-muted">
+            Review submitted and approved site reports across accessible projects.
+          </p>
+        </div>
+
+        {error ? <Alert tone="error" message={error} /> : null}
+
+        {reports.length === 0 ? (
+          <EmptyState
+            description="Submitted and draft engineer reports will appear here."
+            title="No daily reports found"
+          />
+        ) : (
+          <div className="grid gap-3">
+            {reports.map((report) => (
+              <article
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                key={report.id}
+              >
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-theme-text-primary">
+                        {report.report_number ?? 'Draft report'}
+                      </h3>
+                      <StatusBadge tone={report.status === 'submitted' ? 'info' : 'warning'}>
+                        {report.status}
+                      </StatusBadge>
+                    </div>
+                    <p className="mt-1 text-sm text-theme-text-muted">
+                      {report.report_date} - {report.work_location}
+                    </p>
+                  </div>
+                  <p className="text-sm font-medium text-theme-text-secondary">
+                    {report.progress_percentage}% progress
+                  </p>
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">
+                      Work completed
+                    </h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">
+                      {report.work_completed}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">
+                      Next-day plan
+                    </h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">
+                      {report.next_day_plan}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">Safety</h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">
+                      {report.safety_incidents} incidents. {report.safety_notes || 'No notes.'}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">History</h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">
+                      {report.approval_history.length} workflow events recorded.
+                    </p>
+                  </div>
+                </div>
+
+                {report.status === 'approved' ? (
+                  <button
+                    className="mt-4 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main"
+                    onClick={() => void downloadPdf(report)}
+                    type="button"
+                  >
+                    Download PDF
+                  </button>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
   }
 
   return (

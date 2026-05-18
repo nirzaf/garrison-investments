@@ -67,7 +67,7 @@ export function App() {
         <Route
           path="/documents"
           element={
-            <RequirePermission permission="documents:manage">
+            <RequirePermission permission="documents:view">
               <DocumentsPage />
             </RequirePermission>
           }
@@ -124,7 +124,7 @@ export function App() {
         <Route
           path="/reports/daily"
           element={
-            <RequirePermission permission="reports:submit">
+            <RequirePermission permission="reports:view">
               <DailyReportPage />
             </RequirePermission>
           }
