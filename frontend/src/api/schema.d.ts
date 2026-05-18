@@ -605,6 +605,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/imports/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Import Batches */
+        get: operations["list_import_batches_api_v1_imports_batches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/{template_type}/preview": {
         parameters: {
             query?: never;
@@ -2107,6 +2124,13 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImportBatchListResponse */
+        ImportBatchListResponse: {
+            /** Items */
+            items: components["schemas"]["ImportRunResponse"][];
+            /** Total */
+            total: number;
+        };
         /** ImportErrorItem */
         ImportErrorItem: {
             /** Row */
@@ -2136,6 +2160,8 @@ export interface components {
             batch_id: string;
             /** Template Type */
             template_type: string;
+            /** File Name */
+            file_name?: string | null;
             /** Status */
             status: string;
             /** Row Count */
@@ -4299,7 +4325,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown[];
+                    "application/json": components["schemas"]["DocumentVersionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -4740,6 +4766,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_import_batches_api_v1_imports_batches_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchListResponse"];
                 };
             };
         };
