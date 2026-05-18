@@ -14,15 +14,16 @@ from app.schemas.documents import (
     DocumentVersionResponse,
 )
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
-from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE
+from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE, PERMISSION_DOCUMENTS_VIEW
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 CanManageDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_MANAGE))]
+CanViewDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_VIEW))]
 
 
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
     project_id: Annotated[UUID | None, Query()] = None,
     document_type: Annotated[str | None, Query()] = None,
@@ -42,7 +43,7 @@ async def list_documents(
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
     title: Annotated[str, Form()],
     document_type: Annotated[str, Form()],
@@ -64,7 +65,7 @@ async def upload_document(
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: UUID,
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
 ) -> DocumentResponse:
     del current_user
@@ -75,7 +76,7 @@ async def get_document(
 @router.post("/{document_id}/versions", response_model=DocumentResponse)
 async def upload_document_version(
     document_id: UUID,
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:

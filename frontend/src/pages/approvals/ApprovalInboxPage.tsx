@@ -18,8 +18,10 @@ import {
 } from '../../api/reports';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useAuth } from '../../context/useAuth';
 
 export function ApprovalInboxPage() {
+  const { user } = useAuth();
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
   const [genericApprovals, setGenericApprovals] = useState<ApprovalRecord[]>([]);
   const [commentsByReport, setCommentsByReport] = useState<Record<string, string>>({});
@@ -38,6 +40,7 @@ export function ApprovalInboxPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const canOverride = user?.role === 'admin';
 
   const loadReports = useCallback(async () => {
     setIsLoading(true);
@@ -331,49 +334,53 @@ export function ApprovalInboxPage() {
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
-                    <div className="mt-2 grid gap-2">
-                      <select
-                        className="form-field"
-                        onChange={(event) =>
-                          setOverrideByApproval({
-                            ...overrideByApproval,
-                            [approval.id]: {
-                              decision: event.target.value as 'approved' | 'rejected',
-                              reason: overrideByApproval[approval.id]?.reason ?? ''
-                            }
-                          })
-                        }
-                        value={overrideByApproval[approval.id]?.decision ?? 'approved'}
-                      >
-                        <option value="approved">Approve override</option>
-                        <option value="rejected">Reject override</option>
-                      </select>
-                      <input
-                        className="form-field"
-                        onChange={(event) =>
-                          setOverrideByApproval({
-                            ...overrideByApproval,
-                            [approval.id]: {
-                              decision: overrideByApproval[approval.id]?.decision ?? 'approved',
-                              reason: event.target.value
-                            }
-                          })
-                        }
-                        placeholder="Override reason"
-                        value={overrideByApproval[approval.id]?.reason ?? ''}
-                      />
-                      <button
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
-                        onClick={() => void overrideWorkflow(approval)}
-                        type="button"
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        Override
-                      </button>
+                  {canOverride ? (
+                    <div>
+                      <p className="text-sm font-semibold text-theme-text-primary">
+                        Admin override
+                      </p>
+                      <div className="mt-2 grid gap-2">
+                        <select
+                          className="form-field"
+                          onChange={(event) =>
+                            setOverrideByApproval({
+                              ...overrideByApproval,
+                              [approval.id]: {
+                                decision: event.target.value as 'approved' | 'rejected',
+                                reason: overrideByApproval[approval.id]?.reason ?? ''
+                              }
+                            })
+                          }
+                          value={overrideByApproval[approval.id]?.decision ?? 'approved'}
+                        >
+                          <option value="approved">Approve override</option>
+                          <option value="rejected">Reject override</option>
+                        </select>
+                        <input
+                          className="form-field"
+                          onChange={(event) =>
+                            setOverrideByApproval({
+                              ...overrideByApproval,
+                              [approval.id]: {
+                                decision: overrideByApproval[approval.id]?.decision ?? 'approved',
+                                reason: event.target.value
+                              }
+                            })
+                          }
+                          placeholder="Override reason"
+                          value={overrideByApproval[approval.id]?.reason ?? ''}
+                        />
+                        <button
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
+                          onClick={() => void overrideWorkflow(approval)}
+                          type="button"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          Override
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
@@ -482,68 +489,70 @@ export function ApprovalInboxPage() {
                     history.
                   </span>
                 </label>
-                <div className="mt-4 rounded-md border border-theme-border bg-theme-main p-3">
-                  <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
-                  <div className="mt-2 grid gap-2 md:grid-cols-[160px_1fr]">
-                    <select
-                      className="form-field"
-                      onChange={(event) =>
-                        setOverrideByReport({
-                          ...overrideByReport,
-                          [report.id]: {
-                            decision: event.target.value as 'approved' | 'rejected',
-                            reason: overrideByReport[report.id]?.reason ?? '',
-                            targetCovered: overrideByReport[report.id]?.targetCovered ?? false
-                          }
-                        })
-                      }
-                      value={overrideByReport[report.id]?.decision ?? 'approved'}
+                {canOverride ? (
+                  <div className="mt-4 rounded-md border border-theme-border bg-theme-main p-3">
+                    <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
+                    <div className="mt-2 grid gap-2 md:grid-cols-[160px_1fr]">
+                      <select
+                        className="form-field"
+                        onChange={(event) =>
+                          setOverrideByReport({
+                            ...overrideByReport,
+                            [report.id]: {
+                              decision: event.target.value as 'approved' | 'rejected',
+                              reason: overrideByReport[report.id]?.reason ?? '',
+                              targetCovered: overrideByReport[report.id]?.targetCovered ?? false
+                            }
+                          })
+                        }
+                        value={overrideByReport[report.id]?.decision ?? 'approved'}
+                      >
+                        <option value="approved">Approve</option>
+                        <option value="rejected">Reject</option>
+                      </select>
+                      <input
+                        className="form-field"
+                        onChange={(event) =>
+                          setOverrideByReport({
+                            ...overrideByReport,
+                            [report.id]: {
+                              decision: overrideByReport[report.id]?.decision ?? 'approved',
+                              reason: event.target.value,
+                              targetCovered: overrideByReport[report.id]?.targetCovered ?? false
+                            }
+                          })
+                        }
+                        placeholder="Override reason"
+                        value={overrideByReport[report.id]?.reason ?? ''}
+                      />
+                    </div>
+                    <label className="mt-2 flex items-center gap-2 text-sm text-theme-text-secondary">
+                      <input
+                        checked={overrideByReport[report.id]?.targetCovered ?? false}
+                        onChange={(event) =>
+                          setOverrideByReport({
+                            ...overrideByReport,
+                            [report.id]: {
+                              decision: overrideByReport[report.id]?.decision ?? 'approved',
+                              reason: overrideByReport[report.id]?.reason ?? '',
+                              targetCovered: event.target.checked
+                            }
+                          })
+                        }
+                        type="checkbox"
+                      />
+                      <span>Target covered for override approval</span>
+                    </label>
+                    <button
+                      className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
+                      onClick={() => void overrideReport(report)}
+                      type="button"
                     >
-                      <option value="approved">Approve</option>
-                      <option value="rejected">Reject</option>
-                    </select>
-                    <input
-                      className="form-field"
-                      onChange={(event) =>
-                        setOverrideByReport({
-                          ...overrideByReport,
-                          [report.id]: {
-                            decision: overrideByReport[report.id]?.decision ?? 'approved',
-                            reason: event.target.value,
-                            targetCovered: overrideByReport[report.id]?.targetCovered ?? false
-                          }
-                        })
-                      }
-                      placeholder="Override reason"
-                      value={overrideByReport[report.id]?.reason ?? ''}
-                    />
+                      <ShieldCheck className="h-4 w-4" />
+                      Override report
+                    </button>
                   </div>
-                  <label className="mt-2 flex items-center gap-2 text-sm text-theme-text-secondary">
-                    <input
-                      checked={overrideByReport[report.id]?.targetCovered ?? false}
-                      onChange={(event) =>
-                        setOverrideByReport({
-                          ...overrideByReport,
-                          [report.id]: {
-                            decision: overrideByReport[report.id]?.decision ?? 'approved',
-                            reason: overrideByReport[report.id]?.reason ?? '',
-                            targetCovered: event.target.checked
-                          }
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    <span>Target covered for override approval</span>
-                  </label>
-                  <button
-                    className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
-                    onClick={() => void overrideReport(report)}
-                    type="button"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Override report
-                  </button>
-                </div>
+                ) : null}
               </div>
 
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

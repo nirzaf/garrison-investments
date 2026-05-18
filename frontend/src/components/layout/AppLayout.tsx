@@ -61,7 +61,7 @@ const navItems: NavItem[] = [
   },
   { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
-  { label: 'Documents', to: '/documents', permission: 'documents:manage', icon: FileText },
+  { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
   { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
   { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },

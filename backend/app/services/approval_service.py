@@ -57,7 +57,7 @@ class ApprovalService:
                 status_code=409,
                 error_code="APPROVAL_ALREADY_PENDING",
             )
-        approver = await self._resolve_approver(payload)
+        approver = await self._resolve_approver(payload, actor)
         escalation_user = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
         now = utc_now()
         approval = await self.approvals.add(
@@ -308,7 +308,7 @@ class ApprovalService:
             )
         return approval
 
-    async def _resolve_approver(self, payload: ApprovalCreateRequest) -> User:
+    async def _resolve_approver(self, payload: ApprovalCreateRequest, actor: User) -> User:
         if payload.request_type == "invoice":
             approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
             if approver:
@@ -321,6 +321,10 @@ class ApprovalService:
             approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
             if approver:
                 return approver
+        if payload.request_type in {"material_request", "project_change"} and actor.role == ROLE_PROJECT_MANAGER:
+            approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
+            if approver:
+                return approver
         if payload.project_id:
             project_manager = await self.session.scalar(
                 select(User)
@@ -329,10 +333,11 @@ class ApprovalService:
                     ProjectMember.project_id == payload.project_id,
                     ProjectMember.deleted_at.is_(None),
                     User.role == ROLE_PROJECT_MANAGER,
+                    User.id != actor.id,
                     User.is_active.is_(True),
                     User.deleted_at.is_(None),
                 )
-                .order_by(User.full_name.asc())
+                .order_by(ProjectMember.assigned_at.desc(), User.full_name.asc())
             )
             if project_manager:
                 return project_manager
