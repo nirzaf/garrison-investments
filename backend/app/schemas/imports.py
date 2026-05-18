@@ -19,7 +19,13 @@ class ImportPreviewResponse(BaseModel):
 class ImportRunResponse(BaseModel):
     batch_id: UUID
     template_type: str
+    file_name: str | None = None
     status: str
     row_count: int
     error_count: int
     summary: dict
+
+
+class ImportBatchListResponse(BaseModel):
+    items: list[ImportRunResponse]
+    total: int

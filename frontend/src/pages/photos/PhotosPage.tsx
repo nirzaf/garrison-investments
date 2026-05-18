@@ -79,6 +79,9 @@ export function PhotosPage() {
                       {photo.entity_type.replace(/_/g, ' ')} · {photo.kind} ·{' '}
                       {(photo.size_bytes / 1024 / 1024).toFixed(2)} MB
                     </p>
+                    {photo.caption ? (
+                      <p className="mt-1 text-xs text-theme-text-muted">{photo.caption}</p>
+                    ) : null}
                   </div>
                   <StatusBadge tone={photo.processing_status === 'ready' ? 'success' : 'warning'}>
                     {photo.processing_status}

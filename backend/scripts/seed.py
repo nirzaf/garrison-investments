@@ -1,9 +1,8 @@
 import asyncio
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -328,10 +327,32 @@ SEED_INVENTORY_ITEMS = [
         "item_code": "PPE-HEL-001",
         "category": "PPE",
         "item_type": "consumable",
-        "unit": "piece",
+        "unit": "Nos",
         "minimum_stock": Decimal("20.000"),
         "reorder_level": Decimal("50.000"),
         "unit_cost": Decimal("35.00"),
+        "supplier_email": None,
+    },
+    {
+        "name": "Tile Adhesive",
+        "item_code": "MAT-ADH-001",
+        "category": "Finishes",
+        "item_type": "consumable",
+        "unit": "KG",
+        "minimum_stock": Decimal("250.000"),
+        "reorder_level": Decimal("500.000"),
+        "unit_cost": Decimal("2.40"),
+        "supplier_email": "sales@qbmco.qa",
+    },
+    {
+        "name": "Gypsum Board 12mm",
+        "item_code": "MAT-GYP-001",
+        "category": "Finishes",
+        "item_type": "consumable",
+        "unit": "SQM",
+        "minimum_stock": Decimal("100.000"),
+        "reorder_level": Decimal("180.000"),
+        "unit_cost": Decimal("18.00"),
         "supplier_email": None,
     },
 ]
@@ -684,6 +705,8 @@ async def seed_inventory(
         ("EQU-MIX-001", "LOC-GIP001-STORE", Decimal("2.000"), Decimal("0")),
         ("PPE-HEL-001", "LOC-GIP001-STORE", Decimal("40.000"), Decimal("10.000")),
         ("PPE-HEL-001", "LOC-CENTRAL-WH", Decimal("80.000"), Decimal("0")),
+        ("MAT-ADH-001", "LOC-GIP001-STORE", Decimal("620.000"), Decimal("120.000")),
+        ("MAT-GYP-001", "LOC-GIP001-STORE", Decimal("240.000"), Decimal("35.000")),
     ]
     for item_code, loc_code, on_hand, reserved in stock_data:
         item = item_map[item_code]
@@ -754,7 +777,7 @@ async def seed_inventory_movements(
     cement = item_map.get("MAT-CEM-001")
     paint = item_map.get("MAT-PNT-001")
     rebar = item_map.get("MAT-STL-001")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     movements = [
         InventoryMovement(
@@ -957,7 +980,7 @@ async def seed_finance(
     supplier_list = list(suppliers.values())
     sup_qbm = supplier_list[0] if len(supplier_list) > 0 else None
     sup_steel = supplier_list[1] if len(supplier_list) > 1 else None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     inv_num = "INV-GIP001-SEED-001"
     existing_inv = await session.scalar(
@@ -1054,9 +1077,14 @@ async def seed_supervisor_updates(
             "work_location": "Villa A - Ground Floor",
             "attendance_count": 18,
             "overtime_hours": Decimal("4.00"),
-            "progress_notes": "Blockwork for internal walls completed. Plaster scratch coat applied in 3 rooms.",
+            "progress_notes": (
+                "Blockwork for internal walls completed. Plaster scratch coat applied in "
+                "3 rooms."
+            ),
             "delay_notes": None,
-            "required_notes": "Need additional cement bags by tomorrow AM. Mixer B needs servicing.",
+            "required_notes": (
+                "Need additional cement bags by tomorrow AM. Mixer B needs servicing."
+            ),
             "status": "verified",
         },
         {
@@ -1065,7 +1093,10 @@ async def seed_supervisor_updates(
             "work_location": "Villa A - Ground Floor & First Floor",
             "attendance_count": 22,
             "overtime_hours": Decimal("6.00"),
-            "progress_notes": "Plaster work continued. First floor blockwork alignment started. MEP rough-in coordination completed.",
+            "progress_notes": (
+                "Plaster work continued. First floor blockwork alignment started. "
+                "MEP rough-in coordination completed."
+            ),
             "delay_notes": "Minor delay due to rain — 2 hours lost in outdoor work",
             "required_notes": "Coordinate with MEP team for ceiling conduit routing.",
             "status": "submitted",
@@ -1076,7 +1107,10 @@ async def seed_supervisor_updates(
             "work_location": "Villa A - First Floor",
             "attendance_count": 20,
             "overtime_hours": Decimal("3.00"),
-            "progress_notes": "First floor plaster scratch coat applied in 5 rooms. Started ceiling grid layout.",
+            "progress_notes": (
+                "First floor plaster scratch coat applied in 5 rooms. "
+                "Started ceiling grid layout."
+            ),
             "delay_notes": None,
             "required_notes": "Request paint samples for client approval next week.",
             "status": "draft",
@@ -1094,6 +1128,12 @@ async def seed_supervisor_updates(
             )
         )
         if existing:
+            existing.extra_fields = {
+                **(existing.extra_fields or {}),
+                "seed_data": True,
+                "uat_scenario": r["status"],
+                **r["extra_fields"],
+            }
             continue
         update = SupervisorUpdate(
             project_id=gip001.id,
@@ -1110,11 +1150,11 @@ async def seed_supervisor_updates(
                 {"name": "site_photo_1.jpg", "type": "image/jpeg", "kind": "photo"},
             ],
             status=u["status"],
-            submitted_at=datetime.now(timezone.utc) - timedelta(days=1)
+            submitted_at=datetime.now(UTC) - timedelta(days=1)
             if u["status"] != "draft"
             else None,
             verified_by=engineer.id if u["status"] == "verified" else None,
-            verified_at=datetime.now(timezone.utc) - timedelta(days=2)
+            verified_at=datetime.now(UTC) - timedelta(days=2)
             if u["status"] == "verified"
             else None,
             verification_notes="Confirmed attendance and progress. Verified plaster quality."
@@ -1135,208 +1175,332 @@ async def seed_photos(
     if not gip001:
         return
 
-    existing = await session.scalar(
-        select(Photo).where(
-            Photo.entity_type == "project",
-            Photo.entity_id == gip001.id,
-            Photo.filename == "seed_site_overview.jpg",
-            Photo.deleted_at.is_(None),
+    report = await session.scalar(
+        select(DailyReport).where(
+            DailyReport.project_id == gip001.id,
+            DailyReport.report_number == "DR-GIP-001-SEED-002",
+            DailyReport.deleted_at.is_(None),
         )
     )
-    if not existing and engineer:
-        photos = [
-            Photo(
-                filename="seed_site_overview.jpg",
-                original_name="GIP001_site_overview.jpg",
-                storage_path="seed-photos/site_overview.jpg",
-                compressed_path="seed-photos/site_overview_compressed.jpg",
-                thumbnail_path="seed-photos/site_overview_thumb.jpg",
-                mime_type="image/jpeg",
-                size_bytes=204800,
-                width=1920,
-                height=1080,
-                entity_type="project",
-                entity_id=gip001.id,
-                kind="photo",
-                caption="Site overview — Lusail Villa A",
-                taken_at=datetime.now(timezone.utc) - timedelta(days=10),
-                uploaded_by=engineer.id,
-            ),
-            Photo(
-                filename="seed_blockwork_progress.jpg",
-                original_name="blockwork_day5.jpg",
-                storage_path="seed-photos/blockwork_day5.jpg",
-                compressed_path=None,
-                thumbnail_path="seed-photos/blockwork_day5_thumb.jpg",
-                mime_type="image/jpeg",
-                size_bytes=156000,
-                width=1200,
-                height=900,
-                entity_type="supervisor_update",
-                entity_id=uuid4(),
-                kind="photo",
-                caption="Blockwork progress — Day 5",
-                taken_at=datetime.now(timezone.utc) - timedelta(days=5),
-                uploaded_by=supervisor.id if supervisor else engineer.id,
-            ),
-            Photo(
-                filename="seed_plaster_quality.jpg",
-                original_name="plaster_check.jpg",
-                storage_path="seed-photos/plaster_check.jpg",
-                compressed_path="seed-photos/plaster_check_compressed.jpg",
-                thumbnail_path=None,
-                mime_type="image/jpeg",
-                size_bytes=132000,
-                width=1080,
-                height=810,
-                entity_type="daily_report",
-                entity_id=uuid4(),
-                kind="attachment",
-                caption="Plaster quality check — Wall A3",
-                taken_at=datetime.now(timezone.utc) - timedelta(days=2),
-                uploaded_by=engineer.id,
-            ),
-        ]
-        for p in photos:
-            session.add(p)
-        print(f"Seeded photos: {len(photos)}")
-    else:
-        print("Seeded photos: 0 (already exist)")
+    update = await session.scalar(
+        select(SupervisorUpdate).where(
+            SupervisorUpdate.project_id == gip001.id,
+            SupervisorUpdate.update_date == date.today() - timedelta(days=3),
+            SupervisorUpdate.deleted_at.is_(None),
+        )
+    )
+
+    if not engineer:
+        return
+
+    photos = [
+        {
+            "filename": "seed_site_overview.jpg",
+            "original_name": "GIP001_site_overview.jpg",
+            "storage_path": "seed-photos/site_overview.jpg",
+            "compressed_path": "seed-photos/site_overview_compressed.jpg",
+            "thumbnail_path": "seed-photos/site_overview_thumb.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": 204800,
+            "width": 1920,
+            "height": 1080,
+            "entity_type": "project",
+            "entity_id": gip001.id,
+            "kind": "photo",
+            "caption": "Site overview - Lusail Villa A",
+            "taken_at": datetime.now(UTC) - timedelta(days=10),
+            "uploaded_by": engineer.id,
+        },
+        {
+            "filename": "seed_blockwork_progress.jpg",
+            "original_name": "blockwork_day5.jpg",
+            "storage_path": "seed-photos/blockwork_day5.jpg",
+            "compressed_path": "seed-photos/blockwork_day5_compressed.jpg",
+            "thumbnail_path": "seed-photos/blockwork_day5_thumb.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": 156000,
+            "width": 1200,
+            "height": 900,
+            "entity_type": "supervisor_update" if update else "project",
+            "entity_id": update.id if update else gip001.id,
+            "kind": "photo",
+            "caption": "Blockwork progress - Day 5",
+            "taken_at": datetime.now(UTC) - timedelta(days=5),
+            "uploaded_by": supervisor.id if supervisor else engineer.id,
+        },
+        {
+            "filename": "seed_plaster_quality.pdf",
+            "original_name": "plaster_check.pdf",
+            "storage_path": "seed-attachments/plaster_check.pdf",
+            "compressed_path": None,
+            "thumbnail_path": None,
+            "mime_type": "application/pdf",
+            "size_bytes": 132000,
+            "width": None,
+            "height": None,
+            "entity_type": "daily_report" if report else "project",
+            "entity_id": report.id if report else gip001.id,
+            "kind": "attachment",
+            "caption": "Plaster quality check - Wall A3",
+            "taken_at": datetime.now(UTC) - timedelta(days=2),
+            "uploaded_by": engineer.id,
+        },
+    ]
+    created = 0
+    for photo_data in photos:
+        photo = await session.scalar(
+            select(Photo).where(
+                Photo.filename == photo_data["filename"],
+                Photo.deleted_at.is_(None),
+            )
+        )
+        if not photo:
+            session.add(Photo(**photo_data))
+            created += 1
+            continue
+        for key, value in photo_data.items():
+            setattr(photo, key, value)
+    print(f"Seeded photos: {created} created, {len(photos) - created} updated")
 
 
 async def seed_documents(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
     pm = user_by_email.get("pm@garrisons.qa")
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    ops = user_by_email.get("operations@garrisons.qa")
     gip001 = project_objects.get("GIP-001")
     if not pm or not gip001:
         return
 
-    existing = await session.scalar(
-        select(Document).where(
-            Document.project_id == gip001.id,
-            Document.title == "Project Execution Plan",
-            Document.deleted_at.is_(None),
+    async def upsert_document(
+        *,
+        title: str,
+        document_type: str,
+        status: str,
+        active_version: int | None,
+        metadata_json: dict,
+        expiry_date: date | None,
+        versions: list[dict],
+    ) -> bool:
+        document = await session.scalar(
+            select(Document).where(
+                Document.project_id == gip001.id,
+                Document.title == title,
+                Document.deleted_at.is_(None),
+            )
         )
-    )
-    if existing:
-        print("Seeded documents: 0 (already exist)")
-        return
+        created = False
+        if not document:
+            document = Document(
+                title=title,
+                document_type=document_type,
+                project_id=gip001.id,
+                status=status,
+                active_version=active_version,
+                metadata_json=metadata_json,
+                expiry_date=expiry_date,
+                uploaded_by=pm.id,
+            )
+            session.add(document)
+            await session.flush()
+            created = True
+        else:
+            document.document_type = document_type
+            document.status = status
+            document.active_version = active_version
+            document.metadata_json = metadata_json
+            document.expiry_date = expiry_date
 
-    doc1 = Document(
-        title="Project Execution Plan",
-        document_type="plan",
-        project_id=gip001.id,
-        status="active",
-        active_version=2,
-        metadata_json={
-            "author": "Project Manager",
-            "department": "Civil",
-            "tags": ["execution", "planning", "approved"],
+        for version_data in versions:
+            version = await session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_id == document.id,
+                    DocumentVersion.version == version_data["version"],
+                    DocumentVersion.deleted_at.is_(None),
+                )
+            )
+            if not version:
+                session.add(
+                    DocumentVersion(
+                        document_id=document.id,
+                        version=version_data["version"],
+                        status=version_data["status"],
+                        storage_path=version_data["storage_path"],
+                        original_name=version_data["original_name"],
+                        mime_type=version_data["mime_type"],
+                        size_bytes=version_data["size_bytes"],
+                        uploaded_by=version_data.get("uploaded_by", pm.id),
+                        approved_by=version_data.get("approved_by"),
+                        approved_at=version_data.get("approved_at"),
+                        approval_comments=version_data.get("approval_comments"),
+                    )
+                )
+                created = True
+                continue
+            version.status = version_data["status"]
+            version.storage_path = version_data["storage_path"]
+            version.original_name = version_data["original_name"]
+            version.mime_type = version_data["mime_type"]
+            version.size_bytes = version_data["size_bytes"]
+            version.uploaded_by = version_data.get("uploaded_by", pm.id)
+            version.approved_by = version_data.get("approved_by")
+            version.approved_at = version_data.get("approved_at")
+            version.approval_comments = version_data.get("approval_comments")
+        return created
+
+    now = datetime.now(UTC)
+    created_count = 0
+    specs = [
+        {
+            "title": "Project Execution Plan",
+            "document_type": "drawing",
+            "status": "active",
+            "active_version": 2,
+            "metadata_json": {
+                "author": "Project Manager",
+                "department": "Civil",
+                "document_number": "GIP-001-DWG-CIV-2026-001-REV-B",
+                "tags": ["execution", "drawing", "superseded-warning"],
+            },
+            "expiry_date": None,
+            "versions": [
+                {
+                    "version": 1,
+                    "status": "superseded",
+                    "storage_path": "seed-docs/pep_v1.pdf",
+                    "original_name": "PEP_Lusail_Villa_v1.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 512000,
+                    "approved_by": ops.id if ops else None,
+                    "approved_at": now - timedelta(days=20),
+                    "approval_comments": "Approved with minor comments",
+                },
+                {
+                    "version": 2,
+                    "status": "active",
+                    "storage_path": "seed-docs/pep_v2.pdf",
+                    "original_name": "PEP_Lusail_Villa_v2.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 545000,
+                    "approved_by": ops.id if ops else None,
+                    "approved_at": now - timedelta(days=5),
+                    "approval_comments": "Revision approved - all comments addressed",
+                },
+            ],
         },
-        expiry_date=None,
-        uploaded_by=pm.id,
-    )
-    session.add(doc1)
-    await session.flush()
-
-    session.add(
-        DocumentVersion(
-            document_id=doc1.id,
-            version=1,
-            status="active",
-            storage_path="seed-docs/pep_v1.pdf",
-            original_name="PEP_Lusail_Villa_v1.pdf",
-            mime_type="application/pdf",
-            size_bytes=512000,
-            uploaded_by=pm.id,
-            approved_by=user_by_email.get("operations@garrisons.qa").id
-            if user_by_email.get("operations@garrisons.qa")
-            else None,
-            approved_at=datetime.now(timezone.utc) - timedelta(days=20),
-            approval_comments="Approved with minor comments",
-        )
-    )
-    session.add(
-        DocumentVersion(
-            document_id=doc1.id,
-            version=2,
-            status="active",
-            storage_path="seed-docs/pep_v2.pdf",
-            original_name="PEP_Lusail_Villa_v2.pdf",
-            mime_type="application/pdf",
-            size_bytes=545000,
-            uploaded_by=pm.id,
-            approved_by=user_by_email.get("operations@garrisons.qa").id
-            if user_by_email.get("operations@garrisons.qa")
-            else None,
-            approved_at=datetime.now(timezone.utc) - timedelta(days=5),
-            approval_comments="Revision approved — all comments addressed",
-        )
-    )
-
-    doc2 = Document(
-        title="Safety Induction Record",
-        document_type="safety",
-        project_id=gip001.id,
-        status="pending_approval",
-        active_version=1,
-        metadata_json={
-            "author": "Safety Officer",
-            "department": "HSE",
-            "tags": ["safety", "induction", "pending"],
+        {
+            "title": "MAR Cement Mix Design",
+            "document_type": "mar",
+            "status": "pending_approval",
+            "active_version": None,
+            "metadata_json": {
+                "author": "Civil Engineer",
+                "department": "Quality",
+                "document_number": "GIP-001-MAR-CIV-2026-001-REV-A",
+                "tags": ["MAR", "cement", "pending"],
+            },
+            "expiry_date": date.today() + timedelta(days=180),
+            "versions": [
+                {
+                    "version": 1,
+                    "status": "pending_approval",
+                    "storage_path": "seed-docs/mar_cement_mix_design.pdf",
+                    "original_name": "MAR_Cement_Mix_Design_REV_A.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 260000,
+                    "uploaded_by": engineer.id if engineer else pm.id,
+                },
+            ],
         },
-        expiry_date=date.today() + timedelta(days=90),
-        uploaded_by=pm.id,
-    )
-    session.add(doc2)
-    await session.flush()
-    session.add(
-        DocumentVersion(
-            document_id=doc2.id,
-            version=1,
-            status="pending_approval",
-            storage_path="seed-docs/safety_induction.pdf",
-            original_name="Safety_Induction_GIP001.pdf",
-            mime_type="application/pdf",
-            size_bytes=235000,
-            uploaded_by=pm.id,
-        )
-    )
-
-    doc3 = Document(
-        title="Material Test Report — Cement",
-        document_type="test_report",
-        project_id=gip001.id,
-        status="active",
-        active_version=1,
-        metadata_json={
-            "author": "QA/QC Engineer",
-            "department": "Quality",
-            "tags": ["material", "test", "cement"],
+        {
+            "title": "MIR Steel Rebar Delivery",
+            "document_type": "mir",
+            "status": "active",
+            "active_version": 1,
+            "metadata_json": {
+                "author": "Civil Engineer",
+                "department": "Quality",
+                "document_number": "GIP-001-MIR-CIV-2026-002-REV-A",
+                "tags": ["MIR", "steel", "approved"],
+            },
+            "expiry_date": None,
+            "versions": [
+                {
+                    "version": 1,
+                    "status": "active",
+                    "storage_path": "seed-docs/mir_steel_rebar_delivery.pdf",
+                    "original_name": "MIR_Steel_Rebar_Delivery_REV_A.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 225000,
+                    "uploaded_by": engineer.id if engineer else pm.id,
+                    "approved_by": pm.id,
+                    "approved_at": now - timedelta(days=6),
+                    "approval_comments": "Material inspection passed.",
+                },
+            ],
         },
-        expiry_date=None,
-        uploaded_by=pm.id,
+        {
+            "title": "WIR Plaster Inspection Zone A",
+            "document_type": "wir",
+            "status": "active",
+            "active_version": 1,
+            "metadata_json": {
+                "author": "Civil Engineer",
+                "department": "Quality",
+                "document_number": "GIP-001-WIR-CIV-2026-003-REV-A",
+                "tags": ["WIR", "inspection", "approved"],
+            },
+            "expiry_date": None,
+            "versions": [
+                {
+                    "version": 1,
+                    "status": "active",
+                    "storage_path": "seed-docs/wir_plaster_zone_a.pdf",
+                    "original_name": "WIR_Plaster_Zone_A_REV_A.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 190000,
+                    "uploaded_by": engineer.id if engineer else pm.id,
+                    "approved_by": pm.id,
+                    "approved_at": now - timedelta(days=2),
+                    "approval_comments": "Inspection accepted.",
+                },
+            ],
+        },
+        {
+            "title": "Delivery Note Cement Batch 001",
+            "document_type": "delivery_note",
+            "status": "active",
+            "active_version": 1,
+            "metadata_json": {
+                "author": "Store Keeper",
+                "department": "Store",
+                "document_number": "GIP-001-DLN-CIV-2026-004-REV-A",
+                "tags": ["delivery note", "cement", "approved"],
+            },
+            "expiry_date": None,
+            "versions": [
+                {
+                    "version": 1,
+                    "status": "active",
+                    "storage_path": "seed-docs/delivery_note_cement_batch001.pdf",
+                    "original_name": "Delivery_Note_Cement_Batch001.pdf",
+                    "mime_type": "application/pdf",
+                    "size_bytes": 160000,
+                    "approved_by": pm.id,
+                    "approved_at": now - timedelta(days=9),
+                    "approval_comments": "Matched delivery note and PO.",
+                },
+            ],
+        },
+    ]
+    for spec in specs:
+        if await upsert_document(**spec):
+            created_count += 1
+    print(
+        "Seeded documents: "
+        f"{created_count} created or expanded, {len(specs) - created_count} updated"
     )
-    session.add(doc3)
-    await session.flush()
-    session.add(
-        DocumentVersion(
-            document_id=doc3.id,
-            version=1,
-            status="active",
-            storage_path="seed-docs/cement_test_report.pdf",
-            original_name="Cement_Test_Batch001.pdf",
-            mime_type="application/pdf",
-            size_bytes=180000,
-            uploaded_by=pm.id,
-            approved_by=user_by_email.get("engineer@garrisons.qa").id
-            if user_by_email.get("engineer@garrisons.qa")
-            else None,
-            approved_at=datetime.now(timezone.utc) - timedelta(days=8),
-        )
-    )
-    print("Seeded documents: 3 with versions")
 
 
 async def seed_daily_reports(
@@ -1387,7 +1551,10 @@ async def seed_daily_reports(
             "work_location": "Villa A - Ground Floor & First Floor",
             "manpower_total": 22,
             "overtime_hours": Decimal("8.00"),
-            "work_completed": "Plaster scratch coat completed in Ground Floor rooms. First floor blockwork 60% complete.",
+            "work_completed": (
+                "Plaster scratch coat completed in Ground Floor rooms. "
+                "First floor blockwork 60% complete."
+            ),
             "progress_percentage": Decimal("38.00"),
             "safety_incidents": 0,
             "safety_notes": "Daily PPE inspection passed. All workers equipped.",
@@ -1426,7 +1593,10 @@ async def seed_daily_reports(
             "work_completed": "Ground floor blockwork layout and first course laid.",
             "progress_percentage": Decimal("32.00"),
             "safety_incidents": 1,
-            "safety_notes": "Minor hand injury — worker treated on site. Near-miss report filed for falling debris.",
+            "safety_notes": (
+                "Minor hand injury - worker treated on site. "
+                "Near-miss report filed for falling debris."
+            ),
             "wir_status": "draft",
             "inspection_status": "not_requested",
             "delay_notes": "Delayed start due to material delivery waiting — 1 hour lost.",
@@ -1462,6 +1632,12 @@ async def seed_daily_reports(
             )
         )
         if existing:
+            existing.extra_fields = {
+                **(existing.extra_fields or {}),
+                "seed_data": True,
+                "uat_scenario": r["status"],
+                **r["extra_fields"],
+            }
             continue
         report = DailyReport(
             project_id=project.id,
@@ -1526,7 +1702,7 @@ async def seed_approvals(
             DailyReport.deleted_at.is_(None),
         )
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if report and engineer and not await session.scalar(
         select(Approval).where(
@@ -1603,7 +1779,10 @@ async def seed_approvals(
                 amount=Decimal("85000.00"),
                 currency="QAR",
                 title="Budget Revision — Additional MEP Scope",
-                submitter_comments="Client requested additional MEP scope — requires budget increase of QAR 85,000.",
+                submitter_comments=(
+                    "Client requested additional MEP scope - requires budget increase of "
+                    "QAR 85,000."
+                ),
                 submitted_at=now - timedelta(hours=2),
                 due_at=now + timedelta(days=2),
             )
@@ -1614,7 +1793,7 @@ async def seed_approvals(
 async def seed_notifications(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     notifications = [
         {
             "user_email": "pm@garrisons.qa",
@@ -1643,7 +1822,10 @@ async def seed_notifications(
         {
             "user_email": "engineer@garrisons.qa",
             "title": "Report Rejected",
-            "body": "Your daily report DR-GIP-001-SEED-003 was rejected. Please review comments and resubmit.",
+            "body": (
+                "Your daily report DR-GIP-001-SEED-003 was rejected. "
+                "Please review comments and resubmit."
+            ),
             "notification_type": "report_rejected",
             "reference_type": "daily_report",
             "is_read": False,
@@ -1651,7 +1833,10 @@ async def seed_notifications(
         {
             "user_email": "store@garrisons.qa",
             "title": "Low Stock Alert",
-            "body": "Safety Helmets at GIP-001 Site Store dropped below reorder level (40 remaining, reorder at 50).",
+            "body": (
+                "Safety Helmets at GIP-001 Site Store dropped below reorder level "
+                "(40 remaining, reorder at 50)."
+            ),
             "notification_type": "low_stock",
             "reference_type": "inventory",
             "is_read": False,
@@ -1712,7 +1897,7 @@ async def seed_activity_logs(
     store = user_by_email.get("store@garrisons.qa")
     if not admin:
         return
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     logs = [
         ActivityLog(
             user_id=admin.id,
@@ -1803,7 +1988,7 @@ async def seed_report_exports(
         return
 
     pm = user_by_email.get("pm@garrisons.qa")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     session.add(
         ReportExport(
             report_id=report.id,
@@ -1843,7 +2028,7 @@ async def seed_import_batches(session, user_by_email: dict) -> None:
             row_count=5,
             error_count=0,
             summary={"imported": 5, "skipped": 0, "errors": []},
-            created_at=datetime.now(timezone.utc) - timedelta(days=10),
+            created_at=datetime.now(UTC) - timedelta(days=10),
         )
     )
     session.add(
@@ -1862,7 +2047,7 @@ async def seed_import_batches(session, user_by_email: dict) -> None:
                     {"row": 9, "reason": "Missing tax registration number"},
                 ],
             },
-            created_at=datetime.now(timezone.utc) - timedelta(days=8),
+            created_at=datetime.now(UTC) - timedelta(days=8),
         )
     )
     print("Seeded import batches: 2")

@@ -40,11 +40,12 @@ class ApprovalRepository:
         status: str | None,
         limit: int,
         offset: int,
+        include_all_inbox: bool = False,
     ) -> tuple[list[Approval], int]:
         query: Select[tuple[Approval]] = select(Approval).where(Approval.deleted_at.is_(None))
         if box == "outbox":
             query = query.where(Approval.submitter_id == user_id)
-        else:
+        elif not include_all_inbox:
             query = query.where(
                 or_(Approval.approver_id == user_id, Approval.delegated_to_id == user_id)
             )
