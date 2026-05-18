@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.config import get_settings
 from app.models.finance import Invoice, Payment
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.approvals import ApprovalCreateRequest
 from app.schemas.finance import InvoiceCreateRequest, InvoiceUpdateRequest, PaymentCreateRequest
@@ -36,7 +37,7 @@ FINANCE_ROLES = {
     ROLE_GENERAL_MANAGER,
     ROLE_PROJECT_MANAGER,
 }
-MAX_INVOICE_FILE_SIZE = 30 * 1024 * 1024
+MAX_INVOICE_FILE_SIZE = 10 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
 ALLOWED_INVOICE_FILE_MAGIC = {
     "application/pdf": (b"%PDF-",),
@@ -62,6 +63,8 @@ class FinanceService:
 
     async def create_invoice(self, payload: InvoiceCreateRequest, actor: User) -> Invoice:
         self.ensure_finance_access(actor)
+        if actor.role == ROLE_PROJECT_MANAGER:
+            await self._ensure_project_scope(payload.project_id, actor)
         invoice = Invoice(
             **payload.model_dump(),
             total_amount=payload.amount + payload.tax_amount,
@@ -110,6 +113,15 @@ class FinanceService:
             .where(Invoice.deleted_at.is_(None))
             .options(selectinload(Invoice.payments))
         )
+        if actor.role == ROLE_PROJECT_MANAGER:
+            project_ids = await self._project_ids_for_manager(actor)
+            if project_id and project_id not in project_ids:
+                raise AppException(
+                    "Financial records are restricted to assigned projects.",
+                    status_code=403,
+                    error_code="FINANCE_PROJECT_FORBIDDEN",
+                )
+            query = query.where(Invoice.project_id.in_(project_ids or [UUID(int=0)]))
         if project_id:
             query = query.where(Invoice.project_id == project_id)
         if status:
@@ -137,6 +149,7 @@ class FinanceService:
         )
         if not invoice:
             raise NotFoundException("Invoice")
+        await self._ensure_invoice_scope(invoice, actor)
         return invoice
 
     async def update_invoice(
@@ -186,6 +199,7 @@ class FinanceService:
         )
         if not invoice:
             raise NotFoundException("Invoice")
+        await self._ensure_invoice_scope(invoice, actor)
         return invoice
 
     async def upload_invoice_attachment(
@@ -284,6 +298,8 @@ class FinanceService:
 
     async def budget_summary(self, project_id: UUID, actor: User) -> dict[str, Decimal | UUID]:
         self.ensure_finance_access(actor)
+        if actor.role == ROLE_PROJECT_MANAGER:
+            await self._ensure_project_scope(project_id, actor)
         project = await self.session.scalar(
             select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
         )
@@ -348,3 +364,34 @@ class FinanceService:
 
     def _delete_object(self, object_key: str) -> None:
         self._client().remove_object(self.settings.minio_bucket, object_key)
+
+    async def _ensure_invoice_scope(self, invoice: Invoice, actor: User) -> None:
+        if actor.role == ROLE_PROJECT_MANAGER:
+            await self._ensure_project_scope(invoice.project_id, actor)
+
+    async def _ensure_project_scope(self, project_id: UUID, actor: User) -> None:
+        is_assigned = await self.session.scalar(
+            select(ProjectMember.id).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == actor.id,
+                ProjectMember.deleted_at.is_(None),
+            )
+        )
+        if not is_assigned:
+            raise AppException(
+                "Financial records are restricted to assigned projects.",
+                status_code=403,
+                error_code="FINANCE_PROJECT_FORBIDDEN",
+            )
+
+    async def _project_ids_for_manager(self, actor: User) -> list[UUID]:
+        return list(
+            (
+                await self.session.scalars(
+                    select(ProjectMember.project_id).where(
+                        ProjectMember.user_id == actor.id,
+                        ProjectMember.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+        )
