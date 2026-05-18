@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     minio_root_password: str = "garrison_minio_password"
     minio_bucket: str = "portal-files"
     minio_secure: bool = False
+    minio_public_endpoint: str | None = None
+    minio_public_secure: bool | None = None
 
     report_email_recipients: str = ""
     report_pdf_template_name: str = "company-standard"
@@ -51,6 +53,7 @@ class Settings(BaseSettings):
     account_lockout_minutes: int = 30
     auth_failed_attempt_limit: int = 3
     dev_expose_otp: bool | None = None
+    staging_login_otp: str | None = None
     trusted_proxy_ips: str = "127.0.0.1,::1"
 
     model_config = SettingsConfigDict(
@@ -75,6 +78,15 @@ class Settings(BaseSettings):
         return self.app_env.lower() in {"development", "test", "local"}
 
     @property
+    def staging_login_otp_enabled(self) -> bool:
+        return (
+            self.app_env.lower() == "staging"
+            and self.staging_login_otp is not None
+            and len(self.staging_login_otp) == 6
+            and self.staging_login_otp.isdigit()
+        )
+
+    @property
     def exception_email_recipients_list(self) -> list[str]:
         return [
             recipient.strip()
@@ -87,6 +99,16 @@ class Settings(BaseSettings):
         if self.exception_email_enabled is not None:
             return self.exception_email_enabled
         return self.app_env.lower() in {"production", "prod", "staging"}
+
+    @property
+    def minio_signed_url_endpoint(self) -> str:
+        return self.minio_public_endpoint or self.minio_endpoint
+
+    @property
+    def minio_signed_url_secure(self) -> bool:
+        if self.minio_public_secure is not None:
+            return self.minio_public_secure
+        return self.minio_secure
 
 
 @lru_cache

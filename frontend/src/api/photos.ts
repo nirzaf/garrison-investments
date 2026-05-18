@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
 
 export type PhotoRecord = components['schemas']['PhotoResponse'];
@@ -45,12 +46,12 @@ export async function getPhotoDownloadUrl(photoId: string): Promise<string> {
   const response = await apiClient.get<ProtectedFileUrl>(
     `/photos/${photoId}/download`
   );
-  return response.data.url;
+  return normalizeProtectedFileUrl(response.data.url);
 }
 
 export async function getPhotoThumbnailUrl(photoId: string): Promise<string> {
   const response = await apiClient.get<ProtectedFileUrl>(
     `/photos/${photoId}/thumbnail`
   );
-  return response.data.url;
+  return normalizeProtectedFileUrl(response.data.url);
 }

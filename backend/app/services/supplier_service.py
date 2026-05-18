@@ -13,6 +13,7 @@ from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.suppliers import SupplierCreateRequest, SupplierUpdateRequest
 from app.services.audit_service import AuditService
+from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.security import utc_now
 
@@ -156,7 +157,7 @@ class SupplierService:
             new_values={"tds_document_key": supplier.tds_document_key},
         )
         await self.session.commit()
-        return self._client().presigned_get_object(
+        return minio_signed_url_client(self.settings).presigned_get_object(
             self.settings.minio_bucket,
             supplier.tds_document_key,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
@@ -194,12 +195,7 @@ class SupplierService:
         raise AppException("Unsupported supplier document type.", status_code=422)
 
     def _client(self) -> Minio:
-        return Minio(
-            self.settings.minio_endpoint,
-            access_key=self.settings.minio_root_user,
-            secret_key=self.settings.minio_root_password,
-            secure=self.settings.minio_secure,
-        )
+        return minio_client(self.settings)
 
     def _upload_object(self, object_key: str, data: bytes, content_type: str) -> None:
         client = self._client()

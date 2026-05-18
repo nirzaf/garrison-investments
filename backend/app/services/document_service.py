@@ -13,6 +13,7 @@ from app.models.user import User
 from app.repositories.document_repository import DocumentRepository
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
+from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
@@ -186,7 +187,7 @@ class DocumentService:
             new_values={"version": version.version, "superseded": superseded},
         )
         await self.session.commit()
-        url = self._client().presigned_get_object(
+        url = minio_signed_url_client(self.settings).presigned_get_object(
             self.settings.minio_bucket,
             version.storage_path,
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
@@ -251,12 +252,7 @@ class DocumentService:
         raise AppException("Unsupported document type.", status_code=422)
 
     def _client(self) -> Minio:
-        return Minio(
-            self.settings.minio_endpoint,
-            access_key=self.settings.minio_root_user,
-            secret_key=self.settings.minio_root_password,
-            secure=self.settings.minio_secure,
-        )
+        return minio_client(self.settings)
 
     def _upload_object(self, object_key: str, data: bytes, content_type: str) -> None:
         client = self._client()
