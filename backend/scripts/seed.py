@@ -1,14 +1,17 @@
 import asyncio
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
+from app.models.activity_log import ActivityLog
+from app.models.approval import Approval
 from app.models.boq_item import BoqItem
 from app.models.daily_report import (
     DailyReport,
@@ -16,16 +19,33 @@ from app.models.daily_report import (
     ReportManpower,
     ReportMaterialConsumption,
 )
+from app.models.document import Document, DocumentVersion
+from app.models.finance import Invoice, Payment
+from app.models.import_batch import ImportBatch
+from app.models.inventory import (
+    InventoryAsset,
+    InventoryItem,
+    InventoryLocationStock,
+    InventoryMovement,
+    MaterialRequest,
+    MaterialRequestLine,
+    StorageLocation,
+)
+from app.models.notification import Notification
+from app.models.photo import Photo
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.project_milestone import ProjectMilestone
+from app.models.report_export import ReportExport
+from app.models.supervisor_update import SupervisorUpdate
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.utils.security import hash_password
 
 DEFAULT_ADMIN_EMAIL = "fazrin@quadrate.lk"
-DEFAULT_ADMIN_PASSWORD = "YahmikAllah@123"
-DEFAULT_PASSWORD = "YahmikAllah@123"
+DEFAULT_ADMIN_PASSWORD = "Dob280884@"
+DEFAULT_PASSWORD = "Dob280884@"
 
 SEED_USERS = [
     {
@@ -100,7 +120,9 @@ SEED_PROJECTS = [
         "name": "Lusail Villa Fit-Out",
         "location": "Lusail, Qatar",
         "description": "Residential fit-out project used for launch UAT.",
-        "scope_of_work": "Civil finishing, gypsum, paint, MEP coordination, and handover works.",
+        "scope_of_work": (
+            "Civil finishing, gypsum, paint, MEP coordination, and handover works."
+        ),
         "status": "active",
         "budget_amount": Decimal("950000.00"),
         "start_date": date.today() - timedelta(days=30),
@@ -154,7 +176,9 @@ SEED_PROJECTS = [
         "code": "GIP-002",
         "name": "West Bay Office Renovation",
         "location": "West Bay, Doha",
-        "description": "Commercial renovation project used for approval and dashboard checks.",
+        "description": (
+            "Commercial renovation project used for approval and dashboard checks."
+        ),
         "scope_of_work": (
             "Partition changes, flooring, ceiling repairs, electrical containment, "
             "and snag closure."
@@ -198,6 +222,141 @@ SEED_PROJECTS = [
     },
 ]
 
+SEED_SUPPLIERS = [
+    {
+        "name": "Qatar Building Materials Co.",
+        "category": "Construction Materials",
+        "rating": "approved",
+        "payment_terms": "Net 30 Days",
+        "contact_person": "Ahmed Al-Thani",
+        "phone": "+97444123456",
+        "email": "sales@qbmco.qa",
+        "address": "Street 24, Industrial Area, Doha, Qatar",
+        "tax_registration_number": "QAT-123456789",
+        "tds_certificate_number": "TDS-QBM-2026-001",
+        "tds_expiry_date": date.today() + timedelta(days=180),
+        "compliance_status": "compliant",
+    },
+    {
+        "name": "Doha Steel & Hardware WLL",
+        "category": "Steel & Hardware",
+        "rating": "approved",
+        "payment_terms": "Net 45 Days",
+        "contact_person": "Mohammed Al-Sulaiti",
+        "phone": "+97444234567",
+        "email": "orders@dohasteel.qa",
+        "address": "Zone 56, Street 12, New Industrial Area, Doha, Qatar",
+        "tax_registration_number": "QAT-987654321",
+        "tds_certificate_number": "TDS-DSH-2026-002",
+        "tds_expiry_date": date.today() + timedelta(days=90),
+        "compliance_status": "compliant",
+    },
+    {
+        "name": "Gulf Electrical Supplies LLC",
+        "category": "Electrical & MEP",
+        "rating": "conditional",
+        "payment_terms": "Net 30 Days",
+        "contact_person": "Fatima Al-Mansoori",
+        "phone": "+97444345678",
+        "email": "info@gulfelectrical.qa",
+        "address": "Building 14, Salwa Road, Doha, Qatar",
+        "tax_registration_number": "QAT-456789123",
+        "tds_certificate_number": None,
+        "tds_expiry_date": None,
+        "compliance_status": "pending_documents",
+    },
+]
+
+SEED_INVENTORY_ITEMS = [
+    {
+        "name": "Portland Cement (50kg)",
+        "item_code": "MAT-CEM-001",
+        "category": "Bulk Materials",
+        "item_type": "consumable",
+        "unit": "bag",
+        "minimum_stock": Decimal("100.000"),
+        "reorder_level": Decimal("200.000"),
+        "unit_cost": Decimal("22.50"),
+        "supplier_email": "sales@qbmco.qa",
+    },
+    {
+        "name": "Steel Rebar 12mm",
+        "item_code": "MAT-STL-001",
+        "category": "Steel",
+        "item_type": "consumable",
+        "unit": "ton",
+        "minimum_stock": Decimal("1.000"),
+        "reorder_level": Decimal("2.500"),
+        "unit_cost": Decimal("2850.00"),
+        "supplier_email": "orders@dohasteel.qa",
+    },
+    {
+        "name": "Emulsion Paint (White, 20L)",
+        "item_code": "MAT-PNT-001",
+        "category": "Finishes",
+        "item_type": "consumable",
+        "unit": "pail",
+        "minimum_stock": Decimal("10.000"),
+        "reorder_level": Decimal("25.000"),
+        "unit_cost": Decimal("165.00"),
+        "supplier_email": None,
+    },
+    {
+        "name": "PVC Conduit 25mm",
+        "item_code": "MAT-ELE-001",
+        "category": "Electrical",
+        "item_type": "consumable",
+        "unit": "m",
+        "minimum_stock": Decimal("200.000"),
+        "reorder_level": Decimal("500.000"),
+        "unit_cost": Decimal("4.50"),
+        "supplier_email": "info@gulfelectrical.qa",
+    },
+    {
+        "name": "Concrete Mixer (Electric)",
+        "item_code": "EQU-MIX-001",
+        "category": "Equipment",
+        "item_type": "asset",
+        "unit": "unit",
+        "minimum_stock": Decimal("0"),
+        "reorder_level": Decimal("0"),
+        "unit_cost": Decimal("12500.00"),
+        "supplier_email": None,
+    },
+    {
+        "name": "Safety Helmet",
+        "item_code": "PPE-HEL-001",
+        "category": "PPE",
+        "item_type": "consumable",
+        "unit": "piece",
+        "minimum_stock": Decimal("20.000"),
+        "reorder_level": Decimal("50.000"),
+        "unit_cost": Decimal("35.00"),
+        "supplier_email": None,
+    },
+]
+
+SEED_LOCATIONS = [
+    {
+        "name": "GIP-001 Site Store",
+        "code": "LOC-GIP001-STORE",
+        "location_type": "site_store",
+        "address": "Lusail Villa A, Ground Floor Storage Room",
+    },
+    {
+        "name": "Central Warehouse",
+        "code": "LOC-CENTRAL-WH",
+        "location_type": "warehouse",
+        "address": "Industrial Area, Street 24, Doha",
+    },
+    {
+        "name": "GIP-002 Site Store",
+        "code": "LOC-GIP002-STORE",
+        "location_type": "site_store",
+        "address": "West Bay Tower, Basement Level 1",
+    },
+]
+
 
 async def seed_launch_data() -> None:
     async with AsyncSessionLocal() as session:
@@ -206,8 +365,9 @@ async def seed_launch_data() -> None:
         if legacy_admin:
             legacy_admin.employee_code = "LEGACY-ADMIN-001"
             legacy_admin.is_active = False
-        created = 0
-        updated = 0
+
+        created_users = 0
+        updated_users = 0
         for seed_user in SEED_USERS:
             existing = await users.get_by_email(seed_user["email"])
             if existing:
@@ -216,7 +376,7 @@ async def seed_launch_data() -> None:
                 existing.employee_code = seed_user["employee_code"]
                 existing.phone = seed_user["phone"]
                 existing.designation = seed_user["designation"]
-                updated += 1
+                updated_users += 1
                 continue
             await users.add(
                 User(
@@ -230,7 +390,7 @@ async def seed_launch_data() -> None:
                     must_change_password=True,
                 )
             )
-            created += 1
+            created_users += 1
         await session.flush()
 
         user_by_email = {
@@ -238,8 +398,10 @@ async def seed_launch_data() -> None:
             for seed_user in SEED_USERS
         }
         admin = user_by_email[DEFAULT_ADMIN_EMAIL]
+
         created_projects = 0
         updated_projects = 0
+        project_objects: dict[str, Project] = {}
         for seed_project in SEED_PROJECTS:
             project = await session.scalar(
                 select(Project).where(
@@ -279,6 +441,7 @@ async def seed_launch_data() -> None:
                 session.add(project)
                 await session.flush()
                 created_projects += 1
+            project_objects[seed_project["code"]] = project
 
             for member_email, role_in_project in seed_project["members"]:
                 member_user = user_by_email[member_email]
@@ -302,9 +465,9 @@ async def seed_launch_data() -> None:
                         )
                     )
 
-            for milestone_name, discipline, sort_order, progress, status in seed_project[
-                "milestones"
-            ]:
+            for milestone_name, discipline, sort_order, progress, status in (
+                seed_project["milestones"]
+            ):
                 milestone = await session.scalar(
                     select(ProjectMilestone).where(
                         ProjectMilestone.project_id == project.id,
@@ -325,9 +488,9 @@ async def seed_launch_data() -> None:
                 milestone.progress_percentage = progress
                 milestone.status = status
 
-            for item_code, description, discipline, phase, unit, quantity, rate in seed_project[
-                "boq"
-            ]:
+            for item_code, description, discipline, phase, unit, quantity, rate in (
+                seed_project["boq"]
+            ):
                 boq_item = await session.scalar(
                     select(BoqItem).where(
                         BoqItem.project_id == project.id,
@@ -359,73 +522,1350 @@ async def seed_launch_data() -> None:
                     boq_item.unit_rate = rate
                     boq_item.planned_amount = planned_amount
 
-        await seed_daily_report(session, user_by_email)
+        await seed_daily_reports(session, user_by_email, project_objects)
+        suppliers = await seed_suppliers(session, user_by_email)
+        inventory_items, locations = await seed_inventory(
+            session, user_by_email, project_objects, suppliers
+        )
+        await seed_inventory_movements(
+            session, user_by_email, project_objects, inventory_items, locations
+        )
+        await seed_material_requests(
+            session, user_by_email, project_objects, inventory_items, locations
+        )
+        await seed_finance(
+            session, user_by_email, project_objects, suppliers
+        )
+        await seed_supervisor_updates(session, user_by_email, project_objects)
+        await seed_photos(session, user_by_email, project_objects)
+        await seed_documents(session, user_by_email, project_objects)
+        await seed_approvals(session, user_by_email, project_objects)
+        await seed_notifications(session, user_by_email, project_objects)
+        await seed_activity_logs(session, user_by_email, project_objects)
+        await seed_report_exports(session, user_by_email, project_objects)
+        await seed_import_batches(session, user_by_email)
+
         await session.commit()
-        print(f"Seeded users: {created} created, {updated} updated")
+        print(f"Seeded users: {created_users} created, {updated_users} updated")
         print(f"Seeded projects: {created_projects} created, {updated_projects} updated")
         print(f"Admin user: {DEFAULT_ADMIN_EMAIL}")
         print(f"Temporary password: {DEFAULT_ADMIN_PASSWORD}")
 
 
-async def seed_daily_report(session, user_by_email: dict[str, User | None]) -> None:
-    engineer = user_by_email["engineer@garrisons.qa"]
-    project = await session.scalar(
-        select(Project).where(Project.code == "GIP-001", Project.deleted_at.is_(None))
+async def seed_suppliers(session, user_by_email: dict) -> dict[str, Supplier]:
+    supplier_map: dict[str, Supplier] = {}
+    created = 0
+    for s in SEED_SUPPLIERS:
+        existing = await session.scalar(
+            select(Supplier).where(
+                Supplier.name == s["name"],
+                Supplier.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            existing.category = s["category"]
+            existing.rating = s["rating"]
+            existing.payment_terms = s["payment_terms"]
+            existing.contact_person = s["contact_person"]
+            existing.phone = s["phone"]
+            existing.email = s["email"]
+            existing.address = s["address"]
+            existing.tax_registration_number = s["tax_registration_number"]
+            existing.tds_certificate_number = s["tds_certificate_number"]
+            existing.tds_expiry_date = s["tds_expiry_date"]
+            existing.compliance_status = s["compliance_status"]
+            supplier_map[s["email"]] = existing
+            continue
+        supplier = Supplier(
+            name=s["name"],
+            category=s["category"],
+            rating=s["rating"],
+            payment_terms=s["payment_terms"],
+            contact_person=s["contact_person"],
+            phone=s["phone"],
+            email=s["email"],
+            address=s["address"],
+            tax_registration_number=s["tax_registration_number"],
+            tds_certificate_number=s["tds_certificate_number"],
+            tds_expiry_date=s["tds_expiry_date"],
+            compliance_status=s["compliance_status"],
+        )
+        session.add(supplier)
+        await session.flush()
+        supplier_map[s["email"]] = supplier
+        created += 1
+    print(f"Seeded suppliers: {created} created, {len(SEED_SUPPLIERS) - created} updated")
+    return supplier_map
+
+
+async def seed_inventory(
+    session, user_by_email: dict, project_objects: dict, suppliers: dict
+) -> tuple[dict[str, InventoryItem], dict[str, StorageLocation]]:
+    gip001 = project_objects.get("GIP-001")
+    gip002 = project_objects.get("GIP-002")
+
+    location_map: dict[str, StorageLocation] = {}
+    for loc in SEED_LOCATIONS:
+        existing = await session.scalar(
+            select(StorageLocation).where(
+                StorageLocation.code == loc["code"],
+                StorageLocation.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            existing.name = loc["name"]
+            existing.location_type = loc["location_type"]
+            existing.address = loc["address"]
+            existing.project_id = (
+                gip001.id
+                if gip001 and "GIP001" in loc["code"]
+                else (gip002.id if gip002 and "GIP002" in loc["code"] else None)
+            )
+            location_map[loc["code"]] = existing
+            continue
+        sl = StorageLocation(
+            name=loc["name"],
+            code=loc["code"],
+            location_type=loc["location_type"],
+            address=loc["address"],
+            project_id=gip001.id
+            if "GIP001" in loc["code"]
+            else (gip002.id if gip002 and "GIP002" in loc["code"] else None),
+        )
+        session.add(sl)
+        await session.flush()
+        location_map[loc["code"]] = sl
+
+    supplier_by_email = {s.email: s for s in suppliers.values()} if suppliers else {}
+
+    item_map: dict[str, InventoryItem] = {}
+    for it in SEED_INVENTORY_ITEMS:
+        existing = await session.scalar(
+            select(InventoryItem).where(
+                InventoryItem.item_code == it["item_code"],
+                InventoryItem.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            existing.name = it["name"]
+            existing.category = it["category"]
+            existing.item_type = it["item_type"]
+            existing.unit = it["unit"]
+            existing.minimum_stock = it["minimum_stock"]
+            existing.reorder_level = it["reorder_level"]
+            existing.unit_cost = it["unit_cost"]
+            item_map[it["item_code"]] = existing
+            continue
+        sup = supplier_by_email.get(it["supplier_email"]) if it["supplier_email"] else None
+        item = InventoryItem(
+            name=it["name"],
+            item_code=it["item_code"],
+            category=it["category"],
+            item_type=it["item_type"],
+            unit=it["unit"],
+            minimum_stock=it["minimum_stock"],
+            reorder_level=it["reorder_level"],
+            unit_cost=it["unit_cost"],
+            supplier_id=sup.id if sup else None,
+        )
+        session.add(item)
+        await session.flush()
+        item_map[it["item_code"]] = item
+
+    stock_data = [
+        ("MAT-CEM-001", "LOC-GIP001-STORE", Decimal("350.000"), Decimal("50.000")),
+        ("MAT-CEM-001", "LOC-CENTRAL-WH", Decimal("500.000"), Decimal("0")),
+        ("MAT-STL-001", "LOC-GIP001-STORE", Decimal("3.500"), Decimal("0.500")),
+        ("MAT-STL-001", "LOC-CENTRAL-WH", Decimal("8.000"), Decimal("0")),
+        ("MAT-PNT-001", "LOC-GIP001-STORE", Decimal("30.000"), Decimal("5.000")),
+        ("MAT-PNT-001", "LOC-CENTRAL-WH", Decimal("45.000"), Decimal("0")),
+        ("MAT-ELE-001", "LOC-GIP001-STORE", Decimal("600.000"), Decimal("100.000")),
+        ("MAT-ELE-001", "LOC-GIP002-STORE", Decimal("200.000"), Decimal("0")),
+        ("EQU-MIX-001", "LOC-GIP001-STORE", Decimal("2.000"), Decimal("0")),
+        ("PPE-HEL-001", "LOC-GIP001-STORE", Decimal("40.000"), Decimal("10.000")),
+        ("PPE-HEL-001", "LOC-CENTRAL-WH", Decimal("80.000"), Decimal("0")),
+    ]
+    for item_code, loc_code, on_hand, reserved in stock_data:
+        item = item_map[item_code]
+        loc = location_map[loc_code]
+        existing = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == item.id,
+                InventoryLocationStock.location_id == loc.id,
+                InventoryLocationStock.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            existing.on_hand_qty = on_hand
+            existing.reserved_qty = reserved
+        else:
+            session.add(
+                InventoryLocationStock(
+                    item_id=item.id,
+                    location_id=loc.id,
+                    on_hand_qty=on_hand,
+                    reserved_qty=reserved,
+                )
+            )
+
+    mixer_item = item_map["EQU-MIX-001"]
+    mixer_loc = location_map["LOC-GIP001-STORE"]
+    existing_asset = await session.scalar(
+        select(InventoryAsset).where(
+            InventoryAsset.item_id == mixer_item.id,
+            InventoryAsset.asset_tag == "EQ-MIX-001-A",
+            InventoryAsset.deleted_at.is_(None),
+        )
     )
+    if not existing_asset:
+        session.add(
+            InventoryAsset(
+                item_id=mixer_item.id,
+                asset_tag="EQ-MIX-001-A",
+                current_location_id=mixer_loc.id,
+                condition="good",
+                status="active",
+            )
+        )
+        session.add(
+            InventoryAsset(
+                item_id=mixer_item.id,
+                asset_tag="EQ-MIX-001-B",
+                current_location_id=mixer_loc.id,
+                condition="needs_maintenance",
+                status="active",
+            )
+        )
+
+    print("Seeded inventory: items, locations, stock, assets")
+    return item_map, location_map
+
+
+async def seed_inventory_movements(
+    session, user_by_email: dict, project_objects: dict,
+    item_map: dict, location_map: dict
+) -> None:
+    store = user_by_email.get("store@garrisons.qa")
+    if not store:
+        return
+    gip001 = project_objects.get("GIP-001")
+    site_store = location_map.get("LOC-GIP001-STORE")
+    central_wh = location_map.get("LOC-CENTRAL-WH")
+    cement = item_map.get("MAT-CEM-001")
+    paint = item_map.get("MAT-PNT-001")
+    rebar = item_map.get("MAT-STL-001")
+    now = datetime.now(timezone.utc)
+
+    movements = [
+        InventoryMovement(
+            item_id=cement.id,
+            movement_type="transfer",
+            quantity=Decimal("200.000"),
+            from_location_id=central_wh.id,
+            to_location_id=site_store.id,
+            project_id=gip001.id if gip001 else None,
+            reference_type="stock_replenish",
+            handled_by=store.id,
+            notes="Weekly replenishment to site store",
+            created_at=now - timedelta(days=7),
+        ),
+        InventoryMovement(
+            item_id=cement.id,
+            movement_type="consumption",
+            quantity=Decimal("42.000"),
+            from_location_id=site_store.id,
+            to_location_id=None,
+            project_id=gip001.id if gip001 else None,
+            reference_type="daily_report",
+            handled_by=store.id,
+            notes="Issued for daily plaster work",
+            created_at=now - timedelta(days=2),
+        ),
+        InventoryMovement(
+            item_id=rebar.id,
+            movement_type="transfer",
+            quantity=Decimal("1.500"),
+            from_location_id=central_wh.id,
+            to_location_id=site_store.id,
+            project_id=gip001.id if gip001 else None,
+            reference_type="stock_replenish",
+            handled_by=store.id,
+            notes="Rebar delivery to site",
+            created_at=now - timedelta(days=5),
+        ),
+        InventoryMovement(
+            item_id=paint.id,
+            movement_type="transfer",
+            quantity=Decimal("10.000"),
+            from_location_id=central_wh.id,
+            to_location_id=site_store.id,
+            project_id=gip001.id if gip001 else None,
+            reference_type="stock_replenish",
+            handled_by=store.id,
+            notes="Paint stock transfer for upcoming finishing work",
+            created_at=now - timedelta(days=3),
+        ),
+        InventoryMovement(
+            item_id=cement.id,
+            movement_type="adjustment",
+            quantity=Decimal("5.000"),
+            from_location_id=site_store.id,
+            to_location_id=None,
+            project_id=gip001.id if gip001 else None,
+            reference_type="stock_count",
+            handled_by=store.id,
+            notes="Stock adjustment after physical count — 5 bags damaged",
+            created_at=now - timedelta(days=1),
+        ),
+        InventoryMovement(
+            item_id=cement.id,
+            movement_type="return",
+            quantity=Decimal("3.000"),
+            from_location_id=None,
+            to_location_id=site_store.id,
+            project_id=gip001.id if gip001 else None,
+            reference_type="return",
+            handled_by=store.id,
+            notes="Unused bags returned from site",
+            created_at=now - timedelta(hours=12),
+        ),
+    ]
+    created = 0
+    for m in movements:
+        existing = await session.scalar(
+            select(InventoryMovement).where(
+                InventoryMovement.item_id == m.item_id,
+                InventoryMovement.movement_type == m.movement_type,
+                InventoryMovement.quantity == m.quantity,
+                InventoryMovement.reference_type == m.reference_type,
+                InventoryMovement.notes == m.notes,
+                InventoryMovement.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            continue
+        session.add(m)
+        created += 1
+    print(f"Seeded inventory movements: {created} created, {len(movements) - created} existing")
+
+
+async def seed_material_requests(
+    session, user_by_email: dict, project_objects: dict,
+    item_map: dict, location_map: dict
+) -> None:
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    site_store = location_map.get("LOC-GIP001-STORE")
+    if not engineer or not gip001 or not site_store:
+        return
+    cement = item_map.get("MAT-CEM-001")
+    paint = item_map.get("MAT-PNT-001")
+    helmet = item_map.get("PPE-HEL-001")
+
+    req_num = "MR-GIP001-SEED-001"
+    existing = await session.scalar(
+        select(MaterialRequest).where(
+            MaterialRequest.request_number == req_num,
+            MaterialRequest.deleted_at.is_(None),
+        )
+    )
+    if existing:
+        return
+    request = MaterialRequest(
+        request_number=req_num,
+        project_id=gip001.id,
+        requester_id=engineer.id,
+        from_location_id=site_store.id,
+        status="approved",
+        total_estimated_cost=Decimal("2165.00"),
+        notes="Materials needed for plaster preparation work",
+    )
+    session.add(request)
+    await session.flush()
+
+    session.add(
+        MaterialRequestLine(
+            request_id=request.id,
+            item_id=cement.id,
+            quantity=Decimal("50.000"),
+            reserved_quantity=Decimal("50.000"),
+            issued_quantity=Decimal("42.000"),
+            unit_cost=cement.unit_cost,
+        )
+    )
+    session.add(
+        MaterialRequestLine(
+            request_id=request.id,
+            item_id=paint.id,
+            quantity=Decimal("5.000"),
+            reserved_quantity=Decimal("5.000"),
+            issued_quantity=Decimal("0"),
+            unit_cost=paint.unit_cost,
+        )
+    )
+    session.add(
+        MaterialRequestLine(
+            request_id=request.id,
+            item_id=helmet.id,
+            quantity=Decimal("10.000"),
+            reserved_quantity=Decimal("10.000"),
+            issued_quantity=Decimal("10.000"),
+            unit_cost=helmet.unit_cost,
+        )
+    )
+
+    req_num2 = "MR-GIP001-SEED-002"
+    if not await session.scalar(
+        select(MaterialRequest).where(
+            MaterialRequest.request_number == req_num2,
+            MaterialRequest.deleted_at.is_(None),
+        )
+    ):
+        request2 = MaterialRequest(
+            request_number=req_num2,
+            project_id=gip001.id,
+            requester_id=engineer.id,
+            from_location_id=site_store.id,
+            status="requested",
+            total_estimated_cost=Decimal("8550.00"),
+            notes="Rebar for upcoming structural work",
+        )
+        session.add(request2)
+        await session.flush()
+        rebar = item_map.get("MAT-STL-001")
+        session.add(
+            MaterialRequestLine(
+                request_id=request2.id,
+                item_id=rebar.id,
+                quantity=Decimal("3.000"),
+                reserved_quantity=Decimal("0"),
+                issued_quantity=Decimal("0"),
+                unit_cost=rebar.unit_cost,
+            )
+        )
+    print("Seeded material requests: 2 records with lines")
+
+
+async def seed_finance(
+    session, user_by_email: dict, project_objects: dict, suppliers: dict
+) -> None:
+    accounts = user_by_email.get("accounts@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    if not accounts or not gip001:
+        return
+
+    supplier_list = list(suppliers.values())
+    sup_qbm = supplier_list[0] if len(supplier_list) > 0 else None
+    sup_steel = supplier_list[1] if len(supplier_list) > 1 else None
+    now = datetime.now(timezone.utc)
+
+    inv_num = "INV-GIP001-SEED-001"
+    existing_inv = await session.scalar(
+        select(Invoice).where(
+            Invoice.invoice_number == inv_num,
+            Invoice.deleted_at.is_(None),
+        )
+    )
+    if not existing_inv and sup_qbm:
+        invoice1 = Invoice(
+            invoice_number=inv_num,
+            project_id=gip001.id,
+            supplier_id=sup_qbm.id,
+            invoice_date=date.today() - timedelta(days=15),
+            due_date=date.today() + timedelta(days=15),
+            amount=Decimal("22500.00"),
+            tax_amount=Decimal("1125.00"),
+            total_amount=Decimal("23625.00"),
+            status="approved",
+            payment_status="partial",
+            created_by=accounts.id,
+            approved_by=user_by_email.get("pm@garrisons.qa").id
+            if user_by_email.get("pm@garrisons.qa")
+            else None,
+            approved_at=now - timedelta(days=13),
+            notes="Cement and plaster materials for Blockwork phase",
+        )
+        session.add(invoice1)
+        await session.flush()
+
+        session.add(
+            Payment(
+                invoice_id=invoice1.id,
+                payment_date=date.today() - timedelta(days=10),
+                amount=Decimal("12000.00"),
+                method="bank_transfer",
+                reference_number="TXN-QNB-2026-001",
+                recorded_by=accounts.id,
+                notes="Partial payment — 50% advance",
+            )
+        )
+
+    inv_num2 = "INV-GIP001-SEED-002"
+    existing_inv2 = await session.scalar(
+        select(Invoice).where(
+            Invoice.invoice_number == inv_num2,
+            Invoice.deleted_at.is_(None),
+        )
+    )
+    if not existing_inv2 and sup_steel:
+        invoice2 = Invoice(
+            invoice_number=inv_num2,
+            project_id=gip001.id,
+            supplier_id=sup_steel.id,
+            invoice_date=date.today() - timedelta(days=5),
+            due_date=date.today() + timedelta(days=40),
+            amount=Decimal("9975.00"),
+            tax_amount=Decimal("498.75"),
+            total_amount=Decimal("10473.75"),
+            status="submitted",
+            payment_status="unpaid",
+            created_by=accounts.id,
+            notes="Steel rebar delivery — 3.5 tons",
+        )
+        session.add(invoice2)
+        await session.flush()
+
+        session.add(
+            Payment(
+                invoice_id=invoice2.id,
+                payment_date=date.today() - timedelta(days=1),
+                amount=Decimal("5000.00"),
+                method="cheque",
+                reference_number="CHQ-001234",
+                recorded_by=accounts.id,
+                notes="Partial advance payment",
+            )
+        )
+    print("Seeded finance: invoices and payments")
+
+
+async def seed_supervisor_updates(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    if not supervisor or not gip001:
+        return
+
+    update_data = [
+        {
+            "update_date": date.today() - timedelta(days=3),
+            "day_type": "weekday",
+            "work_location": "Villa A - Ground Floor",
+            "attendance_count": 18,
+            "overtime_hours": Decimal("4.00"),
+            "progress_notes": "Blockwork for internal walls completed. Plaster scratch coat applied in 3 rooms.",
+            "delay_notes": None,
+            "required_notes": "Need additional cement bags by tomorrow AM. Mixer B needs servicing.",
+            "status": "verified",
+        },
+        {
+            "update_date": date.today() - timedelta(days=1),
+            "day_type": "weekday",
+            "work_location": "Villa A - Ground Floor & First Floor",
+            "attendance_count": 22,
+            "overtime_hours": Decimal("6.00"),
+            "progress_notes": "Plaster work continued. First floor blockwork alignment started. MEP rough-in coordination completed.",
+            "delay_notes": "Minor delay due to rain — 2 hours lost in outdoor work",
+            "required_notes": "Coordinate with MEP team for ceiling conduit routing.",
+            "status": "submitted",
+        },
+        {
+            "update_date": date.today(),
+            "day_type": "weekday",
+            "work_location": "Villa A - First Floor",
+            "attendance_count": 20,
+            "overtime_hours": Decimal("3.00"),
+            "progress_notes": "First floor plaster scratch coat applied in 5 rooms. Started ceiling grid layout.",
+            "delay_notes": None,
+            "required_notes": "Request paint samples for client approval next week.",
+            "status": "draft",
+        },
+    ]
+    created = 0
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    for u in update_data:
+        existing = await session.scalar(
+            select(SupervisorUpdate).where(
+                SupervisorUpdate.project_id == gip001.id,
+                SupervisorUpdate.supervisor_id == supervisor.id,
+                SupervisorUpdate.update_date == u["update_date"],
+                SupervisorUpdate.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            continue
+        update = SupervisorUpdate(
+            project_id=gip001.id,
+            supervisor_id=supervisor.id,
+            update_date=u["update_date"],
+            day_type=u["day_type"],
+            work_location=u["work_location"],
+            attendance_count=u["attendance_count"],
+            overtime_hours=u["overtime_hours"],
+            progress_notes=u["progress_notes"],
+            delay_notes=u["delay_notes"],
+            required_notes=u["required_notes"],
+            attachment_refs=[
+                {"name": "site_photo_1.jpg", "type": "image/jpeg", "kind": "photo"},
+            ],
+            status=u["status"],
+            submitted_at=datetime.now(timezone.utc) - timedelta(days=1)
+            if u["status"] != "draft"
+            else None,
+            verified_by=engineer.id if u["status"] == "verified" else None,
+            verified_at=datetime.now(timezone.utc) - timedelta(days=2)
+            if u["status"] == "verified"
+            else None,
+            verification_notes="Confirmed attendance and progress. Verified plaster quality."
+            if u["status"] == "verified"
+            else None,
+        )
+        session.add(update)
+        created += 1
+    print(f"Seeded supervisor updates: {created}")
+
+
+async def seed_photos(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    if not gip001:
+        return
+
+    existing = await session.scalar(
+        select(Photo).where(
+            Photo.entity_type == "project",
+            Photo.entity_id == gip001.id,
+            Photo.filename == "seed_site_overview.jpg",
+            Photo.deleted_at.is_(None),
+        )
+    )
+    if not existing and engineer:
+        photos = [
+            Photo(
+                filename="seed_site_overview.jpg",
+                original_name="GIP001_site_overview.jpg",
+                storage_path="seed-photos/site_overview.jpg",
+                compressed_path="seed-photos/site_overview_compressed.jpg",
+                thumbnail_path="seed-photos/site_overview_thumb.jpg",
+                mime_type="image/jpeg",
+                size_bytes=204800,
+                width=1920,
+                height=1080,
+                entity_type="project",
+                entity_id=gip001.id,
+                kind="photo",
+                caption="Site overview — Lusail Villa A",
+                taken_at=datetime.now(timezone.utc) - timedelta(days=10),
+                uploaded_by=engineer.id,
+            ),
+            Photo(
+                filename="seed_blockwork_progress.jpg",
+                original_name="blockwork_day5.jpg",
+                storage_path="seed-photos/blockwork_day5.jpg",
+                compressed_path=None,
+                thumbnail_path="seed-photos/blockwork_day5_thumb.jpg",
+                mime_type="image/jpeg",
+                size_bytes=156000,
+                width=1200,
+                height=900,
+                entity_type="supervisor_update",
+                entity_id=uuid4(),
+                kind="photo",
+                caption="Blockwork progress — Day 5",
+                taken_at=datetime.now(timezone.utc) - timedelta(days=5),
+                uploaded_by=supervisor.id if supervisor else engineer.id,
+            ),
+            Photo(
+                filename="seed_plaster_quality.jpg",
+                original_name="plaster_check.jpg",
+                storage_path="seed-photos/plaster_check.jpg",
+                compressed_path="seed-photos/plaster_check_compressed.jpg",
+                thumbnail_path=None,
+                mime_type="image/jpeg",
+                size_bytes=132000,
+                width=1080,
+                height=810,
+                entity_type="daily_report",
+                entity_id=uuid4(),
+                kind="attachment",
+                caption="Plaster quality check — Wall A3",
+                taken_at=datetime.now(timezone.utc) - timedelta(days=2),
+                uploaded_by=engineer.id,
+            ),
+        ]
+        for p in photos:
+            session.add(p)
+        print(f"Seeded photos: {len(photos)}")
+    else:
+        print("Seeded photos: 0 (already exist)")
+
+
+async def seed_documents(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    pm = user_by_email.get("pm@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    if not pm or not gip001:
+        return
+
+    existing = await session.scalar(
+        select(Document).where(
+            Document.project_id == gip001.id,
+            Document.title == "Project Execution Plan",
+            Document.deleted_at.is_(None),
+        )
+    )
+    if existing:
+        print("Seeded documents: 0 (already exist)")
+        return
+
+    doc1 = Document(
+        title="Project Execution Plan",
+        document_type="plan",
+        project_id=gip001.id,
+        status="active",
+        active_version=2,
+        metadata_json={
+            "author": "Project Manager",
+            "department": "Civil",
+            "tags": ["execution", "planning", "approved"],
+        },
+        expiry_date=None,
+        uploaded_by=pm.id,
+    )
+    session.add(doc1)
+    await session.flush()
+
+    session.add(
+        DocumentVersion(
+            document_id=doc1.id,
+            version=1,
+            status="active",
+            storage_path="seed-docs/pep_v1.pdf",
+            original_name="PEP_Lusail_Villa_v1.pdf",
+            mime_type="application/pdf",
+            size_bytes=512000,
+            uploaded_by=pm.id,
+            approved_by=user_by_email.get("operations@garrisons.qa").id
+            if user_by_email.get("operations@garrisons.qa")
+            else None,
+            approved_at=datetime.now(timezone.utc) - timedelta(days=20),
+            approval_comments="Approved with minor comments",
+        )
+    )
+    session.add(
+        DocumentVersion(
+            document_id=doc1.id,
+            version=2,
+            status="active",
+            storage_path="seed-docs/pep_v2.pdf",
+            original_name="PEP_Lusail_Villa_v2.pdf",
+            mime_type="application/pdf",
+            size_bytes=545000,
+            uploaded_by=pm.id,
+            approved_by=user_by_email.get("operations@garrisons.qa").id
+            if user_by_email.get("operations@garrisons.qa")
+            else None,
+            approved_at=datetime.now(timezone.utc) - timedelta(days=5),
+            approval_comments="Revision approved — all comments addressed",
+        )
+    )
+
+    doc2 = Document(
+        title="Safety Induction Record",
+        document_type="safety",
+        project_id=gip001.id,
+        status="pending_approval",
+        active_version=1,
+        metadata_json={
+            "author": "Safety Officer",
+            "department": "HSE",
+            "tags": ["safety", "induction", "pending"],
+        },
+        expiry_date=date.today() + timedelta(days=90),
+        uploaded_by=pm.id,
+    )
+    session.add(doc2)
+    await session.flush()
+    session.add(
+        DocumentVersion(
+            document_id=doc2.id,
+            version=1,
+            status="pending_approval",
+            storage_path="seed-docs/safety_induction.pdf",
+            original_name="Safety_Induction_GIP001.pdf",
+            mime_type="application/pdf",
+            size_bytes=235000,
+            uploaded_by=pm.id,
+        )
+    )
+
+    doc3 = Document(
+        title="Material Test Report — Cement",
+        document_type="test_report",
+        project_id=gip001.id,
+        status="active",
+        active_version=1,
+        metadata_json={
+            "author": "QA/QC Engineer",
+            "department": "Quality",
+            "tags": ["material", "test", "cement"],
+        },
+        expiry_date=None,
+        uploaded_by=pm.id,
+    )
+    session.add(doc3)
+    await session.flush()
+    session.add(
+        DocumentVersion(
+            document_id=doc3.id,
+            version=1,
+            status="active",
+            storage_path="seed-docs/cement_test_report.pdf",
+            original_name="Cement_Test_Batch001.pdf",
+            mime_type="application/pdf",
+            size_bytes=180000,
+            uploaded_by=pm.id,
+            approved_by=user_by_email.get("engineer@garrisons.qa").id
+            if user_by_email.get("engineer@garrisons.qa")
+            else None,
+            approved_at=datetime.now(timezone.utc) - timedelta(days=8),
+        )
+    )
+    print("Seeded documents: 3 with versions")
+
+
+async def seed_daily_reports(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    project = project_objects.get("GIP-001")
     if not engineer or not project:
         return
-    existing_report = await session.scalar(
+
+    reports = [
+        {
+            "report_number": "DR-GIP-001-SEED",
+            "report_date": date.today(),
+            "work_location": "Villa A - Ground Floor",
+            "manpower_total": 18,
+            "overtime_hours": Decimal("6.00"),
+            "work_completed": "Completed blockwork alignment and started plaster preparation.",
+            "progress_percentage": Decimal("36.00"),
+            "safety_incidents": 0,
+            "safety_notes": "Toolbox talk completed before site start.",
+            "wir_status": "pending",
+            "inspection_status": "not_requested",
+            "delay_notes": None,
+            "next_day_plan": "Continue internal plaster and coordinate material delivery.",
+            "status": "submitted",
+            "extra_fields": {
+                "day_type": "weekday",
+                "weather_condition": "Sunny",
+                "site_visitors": "Client representative - 1, consultant engineer - 1",
+                "subcontractors": "Blockwork subcontractor crew",
+                "wir_number": "GIP-001-WIR-CIV-2026-001",
+            },
+            "manpower": [
+                ("Mason", 8, Decimal("2.00")),
+                ("Helper", 10, Decimal("4.00")),
+            ],
+            "equipment": [
+                ("Concrete Mixer", 1, Decimal("5.00"), "Shared with plaster team"),
+            ],
+            "materials": [
+                ("Cement", "bag", Decimal("42.000"), "Issued from site store"),
+            ],
+        },
+        {
+            "report_number": "DR-GIP-001-SEED-002",
+            "report_date": date.today() - timedelta(days=1),
+            "work_location": "Villa A - Ground Floor & First Floor",
+            "manpower_total": 22,
+            "overtime_hours": Decimal("8.00"),
+            "work_completed": "Plaster scratch coat completed in Ground Floor rooms. First floor blockwork 60% complete.",
+            "progress_percentage": Decimal("38.00"),
+            "safety_incidents": 0,
+            "safety_notes": "Daily PPE inspection passed. All workers equipped.",
+            "wir_status": "submitted",
+            "inspection_status": "requested",
+            "delay_notes": None,
+            "next_day_plan": "Complete first floor blockwork. Begin plaster on first floor.",
+            "status": "approved",
+            "extra_fields": {
+                "day_type": "weekday",
+                "weather_condition": "Cloudy",
+                "site_visitors": "Consultant engineer - 1",
+                "subcontractors": "MEP first-fix crew, plaster crew",
+                "wir_number": "GIP-001-WIR-CIV-2026-002",
+            },
+            "manpower": [
+                ("Mason", 10, Decimal("3.00")),
+                ("Helper", 10, Decimal("4.00")),
+                ("Electrician", 2, Decimal("1.00")),
+            ],
+            "equipment": [
+                ("Concrete Mixer", 2, Decimal("6.00"), "Both mixers operational"),
+                ("Scaffolding Set", 3, Decimal("8.00"), "First floor access"),
+            ],
+            "materials": [
+                ("Cement", "bag", Decimal("50.000"), "For plaster and blockwork"),
+                ("Sand", "m3", Decimal("3.500"), "For plaster mix"),
+            ],
+        },
+        {
+            "report_number": "DR-GIP-001-SEED-003",
+            "report_date": date.today() - timedelta(days=3),
+            "work_location": "Villa A - Ground Floor",
+            "manpower_total": 15,
+            "overtime_hours": Decimal("4.00"),
+            "work_completed": "Ground floor blockwork layout and first course laid.",
+            "progress_percentage": Decimal("32.00"),
+            "safety_incidents": 1,
+            "safety_notes": "Minor hand injury — worker treated on site. Near-miss report filed for falling debris.",
+            "wir_status": "draft",
+            "inspection_status": "not_requested",
+            "delay_notes": "Delayed start due to material delivery waiting — 1 hour lost.",
+            "next_day_plan": "Continue blockwork. Expedite cement delivery.",
+            "status": "rejected",
+            "extra_fields": {
+                "day_type": "weekday",
+                "weather_condition": "Dusty",
+                "site_visitors": "None",
+                "subcontractors": "Blockwork subcontractor crew",
+                "wir_number": "Not required",
+            },
+            "manpower": [
+                ("Mason", 6, Decimal("2.00")),
+                ("Helper", 9, Decimal("2.00")),
+            ],
+            "equipment": [
+                ("Concrete Mixer", 1, Decimal("4.00"), ""),
+            ],
+            "materials": [
+                ("Cement", "bag", Decimal("30.000"), ""),
+                ("Blocks 200mm", "piece", Decimal("450.000"), ""),
+            ],
+        },
+    ]
+
+    for r in reports:
+        existing = await session.scalar(
+            select(DailyReport).where(
+                DailyReport.project_id == project.id,
+                DailyReport.report_number == r["report_number"],
+                DailyReport.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            continue
+        report = DailyReport(
+            project_id=project.id,
+            engineer_id=engineer.id,
+            report_number=r["report_number"],
+            report_date=r["report_date"],
+            work_location=r["work_location"],
+            manpower_total=r["manpower_total"],
+            overtime_hours=r["overtime_hours"],
+            work_completed=r["work_completed"],
+            progress_percentage=r["progress_percentage"],
+            safety_incidents=r["safety_incidents"],
+            safety_notes=r["safety_notes"],
+            wir_status=r["wir_status"],
+            inspection_status=r["inspection_status"],
+            delay_notes=r["delay_notes"],
+            next_day_plan=r["next_day_plan"],
+            supervisor_update_ids=[],
+            photo_refs=[],
+            attachment_refs=[],
+            status=r["status"],
+            extra_fields={
+                "seed_data": True,
+                "uat_scenario": r["status"],
+                **r["extra_fields"],
+            },
+        )
+        report.manpower_entries = [
+            ReportManpower(trade=t, count=c, overtime_hours=o)
+            for t, c, o in r["manpower"]
+        ]
+        report.equipment_entries = [
+            ReportEquipment(
+                equipment_name=e, quantity=q, hours_used=h, remarks=rm
+            )
+            for e, q, h, rm in r["equipment"]
+        ]
+        report.material_consumption = [
+            ReportMaterialConsumption(
+                material_name=m, unit=u, quantity=q, remarks=rm
+            )
+            for m, u, q, rm in r["materials"]
+        ]
+        session.add(report)
+    print("Seeded daily reports: submitted, approved, rejected")
+
+
+async def seed_approvals(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    pm = user_by_email.get("pm@garrisons.qa")
+    ops = user_by_email.get("operations@garrisons.qa")
+    gip001 = project_objects.get("GIP-001")
+    if not gip001:
+        return
+
+    report = await session.scalar(
         select(DailyReport).where(
-            DailyReport.project_id == project.id,
+            DailyReport.project_id == gip001.id,
             DailyReport.report_number == "DR-GIP-001-SEED",
             DailyReport.deleted_at.is_(None),
         )
     )
-    if existing_report:
-        return
-    report = DailyReport(
-        project_id=project.id,
-        engineer_id=engineer.id,
-        report_number="DR-GIP-001-SEED",
-        report_date=date.today(),
-        work_location="Villa A - Ground Floor",
-        manpower_total=18,
-        overtime_hours=Decimal("6.00"),
-        work_completed="Completed blockwork alignment and started plaster preparation.",
-        progress_percentage=Decimal("36.00"),
-        safety_incidents=0,
-        safety_notes="Toolbox talk completed before site start.",
-        wir_status="pending",
-        inspection_status="not_requested",
-        delay_notes=None,
-        next_day_plan="Continue internal plaster and coordinate material delivery.",
-        supervisor_update_ids=[],
-        photo_refs=[],
-        attachment_refs=[],
-        status="submitted",
-        extra_fields={"seed_data": True, "uat_scenario": "approval"},
+    now = datetime.now(timezone.utc)
+
+    if report and engineer and not await session.scalar(
+        select(Approval).where(
+            Approval.request_type == "daily_report",
+            Approval.request_id == report.id,
+            Approval.deleted_at.is_(None),
+        )
+    ):
+        session.add(
+            Approval(
+                request_type="daily_report",
+                request_id=report.id,
+                project_id=gip001.id,
+                submitter_id=engineer.id,
+                approver_id=pm.id if pm else None,
+                status="pending",
+                step_order=1,
+                title="Daily Report Approval — DR-GIP-001-SEED",
+                submitter_comments="Daily report for today's blockwork and plaster preparation.",
+                submitted_at=now - timedelta(hours=4),
+                due_at=now + timedelta(hours=20),
+            )
+        )
+
+    report2 = await session.scalar(
+        select(DailyReport).where(
+            DailyReport.project_id == gip001.id,
+            DailyReport.report_number == "DR-GIP-001-SEED-002",
+            DailyReport.deleted_at.is_(None),
+        )
     )
-    report.manpower_entries = [
-        ReportManpower(trade="Mason", count=8, overtime_hours=Decimal("2.00")),
-        ReportManpower(trade="Helper", count=10, overtime_hours=Decimal("4.00")),
-    ]
-    report.equipment_entries = [
-        ReportEquipment(
-            equipment_name="Concrete Mixer",
-            quantity=1,
-            hours_used=Decimal("5.00"),
-            remarks="Shared with plaster team",
+    if report2 and pm and not await session.scalar(
+        select(Approval).where(
+            Approval.request_type == "daily_report",
+            Approval.request_id == report2.id,
+            Approval.deleted_at.is_(None),
         )
-    ]
-    report.material_consumption = [
-        ReportMaterialConsumption(
-            material_name="Cement",
-            unit="bag",
-            quantity=Decimal("42.000"),
-            remarks="Issued from site store",
+    ):
+        session.add(
+            Approval(
+                request_type="daily_report",
+                request_id=report2.id,
+                project_id=gip001.id,
+                submitter_id=engineer.id if engineer else None,
+                approver_id=pm.id,
+                status="approved",
+                step_order=1,
+                title="Daily Report Approval — DR-GIP-001-SEED-002",
+                submitter_comments="Report for yesterday's work.",
+                decision_comments="Good progress. Approved.",
+                submitted_at=now - timedelta(days=1),
+                due_at=now - timedelta(hours=20),
+                decided_at=now - timedelta(hours=20),
+            )
         )
+
+    if ops and pm and not await session.scalar(
+        select(Approval).where(
+            Approval.request_type == "project_budget",
+            Approval.project_id == gip001.id,
+            Approval.title == "Budget Revision — Additional MEP Scope",
+            Approval.deleted_at.is_(None),
+        )
+    ):
+        session.add(
+            Approval(
+                request_type="project_budget",
+                request_id=gip001.id,
+                project_id=gip001.id,
+                submitter_id=pm.id,
+                approver_id=ops.id,
+                status="pending",
+                step_order=1,
+                amount=Decimal("85000.00"),
+                currency="QAR",
+                title="Budget Revision — Additional MEP Scope",
+                submitter_comments="Client requested additional MEP scope — requires budget increase of QAR 85,000.",
+                submitted_at=now - timedelta(hours=2),
+                due_at=now + timedelta(days=2),
+            )
+        )
+    print("Seeded approvals: daily report + budget revision")
+
+
+async def seed_notifications(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    now = datetime.now(timezone.utc)
+    notifications = [
+        {
+            "user_email": "pm@garrisons.qa",
+            "title": "Daily Report Submitted",
+            "body": "Engineer submitted daily report DR-GIP-001-SEED for Lusail Villa Fit-Out.",
+            "notification_type": "report_submitted",
+            "reference_type": "daily_report",
+            "is_read": False,
+        },
+        {
+            "user_email": "pm@garrisons.qa",
+            "title": "Budget Revision Requested",
+            "body": "A budget revision of QAR 85,000 has been requested for Lusail Villa Fit-Out.",
+            "notification_type": "approval_requested",
+            "reference_type": "approval",
+            "is_read": True,
+        },
+        {
+            "user_email": "engineer@garrisons.qa",
+            "title": "Report Approved",
+            "body": "Your daily report DR-GIP-001-SEED-002 has been approved.",
+            "notification_type": "report_approved",
+            "reference_type": "daily_report",
+            "is_read": True,
+        },
+        {
+            "user_email": "engineer@garrisons.qa",
+            "title": "Report Rejected",
+            "body": "Your daily report DR-GIP-001-SEED-003 was rejected. Please review comments and resubmit.",
+            "notification_type": "report_rejected",
+            "reference_type": "daily_report",
+            "is_read": False,
+        },
+        {
+            "user_email": "store@garrisons.qa",
+            "title": "Low Stock Alert",
+            "body": "Safety Helmets at GIP-001 Site Store dropped below reorder level (40 remaining, reorder at 50).",
+            "notification_type": "low_stock",
+            "reference_type": "inventory",
+            "is_read": False,
+        },
+        {
+            "user_email": "supervisor@garrisons.qa",
+            "title": "Supervisor Update Verified",
+            "body": "Your site update from 3 days ago has been verified by the engineer.",
+            "notification_type": "update_verified",
+            "reference_type": "supervisor_update",
+            "is_read": True,
+        },
+        {
+            "user_email": "accounts@garrisons.qa",
+            "title": "Invoice Due Soon",
+            "body": "Invoice INV-GIP001-SEED-001 (QAR 23,625) is due in 15 days.",
+            "notification_type": "invoice_due",
+            "reference_type": "invoice",
+            "is_read": False,
+        },
     ]
-    session.add(report)
+    created = 0
+    for n in notifications:
+        user = user_by_email.get(n["user_email"])
+        if not user:
+            continue
+        existing = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.title == n["title"],
+                Notification.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            continue
+        session.add(
+            Notification(
+                user_id=user.id,
+                title=n["title"],
+                body=n["body"],
+                notification_type=n["notification_type"],
+                reference_type=n["reference_type"],
+                is_read=n["is_read"],
+                email_status="sent",
+                read_at=now - timedelta(hours=1) if n["is_read"] else None,
+            )
+        )
+        created += 1
+    print(f"Seeded notifications: {created}")
+
+
+async def seed_activity_logs(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    admin = user_by_email.get(DEFAULT_ADMIN_EMAIL)
+    engineer = user_by_email.get("engineer@garrisons.qa")
+    pm = user_by_email.get("pm@garrisons.qa")
+    store = user_by_email.get("store@garrisons.qa")
+    if not admin:
+        return
+    now = datetime.now(timezone.utc)
+    logs = [
+        ActivityLog(
+            user_id=admin.id,
+            action="user_login",
+            entity_type="user",
+            ip_address="10.0.0.1",
+            comments="Admin login from office IP",
+            created_at=now - timedelta(hours=6),
+        ),
+        ActivityLog(
+            user_id=engineer.id if engineer else admin.id,
+            action="report_create",
+            entity_type="daily_report",
+            comments="Created daily report DR-GIP-001-SEED",
+            created_at=now - timedelta(hours=5),
+        ),
+        ActivityLog(
+            user_id=engineer.id if engineer else admin.id,
+            action="report_submit",
+            entity_type="daily_report",
+            comments="Submitted daily report for approval",
+            created_at=now - timedelta(hours=4),
+        ),
+        ActivityLog(
+            user_id=pm.id if pm else admin.id,
+            action="approval_decision",
+            entity_type="approval",
+            comments="Approved daily report DR-GIP-001-SEED-002",
+            old_values={"status": "pending"},
+            new_values={"status": "approved"},
+            created_at=now - timedelta(hours=20),
+        ),
+        ActivityLog(
+            user_id=store.id if store else admin.id,
+            action="inventory_movement",
+            entity_type="inventory",
+            comments="Transferred 200 bags cement from warehouse to GIP-001 site store",
+            created_at=now - timedelta(days=7),
+        ),
+        ActivityLog(
+            user_id=admin.id,
+            action="seed_data",
+            entity_type="system",
+            comments="Seed data loaded for UAT environment",
+            created_at=now - timedelta(seconds=10),
+        ),
+    ]
+    created = 0
+    for log in logs:
+        existing = await session.scalar(
+            select(ActivityLog).where(
+                ActivityLog.action == log.action,
+                ActivityLog.entity_type == log.entity_type,
+                ActivityLog.comments == log.comments,
+                ActivityLog.deleted_at.is_(None),
+            )
+        )
+        if existing:
+            continue
+        session.add(log)
+        created += 1
+    print(f"Seeded activity logs: {created} created, {len(logs) - created} existing")
+
+
+async def seed_report_exports(
+    session, user_by_email: dict, project_objects: dict
+) -> None:
+    gip001 = project_objects.get("GIP-001")
+    if not gip001:
+        return
+    report = await session.scalar(
+        select(DailyReport).where(
+            DailyReport.project_id == gip001.id,
+            DailyReport.report_number == "DR-GIP-001-SEED-002",
+            DailyReport.deleted_at.is_(None),
+        )
+    )
+    if not report:
+        return
+    existing = await session.scalar(
+        select(ReportExport).where(
+            ReportExport.report_id == report.id,
+            ReportExport.deleted_at.is_(None),
+        )
+    )
+    if existing:
+        print("Seeded report exports: 0 (already exist)")
+        return
+
+    pm = user_by_email.get("pm@garrisons.qa")
+    now = datetime.now(timezone.utc)
+    session.add(
+        ReportExport(
+            report_id=report.id,
+            generated_by=pm.id if pm else None,
+            file_name="DR-GIP-001-SEED-002.pdf",
+            object_key="seed-exports/DR-GIP-001-SEED-002.pdf",
+            content_type="application/pdf",
+            status="ready",
+            email_status="sent",
+            emailed_at=now - timedelta(hours=18),
+            generated_at=now - timedelta(hours=19),
+        )
+    )
+    print("Seeded report exports: 1")
+
+
+async def seed_import_batches(session, user_by_email: dict) -> None:
+    admin = user_by_email.get(DEFAULT_ADMIN_EMAIL)
+    if not admin:
+        return
+    existing = await session.scalar(
+        select(ImportBatch).where(
+            ImportBatch.template_type == "boq",
+            ImportBatch.file_name == "seed_boq_import.xlsx",
+            ImportBatch.deleted_at.is_(None),
+        )
+    )
+    if existing:
+        print("Seeded import batches: 0 (already exist)")
+        return
+    session.add(
+        ImportBatch(
+            template_type="boq",
+            file_name="seed_boq_import.xlsx",
+            status="completed",
+            created_by=admin.id,
+            row_count=5,
+            error_count=0,
+            summary={"imported": 5, "skipped": 0, "errors": []},
+            created_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+    )
+    session.add(
+        ImportBatch(
+            template_type="supplier",
+            file_name="seed_supplier_import.csv",
+            status="partial",
+            created_by=admin.id,
+            row_count=10,
+            error_count=2,
+            summary={
+                "imported": 8,
+                "skipped": 0,
+                "errors": [
+                    {"row": 4, "reason": "Duplicate email"},
+                    {"row": 9, "reason": "Missing tax registration number"},
+                ],
+            },
+            created_at=datetime.now(timezone.utc) - timedelta(days=8),
+        )
+    )
+    print("Seeded import batches: 2")
 
 
 def main() -> None:

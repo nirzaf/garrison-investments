@@ -41,6 +41,7 @@ rsync -az --delete \
   --exclude 'frontend/dist/' \
   --exclude 'prototype/node_modules/' \
   --exclude 'backend/.venv/' \
+  --exclude 'backend/secrets/' \
   --exclude '.pytest_cache/' \
   --exclude '.ruff_cache/' \
   --exclude '.DS_Store' \
@@ -64,7 +65,7 @@ docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.
 Temporary staging login created by `scripts/seed.py`:
 
 - Admin email: `fazrin@quadrate.lk`
-- Temporary password: `YahmikAllah@123`
+- Temporary password: `Dob280884@`
 
 These credentials are for staging smoke tests only. Change or remove them before any production deployment.
 

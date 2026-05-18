@@ -10,6 +10,7 @@ from app.schemas.documents import (
     DocumentDownloadResponse,
     DocumentListResponse,
     DocumentResponse,
+    DocumentVersionResponse,
 )
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
 
@@ -79,15 +80,15 @@ async def upload_document_version(
     return DocumentResponse.model_validate(document)
 
 
-@router.get("/{document_id}/versions")
+@router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])
 async def list_document_versions(
     document_id: UUID,
     current_user: CurrentUser,
     session: DbSession,
-) -> list:
+) -> list[DocumentVersionResponse]:
     del current_user
     document = await DocumentService(session)._get_required(document_id)
-    return [version for version in document.versions]
+    return [DocumentVersionResponse.model_validate(version) for version in document.versions]
 
 
 @router.post("/{document_id}/versions/{version_id}/approve", response_model=DocumentResponse)

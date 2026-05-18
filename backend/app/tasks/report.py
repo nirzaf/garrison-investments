@@ -1,4 +1,3 @@
-import asyncio
 from datetime import date
 from uuid import UUID
 
@@ -6,6 +5,7 @@ from app.database import AsyncSessionLocal
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.report_export_service import ReportExportService
+from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.tasks.email import send_report_email
 
@@ -23,7 +23,7 @@ def generate_report_pdf(
     *,
     email_after: bool = False,
 ) -> str:
-    export_id = asyncio.run(_generate_report_pdf(report_id, actor_id))
+    export_id = run_async_task(_generate_report_pdf(report_id, actor_id))
     if email_after:
         send_report_email.delay(export_id)
     return export_id
@@ -58,7 +58,7 @@ def generate_excel_export(
         raise ValueError("Export actor is required")
     if export_type == "management-summary":
         raise ValueError("generate_excel_export only supports XLSX exports")
-    return asyncio.run(_generate_management_export(export_type, actor_id, filters or {}))
+    return run_async_task(_generate_management_export(export_type, actor_id, filters or {}))
 
 
 @celery_app.task(
@@ -70,7 +70,7 @@ def generate_excel_export(
     max_retries=3,
 )
 def generate_management_export(export_type: str, actor_id: str, filters: dict) -> str:
-    return asyncio.run(_generate_management_export(export_type, actor_id, filters))
+    return run_async_task(_generate_management_export(export_type, actor_id, filters))
 
 
 async def _generate_management_export(export_type: str, actor_id: str, filters: dict) -> str:

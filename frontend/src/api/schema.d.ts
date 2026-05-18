@@ -1598,6 +1598,12 @@ export interface components {
             full_name: string;
             /** Role */
             role: string;
+            /** Employee Code */
+            employee_code?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Designation */
+            designation?: string | null;
             /** Is Active */
             is_active: boolean;
             /** Must Change Password */

@@ -17,6 +17,7 @@ import { FinancePage } from './pages/finance/FinancePage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { NotificationsPage } from './pages/notifications/NotificationsPage';
 import { PhotosPage } from './pages/photos/PhotosPage';
+import { ProfilePage } from './pages/profile/ProfilePage';
 import { ProjectListPage } from './pages/projects/ProjectListPage';
 import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
@@ -29,6 +30,7 @@ export function App() {
       <Route path="/password-reset" element={<PasswordResetPage />} />
       <Route element={<AppLayout />}>
         <Route path="/change-password" element={<ChangePasswordPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
           path="/projects"

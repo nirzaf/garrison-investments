@@ -1,4 +1,3 @@
-import asyncio
 from uuid import UUID
 
 from app.config import get_settings
@@ -7,6 +6,7 @@ from app.repositories.notification_repository import NotificationRepository
 from app.repositories.report_export_repository import ReportExportRepository
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailService
+from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.security import utc_now
 
@@ -22,7 +22,7 @@ from app.utils.security import utc_now
 def send_email_notification(notification_id: str | None = None) -> str:
     if notification_id is None:
         return "notification id required"
-    return asyncio.run(_send_email_notification(notification_id))
+    return run_async_task(_send_email_notification(notification_id))
 
 
 async def _send_email_notification(notification_id: str) -> str:
@@ -67,7 +67,7 @@ async def _send_email_notification(notification_id: str) -> str:
     max_retries=3,
 )
 def send_report_email(export_id: str) -> str:
-    return asyncio.run(_send_report_email(export_id))
+    return run_async_task(_send_report_email(export_id))
 
 
 async def _send_report_email(export_id: str) -> str:

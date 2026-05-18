@@ -9,6 +9,9 @@ class AuthUserResponse(BaseModel):
     email: str
     full_name: str
     role: str
+    employee_code: str | None = None
+    phone: str | None = None
+    designation: str | None = None
     is_active: bool
     must_change_password: bool
     permissions: list[str] = Field(default_factory=list)

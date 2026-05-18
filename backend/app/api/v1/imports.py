@@ -1,15 +1,17 @@
+import csv
+from io import StringIO
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.import_batch import ImportBatch
 from app.models.user import User
 from app.schemas.imports import ImportPreviewResponse, ImportRunResponse
-from app.services.import_service import ImportService
+from app.services.import_service import ImportService, TEMPLATE_COLUMNS
 from app.tasks.imports import run_import_async
 from app.utils.permissions import PERMISSION_USERS_MANAGE
 
@@ -23,9 +25,16 @@ async def download_template(
     template_type: str,
     _: CanManageImports,
     session: DbSession,
-) -> FileResponse:
-    path = ImportService(session).template_path(template_type)
-    return FileResponse(path, media_type="text/csv", filename=path.name)
+) -> Response:
+    ImportService(session).template_path(template_type)
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(TEMPLATE_COLUMNS[template_type])
+    return Response(
+        output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{template_type}.csv"'},
+    )
 
 
 @router.get("/batches/{batch_id}")

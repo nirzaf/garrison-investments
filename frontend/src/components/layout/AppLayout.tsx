@@ -15,6 +15,7 @@ import {
   Receipt,
   ShieldCheck,
   UserCog,
+  UserRound,
   X
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -234,8 +235,24 @@ export function AppLayout() {
                         </StatusBadge>
                       </div>
                     </div>
+                    <Link
+                      className="mt-2 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-theme-text-secondary hover:bg-theme-card-elevated"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      to="/profile"
+                    >
+                      <UserRound className="h-4 w-4" />
+                      Profile
+                    </Link>
+                    <Link
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-theme-text-secondary hover:bg-theme-card-elevated"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      to="/change-password"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      Security
+                    </Link>
                     <button
-                      className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
+                      className="mt-2 w-full rounded-md border-t border-theme-border px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
                       onClick={() => void logout()}
                       type="button"
                     >
