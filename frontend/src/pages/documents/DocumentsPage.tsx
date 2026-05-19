@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Download, Eye, FileUp, Search, X } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   approveDocumentVersion,
@@ -15,6 +16,9 @@ import { useAuth } from '../../context/useAuth';
 
 export function DocumentsPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedDocumentId = searchParams.get('documentId');
+  const focusedVersionId = searchParams.get('versionId');
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [search, setSearch] = useState('');
@@ -28,6 +32,7 @@ export function DocumentsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
+  const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
 
   const loadDocuments = useCallback(async () => {
@@ -53,6 +58,12 @@ export function DocumentsPage() {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    if (!focusedDocumentId) return;
+    const element = documentRefs.current[focusedDocumentId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [documents, focusedDocumentId]);
 
   async function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -221,8 +232,15 @@ export function DocumentsPage() {
             );
             return (
               <article
-                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                  document.id === focusedDocumentId
+                    ? 'border-brand-600 ring-2 ring-brand-600/20'
+                    : 'border-theme-border'
+                }`}
                 key={document.id}
+                ref={(element) => {
+                  documentRefs.current[document.id] = element;
+                }}
               >
                 <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                   <div>
@@ -273,7 +291,12 @@ export function DocumentsPage() {
                 </div>
                 <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                   {document.versions.map((version) => (
-                    <div className="flex items-center justify-between gap-3" key={version.id}>
+                    <div
+                      className={`flex items-center justify-between gap-3 rounded-md px-2 py-1 ${
+                        version.id === focusedVersionId ? 'bg-theme-main' : ''
+                      }`}
+                      key={version.id}
+                    >
                       <span>
                         v{version.version} - {version.original_name}
                       </span>

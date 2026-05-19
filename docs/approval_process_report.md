@@ -28,6 +28,16 @@ The email task:
 - marks the row `sent` if `EmailService.send()` returns without raising;
 - marks the row `failed` only when the task catches an exception.
 
+When `FRONTEND_BASE_URL` is configured, approval-related notification bodies append an absolute in-app URL. The backend builds that URL at send time from configuration rather than hard-coding a domain, so production, staging, and local deployments can each emit the correct portal hostname.
+
+Current link routing rules:
+
+- approver-facing workflow emails (`Approval pending`, `Approval delegated`, `Approval reminder`, `Approval escalated`) link to `/approvals` with query params that select the workflow tab and targeted approval;
+- approver-facing daily report submission emails link to `/approvals` with query params that select the report tab and targeted report;
+- submitter-facing outcome emails link to the owning entity page instead of `/approvals`, because the frontend approval inbox route is still gated by `reports:approve`;
+- document notifications link to `/documents` with `documentId` and `versionId` query params so the mail points to the exact uploaded or approved file version;
+- if `FRONTEND_BASE_URL` is unset, the notification still sends, but without an appended link.
+
 Important implementation caveat: `EmailService.send()` catches SMTP/network send errors, logs a warning, and returns `0`. Because that does not raise, the Celery task can still mark the notification as `sent` even when SMTP delivery failed.
 
 Notification emails do not include attachments.
@@ -128,6 +138,8 @@ Admin override:
 The `/approvals` page has a **Report approvals** tab. It loads submitted daily reports and displays report metadata, work completed, next-day plan, safety summary, history count, comments textarea, target-covered checkbox, approve/reject buttons, and an Admin-only override panel.
 
 The frontend blocks report approval if the target-covered checkbox is not selected. Reject comments are required.
+
+Email deep links target `/approvals?tab=reports&reportId=<report-id>` for approvers. Engineer-facing outcome emails target `/reports/daily?reportId=<report-id>`. Both pages now scroll the matching report card into view and visually highlight it.
 
 ---
 
@@ -252,9 +264,18 @@ The `/approvals` page has a **Workflow approvals** tab. It currently loads:
 listApprovals({ box: 'inbox', status: 'pending' })
 ```
 
-That means the frontend shows pending inbox approvals only. It does not expose a generic approval outbox UI.
+That means the frontend shows pending inbox approvals by default. It does not expose a generic approval outbox UI.
+
+When the page is opened with `approvalId` in the query string, the frontend also calls `GET /api/v1/approvals/{approval_id}` and inserts that record into the workflow list if needed. This allows delegated or escalated approval links from email to resolve even though they are not part of the default `status=pending` query.
 
 Each workflow card shows the title, status, request type, due date, optional amount/currency, submitter comments, action comments, delegate controls, Admin-only override controls, and approve/reject buttons.
+
+Current workflow email link targets:
+
+- approver-facing mails -> `/approvals?tab=workflow&approvalId=<approval-id>`;
+- invoice outcome mails -> `/finance?invoiceId=<invoice-id>`;
+- material-request outcome mails -> `/materials?materialRequestId=<request-id>`;
+- `payment` and `project_change` outcome mails currently have no dedicated frontend detail page, so they do not get an entity deep link in the notification body.
 
 ---
 
@@ -290,6 +311,8 @@ Approving a pending document version:
 
 This approval path is separate from `/api/v1/approvals` and does not appear in the frontend workflow approval inbox.
 
+Document emails now link to `/documents?documentId=<document-id>&versionId=<version-id>`, and the document library highlights both the matching document card and the specific version row.
+
 ---
 
 ## Visibility and Inbox Rules
@@ -315,6 +338,8 @@ Detail/action visibility:
 
 Actions still require service-level authorization. Viewing an approval is broader than being allowed to approve or reject it.
 
+The frontend route `/approvals` still requires `reports:approve`. That is why submitter-facing workflow outcome emails route to entity pages instead of the shared approval inbox.
+
 ---
 
 ## Audit Trail
@@ -336,17 +361,18 @@ Admins can review audit records through the audit-log feature where route permis
 
 ## Email Summary
 
-| Event | Recipient | Email content | Attachment |
-|---|---|---|---|
-| Generic approval created | Assigned approver | Notification title/body, e.g. approval pending | None |
-| Generic approval approved | Submitter | Notification title/body, e.g. approval completed | None |
-| Generic approval rejected | Submitter | Notification title/body, e.g. approval rejected | None |
-| Generic approval delegated | Delegate | Notification title/body, e.g. approval delegated | None |
-| Generic approval overridden | Submitter | Notification title/body, e.g. approval overridden | None |
-| Generic reminder | Current actor | Notification title/body, e.g. approval still pending | None |
-| Generic escalation | Escalation user | Notification title/body, e.g. pending more than 48 hours | None |
-| Daily report approved/rejected/overridden | Engineer | Notification title/body | None |
-| Daily report PDF export ready | `REPORT_EMAIL_RECIPIENTS` | File name, object key, content type | None |
-| Document uploaded/approved | Uploader | Notification title/body | None |
+| Event | Recipient | Email content | In-app link target | Attachment |
+|---|---|---|---|---|
+| Generic approval created | Assigned approver | Notification title/body, e.g. approval pending | `/approvals?tab=workflow&approvalId=<approval-id>` | None |
+| Generic approval approved | Submitter | Notification title/body, e.g. approval completed | Entity page when available: invoice, material request, report, or document | None |
+| Generic approval rejected | Submitter | Notification title/body, e.g. approval rejected | Entity page when available: invoice, material request, report, or document | None |
+| Generic approval delegated | Delegate | Notification title/body, e.g. approval delegated | `/approvals?tab=workflow&approvalId=<approval-id>` | None |
+| Generic approval overridden | Submitter | Notification title/body, e.g. approval overridden | Entity page when available: invoice, material request, report, or document | None |
+| Generic reminder | Current actor | Notification title/body, e.g. approval still pending | `/approvals?tab=workflow&approvalId=<approval-id>` | None |
+| Generic escalation | Escalation user | Notification title/body, e.g. pending more than 48 hours | `/approvals?tab=workflow&approvalId=<approval-id>` | None |
+| Daily report submitted | Approver | Notification title/body | `/approvals?tab=reports&reportId=<report-id>` | None |
+| Daily report approved/rejected/overridden | Engineer | Notification title/body | `/reports/daily?reportId=<report-id>` | None |
+| Daily report PDF export ready | `REPORT_EMAIL_RECIPIENTS` | File name, object key, content type | None | None |
+| Document uploaded/approved | Uploader | Notification title/body | `/documents?documentId=<document-id>&versionId=<version-id>` | None |
 
 Email status should be interpreted carefully: muted notifications are marked `skipped`, task-level exceptions are marked `failed`, but SMTP send failures swallowed by `EmailService.send()` may still be marked `sent`.

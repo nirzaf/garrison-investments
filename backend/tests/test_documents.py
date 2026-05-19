@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from app.database import engine
 from tests.test_daily_reports import (
@@ -15,6 +16,14 @@ async def isolated_engine_pool():
     await engine.dispose()
     yield
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def frontend_base_url(monkeypatch):
+    monkeypatch.setattr(
+        "app.utils.links.get_settings",
+        lambda: SimpleNamespace(normalized_frontend_base_url="https://portal.example.com"),
+    )
 
 
 def pdf_bytes(label: str = "doc") -> bytes:
@@ -41,6 +50,19 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         document = upload_response.json()
         assert document["status"] == "pending_approval"
         first_version = document["versions"][0]
+
+        engineer_notifications = await client.get(
+            "/api/v1/notifications",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert any(
+            item["title"] == "Document uploaded"
+            and item["body"]
+            == "WIR Zone A is pending approval.\n\n"
+            "Open document: https://portal.example.com/documents?documentId="
+            f"{document['id']}&versionId={first_version['id']}"
+            for item in engineer_notifications.json()["items"]
+        )
 
         approve_response = await client.post(
             f"/api/v1/documents/{document['id']}/versions/{first_version['id']}/approve",
@@ -69,6 +91,19 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         revised = second_approve_response.json()
         assert revised["active_version"] == 2
         assert revised["versions"][0]["status"] == "superseded"
+
+        engineer_notifications_after_approval = await client.get(
+            "/api/v1/notifications",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert any(
+            item["title"] == "Document version approved"
+            and item["body"]
+            == "WIR Zone A version 2 is now active.\n\n"
+            "Open document: https://portal.example.com/documents?documentId="
+            f"{document['id']}&versionId={second_version['id']}"
+            for item in engineer_notifications_after_approval.json()["items"]
+        )
 
         old_download = await client.get(
             f"/api/v1/documents/{document['id']}/download",

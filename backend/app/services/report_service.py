@@ -16,6 +16,7 @@ from app.repositories.supervisor_update_repository import SupervisorUpdateReposi
 from app.schemas.daily_reports import DailyReportCreateRequest, DailyReportUpdateRequest
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
+from app.utils.links import append_link, approval_inbox_url, daily_report_url
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ROLE_ADMIN,
@@ -142,7 +143,11 @@ class ReportService:
         await self._notify_project_managers(
             report,
             title="Daily report pending approval",
-            body=f"{report.report_number} is ready for approval.",
+            body=append_link(
+                f"{report.report_number} is ready for approval.",
+                label="Open approval",
+                url=approval_inbox_url(tab="reports", report_id=report.id),
+            ),
             notification_type="approval",
         )
         await self.session.commit()
@@ -193,7 +198,11 @@ class ReportService:
         await self.notifications.create(
             user_id=report.engineer_id,
             title="Daily report approved",
-            body=f"{report.report_number} has been approved.",
+            body=append_link(
+                f"{report.report_number} has been approved.",
+                label="Open report",
+                url=daily_report_url(report.id),
+            ),
             notification_type="approval",
             reference_type="daily_report",
             reference_id=report.id,
@@ -258,7 +267,11 @@ class ReportService:
         await self.notifications.create(
             user_id=report.engineer_id,
             title="Daily report override",
-            body=f"{report.report_number or 'Daily report'} was overridden: {decision}.",
+            body=append_link(
+                f"{report.report_number or 'Daily report'} was overridden: {decision}.",
+                label="Open report",
+                url=daily_report_url(report.id),
+            ),
             notification_type="approval",
             reference_type="daily_report",
             reference_id=report.id,
@@ -308,7 +321,11 @@ class ReportService:
         await self.notifications.create(
             user_id=report.engineer_id,
             title="Daily report rejected",
-            body=comments.strip(),
+            body=append_link(
+                comments.strip(),
+                label="Open report",
+                url=daily_report_url(report.id),
+            ),
             notification_type="approval",
             reference_type="daily_report",
             reference_id=report.id,

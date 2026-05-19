@@ -1,11 +1,14 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
+from app.models.notification import Notification
 from app.main import create_app
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -23,6 +26,14 @@ async def isolated_engine_pool():
     await engine.dispose()
     yield
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def frontend_base_url(monkeypatch):
+    monkeypatch.setattr(
+        "app.utils.links.get_settings",
+        lambda: SimpleNamespace(normalized_frontend_base_url="https://portal.example.com"),
+    )
 
 
 async def skip_if_database_unavailable() -> None:
@@ -229,3 +240,20 @@ async def test_project_manager_material_request_approval_routes_to_operations() 
         )
 
     assert approval.approver_id == operation_manager.id
+
+    async with AsyncSessionLocal() as session:
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == operation_manager.id,
+                Notification.reference_id == approval.id,
+                Notification.title == "Approval pending",
+            )
+        )
+
+    assert notification is not None
+    assert (
+        notification.body
+        == "PM submitted material request is waiting for your approval.\n\n"
+        "Open approval: https://portal.example.com/approvals?tab=workflow&approvalId="
+        f"{approval.id}"
+    )

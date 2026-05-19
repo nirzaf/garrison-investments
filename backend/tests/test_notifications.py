@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -24,6 +25,14 @@ async def isolated_engine_pool():
     await engine.dispose()
     yield
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def frontend_base_url(monkeypatch):
+    monkeypatch.setattr(
+        "app.utils.links.get_settings",
+        lambda: SimpleNamespace(normalized_frontend_base_url="https://portal.example.com"),
+    )
 
 
 @pytest.mark.asyncio
@@ -58,6 +67,12 @@ async def test_report_submission_and_decision_create_notifications() -> None:
         assert manager_count.status_code == 200
         assert manager_count.json()["unread_count"] >= 1
         first_notification = manager_notifications.json()["items"][0]
+        assert (
+            first_notification["body"]
+            == f"{submitted['report_number']} is ready for approval.\n\n"
+            "Open approval: https://portal.example.com/approvals?tab=reports&reportId="
+            f"{submitted['id']}"
+        )
 
         read_response = await client.patch(
             f"/api/v1/notifications/{first_notification['id']}/read",
@@ -80,6 +95,10 @@ async def test_report_submission_and_decision_create_notifications() -> None:
             "/api/v1/notifications/unread-count",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},
         )
+        engineer_notifications = await client.get(
+            "/api/v1/notifications",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
 
         assert read_response.status_code == 200
         assert read_response.json()["is_read"] is True
@@ -89,6 +108,14 @@ async def test_report_submission_and_decision_create_notifications() -> None:
         assert unmute_response.json()["muted"] is False
         assert approve_response.status_code == 200
         assert engineer_count.json()["unread_count"] >= 1
+        assert any(
+            item["title"] == "Daily report approved"
+            and item["body"]
+            == f"{submitted['report_number']} has been approved.\n\n"
+            "Open report: https://portal.example.com/reports/daily?reportId="
+            f"{submitted['id']}"
+            for item in engineer_notifications.json()["items"]
+        )
 
 
 @pytest.mark.asyncio

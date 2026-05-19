@@ -17,6 +17,11 @@ export async function listApprovals(
   return data;
 }
 
+export async function getGenericApproval(id: string) {
+  const { data } = await apiClient.get<ApprovalRecord>(`/approvals/${id}`);
+  return data;
+}
+
 export async function approveGenericApproval(id: string, comments?: string) {
   const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/approve`, {
     comments
