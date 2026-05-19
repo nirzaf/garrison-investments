@@ -46,7 +46,7 @@
                 { id: 'architecture', label: 'System Architecture', icon: 'layer-group' },
                 { id: 'modules', label: 'Core Modules', icon: 'box' },
                 { id: 'rbac', label: 'Role Hierarchy (RBAC)', icon: 'users' },
-                { id: 'timeline', label: 'Phased Rollout', icon: 'clock' },
+                { id: 'timeline', label: 'Development Timeline', icon: 'clock' },
             ];
 
             return (
@@ -60,7 +60,7 @@
                                 Construction Portal Blueprint
                             </h1>
                             <p className="text-slate-400 mt-2 text-lg">
-                                High-level visual architecture, module mapping, and deployment strategy.
+                                High-level visual architecture, module mapping, and development strategy based on current codebase.
                             </p>
                         </header>
 
@@ -101,7 +101,7 @@
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                             <Icon name="server" className="text-blue-400" size={24} /> System Architecture & Data Flow
                         </h2>
-                        <p className="text-slate-400">Conceptual topology based on project requirements (Offline-first Mobile + Web Admin).</p>
+                        <p className="text-slate-400">Current deployment topology with Celery worker queues and MinIO storage.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
@@ -113,9 +113,9 @@
                                     <Icon name="laptop" className="text-blue-400" size={18} /> Web Frontend
                                 </h3>
                                 <ul className="text-sm space-y-2 text-slate-300">
-                                    <li>• Admin Panel</li>
+                                    <li>• React 18 & Vite</li>
+                                    <li>• TailwindCSS UI & React Query</li>
                                     <li>• Complex Data Grids & Analytics</li>
-                                    <li>• Document Version Control UI</li>
                                 </ul>
                             </div>
                             
@@ -124,7 +124,7 @@
                                     <Icon name="mobile-screen" className="text-green-400" size={18} /> Mobile Client
                                 </h3>
                                 <ul className="text-sm space-y-2 text-slate-300">
-                                    <li>• Responsive PWA / Mobile Web App</li>
+                                    <li>• Responsive PWA Design</li>
                                     <li>• <span className="text-amber-400 font-semibold border-b border-amber-400 border-dashed">Offline Draft Saving</span></li>
                                     <li>• Direct Camera Integration</li>
                                 </ul>
@@ -137,17 +137,17 @@
                             
                             <div className="bg-indigo-900/50 border border-indigo-500 p-6 rounded-xl shadow-lg w-full z-10">
                                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2 justify-center">
-                                    <Icon name="bolt" className="text-indigo-400" size={20} /> API & App Services
+                                    <Icon name="bolt" className="text-indigo-400" size={20} /> API & Async Services
                                 </h3>
                                 <div className="space-y-3 text-sm text-slate-300">
                                     <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
-                                        <Icon name="lock" className="text-red-400" size={14} /> Role-Based Access Control
+                                        <Icon name="server" className="text-green-400" size={14} /> FastAPI & SQLAlchemy (REST)
                                     </div>
                                     <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
-                                        <Icon name="chart-line" className="text-blue-400" size={14} /> Workflow Engine (Approvals)
+                                        <Icon name="list-check" className="text-blue-400" size={14} /> Celery Task Queue (Worker & Beat)
                                     </div>
                                     <div className="bg-slate-900/50 p-2 rounded flex items-center gap-2">
-                                        <Icon name="file-arrow-up" className="text-green-400" size={14} /> Media & Document Processor
+                                        <Icon name="shield-halved" className="text-red-400" size={14} /> Strict RBAC & Dual-Track Approvals
                                     </div>
                                 </div>
                             </div>
@@ -157,12 +157,11 @@
                         <div className="space-y-4">
                             <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg">
                                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                                    <Icon name="database" className="text-blue-500" size={18} /> Relational Database
+                                    <Icon name="database" className="text-blue-500" size={18} /> Databases
                                 </h3>
                                 <ul className="text-sm space-y-2 text-slate-300">
-                                    <li>• User Profiles & Roles</li>
-                                    <li>• Daily Site Reports (Structured)</li>
-                                    <li>• Material Inventories</li>
+                                    <li>• PostgreSQL (asyncpg) Core Data</li>
+                                    <li>• Redis (Caching & Celery Broker)</li>
                                 </ul>
                             </div>
                             
@@ -171,9 +170,9 @@
                                     <Icon name="cloud" className="text-sky-400" size={18} /> Object Storage
                                 </h3>
                                 <ul className="text-sm space-y-2 text-slate-300">
-                                    <li>• High-Res Site Photos</li>
-                                    <li>• PDF Drawings & BOQs</li>
-                                    <li>• Invoices & Contracts</li>
+                                    <li>• MinIO (S3 Compatible API)</li>
+                                    <li>• ReportLab Generated PDFs</li>
+                                    <li>• Document Versioning Archives</li>
                                 </ul>
                             </div>
                         </div>
@@ -184,21 +183,21 @@
 
         function ModulesGrid() {
             const modules = [
-                { title: 'Daily Site Reports', icon: 'file-lines', color: 'text-blue-400', desc: 'Progress %, Manpower, Equipment usage, Issues & delays tracking.' },
-                { title: 'Photo Gallery', icon: 'camera', color: 'text-amber-400', desc: 'Direct camera uploads, visual progress archives.' },
+                { title: 'Daily Site Reports', icon: 'file-lines', color: 'text-blue-400', desc: 'Progress, Manpower, Equipment tracking with automated PDF generation.' },
+                { title: 'Financial Operations', icon: 'money-bill-transfer', color: 'text-amber-400', desc: 'Bank withdrawals, petty cash, ledger management and invoicing.' },
                 { title: 'Material Management', icon: 'box', color: 'text-purple-400', desc: 'Stock tracking, incoming/outgoing logs, supplier management.' },
-                { title: 'Document Control', icon: 'box-archive', color: 'text-emerald-400', desc: 'Drawings, BOQs, contracts with version control.' },
-                { title: 'Approval Workflows', icon: 'circle-check', color: 'text-green-400', desc: 'Multi-tiered authorization for materials and reports.' },
-                { title: 'Alerts & Notifications', icon: 'triangle-exclamation', color: 'text-red-400', desc: 'Low stock alerts, pending approval nudges.' },
+                { title: 'Document Control', icon: 'box-archive', color: 'text-emerald-400', desc: 'Drawings, BOQs, contracts with version control and superseding.' },
+                { title: 'Dual-Track Approvals', icon: 'circle-check', color: 'text-green-400', desc: 'Dedicated flows for daily reports and generic workflow items (with overrides).' },
+                { title: 'Alerts & Notifications', icon: 'envelope-open-text', color: 'text-red-400', desc: 'Celery-driven email delivery, hourly reminders, and 48-hour escalations.' },
             ];
 
             return (
                 <div className="animate-fade-in">
                     <div className="mb-6">
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                            <Icon name="box" className="text-purple-400" size={24} /> Core Platform Modules
+                            <Icon name="cubes" className="text-purple-400" size={24} /> Core Platform Modules
                         </h2>
-                        <p className="text-slate-400">The functional building blocks of the portal.</p>
+                        <p className="text-slate-400">The functional building blocks of the current backend and frontend.</p>
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -218,13 +217,12 @@
 
         function RoleHierarchy() {
             const roles = [
-                { role: 'Admin', scope: 'Full system control & configuration', level: 1 },
-                { role: 'Operation Manager', scope: 'Monitor all projects & top-level approvals', level: 2 },
-                { role: 'Project Manager', scope: 'Manage assigned projects & report reviews', level: 3 },
-                { role: 'Accounts Dept.', scope: 'Track invoices and payments (Parallel Access)', level: 3 },
-                { role: 'Civil Engineer', scope: 'Submit daily reports & progress updates', level: 4 },
-                { role: 'Civil Supervisor', scope: 'Update site activities & manpower (Mobile heavy)', level: 5 },
-                { role: 'Store Keeper', scope: 'Manage stock & material movement (Inventory UI)', level: 5 },
+                { role: 'Admin', scope: 'Full system control, workflow overrides, & audit logs', level: 1 },
+                { role: 'General Manager', scope: 'Executive oversight & cross-project approvals', level: 2 },
+                { role: 'Operation Manager', scope: 'High-value approvals, escalations & overall operations', level: 2 },
+                { role: 'Project Manager', scope: 'Manage assigned projects, approve site reports & requests', level: 3 },
+                { role: 'Accounts Dept.', scope: 'Bank withdrawals, invoice processing & ledgers', level: 3 },
+                { role: 'Civil Engineer', scope: 'Submit daily reports, material requests & progress', level: 4 },
             ];
 
             return (
@@ -233,7 +231,7 @@
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                             <Icon name="shield-halved" className="text-red-400" size={24} /> Role-Based Access Matrix
                         </h2>
-                        <p className="text-slate-400">Hierarchical data isolation and access permissions.</p>
+                        <p className="text-slate-400">Hierarchical data isolation and access permissions currently implemented.</p>
                     </div>
 
                     <div className="space-y-3 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-600 before:to-transparent">
@@ -263,30 +261,34 @@
                 {
                     phase: 'Phase 1',
                     title: 'Foundation & Reporting',
-                    status: 'Current Focus',
-                    items: ['Secure login system', 'Main Dashboard', 'Daily reports submission', 'Photo uploads & storage'],
-                    color: 'border-blue-500'
+                    status: 'Completed',
+                    items: ['FastAPI & React Setup', 'PostgreSQL + MinIO Storage', 'Daily reports & PDF exports', 'Role-Based Access Control'],
+                    color: 'border-blue-500',
+                    bgColor: 'bg-blue-900/20'
                 },
                 {
                     phase: 'Phase 2',
-                    title: 'Supply Chain & Logic',
-                    status: 'Next',
-                    items: ['Material management', 'Approval workflows', 'Automated Notifications', 'Document Control (Drawings, BOQ)'],
-                    color: 'border-amber-500'
+                    title: 'Workflows & Notifications',
+                    status: 'Completed',
+                    items: ['Dual-track Approval Engine', 'Celery Async Tasks & Redis', 'Email Notification System', 'Automated Escalations'],
+                    color: 'border-green-500',
+                    bgColor: 'bg-green-900/20'
                 },
                 {
                     phase: 'Phase 3',
-                    title: 'Financials & Mobility',
-                    status: 'Future',
-                    items: ['Accounts integration', 'Advanced Analytics', 'Mobile Responsive Enhancements'],
-                    color: 'border-purple-500'
+                    title: 'Financials & Supply Chain',
+                    status: 'Current Focus',
+                    items: ['Bank Withdrawals to Cash', 'Invoice Management', 'Material Inventory Tracking', 'Document Versioning'],
+                    color: 'border-amber-500',
+                    bgColor: 'bg-slate-800/80'
                 },
                 {
-                    phase: 'Expansion',
-                    title: 'Enterprise Integrations',
+                    phase: 'Phase 4',
+                    title: 'Advanced Features',
                     status: 'Roadmap',
-                    items: ['Payroll & GPS Attendance', 'QR material & Vehicle tracking', 'AI-based reporting', 'External Client Portal'],
-                    color: 'border-emerald-500'
+                    items: ['Advanced Analytics Dashboard', 'Mobile Offline Sync', 'External Client Portal', 'AI-based Reporting'],
+                    color: 'border-purple-500',
+                    bgColor: 'bg-slate-800/80'
                 }
             ];
 
@@ -296,12 +298,12 @@
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                             <Icon name="clock" className="text-amber-400" size={24} /> Development Timeline
                         </h2>
-                        <p className="text-slate-400">Iterative delivery strategy to ensure immediate ROI.</p>
+                        <p className="text-slate-400">Iterative delivery strategy tracking recent milestones.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         {phases.map((phase, i) => (
-                            <div key={i} className={`bg-slate-800/80 rounded-xl p-5 border-t-4 ${phase.color} shadow-lg flex flex-col h-full`}>
+                            <div key={i} className={`${phase.bgColor} rounded-xl p-5 border-t-4 ${phase.color} shadow-lg flex flex-col h-full transition-colors`}>
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
                                         <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{phase.phase}</h3>
@@ -317,7 +319,11 @@
                                     ))}
                                 </ul>
                                 <div className="mt-4 pt-4 border-t border-slate-700">
-                                 <span className="text-xs font-medium bg-slate-700 px-2 py-1 rounded text-slate-300">
+                                 <span className={`text-xs font-medium px-2 py-1 rounded ${
+                                     phase.status === 'Completed' ? 'bg-green-900/50 text-green-400' :
+                                     phase.status === 'Current Focus' ? 'bg-amber-900/50 text-amber-400' :
+                                     'bg-slate-700 text-slate-300'
+                                 }`}>
                                      {phase.status}
                                  </span>
                                 </div>
