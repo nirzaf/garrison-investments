@@ -159,6 +159,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
         "engineer_token": engineer_token,
         "manager_token": manager_token,
         "op_token": op_token,
+        "supervisor_token": supervisor_token,
         "supervisor_update_id": supervisor_update["id"],
     }
 

@@ -95,7 +95,10 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     challenge = login_response.json()
     verify_response = await client.post(
         "/api/v1/auth/verify-otp",
-        json={"challenge_id": challenge["challenge_id"], "otp": challenge.get("dev_otp") or "123456"},
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": challenge.get("dev_otp") or "123456",
+        },
     )
     return str(verify_response.json()["access_token"])
 
@@ -135,6 +138,12 @@ async def test_generic_approval_chain_delegation_rejection_and_override() -> Non
         )
         assert inbox.status_code == 200
         assert any(item["id"] == approval["id"] for item in inbox.json()["items"])
+
+        blocked_engineer_inbox = await client.get(
+            "/api/v1/approvals",
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert blocked_engineer_inbox.status_code == 403
 
         delegated = await client.post(
             f"/api/v1/approvals/{approval['id']}/delegate",

@@ -43,7 +43,7 @@ async def list_documents(
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    current_user: CanViewDocuments,
+    current_user: CanManageDocuments,
     session: DbSession,
     title: Annotated[str, Form()],
     document_type: Annotated[str, Form()],
@@ -76,7 +76,7 @@ async def get_document(
 @router.post("/{document_id}/versions", response_model=DocumentResponse)
 async def upload_document_version(
     document_id: UUID,
-    current_user: CanViewDocuments,
+    current_user: CanManageDocuments,
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> DocumentResponse:
@@ -115,7 +115,7 @@ async def approve_document_version(
 @router.get("/{document_id}/download", response_model=DocumentDownloadResponse)
 async def get_document_download_url(
     document_id: UUID,
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
     version_id: Annotated[UUID | None, Query()] = None,
 ) -> DocumentDownloadResponse:

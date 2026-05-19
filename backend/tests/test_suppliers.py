@@ -71,11 +71,11 @@ class FakeMinioClient:
         return f"https://files.example.test/{object_key}"
 
 
-async def test_accounts_can_create_update_filter_deactivate_and_download_tds(
+async def test_operation_manager_can_create_update_filter_deactivate_and_download_tds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await skip_if_database_unavailable()
-    accounts, password = await create_user("accounts")
+    operation_manager, password = await create_user("operation_manager")
     monkeypatch.setattr(
         "app.services.supplier_service.SupplierService._upload_object",
         lambda self, object_key, data, content_type: None,
@@ -86,7 +86,7 @@ async def test_accounts_can_create_update_filter_deactivate_and_download_tds(
     )
 
     async with create_test_client() as client:
-        token = await login_for_token(client, accounts, password)
+        token = await login_for_token(client, operation_manager, password)
         created = await client.post(
             "/api/v1/suppliers",
             json={

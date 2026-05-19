@@ -57,7 +57,7 @@ The backend defines eight valid roles.
 | `civil_engineer` | Site engineer | Can submit reports and work with project-scoped operational features |
 | `civil_supervisor` | Site supervisor | Can submit supervisor updates and use project-scoped reporting features |
 | `store_keeper` | Inventory and stores operator | Inventory-heavy role with supplier access |
-| `accounts` | Finance and accounting user | Finance, documents, supplier, and scoped reporting visibility |
+| `accounts` | Finance and accounting user | Finance, documents, and scoped reporting visibility |
 
 Canonical definition:
 
@@ -107,7 +107,8 @@ The table below reflects the current implemented matrix in [backend/app/utils/pe
 | `reports:approve` | Y | Y | Y | Y | - | - | - | - |
 | `inventory:view` | Y | Y | Y | Y | Y | - | Y | - |
 | `inventory:manage` | Y | - | - | - | - | - | Y | - |
-| `suppliers:manage` | Y | Y | Y | - | - | - | Y | Y |
+| `suppliers:manage` | Y | Y | Y | - | - | - | Y | - |
+| `documents:view` | Y | Y | Y | Y | Y | Y | - | Y |
 | `documents:manage` | Y | Y | Y | Y | Y | - | - | Y |
 | `financial:view` | Y | Y | Y | Y | - | - | - | Y |
 
@@ -449,8 +450,8 @@ This section explains what each role can do in practical terms.
 - `dashboard:scoped`
 - `projects:read`
 - `reports:view`
+- `documents:view`
 - `documents:manage`
-- `suppliers:manage`
 - `financial:view`
 
 **Frontend Features**
@@ -467,8 +468,7 @@ This section explains what each role can do in practical terms.
 - Read project data
 - View reporting content
 - Manage documents
-- Manage suppliers
-- View finance features and finance-linked supplier data
+- View finance features and finance-linked project data
 
 ## Staging Role Verification Accounts
 
@@ -607,6 +607,6 @@ The current project is permission-driven with a single-role model.
 - `project_manager` is the strongest scoped management role.
 - `civil_engineer` and `civil_supervisor` are reporting-focused execution roles.
 - `store_keeper` is the inventory-focused operational role.
-- `accounts` is the finance-document-supplier role.
+- `accounts` is the finance-document role.
 
 The backend permission matrix is clear and implemented, but some important access rules still live in services instead of explicit route-level permission wrappers. This document should therefore be used together with the referenced service files when auditing real access behavior.
