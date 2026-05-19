@@ -27,6 +27,8 @@ Staging uses its own Compose file and private Docker resources:
 
 The staging SMTP settings are stored only in the VPS `.env.staging` file. They use Office365 SMTP through `smtp.office365.com:587`, TLS enabled, and the sender identity `Quadrate Mail Service <mail@quadrate.lk>`. Do not commit SMTP passwords or Contabo/API secrets to this repository.
 
+Add `FRONTEND_BASE_URL=https://garrisonstg.seasonenterprise.com` to `/opt/garrison-investments-staging/.env.staging` so outgoing approval notification emails contain the correct absolute portal URLs.
+
 For UAT speed, staging can accept a shared login OTP by setting `APP_ENV=staging` and `STAGING_LOGIN_OTP=<six-digit-code>` in `/opt/garrison-investments-staging/.env.staging`. This shortcut applies only to login OTP verification and is ignored outside `APP_ENV=staging`.
 
 ## Deploy Commands
