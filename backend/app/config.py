@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    frontend_base_url: str | None = None
 
     database_url: str = (
         "postgresql+asyncpg://garrison:garrison_dev_password@localhost:5432/garrison_portal"
@@ -66,6 +67,13 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def normalized_frontend_base_url(self) -> str | None:
+        if self.frontend_base_url is None:
+            return None
+        normalized = self.frontend_base_url.strip().rstrip("/")
+        return normalized or None
 
     @property
     def trusted_proxy_ips_list(self) -> list[str]:

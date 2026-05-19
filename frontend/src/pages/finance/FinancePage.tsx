@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Receipt } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   createInvoice,
@@ -14,7 +16,10 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 
 export function FinancePage() {
+  const [searchParams] = useSearchParams();
+  const focusedInvoiceId = searchParams.get('invoiceId');
   const queryClient = useQueryClient();
+  const invoiceRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const invoices = useQuery({ queryKey: ['invoices'], queryFn: listInvoices });
   const projects = useQuery({ queryKey: ['projects'], queryFn: () => listProjects({}) });
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
@@ -41,6 +46,12 @@ export function FinancePage() {
     const { url } = await getInvoiceAttachmentUrl(invoiceId);
     window.open(url, '_blank', 'noopener,noreferrer');
   }
+
+  useEffect(() => {
+    if (!focusedInvoiceId) return;
+    const element = invoiceRefs.current[focusedInvoiceId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedInvoiceId, invoices.data?.items]);
 
   return (
     <section className="space-y-6">
@@ -120,7 +131,13 @@ export function FinancePage() {
             </thead>
             <tbody className="divide-y divide-theme-border">
               {invoices.data.items.map((invoice) => (
-                <tr key={invoice.id}>
+                <tr
+                  className={invoice.id === focusedInvoiceId ? 'bg-theme-main' : undefined}
+                  key={invoice.id}
+                  ref={(element) => {
+                    invoiceRefs.current[invoice.id] = element;
+                  }}
+                >
                   <td className="px-4 py-3 font-medium text-theme-text-primary">
                     {invoice.invoice_number}
                   </td>

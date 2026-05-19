@@ -29,6 +29,7 @@ APP_ENV=production
 DEBUG=false
 API_V1_PREFIX=/api/v1
 BACKEND_CORS_ORIGINS=https://your-domain.example
+FRONTEND_BASE_URL=https://your-domain.example
 
 POSTGRES_DB=garrison_portal
 POSTGRES_USER=<production-db-user>
@@ -77,6 +78,10 @@ MONITOR_ALERT_RECIPIENTS=<comma-separated-alert-recipients>
 production names read by `backend/app/config.py`. The older `.env.example`
 placeholders `SMTP_USER` and `SMTP_FROM` are development placeholders and should not
 be used as the production source of truth.
+
+`FRONTEND_BASE_URL` is used by backend-generated notification emails to append absolute
+links back into the deployed portal. Set it to the public app origin without a path,
+for example `https://portal.example.com`.
 
 ## Optional And Script-Only Variables
 

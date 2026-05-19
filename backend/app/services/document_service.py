@@ -15,6 +15,7 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
+from app.utils.links import append_link, document_url
 from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
 
@@ -73,7 +74,11 @@ class DocumentService:
         await self.notifications.create(
             user_id=actor.id,
             title="Document uploaded",
-            body=f"{title} is pending approval.",
+            body=append_link(
+                f"{title} is pending approval.",
+                label="Open document",
+                url=document_url(document.id, version_id=version.id),
+            ),
             notification_type="approval",
             reference_type="document",
             reference_id=document.id,
@@ -144,7 +149,11 @@ class DocumentService:
             await self.notifications.create(
                 user_id=document.uploaded_by,
                 title="Document version approved",
-                body=f"{document.title} version {version.version} is now active.",
+                body=append_link(
+                    f"{document.title} version {version.version} is now active.",
+                    label="Open document",
+                    url=document_url(document.id, version_id=version.id),
+                ),
                 notification_type="approval",
                 reference_type="document",
                 reference_id=document.id,

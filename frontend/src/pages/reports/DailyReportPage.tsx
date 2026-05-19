@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   clearReportDraft,
@@ -119,6 +120,8 @@ function formHasDraftContent(payload: DailyReportPayload) {
 
 export function DailyReportPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedReportId = searchParams.get('reportId');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
@@ -134,6 +137,7 @@ export function DailyReportPage() {
   const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const persistedDraftSnapshot = useRef(JSON.stringify(emptyPayload));
   const serverSavedSnapshot = useRef(JSON.stringify(emptyPayload));
 
@@ -232,6 +236,12 @@ export function DailyReportPage() {
       .then(([updateResponse]) => setSupervisorUpdates(updateResponse.items))
       .catch(() => setError('Unable to load supervisor updates.'));
   }, [form.project_id, loadReports]);
+
+  useEffect(() => {
+    if (!focusedReportId) return;
+    const element = reportRefs.current[focusedReportId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedReportId, reports]);
 
   function validate() {
     const nextErrors: Record<string, string> = {};
@@ -423,8 +433,15 @@ export function DailyReportPage() {
           <div className="grid gap-3">
             {reports.map((report) => (
               <article
-                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                  report.id === focusedReportId
+                    ? 'border-brand-600 ring-2 ring-brand-600/20'
+                    : 'border-theme-border'
+                }`}
                 key={report.id}
+                ref={(element) => {
+                  reportRefs.current[report.id] = element;
+                }}
               >
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                   <div>
@@ -1005,8 +1022,15 @@ export function DailyReportPage() {
           <div className="space-y-3">
             {reports.map((report) => (
               <article
-                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                  report.id === focusedReportId
+                    ? 'border-brand-600 ring-2 ring-brand-600/20'
+                    : 'border-theme-border'
+                }`}
                 key={report.id}
+                ref={(element) => {
+                  reportRefs.current[report.id] = element;
+                }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>

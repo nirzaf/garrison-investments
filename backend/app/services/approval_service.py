@@ -19,6 +19,14 @@ from app.schemas.approvals import ApprovalCreateRequest
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.utils.exceptions import AppException, NotFoundException
+from app.utils.links import (
+    append_link,
+    approval_inbox_url,
+    daily_report_url,
+    document_url,
+    finance_invoice_url,
+    material_request_url,
+)
 from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
 
@@ -80,7 +88,11 @@ class ApprovalService:
         await self.notifications.create(
             user_id=approver.id,
             title="Approval pending",
-            body=f"{payload.title} is waiting for your approval.",
+            body=append_link(
+                f"{payload.title} is waiting for your approval.",
+                label="Open approval",
+                url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+            ),
             notification_type="approval",
             reference_type="approvals",
             reference_id=approval.id,
@@ -192,7 +204,11 @@ class ApprovalService:
         await self.notifications.create(
             user_id=delegated_to.id,
             title="Approval delegated",
-            body=f"{approval.title} was delegated to you.",
+            body=append_link(
+                f"{approval.title} was delegated to you.",
+                label="Open approval",
+                url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+            ),
             notification_type="approval",
             reference_type="approvals",
             reference_id=approval.id,
@@ -262,7 +278,11 @@ class ApprovalService:
                 await self.notifications.create(
                     user_id=recipient_id,
                     title="Approval reminder",
-                    body=f"{approval.title} is still waiting for approval.",
+                    body=append_link(
+                        f"{approval.title} is still waiting for approval.",
+                        label="Open approval",
+                        url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+                    ),
                     notification_type="approval",
                     reference_type="approvals",
                     reference_id=approval.id,
@@ -275,7 +295,11 @@ class ApprovalService:
                 await self.notifications.create(
                     user_id=approval.escalation_user_id,
                     title="Approval escalated",
-                    body=f"{approval.title} has been pending for more than 48 hours.",
+                    body=append_link(
+                        f"{approval.title} has been pending for more than 48 hours.",
+                        label="Open approval",
+                        url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+                    ),
                     notification_type="approval",
                     reference_type="approvals",
                     reference_id=approval.id,
@@ -476,8 +500,34 @@ class ApprovalService:
             await self.notifications.create(
                 user_id=approval.submitter_id,
                 title=title,
-                body=body,
+                body=append_link(
+                    body,
+                    label=self._submitter_link_label(approval),
+                    url=self._submitter_target_url(approval),
+                ),
                 notification_type="approval",
                 reference_type="approvals",
                 reference_id=approval.id,
             )
+
+    def _submitter_target_url(self, approval: Approval) -> str | None:
+        if approval.request_type == "invoice":
+            return finance_invoice_url(approval.request_id)
+        if approval.request_type == "material_request":
+            return material_request_url(approval.request_id)
+        if approval.request_type == "daily_report":
+            return daily_report_url(approval.request_id)
+        if approval.request_type == "document":
+            return document_url(approval.request_id)
+        return None
+
+    def _submitter_link_label(self, approval: Approval) -> str:
+        if approval.request_type == "invoice":
+            return "Open invoice"
+        if approval.request_type == "material_request":
+            return "Open material request"
+        if approval.request_type == "daily_report":
+            return "Open report"
+        if approval.request_type == "document":
+            return "Open document"
+        return "Open request"

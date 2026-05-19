@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, ClipboardList, MapPinned, PackagePlus, Warehouse } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   cancelMaterialRequest,
@@ -30,8 +31,11 @@ import { useAuth } from '../../context/useAuth';
 
 export function InventoryPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const focusedRequestId = searchParams.get('materialRequestId');
   const queryClient = useQueryClient();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const materialRequestRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
   const canCreateMaterialRequest =
     user?.role === 'admin' ||
@@ -115,6 +119,12 @@ export function InventoryPage() {
     const { url } = await getSupplierTdsDocumentUrl(supplierId);
     window.open(url, '_blank', 'noopener,noreferrer');
   }
+
+  useEffect(() => {
+    if (!focusedRequestId) return;
+    const element = materialRequestRefs.current[focusedRequestId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedRequestId, materialRequests.data]);
 
   const selectedItem = items.data?.find((item) => item.id === selectedItemId) ?? items.data?.[0];
   const firstLocation = locations.data?.[0];
@@ -531,7 +541,15 @@ export function InventoryPage() {
           {materialRequests.data?.length ? (
             <div className="divide-y divide-theme-border">
               {materialRequests.data.map((request) => (
-                <article className="px-4 py-3 text-sm" key={request.id}>
+                <article
+                  className={`px-4 py-3 text-sm ${
+                    request.id === focusedRequestId ? 'bg-theme-main' : ''
+                  }`}
+                  key={request.id}
+                  ref={(element) => {
+                    materialRequestRefs.current[request.id] = element;
+                  }}
+                >
                   {(() => {
                     const canReserve = canManageInventory && request.status === 'approved';
                     const canIssue = canManageInventory && request.status === 'reserved';

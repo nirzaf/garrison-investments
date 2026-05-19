@@ -1,9 +1,11 @@
 import { AlertTriangle, Check, Forward, ShieldCheck, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   approveGenericApproval,
   delegateGenericApproval,
+  getGenericApproval,
   listApprovals,
   overrideGenericApproval,
   rejectGenericApproval,
@@ -22,6 +24,10 @@ import { useAuth } from '../../context/useAuth';
 
 export function ApprovalInboxPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab') === 'workflow' ? 'workflow' : 'reports';
+  const focusedApprovalId = searchParams.get('approvalId');
+  const focusedReportId = searchParams.get('reportId');
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
   const [genericApprovals, setGenericApprovals] = useState<ApprovalRecord[]>([]);
   const [commentsByReport, setCommentsByReport] = useState<Record<string, string>>({});
@@ -36,30 +42,57 @@ export function ApprovalInboxPage() {
   const [overrideByApproval, setOverrideByApproval] = useState<
     Record<string, { decision: 'approved' | 'rejected'; reason: string }>
   >({});
-  const [tab, setTab] = useState<'reports' | 'workflow'>('reports');
+  const [tab, setTab] = useState<'reports' | 'workflow'>(requestedTab);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const approvalRefs = useRef<Record<string, HTMLElement | null>>({});
+  const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const canOverride = user?.role === 'admin';
 
   const loadReports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await listDailyReports({ status: 'submitted' });
+      const [response, genericResponse, focusedApproval] = await Promise.all([
+        listDailyReports({ status: 'submitted' }),
+        listApprovals({ box: 'inbox', status: 'pending' }),
+        focusedApprovalId
+          ? getGenericApproval(focusedApprovalId).catch(() => null)
+          : Promise.resolve(null)
+      ]);
       setReports(response.items);
-      const genericResponse = await listApprovals({ box: 'inbox', status: 'pending' });
-      setGenericApprovals(genericResponse.items);
+      setGenericApprovals(
+        focusedApproval && !genericResponse.items.some((item) => item.id === focusedApproval.id)
+          ? [focusedApproval, ...genericResponse.items]
+          : genericResponse.items
+      );
     } catch {
       setError('Unable to load approval inbox.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [focusedApprovalId]);
 
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
+
+  useEffect(() => {
+    setTab(requestedTab);
+  }, [requestedTab]);
+
+  useEffect(() => {
+    if (tab !== 'workflow' || !focusedApprovalId) return;
+    const element = approvalRefs.current[focusedApprovalId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedApprovalId, genericApprovals, tab]);
+
+  useEffect(() => {
+    if (tab !== 'reports' || !focusedReportId) return;
+    const element = reportRefs.current[focusedReportId];
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedReportId, reports, tab]);
 
   async function approve(report: DailyReportRecord) {
     setError(null);
@@ -200,7 +233,7 @@ export function ApprovalInboxPage() {
           <h2 className="text-2xl font-semibold text-theme-text-primary">Daily Report Inbox</h2>
         </div>
         <StatusBadge tone="info">
-          {isLoading ? 'Loading' : `${reports.length + genericApprovals.length} pending`}
+          {isLoading ? 'Loading' : `${reports.length + genericApprovals.length} in inbox`}
         </StatusBadge>
       </div>
 
@@ -252,8 +285,15 @@ export function ApprovalInboxPage() {
           <div className="grid gap-4">
             {genericApprovals.map((approval) => (
               <article
-                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                  approval.id === focusedApprovalId
+                    ? 'border-brand-600 ring-2 ring-brand-600/20'
+                    : 'border-theme-border'
+                }`}
                 key={approval.id}
+                ref={(element) => {
+                  approvalRefs.current[approval.id] = element;
+                }}
               >
                 <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                   <div>
@@ -413,8 +453,15 @@ export function ApprovalInboxPage() {
         <div className="grid gap-4">
           {reports.map((report) => (
             <article
-              className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+              className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                report.id === focusedReportId
+                  ? 'border-brand-600 ring-2 ring-brand-600/20'
+                  : 'border-theme-border'
+              }`}
               key={report.id}
+              ref={(element) => {
+                reportRefs.current[report.id] = element;
+              }}
             >
               <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
                 <div>
