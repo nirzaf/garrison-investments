@@ -1,310 +1,352 @@
-# Approval Process — Full Reference
+# Approval Process - Code-Verified Reference
 
 ## Overview
 
-The project has **two independent approval tracks**. They share the same notification and email infrastructure but use completely separate API routes and service logic.
+The current implementation has **three separate approval mechanisms**. They share notification/email infrastructure, but their API routes and business logic are separate.
 
-| Track | Managed By | API Routes | Used For |
+| Mechanism | Managed by | Primary routes | Current use |
 |---|---|---|---|
-| **Daily Report** | `ReportService` | `POST /api/v1/reports/{id}/approve` etc. | Engineer daily site reports |
-| **Generic Workflow** | `ApprovalService` | `POST /api/v1/approvals/{id}/approve` etc. | Material requests, invoices, documents, custom items |
+| Daily report approval | `ReportService` | `/api/v1/reports/{id}/approve`, `/reject`, `/override` | Engineer daily site reports |
+| Generic workflow approval | `ApprovalService` | `/api/v1/approvals` and `/api/v1/approvals/{id}/...` | Invoices and material requests |
+| Document version approval | `DocumentService` | `/api/v1/documents/{id}/versions`, `/versions/{version_id}/approve` | Uploaded documents and document versions |
+
+Documents are **not currently routed through the generic approval inbox**. `ApprovalService` contains generic document side-effect handling, but the active document routes use `DocumentService` directly.
 
 ---
 
-## Email — What Gets Sent, and How
+## Email and Notifications
 
-### Delivery mechanism
+### Notification Email Flow
 
-Every notification created in the system (approval pending, approved, rejected, reminder, escalation) automatically triggers an email via a **Celery background task** (`send_email_notification`). The flow is:
+Most approval-related notifications are created through `NotificationService.create()`. The service writes a notification row with `email_status = "queued"` and registers an SQLAlchemy `after_commit` hook. After the transaction commits, the hook queues `send_email_notification.delay(notification_id)` on the email Celery queue.
 
-1. `NotificationService.create()` writes a `Notification` row with `email_status = "queued"`.
-2. A SQLAlchemy `after_commit` event fires immediately after the DB transaction commits.
-3. That hook calls `send_email_notification.delay(notification_id)` — pushing the job to the **`email` Celery queue**.
-4. The task fetches the notification, resolves the recipient's email from their user record, and calls `EmailService.send()`.
-5. `EmailService` opens an SMTP connection (with optional TLS + auth) and sends the message.
-6. The notification row is updated to `email_status = "sent"` or `"failed"`.
+The email task:
 
-> [!IMPORTANT]
-> **No attachments are ever included in notification emails.** Every notification email is **plain-text only**. The subject is the notification title (e.g. "Approval pending") and the body is a one-sentence description (e.g. "Invoice #INV-001 is waiting for your approval.").
+- skips muted notifications and marks them `email_status = "skipped"`;
+- resolves the recipient email from the notification user;
+- sends a plain-text email with the notification title as the subject;
+- marks the row `sent` if `EmailService.send()` returns without raising;
+- marks the row `failed` only when the task catches an exception.
 
-> [!NOTE]
-> **Muted notifications are skipped.** If a user mutes a notification before the Celery task runs, the task marks `email_status = "skipped"` and sends no email.
+Important implementation caveat: `EmailService.send()` catches SMTP/network send errors, logs a warning, and returns `0`. Because that does not raise, the Celery task can still mark the notification as `sent` even when SMTP delivery failed.
 
-### Report PDF email (post-approval only)
+Notification emails do not include attachments.
 
-When a daily report is **approved** (or admin-overridden to approved), a separate chain fires:
+### Daily Report PDF Email
 
-1. `ReportService._queue_post_approval_tasks()` calls `generate_report_pdf.delay(report_id, actor_id, email_after=True)` on the **`report`** queue.
-2. The `generate_report_pdf` task calls `ReportExportService.generate_pdf_export()` which:
-   - Builds a full A4 PDF using **ReportLab** containing report metadata, work completed, next-day plan, manpower, equipment, material consumption tables.
-   - Uploads the PDF to **MinIO object storage** at the key `reports/{project_id}/{report_id}/{report_number}.pdf`.
-   - Saves a `ReportExport` row in the DB (with `object_key`, `file_name`, `status = "ready"`).
-3. After that task completes, `send_report_email.delay(export_id)` fires on the **`email`** queue.
-4. `send_report_email` sends a plain-text email to the address list in the `REPORT_EMAIL_RECIPIENTS` environment variable.
+When a daily report is approved, or admin-overridden to approved, `ReportService` queues `generate_report_pdf.delay(report_id, actor_id, email_after=True)` on the report queue. The report task generates the PDF export, uploads it to MinIO, saves a `ReportExport` row, then queues `send_report_email.delay(export_id)`.
 
-> [!IMPORTANT]
-> **The PDF report email does NOT attach the PDF.** It is a notification-style email that contains the filename and the MinIO object key. The recipient must log into the system and download the PDF via `GET /api/v1/reports/{id}/pdf`.
->
-> The email body looks like:
-> ```
-> A daily report export is ready.
->
-> File: GIP001-DR-20250519-001.pdf
-> Object key: reports/<project_id>/<report_id>/GIP001-DR-20250519-001.pdf
-> Content type: application/pdf
-> ```
+The report email is sent to `REPORT_EMAIL_RECIPIENTS`. It is plain text and contains the generated file name, MinIO object key, and content type. It does **not** attach the PDF.
 
----
+Example body shape:
 
-## Track 1 — Daily Report Approval
+```text
+A daily report export is ready.
 
-### Who can do what
-
-| Role | Can Submit | Can Approve / Reject | Can Override |
-|---|---|---|---|
-| Civil Engineer | ✅ | ❌ | ❌ |
-| Project Manager | ❌ | ✅ (own projects only) | ❌ |
-| Operation Manager | ❌ | ✅ (any project) | ❌ |
-| General Manager | ❌ | ✅ (any project) | ❌ |
-| Admin | ✅ (any date) | ✅ | ✅ |
-
-### Full Lifecycle
-
-```
-[Civil Engineer]
-     │
-     ▼
-  DRAFT ──────────────────────────────── (editable)
-     │  POST /reports/{id}/submit
-     ▼
-SUBMITTED ◄─────────────────────────────────────────────────────────┐
-     │                                                               │
-     ├── POST /reports/{id}/reject  (PM / OpMgr / GM / Admin)       │
-     │      • Comments required                                      │
-     │      • Status → DRAFT                                         │
-     │      • Rejection reason saved                                 │
-     │      • In-app notification → Engineer                         │
-     │      • Email → Engineer (plain text: "was rejected")          │
-     │      • Engineer can edit and re-submit                        │
-     │                                                            ───┘
-     │
-     └── POST /reports/{id}/approve  (PM / OpMgr / GM / Admin)
-            • target_covered = true is REQUIRED (blocks otherwise)
-            • Comments optional
-            • Status → APPROVED
-            • approved_by + approved_at recorded
-            • DailyReportApprovalHistory entry written
-            • Inventory materials consumed from stock
-            • In-app notification → Engineer
-            • Email → Engineer (plain text: "has been approved")
-            • PDF generated and uploaded to MinIO (background task)
-            • Notification email → REPORT_EMAIL_RECIPIENTS (plain text, no attachment)
-
-[Admin only]
-     │
-     └── POST /reports/{id}/override
-            • decision = "approved" | "rejected"
-            • reason required
-            • If decision = "approved": target_covered must also be true
-            • If decision = "approved": same side-effects as normal approve
-            • If decision = "rejected": status → DRAFT, reason saved
-            • DailyReportApprovalHistory entry written with "Admin override: ..." prefix
-            • In-app notification → Engineer
-            • Email → Engineer (plain text: "was overridden: approved/rejected")
+File: GIP001-DR-20250519-001.pdf
+Object key: reports/<project_id>/<report_id>/GIP001-DR-20250519-001.pdf
+Content type: application/pdf
 ```
 
-### Frontend — How the Approver Acts
+---
 
-The approver navigates to **Approval Inbox** (`/approvals`) in the frontend.
+## Daily Report Approval
 
-On the **Report approvals** tab, each submitted report card shows:
-- Report number, date, work location, progress percentage
-- Work completed, next-day plan, safety summary, history event count
-- A **comments textarea** (optional for approve, required for reject)
-- A **"Target covered confirmation"** checkbox — must be ticked before the Approve button works; the frontend blocks submission and shows an inline error if not checked
-- **Approve** and **Reject** buttons
-- **Admin-only override panel** (hidden for non-admins): decision dropdown (approve/reject), reason text input, second "target covered" checkbox, and an "Override report" button
+### Roles
 
-### Key Constraints
+| Role | Can create/submit reports | Can approve/reject | Can override |
+|---|---:|---:|---:|
+| Civil Engineer | Yes | No | No |
+| Project Manager | No | Assigned projects | No |
+| Operation Manager | No | Any project | No |
+| General Manager | No | Any project | No |
+| Admin | Yes, including past dates | Yes | Yes |
 
-- A report can only be approved while status is exactly `"submitted"`.
-- Approved reports are **immutable** — editing is blocked.
-- Submitted reports are also locked — the engineer cannot edit until the approver rejects.
-- Engineers cannot submit past-dated reports; only Admin can.
+Daily report creation and editing is limited to Civil Engineer and Admin. Non-admin users cannot create past-dated reports.
+
+### Lifecycle
+
+```text
+DRAFT
+  - editable by the report owner role while draft
+  - submitted with POST /api/v1/reports/{id}/submit
+
+SUBMITTED
+  - locked from editing
+  - approver can reject with comments
+  - approver can approve only when target_covered is true
+
+APPROVED
+  - immutable
+  - records approved_by and approved_at
+  - consumes reported materials from inventory
+  - queues PDF export and report email
+
+REJECTED path
+  - rejection changes status back to draft
+  - rejection comments are saved
+  - engineer can edit and resubmit
+```
+
+Approval requires the report status to be exactly `submitted`. Rejection also requires `submitted` status and comments.
+
+### Approval Side Effects
+
+Normal approval:
+
+- requires `target_covered = true`;
+- sets status to `approved`;
+- records `approved_by` and `approved_at`;
+- writes `DailyReportApprovalHistory`;
+- records an audit entry;
+- consumes report materials from inventory;
+- sends an in-app notification to the engineer;
+- queues the notification email after commit;
+- queues report PDF generation and the report export email.
+
+Rejection:
+
+- requires comments;
+- changes status back to `draft`;
+- stores the rejection comments;
+- writes `DailyReportApprovalHistory`;
+- records an audit entry;
+- sends an in-app notification and queued email to the engineer.
+
+Admin override:
+
+- is Admin-only;
+- requires a reason;
+- accepts `decision = "approved"` or `decision = "rejected"`;
+- requires `target_covered = true` for approved overrides;
+- uses the same material consumption and PDF/email side effects as normal approval when approved;
+- changes the report back to `draft` when rejected;
+- writes approval history and audit records.
+
+### Frontend Behavior
+
+The `/approvals` page has a **Report approvals** tab. It loads submitted daily reports and displays report metadata, work completed, next-day plan, safety summary, history count, comments textarea, target-covered checkbox, approve/reject buttons, and an Admin-only override panel.
+
+The frontend blocks report approval if the target-covered checkbox is not selected. Reject comments are required.
 
 ---
 
-## Track 2 — Generic Workflow Approval
+## Generic Workflow Approval
 
-### Approval types and who triggers them
+### Current Producers
 
-| `request_type` | Triggered by | Notes |
+The generic workflow is implemented by `ApprovalService`. The current code paths that create generic approvals are:
+
+| Request type | Current producer | Entity side effect |
 |---|---|---|
-| `material_request` | Inventory service when a request is submitted | |
-| `invoice` | Finance service when an invoice is created | Always routes to Operation Manager |
-| `document` | Document service when a new version is uploaded | |
-| `payment`, `project_change` | Any user with appropriate role | Manually created via `POST /approvals` |
+| `invoice` | Finance service when an invoice is created | Approve sets invoice approved and records approver/time; reject sets invoice rejected |
+| `material_request` | Inventory service when a material request is created | Approve sets request approved; reject sets request cancelled |
 
-> [!NOTE]
-> `material_request`, `invoice`, `document`, and `daily_report` are **entity-backed** — they can only be created by their owning service. Direct API creation of these types is blocked with `403 APPROVAL_TYPE_FORBIDDEN`.
+`ApprovalService` also contains entity side-effect branches for `daily_report` and `document`, but those types are not currently produced by the report or document services through the generic approval API.
 
-### Approver Resolution (automatic)
+### Direct API Creation
 
-When an approval is created, the system automatically selects the approver using this priority order:
+`POST /api/v1/approvals` is authenticated. It blocks direct creation of entity-backed approval types:
 
-1. **Invoice** → Operation Manager (always)
-2. **Material request with amount > $1,000** → Operation Manager
-3. **Material request or project change submitted by a Project Manager** → Operation Manager
-4. **Project-scoped request** → The active Project Manager of the project who is not the submitter
-5. **Fallback** → First active Operation Manager
-6. **Final fallback** → First active Admin
+- `material_request`
+- `invoice`
+- `daily_report`
+- `document`
 
-Additionally, the system always assigns an `escalation_user_id` — always the first active Operation Manager — to be notified if the approval sits too long.
+Those types require an internal service call. Other request types, such as `payment` or `project_change`, are not currently role-gated by the route beyond authentication and service validation.
 
-### Status State Machine
+### Approver Resolution
 
+When `ApprovalService.create_approval()` creates a generic approval, it selects an approver in this order:
+
+1. `invoice` -> first active Operation Manager.
+2. `material_request` with amount greater than `1000` -> first active Operation Manager.
+3. `material_request` or `project_change` submitted by a Project Manager -> first active Operation Manager.
+4. Project-scoped request -> active Project Manager assigned to the project, excluding the submitter.
+5. Fallback -> first active Operation Manager.
+6. Final fallback -> first active Admin.
+
+The service also assigns `escalation_user_id` to the first active Operation Manager.
+
+### Statuses and Actions
+
+Actionable statuses are:
+
+- `pending`
+- `delegated`
+- `escalated`
+
+Terminal statuses are:
+
+- `approved`
+- `rejected`
+- `override_approved`
+- `override_rejected`
+
+Approve:
+
+- allowed for the original approver or delegated user;
+- comments are optional;
+- sets status to `approved`;
+- records `decided_at`;
+- applies entity side effects;
+- notifies the submitter;
+- records an audit entry.
+
+Reject:
+
+- allowed for the original approver or delegated user;
+- comments are required;
+- sets status to `rejected`;
+- applies entity side effects;
+- notifies the submitter;
+- records an audit entry.
+
+Delegate:
+
+- allowed for the original approver or current delegate;
+- requires an active target user;
+- sets status to `delegated`;
+- saves `delegated_to_id` and `delegation_reason`;
+- notifies the delegate;
+- records an audit entry.
+
+Delegation is **not exclusive**. The original approver remains allowed to approve, reject, or delegate again after delegation because the actor check accepts either `approver_id` or `delegated_to_id`.
+
+Admin override:
+
+- Admin-only;
+- requires `decision` and reason;
+- sets status to `override_approved` or `override_rejected`;
+- applies the same entity side effects as normal approval/rejection;
+- notifies the submitter;
+- records an audit entry.
+
+### Reminders and Escalation
+
+The `process_approval_reminders` Celery task runs hourly.
+
+Reminder behavior:
+
+- finds `pending` or `delegated` approvals where `due_at <= now` and `reminded_at IS NULL`;
+- sends a notification to the current actor, using the delegate if one exists, otherwise the original approver;
+- sets `reminded_at`;
+- email is queued by the normal notification email hook.
+
+Escalation behavior:
+
+- finds `pending` or `delegated` approvals where `due_at <= now - 24 hours` and `escalated_at IS NULL`;
+- because `due_at` is created as `submitted_at + 24 hours`, escalation happens about 48 hours after submission;
+- sets status to `escalated`;
+- sets `escalated_at`;
+- notifies `escalation_user_id`;
+- email is queued by the normal notification email hook.
+
+Reminder and escalation processing does not currently write approval audit-log entries.
+
+### Generic Approval Frontend
+
+The `/approvals` page has a **Workflow approvals** tab. It currently loads:
+
+```ts
+listApprovals({ box: 'inbox', status: 'pending' })
 ```
-PENDING
-   │
-   ├─► DELEGATED  (approver hands off to another user)
-   │       │
-   │       └─► (delegated user can now approve or reject)
-   │
-   ├─► ESCALATED  (system auto-escalates after 24h past due_at)
-   │
-   ├─► APPROVED
-   ├─► REJECTED
-   ├─► OVERRIDE_APPROVED   (Admin only)
-   └─► OVERRIDE_REJECTED   (Admin only)
-```
 
-Any status in `{pending, delegated, escalated}` is considered "actionable". Terminal statuses `{approved, rejected, override_*}` are final and cannot be acted on.
+That means the frontend shows pending inbox approvals only. It does not expose a generic approval outbox UI.
 
-### Full Lifecycle
-
-```
-[Owning service or authorized user]
-     │  POST /approvals  (or internal call)
-     ▼
-   PENDING
-     • Approval row created with due_at = submitted_at + 24 hours
-     • In-app notification → Assignee: "Approval pending"
-     • Email → Assignee (plain text: "{title} is waiting for your approval.")
-
-     │
-     ├── POST /approvals/{id}/approve  (approver or delegated user)
-     │      • Comments optional
-     │      • Status → APPROVED
-     │      • decided_at recorded
-     │      • Entity updated atomically:
-     │          material_request → status = "approved"
-     │          invoice          → status = "approved", approved_by/at set
-     │          document         → latest pending_approval version → "active",
-     │                             previous active version → "superseded",
-     │                             document.status = "active"
-     │          payment/project_change → audit record only
-     │      • In-app notification → Submitter: "Approval completed"
-     │      • Email → Submitter (plain text: "{title} was approved.")
-     │      • Audit log entry
-     │
-     ├── POST /approvals/{id}/reject  (approver or delegated user)
-     │      • Comments REQUIRED (empty body → 422)
-     │      • Status → REJECTED
-     │      • Entity updated:
-     │          material_request → status = "cancelled"
-     │          invoice          → status = "rejected"
-     │          document         → status = "rejected"
-     │      • In-app notification → Submitter: "Approval rejected"
-     │      • Email → Submitter (plain text: "{title} was rejected.")
-     │      • Audit log entry
-     │
-     ├── POST /approvals/{id}/delegate  (approver only)
-     │      • Payload: delegated_to_id (UUID), reason (string)
-     │      • Target user must exist and be active
-     │      • Status → DELEGATED
-     │      • delegated_to_id and delegation_reason saved
-     │      • In-app notification → Delegate: "Approval delegated to you"
-     │      • Email → Delegate (plain text: "{title} was delegated to you.")
-     │      • Audit log entry
-     │      • Delegate can now approve or reject
-     │
-     └── POST /approvals/{id}/override  (Admin only)
-            • Payload: decision ("approved"|"rejected"), reason (string)
-            • Reason required; non-Admin gets 403
-            • Status → OVERRIDE_APPROVED or OVERRIDE_REJECTED
-            • Same entity side-effects as normal approve/reject
-            • In-app notification → Submitter: "Approval overridden"
-            • Email → Submitter (plain text: "{title} was approved/rejected by admin override.")
-            • Audit log entry
-```
-
-### Automatic Reminders and Escalation (Celery Beat)
-
-The `process_approval_reminders` Celery task runs **every hour**.
-
-**Reminder logic:**
-- Finds all `pending` or `delegated` approvals where `due_at <= now` AND `reminded_at IS NULL`.
-- Sends an in-app notification to the current actor (delegate if set, otherwise original approver).
-- Email is sent automatically via the notification email hook.
-- Sets `reminded_at = now` so it only fires once per approval.
-
-**Escalation logic:**
-- Cutoff = `now - 24 hours`
-- Finds all `pending` or `delegated` approvals where `due_at <= cutoff` AND `escalated_at IS NULL`.
-- Since `due_at = submitted_at + 24h`, this means:  
-  `submitted_at + 24h ≤ now - 24h` → approval escalates **48 hours after it was submitted**.
-- Sets status to `"escalated"` and `escalated_at = now`.
-- Sends in-app notification → `escalation_user_id` (the Operation Manager assigned at creation).
-- Email → Operation Manager (plain text: "{title} has been pending for more than 48 hours.").
-
-> [!NOTE]
-> The escalation **notification message** says "more than 48 hours" — which correctly describes the actual 48-hour threshold from submission (24h due_at + 24h cutoff). The repository query itself uses a 24h rolling cutoff relative to `now`, but only against the `due_at` field which is already +24h ahead of submission. The net effect is a 48-hour window from submission.
-
-### Frontend — How the Approver Acts
-
-On the **Workflow approvals** tab of the Approval Inbox, each pending approval card shows:
-- Title, status badge, request type, due date, optional amount/currency
-- Submitter's comments
-- A **comments textarea** (used for approve or reject)
-- A **Delegate panel**: user UUID input, reason input, Delegate button
-- An **Admin override panel** (hidden for non-admins): decision dropdown, reason input, Override button
-- **Reject** and **Approve** buttons
-
-### Inbox vs. Outbox
-
-- **Inbox**: Shows approvals where the logged-in user is `approver_id` or `delegated_to_id`. Admins see all pending approvals.
-- **Outbox**: Shows approvals where the logged-in user is `submitter_id`.
+Each workflow card shows the title, status, request type, due date, optional amount/currency, submitter comments, action comments, delegate controls, Admin-only override controls, and approve/reject buttons.
 
 ---
 
-## Visibility Rules
+## Document Version Approval
 
-| Role | Can view approval detail |
+Documents use dedicated document routes and `DocumentService`; they do not currently create generic `Approval` rows.
+
+### Permissions
+
+| Action | Permission |
 |---|---|
-| Admin | Any approval |
-| Submitter | Their own submissions |
-| Approver | Approvals assigned to them |
-| Delegate | Approvals delegated to them |
-| Escalation user | Approvals they are the escalation target for |
+| List, view, or download documents | `documents:view` |
+| Upload documents, upload versions, list versions, approve versions | `documents:manage` |
+
+### Lifecycle
+
+Uploading a document or new version creates a pending document/version state:
+
+- document status becomes `pending_approval`;
+- the uploaded version status is `pending_approval`;
+- an audit entry is recorded;
+- an in-app notification is sent to the uploader.
+
+Approving a pending document version:
+
+- is handled by `POST /api/v1/documents/{document_id}/versions/{version_id}/approve`;
+- requires a document approver role through `DocumentService`;
+- changes the approved version to `active`;
+- changes any previous active version to `superseded`;
+- changes the document status to `active`;
+- records an audit entry;
+- sends a notification to the uploader.
+
+This approval path is separate from `/api/v1/approvals` and does not appear in the frontend workflow approval inbox.
+
+---
+
+## Visibility and Inbox Rules
+
+### Generic Approval API
+
+Listing approvals through `GET /api/v1/approvals` requires the approval inbox permission. The endpoint supports `box=inbox` and `box=outbox`, but the current frontend only uses pending inbox.
+
+Repository scoping:
+
+- `box=inbox` returns approvals where the user is `approver_id` or `delegated_to_id`.
+- Admin inbox listing can include all matching approvals.
+- `box=outbox` returns approvals where the user is `submitter_id`.
+- Escalation users can view an approval detail, but escalation ownership is not included in the normal inbox query.
+
+Detail/action visibility:
+
+- Admin can view any approval.
+- Submitter can view their own submitted approval.
+- Approver can view assigned approvals.
+- Delegate can view delegated approvals.
+- Escalation user can view approvals where they are the escalation target.
+
+Actions still require service-level authorization. Viewing an approval is broader than being allowed to approve or reject it.
 
 ---
 
 ## Audit Trail
 
-Every action (create, approve, reject, delegate, override, escalation) writes a row to the `audit_log` table via `AuditService.record()`. The log captures: action name, user, entity type, entity id, old values, new values, and a comment. This is viewable by Admins on the Audit Log page.
+Current audited approval-related actions include:
+
+- generic approval create, approve, reject, delegate, and override;
+- daily report approval, rejection, and override;
+- document upload/version upload and document version approval.
+
+Current non-audited approval automation:
+
+- generic approval reminder notifications;
+- generic approval escalation notifications/status updates.
+
+Admins can review audit records through the audit-log feature where route permissions allow it.
 
 ---
 
-## Summary of Email Behaviour
+## Email Summary
 
-| Event | Recipient | Email content | Attachment? |
+| Event | Recipient | Email content | Attachment |
 |---|---|---|---|
-| Approval created | Assigned approver | "X is waiting for your approval" | ❌ None |
-| Approved | Submitter | "X was approved" | ❌ None |
-| Rejected | Submitter | "X was rejected" | ❌ None |
-| Delegated | New delegate | "X was delegated to you" | ❌ None |
-| Overridden | Submitter | "X was approved/rejected by admin override" | ❌ None |
-| Reminder (hourly) | Current approver | "X is still waiting for approval" | ❌ None |
-| Escalated | Operation Manager | "X has been pending for more than 48 hours" | ❌ None |
-| Daily report approved | `REPORT_EMAIL_RECIPIENTS` | File name + MinIO object key | ❌ None (link to file location only) |
-| Daily report approved | Engineer | "X has been approved" | ❌ None |
+| Generic approval created | Assigned approver | Notification title/body, e.g. approval pending | None |
+| Generic approval approved | Submitter | Notification title/body, e.g. approval completed | None |
+| Generic approval rejected | Submitter | Notification title/body, e.g. approval rejected | None |
+| Generic approval delegated | Delegate | Notification title/body, e.g. approval delegated | None |
+| Generic approval overridden | Submitter | Notification title/body, e.g. approval overridden | None |
+| Generic reminder | Current actor | Notification title/body, e.g. approval still pending | None |
+| Generic escalation | Escalation user | Notification title/body, e.g. pending more than 48 hours | None |
+| Daily report approved/rejected/overridden | Engineer | Notification title/body | None |
+| Daily report PDF export ready | `REPORT_EMAIL_RECIPIENTS` | File name, object key, content type | None |
+| Document uploaded/approved | Uploader | Notification title/body | None |
+
+Email status should be interpreted carefully: muted notifications are marked `skipped`, task-level exceptions are marked `failed`, but SMTP send failures swallowed by `EmailService.send()` may still be marked `sent`.
