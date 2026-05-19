@@ -79,6 +79,24 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         assert old_download.status_code == 200
         assert old_download.json()["superseded_warning"] is True
 
+        supervisor_download = await client.get(
+            f"/api/v1/documents/{document['id']}/download",
+            headers={"Authorization": f"Bearer {setup['supervisor_token']}"},
+        )
+        assert supervisor_download.status_code == 200
+
+        blocked_supervisor_upload = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Supervisor Read Only Upload",
+                "document_type": "wir",
+                "project_id": setup["project_id"],
+            },
+            files={"file": ("blocked.pdf", pdf_bytes("blocked"), "application/pdf")},
+            headers={"Authorization": f"Bearer {setup['supervisor_token']}"},
+        )
+        assert blocked_supervisor_upload.status_code == 403
+
 
 async def test_document_search_finds_uploaded_metadata() -> None:
     await skip_if_database_unavailable()

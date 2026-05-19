@@ -1,9 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import CurrentUser, DbSession
+from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.models.user import User
 from app.schemas.approvals import (
     ApprovalCreateRequest,
     ApprovalDecisionRequest,
@@ -14,13 +15,15 @@ from app.schemas.approvals import (
 )
 from app.services.approval_service import ENTITY_BACKED_REQUEST_TYPES, ApprovalService
 from app.utils.exceptions import AppException
+from app.utils.permissions import PERMISSION_REPORTS_APPROVE
 
 router = APIRouter(prefix="/approvals", tags=["Approvals"])
+CanUseApprovalInbox = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_APPROVE))]
 
 
 @router.get("", response_model=ApprovalListResponse)
 async def list_approvals(
-    current_user: CurrentUser,
+    current_user: CanUseApprovalInbox,
     session: DbSession,
     box: Annotated[str, Query(pattern="^(inbox|outbox)$")] = "inbox",
     status_filter: Annotated[str | None, Query(alias="status", max_length=30)] = None,
