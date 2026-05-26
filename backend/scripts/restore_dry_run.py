@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 SQL_MARKERS = ("CREATE TABLE", "ALTER TABLE", "COPY ", "INSERT INTO", "SET ")
 
@@ -26,7 +27,7 @@ def read_sql_preview(path: Path) -> str:
         return file.read(16 * 1024)
 
 
-def inspect_backup(path: Path) -> dict[str, object]:
+def inspect_backup(path: Path) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError(f"Backup file not found: {resolved}")
@@ -77,7 +78,7 @@ def restore_backup(backup_path: Path, database_url: str) -> None:
         )
 
 
-def render_markdown(result: dict[str, object]) -> str:
+def render_markdown(result: dict[str, Any]) -> str:
     restore_status = "executed" if result["restore_executed"] else "validated-only"
     lines = [
         "# Backup Restore Dry-Run Evidence",

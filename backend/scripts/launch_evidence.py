@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -50,7 +51,7 @@ def file_evidence(label: str, raw_path: str | None) -> FileEvidence | None:
     )
 
 
-def check_url(url: str, timeout: int) -> dict[str, object]:
+def check_url(url: str, timeout: int) -> dict[str, Any]:
     request = Request(url, headers={"User-Agent": "garrison-launch-evidence/1.0"})
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -72,7 +73,7 @@ def check_url(url: str, timeout: int) -> dict[str, object]:
         return {"url": url, "ok": False, "status": None, "body_preview": str(exc.reason)}
 
 
-def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str, object]:
+def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     generated_at = datetime.now(UTC).isoformat()
     target = args.target
     approver = args.approver or env.get("GITHUB_TRIGGERING_ACTOR") or env.get("GITHUB_ACTOR")
@@ -119,7 +120,7 @@ def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str,
     }
 
 
-def render_markdown(evidence: dict[str, object]) -> str:
+def render_markdown(evidence: dict[str, Any]) -> str:
     lines = [
         "# Launch Evidence Record",
         "",
