@@ -16,6 +16,9 @@ class EmailService:
         if not recipients:
             raise ValueError("At least one recipient is required")
 
+        if self.settings.app_env.lower() == "staging":
+            subject = f"[Testing] {subject}"
+
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = f"{self.settings.smtp_from_name} <{self.settings.smtp_from_email}>"
