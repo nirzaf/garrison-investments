@@ -8,8 +8,8 @@ import pytest
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
-from app.models.notification import Notification
 from app.main import create_app
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User

@@ -91,7 +91,10 @@ class AuthService:
         self.email.send(
             recipients=[user.email],
             subject="Your Verification Code",
-            body=f"Your verification code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+            body=(
+                f"Your verification code is: {otp}\n\n"
+                f"This code expires in {self.settings.otp_expire_minutes} minutes."
+            ),
         )
         return OtpChallengeResult(
             challenge=challenge,
@@ -247,7 +250,10 @@ class AuthService:
         self.email.send(
             recipients=[user.email],
             subject="Password Reset Code",
-            body=f"Your password reset code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+            body=(
+                f"Your password reset code is: {otp}\n\n"
+                f"This code expires in {self.settings.otp_expire_minutes} minutes."
+            ),
         )
         return OtpChallengeResult(
             challenge=challenge,

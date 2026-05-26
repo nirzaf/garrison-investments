@@ -92,29 +92,27 @@ function formatApiError(error: unknown) {
 function formHasDraftContent(payload: DailyReportPayload) {
   return Boolean(
     payload.project_id ||
-      payload.work_location.trim() ||
-      payload.work_completed.trim() ||
-      payload.delay_notes?.trim() ||
-      payload.next_day_plan.trim() ||
-      payload.safety_notes?.trim() ||
-      payload.report_date !== today ||
-      payload.progress_percentage !== emptyPayload.progress_percentage ||
-      payload.safety_incidents !== emptyPayload.safety_incidents ||
-      payload.supervisor_update_ids.length > 0 ||
-      payload.photo_refs.length > 0 ||
-      payload.attachment_refs.length > 0 ||
-      payload.equipment_entries.length > 0 ||
-      payload.material_consumption.length > 0 ||
-      payload.manpower_entries.some(
-        (entry) =>
-          entry.trade.trim() ||
-          Number(entry.count || 0) > 0 ||
-          Number(entry.overtime_hours || 0) > 0
-      ) ||
-      Object.entries(payload.extra_fields ?? {}).some(([key, value]) => {
-        if (key === 'day_type') return value !== emptyPayload.extra_fields?.day_type;
-        return typeof value === 'string' ? value.trim() : Boolean(value);
-      })
+    payload.work_location.trim() ||
+    payload.work_completed.trim() ||
+    payload.delay_notes?.trim() ||
+    payload.next_day_plan.trim() ||
+    payload.safety_notes?.trim() ||
+    payload.report_date !== today ||
+    payload.progress_percentage !== emptyPayload.progress_percentage ||
+    payload.safety_incidents !== emptyPayload.safety_incidents ||
+    payload.supervisor_update_ids.length > 0 ||
+    payload.photo_refs.length > 0 ||
+    payload.attachment_refs.length > 0 ||
+    payload.equipment_entries.length > 0 ||
+    payload.material_consumption.length > 0 ||
+    payload.manpower_entries.some(
+      (entry) =>
+        entry.trade.trim() || Number(entry.count || 0) > 0 || Number(entry.overtime_hours || 0) > 0
+    ) ||
+    Object.entries(payload.extra_fields ?? {}).some(([key, value]) => {
+      if (key === 'day_type') return value !== emptyPayload.extra_fields?.day_type;
+      return typeof value === 'string' ? value.trim() : Boolean(value);
+    })
   );
 }
 
@@ -472,12 +470,8 @@ export function DailyReportPage() {
                     </p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-theme-text-primary">
-                      Next-day plan
-                    </h4>
-                    <p className="mt-1 text-sm text-theme-text-secondary">
-                      {report.next_day_plan}
-                    </p>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">Next-day plan</h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">{report.next_day_plan}</p>
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-theme-text-primary">Safety</h4>

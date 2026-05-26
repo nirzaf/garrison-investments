@@ -128,94 +128,99 @@ export function InventoryPage() {
       </div>
 
       {canManageInventory ? (
-      <div className="grid gap-4 lg:grid-cols-2">
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createLocationMutation.mutate({
-              name: String(form.get('name')),
-              code: String(form.get('code')),
-              location_type: String(form.get('location_type')),
-              address: String(form.get('address') || '')
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-            <Warehouse className="h-4 w-4" />
-            Storage location
-          </h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <input className="form-field" name="name" placeholder="Location name" required />
-            <input className="form-field" name="code" placeholder="Code" required />
-            <select className="form-field" name="location_type">
-              <option value="warehouse">Warehouse</option>
-              <option value="site_store">Site store</option>
-              <option value="project_site">Project site</option>
-            </select>
-            <input className="form-field" name="address" placeholder="Address" />
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Add location
-          </button>
-        </form>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <form
+            className="rounded-lg border border-theme-border bg-theme-card p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              createLocationMutation.mutate({
+                name: String(form.get('name')),
+                code: String(form.get('code')),
+                location_type: String(form.get('location_type')),
+                address: String(form.get('address') || '')
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
+              <Warehouse className="h-4 w-4" />
+              Storage location
+            </h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <input className="form-field" name="name" placeholder="Location name" required />
+              <input className="form-field" name="code" placeholder="Code" required />
+              <select className="form-field" name="location_type">
+                <option value="warehouse">Warehouse</option>
+                <option value="site_store">Site store</option>
+                <option value="project_site">Project site</option>
+              </select>
+              <input className="form-field" name="address" placeholder="Address" />
+            </div>
+            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Add location
+            </button>
+          </form>
 
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createItemMutation.mutate({
-              name: String(form.get('name')),
-              item_code: String(form.get('item_code') || ''),
-              category: String(form.get('category')),
-              item_type: String(form.get('item_type')),
-              unit: String(form.get('unit')),
-              minimum_stock: String(form.get('minimum_stock') || '0'),
-              reorder_level: String(form.get('reorder_level') || '0'),
-              unit_cost: String(form.get('unit_cost') || ''),
-              supplier_id: String(form.get('supplier_id'))
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-            <PackagePlus className="h-4 w-4" />
-            Inventory item
-          </h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <input className="form-field" name="name" placeholder="Item name" required />
-            <input className="form-field" name="item_code" placeholder="Code" />
-            <input className="form-field" name="category" placeholder="Category" required />
-            <select className="form-field" name="item_type">
-              <option value="consumable">Consumable</option>
-              <option value="asset">Asset tagged</option>
-            </select>
-            <select className="form-field" name="unit">
-              <option>Nos</option>
-              <option>KG</option>
-              <option>TON</option>
-              <option>SQM</option>
-            </select>
-            <input className="form-field" name="unit_cost" placeholder="Unit cost" type="number" />
-            <input className="form-field" name="minimum_stock" placeholder="Minimum stock" />
-            <input className="form-field" name="reorder_level" placeholder="Reorder level" />
-            <select className="form-field sm:col-span-2" name="supplier_id" required>
-              <option value="">Select supplier</option>
-              {suppliers.data?.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Add item
-          </button>
-        </form>
-      </div>
+          <form
+            className="rounded-lg border border-theme-border bg-theme-card p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              createItemMutation.mutate({
+                name: String(form.get('name')),
+                item_code: String(form.get('item_code') || ''),
+                category: String(form.get('category')),
+                item_type: String(form.get('item_type')),
+                unit: String(form.get('unit')),
+                minimum_stock: String(form.get('minimum_stock') || '0'),
+                reorder_level: String(form.get('reorder_level') || '0'),
+                unit_cost: String(form.get('unit_cost') || ''),
+                supplier_id: String(form.get('supplier_id'))
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
+              <PackagePlus className="h-4 w-4" />
+              Inventory item
+            </h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <input className="form-field" name="name" placeholder="Item name" required />
+              <input className="form-field" name="item_code" placeholder="Code" />
+              <input className="form-field" name="category" placeholder="Category" required />
+              <select className="form-field" name="item_type">
+                <option value="consumable">Consumable</option>
+                <option value="asset">Asset tagged</option>
+              </select>
+              <select className="form-field" name="unit">
+                <option>Nos</option>
+                <option>KG</option>
+                <option>TON</option>
+                <option>SQM</option>
+              </select>
+              <input
+                className="form-field"
+                name="unit_cost"
+                placeholder="Unit cost"
+                type="number"
+              />
+              <input className="form-field" name="minimum_stock" placeholder="Minimum stock" />
+              <input className="form-field" name="reorder_level" placeholder="Reorder level" />
+              <select className="form-field sm:col-span-2" name="supplier_id" required>
+                <option value="">Select supplier</option>
+                {suppliers.data?.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Add item
+            </button>
+          </form>
+        </div>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -248,212 +253,216 @@ export function InventoryPage() {
         </div>
 
         {canManageInventory ? (
-        <div className="rounded-lg border border-theme-border bg-theme-card p-4">
-          <h3 className="text-base font-semibold text-theme-text-primary">Quick receive</h3>
-          <p className="mt-1 text-sm text-theme-text-secondary">
-            {selectedItem ? selectedItem.name : 'Select an item'} into{' '}
-            {firstLocation ? firstLocation.name : 'a location'}.
-          </p>
+          <div className="rounded-lg border border-theme-border bg-theme-card p-4">
+            <h3 className="text-base font-semibold text-theme-text-primary">Quick receive</h3>
+            <p className="mt-1 text-sm text-theme-text-secondary">
+              {selectedItem ? selectedItem.name : 'Select an item'} into{' '}
+              {firstLocation ? firstLocation.name : 'a location'}.
+            </p>
+            <form
+              className="mt-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                if (!selectedItem || !firstLocation) return;
+                receiveMutation.mutate({
+                  item_id: selectedItem.id,
+                  to_location_id: firstLocation.id,
+                  quantity: String(form.get('quantity') || '0'),
+                  notes: String(form.get('notes') || '')
+                });
+                event.currentTarget.reset();
+              }}
+            >
+              <input className="form-field" name="quantity" placeholder="Quantity" required />
+              <input className="form-field" name="notes" placeholder="Notes" />
+              <button className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                Receive stock
+              </button>
+            </form>
+          </div>
+        ) : null}
+      </div>
+
+      {canManageInventory ? (
+        <div className="grid gap-4 lg:grid-cols-2">
           <form
-            className="mt-3 space-y-3"
+            className="rounded-lg border border-theme-border bg-theme-card p-4"
             onSubmit={(event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
-              if (!selectedItem || !firstLocation) return;
-              receiveMutation.mutate({
-                item_id: selectedItem.id,
-                to_location_id: firstLocation.id,
+              createAssetMutation.mutate({
+                item_id: String(form.get('item_id')),
+                asset_tag: String(form.get('asset_tag')),
+                current_location_id: String(form.get('current_location_id')),
+                condition: String(form.get('condition') || 'good')
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
+              <MapPinned className="h-4 w-4" />
+              Asset tracker
+            </h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <select className="form-field" name="item_id" required>
+                <option value="">Asset item</option>
+                {items.data
+                  ?.filter((item) => item.item_type === 'asset')
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
+              <input className="form-field" name="asset_tag" placeholder="Asset tag" required />
+              <select className="form-field" name="current_location_id" required>
+                <option value="">Current location</option>
+                {locations.data?.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <select className="form-field" name="condition">
+                <option value="good">Good</option>
+                <option value="calibration_due">Calibration due</option>
+                <option value="repair">Repair</option>
+                <option value="damaged">Damaged</option>
+              </select>
+            </div>
+            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Add asset
+            </button>
+          </form>
+
+          <form
+            className="rounded-lg border border-theme-border bg-theme-card p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              createMovementMutation.mutate({
+                item_id: String(form.get('item_id')),
+                asset_id: String(form.get('asset_id') || '') || undefined,
+                movement_type: String(form.get('movement_type')),
                 quantity: String(form.get('quantity') || '0'),
+                from_location_id: String(form.get('from_location_id') || '') || undefined,
+                to_location_id: String(form.get('to_location_id') || '') || undefined,
+                project_id: String(form.get('project_id') || '') || undefined,
                 notes: String(form.get('notes') || '')
               });
               event.currentTarget.reset();
             }}
           >
-            <input className="form-field" name="quantity" placeholder="Quantity" required />
-            <input className="form-field" name="notes" placeholder="Notes" />
-            <button className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              Receive stock
-            </button>
-          </form>
-        </div>
-        ) : null}
-      </div>
-
-      {canManageInventory ? (
-      <div className="grid gap-4 lg:grid-cols-2">
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createAssetMutation.mutate({
-              item_id: String(form.get('item_id')),
-              asset_tag: String(form.get('asset_tag')),
-              current_location_id: String(form.get('current_location_id')),
-              condition: String(form.get('condition') || 'good')
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-            <MapPinned className="h-4 w-4" />
-            Asset tracker
-          </h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <select className="form-field" name="item_id" required>
-              <option value="">Asset item</option>
-              {items.data
-                ?.filter((item) => item.item_type === 'asset')
-                .map((item) => (
+            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
+              <ArrowRightLeft className="h-4 w-4" />
+              Movement
+            </h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <select className="form-field" name="movement_type">
+                <option value="transfer">Transfer</option>
+                <option value="issue">Issue</option>
+                <option value="return">Return</option>
+                <option value="consume">Consume</option>
+                <option value="adjustment">Adjustment</option>
+                <option value="wastage">Wastage</option>
+                <option value="damaged">Damaged</option>
+              </select>
+              <select className="form-field" name="item_id" required>
+                <option value="">Item</option>
+                {items.data?.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-            </select>
-            <input className="form-field" name="asset_tag" placeholder="Asset tag" required />
-            <select className="form-field" name="current_location_id" required>
-              <option value="">Current location</option>
-              {locations.data?.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-            <select className="form-field" name="condition">
-              <option value="good">Good</option>
-              <option value="calibration_due">Calibration due</option>
-              <option value="repair">Repair</option>
-              <option value="damaged">Damaged</option>
-            </select>
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Add asset
-          </button>
-        </form>
-
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createMovementMutation.mutate({
-              item_id: String(form.get('item_id')),
-              asset_id: String(form.get('asset_id') || '') || undefined,
-              movement_type: String(form.get('movement_type')),
-              quantity: String(form.get('quantity') || '0'),
-              from_location_id: String(form.get('from_location_id') || '') || undefined,
-              to_location_id: String(form.get('to_location_id') || '') || undefined,
-              project_id: String(form.get('project_id') || '') || undefined,
-              notes: String(form.get('notes') || '')
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-            <ArrowRightLeft className="h-4 w-4" />
-            Movement
-          </h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <select className="form-field" name="movement_type">
-              <option value="transfer">Transfer</option>
-              <option value="issue">Issue</option>
-              <option value="return">Return</option>
-              <option value="consume">Consume</option>
-              <option value="adjustment">Adjustment</option>
-              <option value="wastage">Wastage</option>
-              <option value="damaged">Damaged</option>
-            </select>
-            <select className="form-field" name="item_id" required>
-              <option value="">Item</option>
-              {items.data?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <select className="form-field" name="asset_id">
-              <option value="">No asset tag</option>
-              {assets.data?.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.asset_tag}
-                </option>
-              ))}
-            </select>
-            <input className="form-field" name="quantity" placeholder="Quantity" required />
-            <LocationSelect locations={locations.data ?? []} name="from_location_id" label="From" />
-            <LocationSelect locations={locations.data ?? []} name="to_location_id" label="To" />
-            <select className="form-field" name="project_id">
-              <option value="">No project</option>
-              {projects.data?.items.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code} - {project.name}
-                </option>
-              ))}
-            </select>
-            <input className="form-field" name="notes" placeholder="Notes" />
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Record movement
-          </button>
-        </form>
-      </div>
+              </select>
+              <select className="form-field" name="asset_id">
+                <option value="">No asset tag</option>
+                {assets.data?.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.asset_tag}
+                  </option>
+                ))}
+              </select>
+              <input className="form-field" name="quantity" placeholder="Quantity" required />
+              <LocationSelect
+                locations={locations.data ?? []}
+                name="from_location_id"
+                label="From"
+              />
+              <LocationSelect locations={locations.data ?? []} name="to_location_id" label="To" />
+              <select className="form-field" name="project_id">
+                <option value="">No project</option>
+                {projects.data?.items.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.code} - {project.name}
+                  </option>
+                ))}
+              </select>
+              <input className="form-field" name="notes" placeholder="Notes" />
+            </div>
+            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Record movement
+            </button>
+          </form>
+        </div>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
         {canCreateMaterialRequest ? (
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createRequestMutation.mutate({
-              project_id: String(form.get('project_id')),
-              from_location_id: String(form.get('from_location_id')),
-              notes: String(form.get('notes') || ''),
-              lines: [
-                {
-                  item_id: String(form.get('item_id')),
-                  quantity: String(form.get('quantity') || '0')
-                }
-              ]
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-            <ClipboardList className="h-4 w-4" />
-            Material request
-          </h3>
-          <div className="mt-3 grid gap-3">
-            <select className="form-field" name="project_id" required>
-              <option value="">Project</option>
-              {projects.data?.items.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code} - {project.name}
-                </option>
-              ))}
-            </select>
-            <LocationSelect
-              locations={locations.data ?? []}
-              name="from_location_id"
-              label="Source"
-              required
-            />
-            <select className="form-field" name="item_id" required>
-              <option value="">Item</option>
-              {items.data?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <input className="form-field" name="quantity" placeholder="Quantity" required />
-            <input className="form-field" name="notes" placeholder="Notes" />
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Create request
-          </button>
-        </form>
+          <form
+            className="rounded-lg border border-theme-border bg-theme-card p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              createRequestMutation.mutate({
+                project_id: String(form.get('project_id')),
+                from_location_id: String(form.get('from_location_id')),
+                notes: String(form.get('notes') || ''),
+                lines: [
+                  {
+                    item_id: String(form.get('item_id')),
+                    quantity: String(form.get('quantity') || '0')
+                  }
+                ]
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
+              <ClipboardList className="h-4 w-4" />
+              Material request
+            </h3>
+            <div className="mt-3 grid gap-3">
+              <select className="form-field" name="project_id" required>
+                <option value="">Project</option>
+                {projects.data?.items.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.code} - {project.name}
+                  </option>
+                ))}
+              </select>
+              <LocationSelect
+                locations={locations.data ?? []}
+                name="from_location_id"
+                label="Source"
+                required
+              />
+              <select className="form-field" name="item_id" required>
+                <option value="">Item</option>
+                {items.data?.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <input className="form-field" name="quantity" placeholder="Quantity" required />
+              <input className="form-field" name="notes" placeholder="Notes" />
+            </div>
+            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Create request
+            </button>
+          </form>
         ) : null}
 
         <div className="rounded-lg border border-theme-border bg-theme-card">
@@ -477,46 +486,47 @@ export function InventoryPage() {
                     const canIssue = canManageInventory && request.status === 'reserved';
                     return (
                       <>
-                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="font-medium text-theme-text-primary">
-                        {request.request_number}
-                      </p>
-                      <p className="text-theme-text-muted">
-                        {request.lines.length} line(s) · estimated {request.total_estimated_cost}
-                      </p>
-                    </div>
-                    <StatusBadge tone={request.status === 'issued' ? 'success' : 'warning'}>
-                      {request.status}
-                    </StatusBadge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-theme-text-secondary hover:bg-theme-main disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!canReserve || reserveRequestMutation.isPending}
-                      onClick={() => reserveRequestMutation.mutate(request.id)}
-                      type="button"
-                    >
-                      Reserve
-                    </button>
-                    <button
-                      className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!canIssue || issueRequestMutation.isPending}
-                      onClick={() => issueRequestMutation.mutate(request.id)}
-                      type="button"
-                    >
-                      Issue
-                    </button>
-                    {canManageInventory ? (
-                      <button
-                        className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-[var(--status-error-text)] hover:bg-theme-main"
-                        onClick={() => cancelRequestMutation.mutate(request.id)}
-                        type="button"
-                      >
-                        Cancel
-                      </button>
-                    ) : null}
-                  </div>
+                        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                          <div>
+                            <p className="font-medium text-theme-text-primary">
+                              {request.request_number}
+                            </p>
+                            <p className="text-theme-text-muted">
+                              {request.lines.length} line(s) · estimated{' '}
+                              {request.total_estimated_cost}
+                            </p>
+                          </div>
+                          <StatusBadge tone={request.status === 'issued' ? 'success' : 'warning'}>
+                            {request.status}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-theme-text-secondary hover:bg-theme-main disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!canReserve || reserveRequestMutation.isPending}
+                            onClick={() => reserveRequestMutation.mutate(request.id)}
+                            type="button"
+                          >
+                            Reserve
+                          </button>
+                          <button
+                            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!canIssue || issueRequestMutation.isPending}
+                            onClick={() => issueRequestMutation.mutate(request.id)}
+                            type="button"
+                          >
+                            Issue
+                          </button>
+                          {canManageInventory ? (
+                            <button
+                              className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-[var(--status-error-text)] hover:bg-theme-main"
+                              onClick={() => cancelRequestMutation.mutate(request.id)}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
                       </>
                     );
                   })()}
@@ -597,7 +607,6 @@ export function InventoryPage() {
           )}
         </div>
       </div>
-
     </section>
   );
 }
