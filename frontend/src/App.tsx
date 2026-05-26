@@ -22,6 +22,7 @@ import { ProjectListPage } from './pages/projects/ProjectListPage';
 import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
 import { SecurityPage } from './pages/security/SecurityPage';
+import { SuppliersPage } from './pages/suppliers/SuppliersPage';
 
 export function App() {
   return (
@@ -85,6 +86,14 @@ export function App() {
           element={
             <RequirePermission permission="inventory:view">
               <InventoryPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/suppliers"
+          element={
+            <RequirePermission permission="suppliers:manage">
+              <SuppliersPage />
             </RequirePermission>
           }
         />

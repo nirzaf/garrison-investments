@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = False
-    smtp_from_email: str = "no-reply@garrisons.qa"
+    smtp_from_email: str = "no-reply@garrisons.lk"
     smtp_from_name: str = "Garrisons Investments"
-    exception_email_recipients: str = "quadrate.lk@gmail.com"
+    exception_email_recipients: str = "admin@garrisons.lk"
     exception_email_enabled: bool | None = None
     notification_retention_days: int = 90
     business_timezone: str = "Asia/Qatar"
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     minio_public_endpoint: str | None = None
     minio_public_secure: bool | None = None
 
-    report_email_recipients: str = ""
+    report_email_recipients: str = "admin@garrisons.lk"
     report_pdf_template_name: str = "company-standard"
 
     backup_encryption_password: str | None = None

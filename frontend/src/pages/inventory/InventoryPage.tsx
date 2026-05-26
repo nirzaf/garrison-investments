@@ -8,10 +8,8 @@ import {
   createAsset,
   createInventoryItem,
   createLocation,
-  createMaterialRequest,
   createMovement,
-  createSupplier,
-  getSupplierTdsDocumentUrl,
+  createMaterialRequest,
   issueMaterialRequest,
   listAssets,
   listInventoryItems,
@@ -21,8 +19,7 @@ import {
   listMovements,
   listSuppliers,
   receiveStock,
-  reserveMaterialRequest,
-  uploadSupplierTdsDocument
+  reserveMaterialRequest
 } from '../../api/inventory';
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -43,7 +40,11 @@ export function InventoryPage() {
     user?.role === 'civil_engineer' ||
     user?.role === 'store_keeper';
   const locations = useQuery({ queryKey: ['inventory-locations'], queryFn: listLocations });
-  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
+  const suppliers = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: listSuppliers,
+    enabled: canManageInventory
+  });
   const items = useQuery({ queryKey: ['inventory-items'], queryFn: () => listInventoryItems() });
   const lowStock = useQuery({ queryKey: ['inventory-low-stock'], queryFn: listLowStock });
   const assets = useQuery({ queryKey: ['inventory-assets'], queryFn: listAssets });
@@ -64,10 +65,6 @@ export function InventoryPage() {
   const createItemMutation = useMutation({
     mutationFn: createInventoryItem,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['inventory-items'] })
-  });
-  const createSupplierMutation = useMutation({
-    mutationFn: createSupplier,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['suppliers'] })
   });
   const receiveMutation = useMutation({
     mutationFn: receiveStock,
@@ -109,17 +106,6 @@ export function InventoryPage() {
     mutationFn: cancelMaterialRequest,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['material-requests'] })
   });
-  const supplierTdsMutation = useMutation({
-    mutationFn: ({ supplierId, file }: { supplierId: string; file: File }) =>
-      uploadSupplierTdsDocument(supplierId, file),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['suppliers'] })
-  });
-
-  async function openSupplierTdsDocument(supplierId: string) {
-    const { url } = await getSupplierTdsDocumentUrl(supplierId);
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
   useEffect(() => {
     if (!focusedRequestId) return;
     const element = materialRequestRefs.current[focusedRequestId];
@@ -142,71 +128,7 @@ export function InventoryPage() {
       </div>
 
       {canManageInventory ? (
-      <div className="grid gap-4 lg:grid-cols-3">
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createSupplierMutation.mutate({
-              name: String(form.get('name')),
-              category: String(form.get('category')),
-              rating: String(form.get('rating')),
-              payment_terms: String(form.get('payment_terms')),
-              contact_person: String(form.get('contact_person')),
-              phone: String(form.get('phone')),
-              email: String(form.get('email')),
-              address: String(form.get('address')),
-              tax_registration_number: String(form.get('tax_registration_number')),
-              tds_certificate_number: String(form.get('tds_certificate_number') || ''),
-              compliance_status: String(form.get('compliance_status'))
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="text-base font-semibold text-theme-text-primary">Supplier</h3>
-          <div className="mt-3 grid gap-3">
-            <input className="form-field" name="name" placeholder="Supplier name" required />
-            <input className="form-field" name="category" placeholder="Category" required />
-            <input className="form-field" name="rating" placeholder="Rating" required />
-            <input
-              className="form-field"
-              name="payment_terms"
-              placeholder="Payment terms"
-              required
-            />
-            <input
-              className="form-field"
-              name="contact_person"
-              placeholder="Contact person"
-              required
-            />
-            <input className="form-field" name="phone" placeholder="Phone" required />
-            <input className="form-field" name="email" placeholder="Email" required type="email" />
-            <input className="form-field" name="address" placeholder="Address" required />
-            <input
-              className="form-field"
-              name="tax_registration_number"
-              placeholder="Tax registration"
-              required
-            />
-            <input
-              className="form-field"
-              name="tds_certificate_number"
-              placeholder="TDS certificate"
-            />
-            <select className="form-field" name="compliance_status">
-              <option value="compliant">Compliant</option>
-              <option value="pending">Pending</option>
-              <option value="expired">Expired</option>
-              <option value="blocked">Blocked</option>
-            </select>
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Add supplier
-          </button>
-        </form>
-
+      <div className="grid gap-4 lg:grid-cols-2">
         <form
           className="rounded-lg border border-theme-border bg-theme-card p-4"
           onSubmit={(event) => {
@@ -676,57 +598,6 @@ export function InventoryPage() {
         </div>
       </div>
 
-      {suppliers.data && suppliers.data.length > 0 ? (
-        <div className="rounded-lg border border-theme-border bg-theme-card">
-          <div className="border-b border-theme-border px-4 py-3">
-            <h3 className="text-base font-semibold text-theme-text-primary">Supplier compliance</h3>
-          </div>
-          <div className="divide-y divide-theme-border">
-            {suppliers.data.map((supplier) => {
-              const isExpiring =
-                supplier.tds_expiry_date &&
-                new Date(supplier.tds_expiry_date).getTime() - Date.now() <
-                  1000 * 60 * 60 * 24 * 30;
-              return (
-                <div
-                  className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto]"
-                  key={supplier.id}
-                >
-                  <div>
-                    <p className="font-medium text-theme-text-primary">{supplier.name}</p>
-                    <p
-                      className={
-                        isExpiring ? 'text-[var(--status-warning-text)]' : 'text-theme-text-muted'
-                      }
-                    >
-                      TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
-                      {supplier.tds_expiry_date ?? '-'}
-                    </p>
-                  </div>
-                  <input
-                    accept=".pdf,image/png,image/jpeg"
-                    className="text-xs"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) supplierTdsMutation.mutate({ supplierId: supplier.id, file });
-                    }}
-                    type="file"
-                  />
-                  {supplier.tds_document_key ? (
-                    <button
-                      className="text-left text-xs font-semibold text-brand-600"
-                      onClick={() => void openSupplierTdsDocument(supplier.id)}
-                      type="button"
-                    >
-                      View TDS
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

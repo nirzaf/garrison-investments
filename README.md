@@ -70,12 +70,53 @@ Current local verification commands:
 
 ```bash
 cd backend
-pytest
+pytest -q -rs
 ruff check .
 mypy .
 
 cd ../frontend
 npm run lint
+npm run api:types:check
 npm test
 npm run build
+```
+
+Backend tests that need PostgreSQL, Redis, and MinIO intentionally skip when those
+services are unavailable. Use `pytest -q -rs` to make the skip reasons visible.
+
+To run the full backend suite locally with the required services available:
+
+```bash
+docker compose up -d postgres redis minio
+
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+python - <<'PY'
+import time
+
+from minio import Minio
+
+client = Minio(
+    "localhost:9000",
+    access_key="garrison_minio",
+    secret_key="garrison_minio_password",
+    secure=False,
+)
+bucket_name = "portal-files"
+deadline = time.monotonic() + 60
+
+while True:
+    try:
+        if not client.bucket_exists(bucket_name):
+            client.make_bucket(bucket_name)
+        break
+    except Exception:
+        if time.monotonic() >= deadline:
+            raise
+        time.sleep(2)
+PY
+pytest -q -rs
 ```
