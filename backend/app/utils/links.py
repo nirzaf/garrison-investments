@@ -19,7 +19,12 @@ def build_frontend_url(path: str, *, query: dict[str, str | None] | None = None)
     return f"{base_url}{normalized_path}?{encoded_query}"
 
 
-def approval_inbox_url(*, tab: str, approval_id: UUID | None = None, report_id: UUID | None = None) -> str | None:
+def approval_inbox_url(
+    *,
+    tab: str,
+    approval_id: UUID | None = None,
+    report_id: UUID | None = None,
+) -> str | None:
     return build_frontend_url(
         "/approvals",
         query={

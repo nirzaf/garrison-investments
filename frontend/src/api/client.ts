@@ -27,7 +27,11 @@ axiosRetry(apiClient, {
     if (!SAFE_RETRY_METHODS.has(method)) {
       return false;
     }
-    return axiosRetry.isRetryableError(error) || axiosRetry.isNetworkError(error) || error.code === 'ECONNABORTED';
+    return (
+      axiosRetry.isRetryableError(error) ||
+      axiosRetry.isNetworkError(error) ||
+      error.code === 'ECONNABORTED'
+    );
   }
 });
 

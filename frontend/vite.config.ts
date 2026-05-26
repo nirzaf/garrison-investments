@@ -6,17 +6,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    allowedHosts: [
-      'garrisonstg.seasonenterprise.com',
-      'www.garrisonstg.seasonenterprise.com'
-    ]
+    allowedHosts: ['garrisonstg.seasonenterprise.com', 'www.garrisonstg.seasonenterprise.com']
   },
   preview: {
     host: '0.0.0.0',
     port: 3000,
-    allowedHosts: [
-      'garrisonstg.seasonenterprise.com',
-      'www.garrisonstg.seasonenterprise.com'
-    ]
+    allowedHosts: ['garrisonstg.seasonenterprise.com', 'www.garrisonstg.seasonenterprise.com']
   }
 });

@@ -11,13 +11,15 @@ const deliveryItems = [
   },
   {
     label: 'Environments',
-    detail: 'Staging and production targets exist, but launch runs are executed manually by the deployment owner.',
+    detail:
+      'Staging and production targets exist, but launch runs are executed manually by the deployment owner.',
     icon: Route,
     status: 'external proof'
   },
   {
     label: 'Deployment',
-    detail: 'No active GitHub deployment workflow is enabled; deployment approval and execution are external launch-run evidence.',
+    detail:
+      'No active GitHub deployment workflow is enabled; deployment approval and execution are external launch-run evidence.',
     icon: Truck,
     status: 'partial'
   },
