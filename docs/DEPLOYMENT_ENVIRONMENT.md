@@ -60,10 +60,11 @@ SMTP_PORT=587
 SMTP_USERNAME=<smtp-username>
 SMTP_PASSWORD=<smtp-password>
 SMTP_USE_TLS=true
-SMTP_FROM_EMAIL=no-reply@your-domain.example
+SMTP_FROM_EMAIL=no-reply@garrisons.lk
 SMTP_FROM_NAME="Garrisons Investments"
+EXCEPTION_EMAIL_RECIPIENTS=admin@garrisons.lk
 
-REPORT_EMAIL_RECIPIENTS=<comma-separated-report-recipients>
+REPORT_EMAIL_RECIPIENTS=admin@garrisons.lk
 REPORT_PDF_TEMPLATE_NAME=company-standard
 
 BACKUP_ENCRYPTION_PASSWORD=<strong-backup-encryption-password>
@@ -71,7 +72,7 @@ BACKUP_LOCAL_DIR=/tmp/garrison-backups
 BACKUP_RETENTION_DAYS=30
 MONTHLY_BACKUP_RETENTION_MONTHS=12
 
-MONITOR_ALERT_RECIPIENTS=<comma-separated-alert-recipients>
+MONITOR_ALERT_RECIPIENTS=admin@garrisons.lk
 ```
 
 `SMTP_USERNAME`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`, and `SMTP_USE_TLS` are the

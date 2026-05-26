@@ -1,7 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToString } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { StaticRouter } from 'react-router-dom/server';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+
+  return {
+    ...actual,
+    Navigate: ({ to }: { to: string | { pathname?: string } }) => (
+      <div
+        data-navigate-to={typeof to === 'string' ? to : (to.pathname ?? '')}
+        data-testid="navigate"
+      />
+    )
+  };
+});
 
 import { App } from './App';
 import { AuthContext, type AuthContextValue } from './context/auth-context';
@@ -9,6 +23,17 @@ import { AuthContext, type AuthContextValue } from './context/auth-context';
 vi.mock('./api/analytics', () => ({
   downloadExport: vi.fn(),
   getAnalyticsSummary: vi.fn(async () => ({ projects: [], material_usage: [] }))
+}));
+
+vi.mock('./api/dashboard', () => ({
+  getDashboardSummary: vi.fn(async () => ({
+    active_projects: 0,
+    pending_reports: 0,
+    approved_reports: 0,
+    pending_documents: 0,
+    unread_notifications: 0,
+    recent_activity: []
+  }))
 }));
 
 vi.mock('./api/inventory', () => ({
@@ -31,6 +56,10 @@ vi.mock('./api/inventory', () => ({
   receiveStock: vi.fn(),
   reserveMaterialRequest: vi.fn(),
   uploadSupplierTdsDocument: vi.fn()
+}));
+
+vi.mock('./api/notifications', () => ({
+  getUnreadCount: vi.fn(async () => 0)
 }));
 
 vi.mock('./api/photos', () => ({
@@ -65,7 +94,15 @@ beforeAll(() => {
   });
 });
 
-function renderApp(route: string, permissions: string[]) {
+function renderApp({
+  route,
+  permissions = [],
+  isAuthenticated = true
+}: {
+  route: string;
+  permissions?: string[];
+  isAuthenticated?: boolean;
+}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -77,26 +114,29 @@ function renderApp(route: string, permissions: string[]) {
 
   const authValue: AuthContextValue = {
     ...baseAuthValue,
-    user: {
-      id: 'user-1',
-      email: 'manager@example.com',
-      full_name: 'Manager User',
-      role: 'general_manager',
-      employee_code: 'MGR-001',
-      phone: '+97450000000',
-      designation: 'Manager',
-      is_active: true,
-      must_change_password: false,
-      permissions
-    }
+    isAuthenticated,
+    user: isAuthenticated
+      ? {
+          id: 'user-1',
+          email: 'manager@example.com',
+          full_name: 'Manager User',
+          role: 'general_manager',
+          employee_code: 'MGR-001',
+          phone: '+97450000000',
+          designation: 'Manager',
+          is_active: true,
+          must_change_password: false,
+          permissions
+        }
+      : null
   };
 
   return renderToString(
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={authValue}>
-        <MemoryRouter initialEntries={[route]}>
+        <StaticRouter location={route}>
           <App />
-        </MemoryRouter>
+        </StaticRouter>
       </AuthContext.Provider>
     </QueryClientProvider>
   );
@@ -104,45 +144,63 @@ function renderApp(route: string, permissions: string[]) {
 
 describe('App route smoke tests', () => {
   it('renders analytics route for management users', () => {
-    const html = renderApp('/analytics', ['dashboard:company']);
+    const html = renderApp({ route: '/analytics', permissions: ['dashboard:company'] });
 
     expect(html).toContain('Analytics And Exports');
   });
 
   it('renders inventory route for materials users', () => {
-    const html = renderApp('/materials', ['inventory:view']);
+    const html = renderApp({ route: '/materials', permissions: ['inventory:view'] });
 
     expect(html).toContain('Inventory And Stores');
   });
 
+  it('renders suppliers route for supplier managers', () => {
+    const html = renderApp({ route: '/suppliers', permissions: ['suppliers:manage'] });
+
+    expect(html).toContain('Suppliers And Compliance');
+  });
+
   it('renders import route for admins', () => {
-    const html = renderApp('/admin/imports', ['users:manage']);
+    const html = renderApp({ route: '/admin/imports', permissions: ['users:manage'] });
 
     expect(html).toContain('Data Imports');
   });
 
   it('renders photos route for report viewers', () => {
-    const html = renderApp('/photos', ['reports:view']);
+    const html = renderApp({ route: '/photos', permissions: ['reports:view'] });
 
     expect(html).toContain('Photos And Attachments');
   });
 
   it('renders security route for audit users', () => {
-    const html = renderApp('/security', ['audit:view']);
+    const html = renderApp({ route: '/security', permissions: ['audit:view'] });
 
     expect(html).toContain('Security And Audit');
   });
 
   it('renders delivery route for management users', () => {
-    const html = renderApp('/delivery', ['dashboard:company']);
+    const html = renderApp({ route: '/delivery', permissions: ['dashboard:company'] });
 
     expect(html).toContain('Delivery Plan');
   });
 
   it('renders profile route for signed-in users', () => {
-    const html = renderApp('/profile', []);
+    const html = renderApp({ route: '/profile' });
 
     expect(html).toContain('Profile');
     expect(html).toContain('MGR-001');
+  });
+
+  it('redirects unauthenticated users to login for protected routes', () => {
+    const html = renderApp({ route: '/materials', isAuthenticated: false });
+
+    expect(html).toContain('data-navigate-to="/login"');
+  });
+
+  it('redirects users without required permission to dashboard', () => {
+    const html = renderApp({ route: '/suppliers', permissions: ['inventory:view'] });
+
+    expect(html).toContain('data-navigate-to="/dashboard"');
   });
 });

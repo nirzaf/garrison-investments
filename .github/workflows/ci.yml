@@ -61,6 +61,175 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt
 
+      - name: Install backend audit tooling
+        run: pip install pip-audit
+
+      - name: pip-audit (high/critical)
+        run: |
+          set +e
+          pip-audit -r requirements.txt --format json > pip-audit.json
+          status=$?
+          set -e
+          PIP_AUDIT_EXIT_CODE="$status" python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          HIGH_THRESHOLD = 7.0
+          SEVERITY_SCORES = {
+              "low": 3.9,
+              "medium": 6.9,
+              "moderate": 6.9,
+              "high": 8.9,
+              "critical": 10.0,
+          }
+
+
+          def collect_scores(value):
+              scores = []
+              if value is None:
+                  return scores
+              if isinstance(value, (int, float)):
+                  return [float(value)]
+              if isinstance(value, str):
+                  lowered = value.strip().lower()
+                  if lowered in SEVERITY_SCORES:
+                      return [SEVERITY_SCORES[lowered]]
+                  try:
+                      return [float(lowered)]
+                  except ValueError:
+                      return []
+              if isinstance(value, list):
+                  for item in value:
+                      scores.extend(collect_scores(item))
+                  return scores
+              if isinstance(value, dict):
+                  for key in (
+                      "score",
+                      "scores",
+                      "severity",
+                      "severity_score",
+                      "severity_scores",
+                      "cvss",
+                      "cvss_score",
+                      "cvss_scores",
+                      "cvss_v3",
+                      "cvss_v3_score",
+                      "cvssv3",
+                      "cvssv3_score",
+                      "base_score",
+                      "value",
+                      "database_specific",
+                  ):
+                      if key in value:
+                          scores.extend(collect_scores(value[key]))
+                  return scores
+              return scores
+
+
+          def dependency_entries(report):
+              if isinstance(report, dict):
+                  if isinstance(report.get("dependencies"), list):
+                      return report["dependencies"]
+                  if isinstance(report.get("packages"), list):
+                      return report["packages"]
+              if isinstance(report, list):
+                  return report
+              return []
+
+
+          path = Path("pip-audit.json")
+          if not path.exists():
+              print("::error::pip-audit did not produce JSON output")
+              raise SystemExit(1)
+
+          raw = path.read_text(encoding="utf-8").strip()
+          if not raw:
+              print("::error::pip-audit produced empty output")
+              raise SystemExit(1)
+
+          try:
+              report = json.loads(raw)
+          except json.JSONDecodeError as exc:
+              print(f"::error::pip-audit output was not valid JSON: {exc}")
+              raise SystemExit(1)
+
+          exit_code = int(os.environ.get("PIP_AUDIT_EXIT_CODE", "0"))
+          if exit_code not in {0, 1}:
+              print(f"::error::pip-audit failed unexpectedly with exit code {exit_code}")
+              raise SystemExit(exit_code)
+
+          blocking = []
+          unscored = []
+          below_threshold = []
+
+          for dependency in dependency_entries(report):
+              package_name = dependency.get("name") or dependency.get("package") or "unknown"
+              package_version = dependency.get("version") or "unknown"
+              vulns = dependency.get("vulns") or dependency.get("vulnerabilities") or []
+
+              for vuln in vulns:
+                  vuln_id = vuln.get("id") or vuln.get("alias") or vuln.get("name") or "unknown"
+                  fix_versions = vuln.get("fix_versions") or []
+                  score_candidates = []
+                  for key in (
+                      "severity",
+                      "severity_score",
+                      "cvss",
+                      "cvss_score",
+                      "cvss_v3",
+                      "cvss_v3_score",
+                      "cvssv3",
+                      "cvssv3_score",
+                      "database_specific",
+                      "aliases",
+                  ):
+                      score_candidates.extend(collect_scores(vuln.get(key)))
+
+                  score = max(score_candidates) if score_candidates else None
+                  finding = {
+                      "package": package_name,
+                      "version": package_version,
+                      "id": vuln_id,
+                      "score": score,
+                      "fix_versions": fix_versions,
+                  }
+
+                  if score is None:
+                      unscored.append(finding)
+                  elif score >= HIGH_THRESHOLD:
+                      blocking.append(finding)
+                  else:
+                      below_threshold.append(finding)
+
+          if below_threshold:
+              print(
+                  f"pip-audit found {len(below_threshold)} low/medium vulnerability finding(s); CI allows them."
+              )
+
+          if unscored:
+              print(
+                  f"::warning::{len(unscored)} pip-audit finding(s) had no severity metadata and were not used for CI gating."
+              )
+              for finding in unscored[:20]:
+                  print(
+                      f"  - {finding['package']} {finding['version']} {finding['id']} (no severity metadata)"
+                  )
+
+          if blocking:
+              print("::error::High or critical Python dependency vulnerabilities detected")
+              for finding in blocking:
+                  fix = ", ".join(finding["fix_versions"]) if finding["fix_versions"] else "no fix listed"
+                  print(
+                      f"  - {finding['package']} {finding['version']} {finding['id']} "
+                      f"(score {finding['score']:.1f}, fix: {fix})"
+                  )
+              raise SystemExit(1)
+
+          print("pip-audit passed the high/critical vulnerability gate.")
+          PY
+
       - name: Ruff
         run: ruff check .
 
@@ -101,7 +270,7 @@ jobs:
           PY
 
       - name: Pytest
-        run: pytest -q
+        run: pytest -q -rs
 
   frontend:
     name: Frontend lint, test, and build
@@ -122,6 +291,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: OpenAPI types drift check
+        run: npm run api:types:check
+
+      - name: npm audit (high/critical)
+        run: npm audit --audit-level=high
 
       - name: ESLint
         run: npm run lint

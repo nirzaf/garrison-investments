@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smtp-port", type=int, default=int(os.getenv("SMTP_PORT", "1025")))
     parser.add_argument(
         "--from-email",
-        default=os.getenv("SMTP_FROM_EMAIL", "no-reply@garrisons.qa"),
+        default=os.getenv("SMTP_FROM_EMAIL", "no-reply@garrisons.lk"),
     )
     parser.add_argument("--alert-to", default=os.getenv("MONITOR_ALERT_RECIPIENTS", ""))
     return parser.parse_args()

@@ -14,6 +14,7 @@ import {
   Package,
   Receipt,
   ShieldCheck,
+  Truck,
   UserCog,
   UserRound,
   X
@@ -59,6 +60,7 @@ const navItems: NavItem[] = [
     icon: Package,
     mobile: true
   },
+  { label: 'Suppliers', to: '/suppliers', permission: 'suppliers:manage', icon: Truck },
   { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
