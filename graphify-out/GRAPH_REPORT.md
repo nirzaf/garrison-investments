@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-05-26)
 
 ## Corpus Check
-- 351 files · ~237,093 words
+- 306 files · ~202,151 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3539 nodes · 10568 edges · 247 communities (242 shown, 5 thin omitted)
+- 3540 nodes · 10568 edges · 250 communities (245 shown, 5 thin omitted)
 - Extraction: 55% EXTRACTED · 45% INFERRED · 0% AMBIGUOUS · INFERRED: 4762 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3a14164a`
+- Built from commit: `cc401593`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -237,6 +237,8 @@
 - [[_COMMUNITY_Community 223|Community 223]]
 - [[_COMMUNITY_Community 231|Community 231]]
 - [[_COMMUNITY_Community 232|Community 232]]
+- [[_COMMUNITY_Community 247|Community 247]]
+- [[_COMMUNITY_Community 248|Community 248]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `User` - 441 edges
@@ -262,7 +264,7 @@
 - `int` --uses--> `SupervisorUpdate`  [INFERRED]
   backend/app/repositories/supervisor_update_repository.py → backend/app/models/supervisor_update.py
 
-## Communities (247 total, 5 thin omitted)
+## Communities (250 total, 5 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.08
@@ -313,8 +315,8 @@ Cohesion: 0.10
 Nodes (30): int, str, User, bytes, str, UUID, bool, Namespace (+22 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.25
-Nodes (30): AttachmentList(), BarList(), CardList(), Checklist(), DataTable(), Detail(), MetricCard(), MiniFactGrid() (+22 more)
+Cohesion: 0.26
+Nodes (28): AttachmentList(), BarList(), CardList(), Checklist(), DataTable(), Detail(), MiniFactGrid(), PackageIcon() (+20 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.15
@@ -441,8 +443,8 @@ Cohesion: 0.09
 Nodes (22): 1. System Architecture, 2. Project Structure, 3.1 Backend — FastAPI, 3.2 Frontend — React, 3.3 Database — PostgreSQL, 3.4 Infrastructure, 3. Technology Decisions, 4.1 Authentication Flow (+14 more)
 
 ### Community 44 - "Community 44"
-Cohesion: 0.09
-Nodes (23): code:bash (mkdir -p graphify-out), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash (# Detect the correct Python interpreter (handles pipx, venv,), code:bash ($(cat .graphify_python) -c "), code:bash (python3 -m graphify.serve graphify-out/graph.json) (+15 more)
+Cohesion: 0.10
+Nodes (20): code:bash (mkdir -p graphify-out), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash (# Detect the correct Python interpreter (handles pipx, venv,), code:bash ($(cat .graphify_python) -c "), code:bash (python3 -m graphify.serve graphify-out/graph.json), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c ") (+12 more)
 
 ### Community 45 - "Community 45"
 Cohesion: 0.12
@@ -457,8 +459,8 @@ Cohesion: 0.14
 Nodes (15): str, T, run_async_task(), _run_with_fresh_pool(), send_email_notification(), send_report_email(), _business_now(), check_late_reports() (+7 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.15
-Nodes (15): navGroups, PortalPrototype(), screenTitles, getTourModalPosition(), ProductTourOverlay(), TourModalPosition, TourRect, navItems (+7 more)
+Cohesion: 0.17
+Nodes (13): navGroups, PortalPrototype(), screenTitles, getTourModalPosition(), ProductTourOverlay(), TourModalPosition, TourRect, navItems (+5 more)
 
 ### Community 49 - "Community 49"
 Cohesion: 0.10
@@ -1132,6 +1134,14 @@ Nodes (3): code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_
 Cohesion: 0.67
 Nodes (3): code:bash ($(cat .graphify_python) -c "), code:block24 (Graph complete. Outputs in PATH_TO_DIR/graphify-out/), Step 9 - Save manifest, update cost tracker, clean up, and report
 
+### Community 247 - "Community 247"
+Cohesion: 0.31
+Nodes (4): MetricCard(), Panel(), WalkthroughTimeline(), sampleAttachments
+
+### Community 248 - "Community 248"
+Cohesion: 0.67
+Nodes (3): code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag)
+
 ## Knowledge Gaps
 - **1074 isolated node(s):** `composite`, `skipLibCheck`, `module`, `moduleResolution`, `allowSyntheticDefaultImports` (+1069 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -1141,11 +1151,11 @@ Nodes (3): code:bash ($(cat .graphify_python) -c "), code:block24 (Graph complet
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `User` connect `Community 10` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 131`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 19`, `Community 20`, `Community 22`, `Community 25`, `Community 27`, `Community 29`, `Community 30`, `Community 33`, `Community 35`, `Community 39`, `Community 40`, `Community 46`, `Community 50`, `Community 53`, `Community 55`, `Community 56`, `Community 58`, `Community 59`, `Community 64`, `Community 66`, `Community 70`, `Community 71`, `Community 74`, `Community 76`, `Community 77`, `Community 79`, `Community 105`?**
-  _High betweenness centrality (0.065) - this node is a cross-community bridge._
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **Why does `AppException` connect `Community 16` to `Community 0`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 13`, `Community 15`, `Community 19`, `Community 20`, `Community 22`, `Community 25`, `Community 29`, `Community 33`, `Community 35`, `Community 37`, `Community 39`, `Community 53`, `Community 54`, `Community 58`, `Community 59`, `Community 60`, `Community 114`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
 - **Why does `DbSession` connect `Community 10` to `Community 0`, `Community 2`, `Community 35`, `Community 3`, `Community 6`, `Community 7`, `Community 8`, `Community 39`, `Community 27`, `Community 46`, `Community 15`, `Community 16`, `Community 22`, `Community 59`, `Community 29`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
 - **Are the 440 inferred relationships involving `User` (e.g. with `TimestampMixin` and `SoftDeleteMixin`) actually correct?**
   _`User` has 440 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 314 inferred relationships involving `AppException` (e.g. with `FastAPI` and `Request`) actually correct?**
