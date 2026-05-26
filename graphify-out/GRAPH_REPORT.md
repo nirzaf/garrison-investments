@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-05-26)
 
 ## Corpus Check
-- 307 files · ~203,333 words
+- 307 files · ~203,340 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3546 nodes · 10585 edges · 239 communities (234 shown, 5 thin omitted)
+- 3546 nodes · 10585 edges · 240 communities (235 shown, 5 thin omitted)
 - Extraction: 55% EXTRACTED · 45% INFERRED · 0% AMBIGUOUS · INFERRED: 4762 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `826464c4`
+- Built from commit: `abc0e6f0`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -70,6 +70,8 @@
 - [[_COMMUNITY_Community 52|Community 52]]
 - [[_COMMUNITY_Community 53|Community 53]]
 - [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
 - [[_COMMUNITY_Community 57|Community 57]]
 - [[_COMMUNITY_Community 58|Community 58]]
 - [[_COMMUNITY_Community 60|Community 60]]
@@ -159,7 +161,6 @@
 - [[_COMMUNITY_Community 149|Community 149]]
 - [[_COMMUNITY_Community 150|Community 150]]
 - [[_COMMUNITY_Community 151|Community 151]]
-- [[_COMMUNITY_Community 152|Community 152]]
 - [[_COMMUNITY_Community 153|Community 153]]
 - [[_COMMUNITY_Community 154|Community 154]]
 - [[_COMMUNITY_Community 155|Community 155]]
@@ -253,7 +254,7 @@
 - `int` --uses--> `SupervisorUpdate`  [INFERRED]
   backend/app/repositories/supervisor_update_repository.py → backend/app/models/supervisor_update.py
 
-## Communities (239 total, 5 thin omitted)
+## Communities (240 total, 5 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.08
@@ -293,7 +294,7 @@ Nodes (38): date, DbSession, File, Form, Query, str, UploadFile, UUID (+30 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.04
-Nodes (31): financeCards, financeWorkflow, invoices, adminSecurityControls, auditRows, roleMatrix, users, approvalItems (+23 more)
+Nodes (38): screenTitles, WalkthroughTimeline(), adminSecurityControls, auditRows, roleMatrix, users, approvalItems, dashboardPanels (+30 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.39
@@ -304,8 +305,8 @@ Cohesion: 0.09
 Nodes (39): DbSession, File, ImportPreviewResponse, ImportRunResponse, Response, str, UploadFile, UUID (+31 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.24
-Nodes (31): AttachmentList(), BarList(), CardList(), Checklist(), DataTable(), Detail(), MetricCard(), MiniFactGrid() (+23 more)
+Cohesion: 0.51
+Nodes (17): AttachmentList(), BarList(), CardList(), Checklist(), DataTable(), Detail(), MetricCard(), MiniFactGrid() (+9 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.25
@@ -320,8 +321,8 @@ Cohesion: 0.21
 Nodes (24): CurrentUser, DbSession, ge, int, le, Query, str, SupervisorUpdateCreateRequest (+16 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.10
-Nodes (44): get_current_user(), get_request_meta(), require_permission(), AuthUserResponse, Request, str, User, alias (+36 more)
+Cohesion: 0.12
+Nodes (32): AuthUserResponse, alias, CurrentUser, DbSession, int, Response, str, User (+24 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.05
@@ -405,7 +406,7 @@ Nodes (28): 1.1 Project Setup & Infrastructure, 1.2 Authentication & User Manage
 
 ### Community 37 - "Community 37"
 Cohesion: 0.19
-Nodes (14): Request, Response, str, UUID, str, Request, str, audit_authenticated_request() (+6 more)
+Nodes (15): get_request_meta(), Request, Response, str, UUID, str, Request, str (+7 more)
 
 ### Community 38 - "Community 38"
 Cohesion: 0.07
@@ -444,12 +445,12 @@ Cohesion: 0.24
 Nodes (8): CurrentUser, DashboardSummaryResponse, DbSession, int, User, DashboardSummaryResponse, DashboardService, dashboard_summary()
 
 ### Community 47 - "Community 47"
-Cohesion: 0.15
-Nodes (17): str, T, run_async_task(), _run_with_fresh_pool(), send_email_notification(), send_report_email(), _business_now(), check_late_reports() (+9 more)
+Cohesion: 0.19
+Nodes (13): T, run_async_task(), _run_with_fresh_pool(), _business_now(), check_late_reports(), check_supplier_tds_expiry(), cleanup_old_notifications(), _late_report_recipients() (+5 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.16
-Nodes (14): navGroups, PortalPrototype(), screenTitles, getTourModalPosition(), ProductTourOverlay(), TourModalPosition, TourRect, navItems (+6 more)
+Cohesion: 0.13
+Nodes (23): navGroups, PortalPrototype(), getTourModalPosition(), ProductTourOverlay(), TourModalPosition, TourRect, navItems, PortalNavGroup (+15 more)
 
 ### Community 49 - "Community 49"
 Cohesion: 0.10
@@ -472,8 +473,16 @@ Cohesion: 0.20
 Nodes (13): int, str, bool, str, User, test_accounts_permissions_match_finance_scope(), AppException, BusinessRuleException (+5 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.19
-Nodes (14): int, str, Exception, Request, str, BaseException, EmailService, _authenticated_subject() (+6 more)
+Cohesion: 0.15
+Nodes (18): int, str, Exception, Request, str, str, BaseException, EmailService (+10 more)
+
+### Community 55 - "Community 55"
+Cohesion: 0.25
+Nodes (12): get_current_user(), require_permission(), Request, str, User, bearer_scheme, Depends, HTTPAuthorizationCredentials (+4 more)
+
+### Community 56 - "Community 56"
+Cohesion: 0.50
+Nodes (3): financeCards, financeWorkflow, invoices
 
 ### Community 57 - "Community 57"
 Cohesion: 0.11
@@ -484,8 +493,8 @@ Cohesion: 0.18
 Nodes (15): AuthOtpChallenge, AuthRefreshToken, AsyncSession, bool, str, UUID, AsyncSession, str (+7 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.23
-Nodes (17): get_settings(), bool, datetime, str, UUID, ErrorDetail, create_access_token(), decode_access_token() (+9 more)
+Cohesion: 0.24
+Nodes (16): get_settings(), bool, datetime, str, UUID, ErrorDetail, create_access_token(), decode_access_token() (+8 more)
 
 ### Community 61 - "Community 61"
 Cohesion: 0.30
@@ -831,10 +840,6 @@ Nodes (5): components, $defs, operations, paths, webhooks
 Cohesion: 0.33
 Nodes (6): code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash (if [ ! -f graphify-out/.graphify_extract.json ]; then), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), For --update (incremental re-extraction)
 
-### Community 152 - "Community 152"
-Cohesion: 0.33
-Nodes (5): businessFlow, kpis, launchModules, operatingCapabilities, operatingDomains
-
 ### Community 153 - "Community 153"
 Cohesion: 0.33
 Nodes (5): `boq_items`, Columns, Keys, Outbound Relationships, Referenced By
@@ -1095,11 +1100,11 @@ Nodes (3): code:bash ($(cat .graphify_python) -c "), code:block24 (Graph complet
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `User` connect `Community 30` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 19`, `Community 20`, `Community 22`, `Community 25`, `Community 27`, `Community 35`, `Community 40`, `Community 46`, `Community 50`, `Community 53`, `Community 58`, `Community 64`, `Community 66`, `Community 70`, `Community 71`, `Community 76`, `Community 77`?**
+- **Why does `User` connect `Community 30` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 19`, `Community 20`, `Community 22`, `Community 25`, `Community 27`, `Community 35`, `Community 40`, `Community 46`, `Community 50`, `Community 53`, `Community 55`, `Community 58`, `Community 64`, `Community 66`, `Community 70`, `Community 71`, `Community 76`, `Community 77`?**
   _High betweenness centrality (0.060) - this node is a cross-community bridge._
-- **Why does `AppException` connect `Community 53` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 19`, `Community 22`, `Community 25`, `Community 27`, `Community 30`, `Community 35`, `Community 37`, `Community 54`, `Community 58`, `Community 60`, `Community 114`?**
+- **Why does `AppException` connect `Community 53` to `Community 0`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 19`, `Community 22`, `Community 25`, `Community 27`, `Community 30`, `Community 35`, `Community 37`, `Community 54`, `Community 55`, `Community 58`, `Community 60`, `Community 114`?**
   _High betweenness centrality (0.030) - this node is a cross-community bridge._
-- **Why does `DbSession` connect `Community 35` to `Community 0`, `Community 2`, `Community 3`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 46`, `Community 15`, `Community 16`, `Community 19`, `Community 53`, `Community 22`, `Community 27`, `Community 30`?**
+- **Why does `DbSession` connect `Community 35` to `Community 0`, `Community 2`, `Community 3`, `Community 6`, `Community 7`, `Community 8`, `Community 11`, `Community 46`, `Community 15`, `Community 16`, `Community 19`, `Community 53`, `Community 22`, `Community 55`, `Community 27`, `Community 30`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Are the 440 inferred relationships involving `User` (e.g. with `TimestampMixin` and `SoftDeleteMixin`) actually correct?**
   _`User` has 440 INFERRED edges - model-reasoned connections that need verification._
