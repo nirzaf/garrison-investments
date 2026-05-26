@@ -74,19 +74,34 @@ Role-specific staging users:
 
 | Role | Email | Password |
 | --- | --- | --- |
-| Admin | `stg-admin@garrisons.qa` | `StageTest123!` |
-| General Manager | `stg-general-manager@garrisons.qa` | `StageTest123!` |
-| Operation Manager | `stg-operation-manager@garrisons.qa` | `StageTest123!` |
-| Project Manager | `stg-project-manager@garrisons.qa` | `StageTest123!` |
-| Civil Engineer | `stg-civil-engineer@garrisons.qa` | `StageTest123!` |
-| Civil Supervisor | `stg-civil-supervisor@garrisons.qa` | `StageTest123!` |
-| Store Keeper | `stg-store-keeper@garrisons.qa` | `StageTest123!` |
-| Accounts | `stg-accounts@garrisons.qa` | `StageTest123!` |
+| Admin | `admin.test@garrisons.lk` | `StageTest@123` |
+| General Manager | `gm.test@garrisons.lk` | `StageTest@123` |
+| Operation Manager | `operations.test@garrisons.lk` | `StageTest@123` |
+| Project Manager | `pm.test@garrisons.lk` | `StageTest@123` |
+| Civil Engineer | `engineer.test@garrisons.lk` | `StageTest@123` |
+| Civil Supervisor | `supervisor.test@garrisons.lk` | `StageTest@123` |
+| Store Keeper | `storekeeper.test@garrisons.lk` | `StageTest@123` |
+| Accounts | `accounts.test@garrisons.lk` | `StageTest@123` |
 
 Legacy temporary staging login created by `scripts/seed.py`:
 
-- Admin email: `fazrin@quadrate.lk`
-- Temporary password: `Dob280884@`
+- Admin email: `admin.test@garrisons.lk`
+- Temporary password: `StageTest@123`
+
+### What Each Test User Can Do
+
+| Role | Key Permissions | Primary Features & Responsibilities |
+| --- | --- | --- |
+| **Admin** | All 16 permissions (full system access) | Full CRUD on users/projects/reports/inventory/suppliers/documents/finance; audit logs; security screens; can override submitted reports; company-wide analytics and delivery planning |
+| **General Manager** | `users:read`, `projects:read`/`:manage`, `dashboard:company`, `reports:view`/`:approve`, `inventory:view`, `suppliers:manage`, `documents:view`/`:manage`, `financial:view` | Executive oversight; cross-project approvals for any report; company-wide dashboard; manage suppliers and documents; view all financial data |
+| **Operation Manager** | Same as General Manager (10 permissions) | High-value approvals and escalations; overall operational oversight; receives material request escalations and invoice due notifications; view users but cannot manage them |
+| **Project Manager** | `dashboard:scoped`, `projects:read`, `reports:view`/`:approve`, `inventory:view`, `documents:view`/`:manage`, `financial:view` | Scoped to assigned projects only; approve reports/project budgets for their projects; manage documents; view inventory and financials; receives report escalation notifications |
+| **Civil Engineer** | `dashboard:scoped`, `projects:read`, `reports:view`/`:submit`, `inventory:view`, `documents:view`/`:manage` | Submit daily reports and material requests; scoped to assigned projects; can only see own reports; manage documents; view inventory |
+| **Civil Supervisor** | `dashboard:scoped`, `projects:read`, `reports:view`/`:submit` | Submit supervisor updates and daily reports; scoped to assigned projects; most limited read-only role; Reports nav auto-routes to supervisor update form |
+| **Store Keeper** | `dashboard:scoped`, `inventory:view`/`:manage`, `suppliers:manage` | Full inventory management; manage supplier records; handle material requests and stock movements; scoped dashboard; receives material request escalations |
+| **Accounts** | `dashboard:scoped`, `projects:read`, `reports:view`, `documents:view`/`:manage`, `financial:view` | Finance features (invoices, payments, bank withdrawals, ledgers); unrestricted project visibility (can view all projects); manage documents; receives invoice due notifications |
+
+> **Note:** Besides the 8 system roles, users are also assigned **project-level roles** (free-form strings like "Project Manager", "Civil Engineer", "Store Keeper") via the `project_members` table. Project-level role assignment controls membership access for scoped roles — a Project Manager can only approve reports in projects they're a member of, while Admin/General Manager/Operation Manager bypass membership checks entirely.
 
 These credentials are for staging smoke tests only. Change or remove them before any production deployment.
 Use the configured staging shared OTP for login verification when `STAGING_LOGIN_OTP` is set.
