@@ -1,5 +1,7 @@
 # ARCHITECTURE.md — Construction Internal Portal
 
+Last synced with `graphify-out/` (commit `ed3f1cca`, report date 2026-05-28): 221 files · ~149,503 words · 3,248 nodes · 14,822 edges · 170 communities. Note: ~48% of edges are INFERRED and may include noise (e.g., standard Python types like `int`/`str` showing up as entities).
+
 ## Table of Contents
 
 1. [High-Level System Architecture](#1-high-level-system-architecture)
@@ -82,12 +84,12 @@
    - Private files (photos, documents, reports, invoices) are NEVER
      served directly by Nginx — they go through FastAPI authorization
 
-3. FastAPI middleware executes in order:
-   a. CORSMiddleware          — validates origin against allowlist
-   b. AuthMiddleware          — decodes JWT, attaches user to request.state
-   c. RBACMiddleware          — checks role permission for endpoint
-   d. RateLimitMiddleware     — checks Redis counters (via slowapi)
-   e. AuditMiddleware         — logs request metadata
+3. FastAPI request pipeline executes in order:
+   a. CORSMiddleware                 — validates origin against allowlist
+   b. Request context middleware     — assigns `X-Request-ID`, measures duration
+   c. Auth rate-limit middleware     — Redis-backed rate limiting for auth endpoints
+   d. Audit middleware               — logs authenticated request metadata + outcome
+   e. Route dependencies             — `get_current_user` and `require_permission(...)`
 
 4. Route handler:
    a. Validates input via Pydantic V2 schema
@@ -111,27 +113,27 @@
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Frontend Framework | React 18 + TypeScript | Component-based UI, strict type safety |
-| Build Tool | Vite 8 | Fast HMR, tree shaking, code splitting |
+| Build Tool | Vite 6 | Fast HMR, tree shaking, code splitting |
 | Styling | Tailwind CSS 3 | Utility-first responsive design |
 | Routing | React Router 6 | Client-side routing with lazy loading |
 | Server State | TanStack Query 5 | API caching, refetching, optimistic mutations |
 | Forms | React Hook Form + Zod | Performant forms with schema validation |
-| Tables | TanStack Table 8 | Headless data grid |
-| Charts | Recharts 2 | Declarative React charting |
+| Charts | Recharts | Declarative React charting |
 | HTTP Client | Axios | Interceptors, JWT refresh logic |
-| Backend Framework | FastAPI (Python 3.12+) | Async web framework, auto OpenAPI |
-| ORM | SQLAlchemy 2.0 (async) | Async ORM with 2.0-style queries |
+| Backend Runtime | Python 3.12 | Backend container runtime (see `backend/Dockerfile`) |
+| Backend Framework | FastAPI | Async API framework, auto OpenAPI |
+| ORM | SQLAlchemy 2.0 (async) + asyncpg | Async ORM and PostgreSQL driver |
 | Migrations | Alembic | Schema versioning, auto-generated from models |
-| Validation | Pydantic V2 | Request/response schemas, computed fields |
+| Validation | Pydantic (via pydantic-settings) | Request/response schemas and settings |
 | Auth | python-jose + bcrypt | JWT signing, password hashing |
-| Task Queue | Celery 5 + Redis broker | Async background tasks |
+| Task Queue | Celery 5 + Redis broker | Email, image, report, backup, and maintenance jobs |
 | Database | PostgreSQL 16 | Primary relational data store |
-| Cache/Broker | Redis 7 | Caching, Celery broker, rate-limit counters |
+| Cache/Broker | Redis | Caching, Celery broker, rate-limit counters |
 | Object Storage | MinIO | S3-compatible self-hosted file storage |
 | Reverse Proxy | Nginx | TLS termination, static files, security headers |
 | Container Runtime | Docker + Docker Compose | Consistent dev/prod environments |
 | CI/CD | GitHub Actions + launch-owner deployment | Lint, test, build, and Docker validation; deployment execution remains manual |
-| Monitoring | Prometheus + Grafana | Metrics and dashboards (optional, Phase 2+) |
+| Monitoring | Not configured | Metrics can be added later if needed |
 | Logging | structlog | Structured JSON logging |
 
 ---
@@ -154,7 +156,7 @@ THIS IS FORBIDDEN:
   - Services importing FastAPI Request/Response objects
   - Routes accessing SQLAlchemy sessions directly (must use dependency injection)
   - Any layer importing models from outside its domain
-  - Services returning SQLAlchemy models to routes (return Pydantic schemas instead)
+  - Services returning HTTP-layer types (Response, status codes, HTTPException)
 ```
 
 ### 2.2 Layer Diagram
@@ -230,11 +232,11 @@ THIS IS FORBIDDEN:
 ### 2.3 Route Layer (Example)
 
 ```python
-# api/v1/reports.py
+# api/v1/reports.py (illustrative)
 
 from fastapi import APIRouter, Depends, status
 from app.api.dependencies import get_db, get_current_user
-from app.schemas.daily_report import ReportCreate, ReportResponse, ReportListParams
+from app.schemas.daily_reports import DailyReportCreateRequest, DailyReportResponse
 from app.services.report_service import ReportService
 from app.models.user import User
 
@@ -242,18 +244,18 @@ router = APIRouter(prefix="/reports", tags=["Daily Reports"])
 
 @router.post("/", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 async def create_report(
-    data: ReportCreate,
+    data: DailyReportCreateRequest,
     db = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new daily report (draft). All business logic is in ReportService."""
+    """Create a new daily report. All business logic is in ReportService."""
     service = ReportService(db)
     report = await service.create_report(data, current_user)
     return report
 
-@router.get("/", response_model=PaginatedResponse[ReportResponse])
+@router.get("/", response_model=PaginatedResponse[DailyReportResponse])
 async def list_reports(
-    params: ReportListParams = Depends(),
+    params = Depends(),
     db = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -337,7 +339,7 @@ Rules:
 ### 2.5 Repository Layer (Example)
 
 ```python
-# repositories/report_repository.py
+# repositories/daily_report_repository.py (illustrative)
 
 class ReportRepository:
     def __init__(self, db: AsyncSession):
@@ -419,45 +421,37 @@ class SoftDeleteMixin:
 
 The request pipeline uses two distinct mechanisms — global Starlette middleware and FastAPI route dependencies — applied at different scopes for different purposes.
 
-**Global middleware** (applies to every request, including health checks and static fallback):
+**Global middleware** (applies to every request, including health checks):
 
 | Order | Middleware | Responsibility | Library / Module |
 |-------|-----------|---------------|-----------------|
 | 1 | CORS | Validate origin against allowlist | `fastapi.middleware.cors` |
-| 2 | Request ID | Attach `X-Request-ID` to request state and response header | `app/middleware/request_id.py` |
-| 3 | Timing | Record request duration; expose to Prometheus (optional) | `app/middleware/timing.py` |
+| 2 | Request context | Attach `X-Request-ID` and request timing to response headers | `backend/app/main.py` |
+| 3 | Auth rate limiting | Protect auth endpoints using Redis counters | `backend/app/main.py` + `app/middleware/rate_limit.py` |
+| 4 | Audit logging | Persist authenticated request audit records with response status | `backend/app/main.py` + `app/middleware/audit.py` |
 
-**Route-level dependencies** (applied via `Depends()` on API routers only — do not execute on static files or health checks):
+**Route-level dependencies** (applied via `Depends()` on API routes only):
 
 | Order | Dependency | Responsibility | Implementation |
 |-------|-----------|---------------|----------------|
-| 4 | `get_current_user` | Decode JWT, fetch user, attach to `request.state.user` | `app/api/dependencies.py` |
-| 5 | `require_permission(...)` | Check user role against endpoint permission | `app/api/dependencies.py` |
-| 6 | Rate limit | Check Redis counters per IP/user/endpoint | `slowapi` (Redis-backed), applied per sensitive route |
+| 1 | `get_current_user` | Validate JWT (Bearer token) and resolve user | `backend/app/api/dependencies.py` |
+| 2 | `require_permission(...)` | Check user role against endpoint permission | `backend/app/api/dependencies.py` |
 
-**Custom APIRoute for audit logging** (wraps route execution to capture request + response):
-
-| Layer | Responsibility | Implementation |
-|-------|---------------|----------------|
-| Audit route | Log `user_id`, `action`, `entity_type`, `entity_id`, `old_values`, `new_values`, response status | Custom `APIRoute` subclass in `app/middleware/audit.py` |
-
-Audit logging uses a custom `APIRoute` rather than a simple dependency because it needs to know the response status code — whether the operation succeeded, failed validation, or was rejected by RBAC. A dependency that runs before the route handler cannot capture the response outcome.
+Audit logging is implemented as HTTP middleware so it can observe the final response status code.
 
 ### 2.8 Task Layer (Celery Workers)
 
-All operations that should not block the HTTP request/response cycle are handled by Celery:
+All operations that should not block the HTTP request/response cycle are handled by Celery. Task modules live in `backend/app/tasks/`.
 
-| Task | Trigger | Queue | Retry Strategy |
-|------|---------|-------|---------------|
-| `send_email_notification` | Approval change, report submit, low stock | `email` | 3 retries, exponential backoff |
-| `generate_thumbnail` | Photo upload | `image` | 2 retries |
-| `compress_photo` | Photo upload | `image` | 2 retries |
-| `generate_report_pdf` | Export endpoint | `report` | 3 retries |
-| `generate_excel_export` | Export endpoint | `report` | 3 retries |
-| `run_database_backup` | Celery Beat (daily) | `backup` | 2 retries |
-| `cleanup_old_notifications` | Celery Beat (daily) | `maintenance` | 1 retry |
-| `check_late_reports` | Celery Beat (hourly) | `maintenance` | No retry |
-| `check_low_stock` | Celery Beat (hourly) | `maintenance` | No retry |
+| Task Module | Typical Workloads |
+|------------|--------------------|
+| `tasks/report.py` | Generate report PDFs and exports |
+| `tasks/image.py` | Photo compression + thumbnail generation |
+| `tasks/email.py` | Email notifications (exception alerts, workflow emails) |
+| `tasks/approval.py` | Approval reminders and background approval processing |
+| `tasks/imports.py` | Bulk import execution |
+| `tasks/backup.py` | Database backup creation + retention |
+| `tasks/maintenance.py` | Retention cleanups and periodic housekeeping |
 
 ### 2.9 Exception Handling
 
@@ -528,7 +522,7 @@ Error response format:
 </App>
 ```
 
-The full component hierarchy is detailed in [05_UI_Component_Tree.md](05_UI_Component_Tree.md).
+The primary structure is visible in `frontend/src/` (router, pages, components, and API client).
 
 ### 3.2 State Management Strategy
 
@@ -680,7 +674,7 @@ conflict_status    — null | "server_newer" | "rejected"
 
 ### 3.6 Component Design Principles
 
-1. **Headless where possible**: `DataTable` uses TanStack Table (headless); `Select` and `Modal` use Radix primitives for accessibility
+1. **Small primitives**: UI components live under `components/ui/` and are composed into pages
 2. **One component, one file**: Each component is a single `.tsx` file with co-located types
 3. **Composition over configuration**: Components use `children` and render props, not giant config objects
 4. **Loading, empty, and error states are mandatory**: Every data-dependent component handles all three
@@ -692,7 +686,7 @@ conflict_status    — null | "server_newer" | "rejected"
 
 ### 4.1 Schema Overview
 
-23 tables organized into 7 domain groups:
+Schema documentation in `docs/schema/` currently covers 31 tables organized into domain groups:
 
 | Group | Tables |
 |-------|--------|
@@ -705,7 +699,7 @@ conflict_status    — null | "server_newer" | "rejected"
 | Accounts & Finance | `invoices`, `payments` |
 | Governance | `activity_log` |
 
-Full schema details in [02_Database_Schema.md](02_Database_Schema.md) and per-table references in [schema/](schema/).
+Full per-table details live in [schema/](schema/) and are the source of truth for the current schema.
 
 ### 4.2 Entity Relationship Summary
 
@@ -1031,7 +1025,7 @@ volumes:
 | Debug logging | Enabled (DEBUG) | Disabled (WARNING+) |
 | CORS | Allow localhost origins | Strict origin allowlist |
 | Rate limiting | Disabled | Enabled |
-| Monitoring | None | Prometheus + optional Grafana |
+| Monitoring | None | Not configured |
 
 ### 7.3 CI/CD Pipeline
 
@@ -1120,9 +1114,8 @@ Audit logs retained for 7 years. Admin-only access.
 
 ### 8.5 Health Checks
 
-- `GET /health` — `{"status": "ok", "database": "connected", "redis": "connected"}` for load balancer / Docker healthcheck
+- `GET /health` — `{"status": "ok"|"degraded", "database": "connected"|"unavailable", "redis": "not_checked"}` for load balancer / Docker healthcheck
 - `GET /health/readiness` — checks database connectivity before marking container ready
-- Prometheus metrics at `/metrics` (optional, Phase 2+)
 
 ---
 
@@ -1136,22 +1129,18 @@ garrison-investments/
 ├── .env.example
 ├── .gitignore
 ├── docker-compose.yml                 # Development
+├── docker-compose.staging.yml         # Staging
 ├── docker-compose.prod.yml            # Production
 │
 ├── docs/                              # Planning & design docs
-│   ├── 00_README.md
-│   ├── 01_Technical_Specification.md
-│   ├── 02_Database_Schema.md
-│   ├── 03_API_Specification.md
-│   ├── 04_Work_Breakdown_Structure.md
-│   └── 05_UI_Component_Tree.md
-│
-├── schema/                            # Per-table schema reference
 │   ├── README.md
-│   └── *.md                           # One file per table (23 files)
-│
-├── prototype/                         # Next.js interactive prototype (stakeholder demo)
-│   └── ...
+│   ├── ARCHITECTURE.md
+│   ├── OPERATIONS_AND_DEPLOYMENT.md
+│   ├── ROLES_AND_PERMISSIONS.md
+│   ├── openapi.json
+│   ├── schema/                        # Per-table schema reference (31 files)
+│   ├── import_templates/
+│   └── user-stories/
 │
 ├── .github/
 │   └── workflows/
@@ -1159,6 +1148,7 @@ garrison-investments/
 │
 ├── nginx/
 │   ├── nginx.conf                     # Reverse proxy + TLS + security headers
+│   ├── nginx.prod.conf                # Production config
 │   └── ssl/                           # TLS certificates (gitignored)
 │
 ├── backend/
@@ -1183,37 +1173,39 @@ garrison-investments/
 │   │   │   ├── project_milestone.py
 │   │   │   ├── boq_item.py
 │   │   │   ├── daily_report.py
-│   │   │   ├── report_manpower.py
-│   │   │   ├── report_equipment.py
-│   │   │   ├── report_material_consumption.py
-│   │   │   ├── supplier.py
-│   │   │   ├── storage_location.py
-│   │   │   ├── inventory_item.py
-│   │   │   ├── inventory_location_stock.py
-│   │   │   ├── inventory_asset.py
-│   │   │   ├── inventory_movement.py
-│   │   │   ├── document.py
-│   │   │   ├── document_version.py
-│   │   │   ├── photo.py
 │   │   │   ├── approval.py
+│   │   │   ├── auth.py
+│   │   │   ├── document.py
+│   │   │   ├── finance.py
+│   │   │   ├── import_batch.py
+│   │   │   ├── inventory.py
 │   │   │   ├── notification.py
-│   │   │   ├── invoice.py
-│   │   │   ├── payment.py
+│   │   │   ├── photo.py
+│   │   │   ├── project_task.py
+│   │   │   ├── report_export.py
+│   │   │   ├── supervisor_update.py
+│   │   │   ├── supplier.py
 │   │   │   └── activity_log.py
 │   │   │
 │   │   ├── schemas/                   # Pydantic V2 request/response schemas
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py              # PaginatedResponse, ErrorResponse, filters
-│   │   │   ├── user.py
-│   │   │   ├── project.py
-│   │   │   ├── daily_report.py
-│   │   │   ├── inventory.py
-│   │   │   ├── document.py
-│   │   │   ├── photo.py
-│   │   │   ├── approval.py
-│   │   │   ├── notification.py
+│   │   │   ├── analytics.py
+│   │   │   ├── approvals.py
+│   │   │   ├── audit.py
+│   │   │   ├── auth.py
+│   │   │   ├── daily_reports.py
 │   │   │   ├── dashboard.py
-│   │   │   └── export.py
+│   │   │   ├── documents.py
+│   │   │   ├── finance.py
+│   │   │   ├── imports.py
+│   │   │   ├── inventory.py
+│   │   │   ├── notifications.py
+│   │   │   ├── photos.py
+│   │   │   ├── projects.py
+│   │   │   ├── supervisor_updates.py
+│   │   │   ├── suppliers.py
+│   │   │   └── users.py
 │   │   │
 │   │   ├── api/                       # Route handlers (THIN — no business logic)
 │   │   │   ├── __init__.py
@@ -1221,68 +1213,81 @@ garrison-investments/
 │   │   │   └── v1/
 │   │   │       ├── __init__.py
 │   │   │       ├── router.py          # Aggregates all v1 routers
+│   │   │       ├── analytics.py
 │   │   │       ├── auth.py
+│   │   │       ├── audit.py
+│   │   │       ├── dashboard.py
+│   │   │       ├── documents.py
+│   │   │       ├── finance.py
+│   │   │       ├── imports.py
 │   │   │       ├── users.py
 │   │   │       ├── projects.py
 │   │   │       ├── reports.py
 │   │   │       ├── inventory.py
 │   │   │       ├── suppliers.py
-│   │   │       ├── documents.py
-│   │   │       ├── photos.py
 │   │   │       ├── approvals.py
 │   │   │       ├── notifications.py
-│   │   │       ├── dashboard.py
-│   │   │       └── export.py
+│   │   │       ├── photos.py
+│   │   │       └── supervisor_updates.py
 │   │   │
 │   │   ├── services/                  # Business logic layer
-│   │   │   ├── __init__.py
+│   │   │   ├── analytics_service.py
 │   │   │   ├── auth_service.py
+│   │   │   ├── audit_service.py
+│   │   │   ├── approval_service.py
+│   │   │   ├── dashboard_service.py
+│   │   │   ├── document_service.py
+│   │   │   ├── email_service.py
+│   │   │   ├── exception_reporter.py
+│   │   │   ├── finance_service.py
+│   │   │   ├── import_service.py
 │   │   │   ├── user_service.py
 │   │   │   ├── project_service.py
 │   │   │   ├── report_service.py
+│   │   │   ├── report_export_service.py
+│   │   │   ├── reporting_service.py
 │   │   │   ├── inventory_service.py
 │   │   │   ├── supplier_service.py
-│   │   │   ├── document_service.py
 │   │   │   ├── photo_service.py
-│   │   │   ├── approval_service.py
 │   │   │   ├── notification_service.py
-│   │   │   ├── dashboard_service.py
-│   │   │   ├── export_service.py
 │   │   │   └── storage_service.py
 │   │   │
 │   │   ├── repositories/              # Data access layer
-│   │   │   ├── __init__.py
-│   │   │   ├── user_repository.py
-│   │   │   ├── project_repository.py
-│   │   │   ├── report_repository.py
-│   │   │   ├── inventory_repository.py
-│   │   │   ├── document_repository.py
-│   │   │   ├── photo_repository.py
 │   │   │   ├── approval_repository.py
-│   │   │   └── notification_repository.py
+│   │   │   ├── auth_repository.py
+│   │   │   ├── daily_report_repository.py
+│   │   │   ├── document_repository.py
+│   │   │   ├── notification_repository.py
+│   │   │   ├── photo_repository.py
+│   │   │   ├── project_repository.py
+│   │   │   ├── report_export_repository.py
+│   │   │   ├── supervisor_update_repository.py
+│   │   │   └── user_repository.py
 │   │   │
 │   │   ├── middleware/
 │   │   │   ├── __init__.py
-│   │   │   ├── auth.py
-│   │   │   ├── rbac.py
 │   │   │   ├── audit.py
 │   │   │   └── rate_limit.py
 │   │   │
 │   │   ├── tasks/                     # Celery tasks
 │   │   │   ├── __init__.py
+│   │   │   ├── approval.py
+│   │   │   ├── async_utils.py
 │   │   │   ├── celery_app.py          # Celery instance config
 │   │   │   ├── email.py
 │   │   │   ├── image.py
+│   │   │   ├── imports.py
 │   │   │   ├── report.py
 │   │   │   ├── backup.py
 │   │   │   └── maintenance.py
 │   │   │
 │   │   └── utils/
 │   │       ├── __init__.py
-│   │       ├── pagination.py
-│   │       ├── file_utils.py
-│   │       ├── security.py
-│   │       └── exceptions.py
+│   │       ├── exceptions.py
+│   │       ├── links.py
+│   │       ├── permissions.py
+│   │       ├── request.py
+│   │       └── security.py
 │   │
 │   ├── tests/
 │   │   ├── conftest.py                # Fixtures: test DB, async client, auth headers
@@ -1422,7 +1427,7 @@ garrison-investments/
 - The system is an API-first backend consumed by a decoupled React SPA — not a server-rendered admin panel
 - FastAPI's automatic OpenAPI generation keeps the frontend/backend contract clear and testable
 - Pydantic V2 provides strong request/response validation from Python type hints
-- The workload is I/O-heavy (database queries, file uploads, external service calls) — FastAPI's async support is a good fit
+- The workload is I/O-heavy (database queries, file uploads, external service calls) — FastAPI's async support is a good fit when paired with disciplined query shape, indexing, pagination, transaction boundaries, and latency monitoring
 - Python excels at the reporting/export/image processing tasks this project requires (openpyxl, WeasyPrint, Pillow)
 - Django would be better for admin-heavy CRUD, but this project has a custom React admin UI and complex workflows
 
@@ -1447,6 +1452,7 @@ garrison-investments/
 - asyncpg is the fastest PostgreSQL driver for Python
 - Alembic integrates natively for migrations
 - Repository pattern wraps async sessions, keeping async concerns out of service logic
+- Async database access improves concurrency for I/O-bound work, but it does not replace query tuning, proper indexes, bounded pagination, or short transaction scopes
 
 ### ADR-004: UUID Primary Keys
 
@@ -1469,13 +1475,14 @@ garrison-investments/
 - Records are permanently purged after 30 days by a Celery task (configurable retention policy)
 - Matches the stakeholder requirement: "Users should be deactivated, not deleted; historical continuity must remain"
 
-### ADR-006: MinIO Over Cloud S3
+### ADR-006: MinIO as S3-Compatible Object Storage
 
-**Decision**: Self-host MinIO for object storage rather than using AWS S3 or another cloud provider.
+**Decision**: Self-host MinIO for S3-compatible object storage rather than binding the application directly to a cloud-provider-specific storage API.
 
 **Rationale**:
 - The system may be deployed in environments without reliable cloud access (construction sites)
-- MinIO is S3 API-compatible — switching to AWS S3 later requires only a config change
+- MinIO is S3 API-compatible, so moving to AWS S3 or another S3-compatible managed storage service can stay mostly configuration-driven if storage access remains isolated behind service helpers
+- Moving to Azure Blob Storage is possible, but it is not a drop-in swap unless the storage abstraction avoids S3-specific assumptions in application code
 - Photos and documents may contain commercially sensitive construction data
 - Self-hosting avoids per-GB egress costs for frequent photo/document downloads
 - Open source with no licensing costs
@@ -1521,27 +1528,47 @@ garrison-investments/
 
 | Technology | Version | Notes |
 |-----------|---------|-------|
-| Python | 3.12+ | Required for recent async and typing features |
-| FastAPI | 0.115+ | Latest stable with Pydantic V2 integration |
-| SQLAlchemy | 2.0+ | Async ORM with 2.0-style queries |
-| Alembic | 1.13+ | Schema migrations |
-| Pydantic | 2.x | Request/response validation |
-| Celery | 5.4+ | Background task queue |
+| Python | 3.12 | Backend Docker base image (`backend/Dockerfile`) |
+| FastAPI | 0.136.1 | `backend/requirements.txt` |
+| SQLAlchemy | 2.0.41 | `backend/requirements.txt` |
+| Alembic | 1.16.1 | `backend/requirements.txt` |
+| pydantic-settings | 2.9.1 | Settings management (`backend/requirements.txt`) |
+| Celery | 5.5.2 | Background task queue (`backend/requirements.txt`) |
 | PostgreSQL | 16 | Primary database |
-| Redis | 7.x | Cache, broker, rate limiter |
-| MinIO | Latest stable | Object storage |
+| Redis | 5.2.1 (client) | Cache, broker, rate limiter (`backend/requirements.txt`) |
+| MinIO | 7.2.15 (client) | Object storage (`backend/requirements.txt`) |
 | Nginx | 1.25+ (Alpine) | Reverse proxy |
 | React | 18.x | UI framework |
-| TypeScript | 5.x | Strict mode |
-| Vite | 8.x | Build tool |
-| Tailwind CSS | 3.x | Utility CSS framework |
-| React Router | 6.x | Client-side routing |
-| TanStack Query | 5.x | Server state management |
-| React Hook Form | 7.x | Form state management |
-| Zod | 3.x | Schema validation |
-| TanStack Table | 8.x | Data tables |
-| Recharts | 2.x | Charts |
-| Axios | 1.x | HTTP client |
-| Node.js | 20 LTS+ | Frontend runtime |
+| TypeScript | 5.8.x | `frontend/package.json` |
+| Vite | 6.3.x | `frontend/package.json` |
+| Tailwind CSS | 3.4.x | `frontend/package.json` |
+| React Router | 6.30.x | `frontend/package.json` |
+| TanStack Query | 5.77.x | `frontend/package.json` |
+| React Hook Form | 7.76.x | `frontend/package.json` |
+| Zod | 4.4.x | `frontend/package.json` |
+| Recharts | 3.8.x | `frontend/package.json` |
+| Axios | 1.9.x | `frontend/package.json` |
 | Docker | 24+ | Container runtime |
 | Docker Compose | v2 | Container orchestration |
+
+### 11.1 Graph Snapshot (graphify-out)
+
+This section summarizes the current cross-repo structure from `graphify-out/GRAPH_REPORT.md` (commit `ed3f1cca`):
+
+- Corpus: 221 files · ~149,503 words
+- Graph: 3,248 nodes · 14,822 edges · 170 communities
+- Confidence mix: 52% EXTRACTED · 48% INFERRED
+
+Top “god nodes” (highest-degree entities):
+
+- `User` (791 edges)
+- `AppException` (523 edges)
+- `AuditService` (342 edges)
+- `NotFoundException` (286 edges)
+- `DbSession` (233 edges)
+- `ProjectMember` (187 edges)
+- `Project` (180 edges)
+- `UserRepository` (172 edges)
+- `DailyReport` (171 edges)
+
+When interpreting graph-derived sections like “Surprising Connections”, treat INFERRED edges as hypotheses: some may be identifier collisions (e.g., built-in Python types) rather than true architectural coupling.
