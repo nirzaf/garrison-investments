@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
-from app.schemas.users import UserCreateRequest, UserListResponse, UserResponse, UserUpdateRequest
+from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserListResponse, UserResponse, UserUpdateRequest
 from app.services.user_service import UserService
 from app.utils.permissions import PERMISSION_USERS_MANAGE, PERMISSION_USERS_READ
 
@@ -66,4 +66,15 @@ async def deactivate_user(
     session: DbSession,
 ) -> UserResponse:
     user = await UserService(session).deactivate_user(user_id, current_user)
+    return UserResponse.model_validate(user)
+
+
+@router.post("/{user_id}/reset-password", response_model=UserResponse)
+async def admin_reset_password(
+    user_id: UUID,
+    payload: AdminPasswordResetRequest,
+    current_user: CanManageUsers,
+    session: DbSession,
+) -> UserResponse:
+    user = await UserService(session).admin_reset_password(user_id, payload, current_user)
     return UserResponse.model_validate(user)
