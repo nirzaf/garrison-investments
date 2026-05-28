@@ -3,6 +3,26 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
 
+function validatePasswordPolicy(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+  if (!/\d/.test(password)) return 'Password must include a number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must include a symbol.';
+  return null;
+}
+
+function getApiErrorDetail(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const data = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] as { message?: string; msg?: string };
+    return first.message ?? first.msg ?? null;
+  }
+  return null;
+}
+
 export function ChangePasswordPage() {
   const { changePassword } = useAuth();
   const navigate = useNavigate();
@@ -16,8 +36,9 @@ export function ChangePasswordPage() {
     event.preventDefault();
     setError(null);
 
-    if (newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
+    const policyError = validatePasswordPolicy(newPassword);
+    if (policyError) {
+      setError(policyError);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -29,8 +50,9 @@ export function ChangePasswordPage() {
     try {
       await changePassword(currentPassword, newPassword);
       navigate('/dashboard', { replace: true });
-    } catch {
-      setError('Unable to update password. Check the current password and try again.');
+    } catch (err: unknown) {
+      const detail = getApiErrorDetail(err);
+      setError(detail ?? 'Unable to update password. Check the current password and try again.');
     } finally {
       setIsSubmitting(false);
     }

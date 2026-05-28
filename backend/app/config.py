@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     backup_local_dir: str = "/tmp/garrison-backups"
     backup_retention_days: int = 30
     monthly_backup_retention_months: int = 12
+    log_source_service: str = "backend-api"
+    log_instance_id: str | None = None
+    log_hot_retention_days: int = 30
+    log_archive_retention_days: int = 365
+    log_stream_poll_seconds: float = 1.0
 
     jwt_algorithm: str = "RS256"
     jwt_private_key_path: str | None = None

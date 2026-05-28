@@ -1,5 +1,6 @@
 import {
   Bell,
+  BookOpen,
   BriefcaseBusiness,
   Camera,
   ChevronDown,
@@ -68,6 +69,7 @@ const navItems: NavItem[] = [
   { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
   { label: 'Delivery', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
+  { label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
   { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
   { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog }

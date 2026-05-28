@@ -222,7 +222,15 @@ AppException (400)          — Base application error
 Unhandled exceptions are caught by `main.py` → reported via email (`exception_reporter.py`) → logged as `INTERNAL_SERVER_ERROR`.
 
 ### Audit Logging
-Every authenticated request is logged via `middleware/audit.py` → `AuditService`. Stores user ID, action, resource, IP, timestamp.
+Every authenticated request is logged via `middleware/audit.py` → `AuditService`. The centralized event-log model also stores `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `status_code`, `source_service`, `storage_tier`, and structured `context_payload` data.
+
+Remote operator access is exposed through:
+
+- `GET /api/v1/log-events`
+- `GET /api/v1/log-events/stream`
+- `scripts/log_cli.py`
+
+See [LOGGING_AND_REMOTE_CLI.md](file:///Users/qts/Repos/garrison-investments/docs/LOGGING_AND_REMOTE_CLI.md) for usage, search filters, and streaming examples.
 
 ### Permissions (RBAC)
 8 roles: admin, general_manager, operation_manager, project_manager, civil_engineer, civil_supervisor, store_keeper, accounts.

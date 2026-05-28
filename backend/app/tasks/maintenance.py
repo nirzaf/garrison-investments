@@ -12,11 +12,41 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
+
+
+@celery_app.task(
+    name="archive_and_purge_logs",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def archive_and_purge_logs() -> str:
+    return run_async_task(_archive_and_purge_logs())
+
+
+async def _archive_and_purge_logs() -> str:
+    async with AsyncSessionLocal() as session:
+        audit = AuditService(session)
+        archived = await audit.archive_logs()
+        purged = await audit.purge_logs()
+        await audit.record(
+            action="maintenance.logs_retention",
+            event_type="system_event",
+            severity="INFO",
+            entity_type="log_events",
+            comments="Log archive/purge cycle completed",
+            context_payload={"archived": archived, "purged": purged},
+        )
+        await session.commit()
+    return f"{archived} logs archived, {purged} logs purged"
 
 
 @celery_app.task(

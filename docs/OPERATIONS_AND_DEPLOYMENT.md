@@ -133,6 +133,17 @@ docker compose -f docker-compose.prod.yml exec -T backend \
   --alert-to admin@example.com,operations@example.com
 ```
 
+### Remote Log Access
+
+Use the remote log CLI from the backend container or a trusted operator workstation to search and stream centralized application logs:
+
+```bash
+cd backend
+python scripts/log_cli.py --base-url https://portal.example.com --token-file .log-token search --severity ERROR
+```
+
+For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_REMOTE_CLI.md](./LOGGING_AND_REMOTE_CLI.md).
+
 ### Rollback
 1. Identify the last known good Git commit.
 2. Check out the known good commit on the host.
