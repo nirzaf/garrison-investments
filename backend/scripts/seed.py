@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -44,8 +45,8 @@ from app.repositories.user_repository import UserRepository
 from app.utils.security import hash_password
 
 DEFAULT_ADMIN_EMAIL = "admin.test@garrisons.lk"
-DEFAULT_ADMIN_PASSWORD = "StageTest@123"
-DEFAULT_PASSWORD = "StageTest@123"
+DEFAULT_PASSWORD = os.getenv("SEED_DEFAULT_PASSWORD") or "ChangeMe123!"
+DEFAULT_ADMIN_PASSWORD = DEFAULT_PASSWORD
 
 SEED_USERS = [
     {
@@ -388,27 +389,54 @@ async def seed_launch_data() -> None:
             legacy_admin.employee_code = "LEGACY-ADMIN-001"
             legacy_admin.is_active = False
 
+        seed_password_hash = hash_password(DEFAULT_PASSWORD)
         created_users = 0
         updated_users = 0
         for seed_user in SEED_USERS:
-            existing = await users.get_by_email(seed_user["email"])
+            email = seed_user["email"].lower()
+            employee_code = seed_user["employee_code"]
+
+            existing_by_email = await users.get_by_email(email)
+            existing_by_employee_code = None
+            if employee_code:
+                existing_by_employee_code = await session.scalar(
+                    select(User).where(
+                        User.employee_code == employee_code,
+                        User.deleted_at.is_(None),
+                    )
+                )
+
+            existing = existing_by_email or existing_by_employee_code
             if existing:
+                if (
+                    existing_by_email
+                    and existing_by_employee_code
+                    and existing_by_email.id != existing_by_employee_code.id
+                ):
+                    existing_by_employee_code.employee_code = None
+
+                existing.email = email
                 existing.full_name = seed_user["full_name"]
                 existing.role = seed_user["role"]
-                existing.employee_code = seed_user["employee_code"]
+                existing.employee_code = employee_code
                 existing.phone = seed_user["phone"]
                 existing.designation = seed_user["designation"]
+                existing.password_hash = seed_password_hash
+                existing.must_change_password = True
+                existing.is_active = True
+                existing.failed_login_attempts = 0
+                existing.locked_until = None
                 updated_users += 1
                 continue
             await users.add(
                 User(
-                    email=seed_user["email"],
+                    email=email,
                     full_name=seed_user["full_name"],
                     role=seed_user["role"],
-                    employee_code=seed_user["employee_code"],
+                    employee_code=employee_code,
                     phone=seed_user["phone"],
                     designation=seed_user["designation"],
-                    password_hash=hash_password(DEFAULT_PASSWORD),
+                    password_hash=seed_password_hash,
                     must_change_password=True,
                 )
             )

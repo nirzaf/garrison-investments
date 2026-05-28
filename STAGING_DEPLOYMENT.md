@@ -72,21 +72,20 @@ Shared staging login verification OTP:
 
 Role-specific staging users:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin.test@garrisons.lk` | `StageTest@123` |
-| General Manager | `gm.test@garrisons.lk` | `StageTest@123` |
-| Operation Manager | `operations.test@garrisons.lk` | `StageTest@123` |
-| Project Manager | `pm.test@garrisons.lk` | `StageTest@123` |
-| Civil Engineer | `engineer.test@garrisons.lk` | `StageTest@123` |
-| Civil Supervisor | `supervisor.test@garrisons.lk` | `StageTest@123` |
-| Store Keeper | `storekeeper.test@garrisons.lk` | `StageTest@123` |
-| Accounts | `accounts.test@garrisons.lk` | `StageTest@123` |
+| Role | Email |
+| --- | --- |
+| Admin | `admin.test@garrisons.lk` |
+| General Manager | `gm.test@garrisons.lk` |
+| Operation Manager | `operations.test@garrisons.lk` |
+| Project Manager | `pm.test@garrisons.lk` |
+| Civil Engineer | `engineer.test@garrisons.lk` |
+| Civil Supervisor | `supervisor.test@garrisons.lk` |
+| Store Keeper | `storekeeper.test@garrisons.lk` |
+| Accounts | `accounts.test@garrisons.lk` |
 
-Legacy temporary staging login created by `scripts/seed.py`:
+Staging password:
 
-- Admin email: `admin.test@garrisons.lk`
-- Temporary password: `StageTest@123`
+- Set `SEED_DEFAULT_PASSWORD` in `/opt/garrison-investments-staging/.env.staging` before running `python scripts/seed.py`.
 
 ### What Each Test User Can Do
 
