@@ -488,16 +488,16 @@ Shared staging login OTP:
 
 Role-specific staging accounts:
 
-| Role | Email | Password |
-|---|---|---|
-| Admin | `stg-admin@garrisons.qa` | `StageTest123!` |
-| General Manager | `stg-general-manager@garrisons.qa` | `StageTest123!` |
-| Operation Manager | `stg-operation-manager@garrisons.qa` | `StageTest123!` |
-| Project Manager | `stg-project-manager@garrisons.qa` | `StageTest123!` |
-| Civil Engineer | `stg-civil-engineer@garrisons.qa` | `StageTest123!` |
-| Civil Supervisor | `stg-civil-supervisor@garrisons.qa` | `StageTest123!` |
-| Store Keeper | `stg-store-keeper@garrisons.qa` | `StageTest123!` |
-| Accounts | `stg-accounts@garrisons.qa` | `StageTest123!` |
+| Role | Email |
+|---|---|
+| Admin | `stg-admin@garrisons.qa` |
+| General Manager | `stg-general-manager@garrisons.qa` |
+| Operation Manager | `stg-operation-manager@garrisons.qa` |
+| Project Manager | `stg-project-manager@garrisons.qa` |
+| Civil Engineer | `stg-civil-engineer@garrisons.qa` |
+| Civil Supervisor | `stg-civil-supervisor@garrisons.qa` |
+| Store Keeper | `stg-store-keeper@garrisons.qa` |
+| Accounts | `stg-accounts@garrisons.qa` |
 
 ### What These Accounts Are For
 
@@ -515,9 +515,13 @@ The staging deployment notes confirm the following:
 
 - one active staging user exists for each implemented role
 - login was verified successfully for `stg-civil-engineer@garrisons.qa`
-- the verified staging login used password `StageTest123!` and OTP `123456`
+- the verified staging login used the shared OTP `123456`
 - `must_change_password=false` was confirmed for the tested account so UAT users are not blocked by forced password reset
 - the updated staging deployment document was synced back to the staging server path
+
+Password note:
+
+- Staging passwords should be provided via environment configuration (see `SEED_DEFAULT_PASSWORD` in `scripts/seed.py`) and should not be committed to this repository.
 
 ### Usage Note
 
