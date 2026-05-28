@@ -1,4 +1,4 @@
-const INTERNAL_MINIO_HOSTS = new Set(['minio', 'minio:9000']);
+const INTERNAL_MINIO_HOSTS = new Set(['minio', 'minio:9000', 'localhost:9000']);
 
 export function normalizeProtectedFileUrl(url: string) {
   if (typeof window === 'undefined') return url;

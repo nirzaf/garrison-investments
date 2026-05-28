@@ -1,7 +1,10 @@
+import structlog
 import subprocess
 import sys
 
 from app.tasks.celery_app import celery_app
+
+logger = structlog.get_logger("celery.task")
 
 
 def backup_command(monthly: bool = False) -> list[str]:
@@ -20,11 +23,15 @@ def backup_command(monthly: bool = False) -> list[str]:
     max_retries=3,
 )
 def run_database_backup(monthly: bool = False) -> str:
+    cmd = backup_command(monthly)
+    logger.info("backup_executing", command=" ".join(cmd), monthly=monthly)
     result = subprocess.run(
-        backup_command(monthly),
+        cmd,
         check=True,
         capture_output=True,
         text=True,
         timeout=900,
     )
-    return result.stdout.strip()
+    output = result.stdout.strip()
+    logger.info("backup_completed", output=output[:500])
+    return output

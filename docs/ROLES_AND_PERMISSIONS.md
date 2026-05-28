@@ -153,6 +153,7 @@ Special behavior:
 
 - The Reports nav item points to `/reports/supervisor-update` when the user role is `civil_supervisor`.
 - For every other role with reporting access, the Reports nav item points to `/reports/daily`.
+- Users with `dashboard:company` permission also see the dashboard-related tabs `Analytics` and `Delivery` at the end of the navigation.
 
 ### Component-Level UI Differences
 
@@ -535,7 +536,7 @@ This table summarizes which permission drives each major functional area.
 |---|---|---|
 | User administration | `users:manage` or `users:read` | Read or manage users depending on permission |
 | Project portfolio | `projects:read` / `projects:manage` | View projects, with management controls enabled for `projects:manage` |
-| Dashboard | `dashboard:company` / `dashboard:scoped` | Company-wide or scoped visibility, though route access is authenticated rather than explicitly permission-decorated |
+| Dashboard | `dashboard:company` / `dashboard:scoped` | Company-wide or scoped visibility, though route access is authenticated rather than explicitly permission-decorated. `dashboard:company` users also see Analytics and Delivery as dashboard tabs at the end of the main navigation. |
 | Daily reports | `reports:submit` | Submit daily reports or supervisor updates |
 | Approvals | `reports:approve` | Access approval inbox and approval workflows |
 | Report evidence | `reports:view` | Access report-adjacent content such as photos |
