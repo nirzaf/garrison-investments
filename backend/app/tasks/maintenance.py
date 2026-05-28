@@ -1,3 +1,4 @@
+import structlog
 from datetime import time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -19,6 +20,8 @@ from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
 
+logger = structlog.get_logger("celery.task")
+
 
 @celery_app.task(
     name="archive_and_purge_logs",
@@ -29,6 +32,7 @@ from app.utils.security import utc_now
     max_retries=3,
 )
 def archive_and_purge_logs() -> str:
+    logger.info("logs_retention_starting")
     return run_async_task(_archive_and_purge_logs())
 
 
@@ -46,6 +50,7 @@ async def _archive_and_purge_logs() -> str:
             context_payload={"archived": archived, "purged": purged},
         )
         await session.commit()
+    logger.info("logs_retention_completed", archived=archived, purged=purged)
     return f"{archived} logs archived, {purged} logs purged"
 
 
@@ -58,6 +63,7 @@ async def _archive_and_purge_logs() -> str:
     max_retries=3,
 )
 def cleanup_old_notifications() -> str:
+    logger.info("notifications_cleanup_starting")
     return run_async_task(_cleanup_old_notifications())
 
 
@@ -80,6 +86,7 @@ async def _cleanup_old_notifications() -> str:
             notification.deleted_at = utc_now()
 
         await session.commit()
+    logger.info("notifications_cleanup_completed", cleaned=len(notifications))
     return f"{len(notifications)} notifications cleaned up"
 
 
@@ -92,6 +99,7 @@ async def _cleanup_old_notifications() -> str:
     max_retries=3,
 )
 def check_late_reports() -> str:
+    logger.info("late_reports_check_starting")
     return run_async_task(_check_late_reports())
 
 
@@ -179,6 +187,7 @@ def _business_now(timezone_name: str):
     max_retries=3,
 )
 def check_supplier_tds_expiry() -> str:
+    logger.info("supplier_tds_expiry_check_starting")
     return run_async_task(_check_supplier_tds_expiry())
 
 

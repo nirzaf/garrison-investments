@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   nginx:
     image: nginx:1.25-alpine
@@ -10,6 +16,7 @@ services:
       - frontend_dist:/usr/share/nginx/html:ro
     depends_on:
       - backend
+    logging: *default-logging
 
   backend:
     build:
@@ -21,6 +28,7 @@ services:
       - postgres
       - redis
       - minio
+    logging: *default-logging
 
   celery_worker:
     build:
@@ -31,6 +39,7 @@ services:
     depends_on:
       - redis
       - postgres
+    logging: *default-logging
 
   celery_beat:
     build:
@@ -40,6 +49,7 @@ services:
       - .env
     depends_on:
       - redis
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine

@@ -1,4 +1,5 @@
 import { BookOpen, Check, Minus } from 'lucide-react';
+import { useState } from 'react';
 
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
@@ -235,6 +236,7 @@ function RoleCard({
 export function RolesPermissionsPage() {
   const { user } = useAuth();
   const currentRole = user?.role ?? '';
+  const [tab, setTab] = useState<'matrix' | 'docs'>('matrix');
 
   return (
     <div className="space-y-6">
@@ -253,34 +255,267 @@ export function RolesPermissionsPage() {
         </p>
       </div>
 
-      {user && (
-        <div className="rounded-lg border-l-4 border-brand-500 bg-brand-50/50 p-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-theme-text-secondary">Your role:</span>
-            <StatusBadge tone="info">{roleLabel(currentRole)}</StatusBadge>
-          </div>
-          <p className="mt-2 text-sm text-theme-text-secondary">
-            You have <span className="font-semibold text-theme-text-primary">{user.permissions?.length ?? 0}</span> of{' '}
-            {PERMISSIONS.length} permissions.
-          </p>
-        </div>
+      <div className="flex gap-1 border-b border-theme-border">
+        {(['matrix', 'docs'] as const).map((t) => (
+          <button
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t
+                ? 'border-b-2 border-brand-600 text-brand-600'
+                : 'text-theme-text-secondary hover:text-theme-text-primary'
+            }`}
+            key={t}
+            onClick={() => setTab(t)}
+            type="button"
+          >
+            {t === 'matrix' ? 'Permission Matrix' : 'Full Documentation'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'matrix' && (
+        <>
+          {user && (
+            <div className="rounded-lg border-l-4 border-brand-500 bg-brand-50/50 p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium text-theme-text-secondary">Your role:</span>
+                <StatusBadge tone="info">{roleLabel(currentRole)}</StatusBadge>
+              </div>
+              <p className="mt-2 text-sm text-theme-text-secondary">
+                You have <span className="font-semibold text-theme-text-primary">{user.permissions?.length ?? 0}</span> of{' '}
+                {PERMISSIONS.length} permissions.
+              </p>
+            </div>
+          )}
+
+          <section>
+            <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">Permission Matrix</h3>
+            <div className="rounded-lg border border-theme-border bg-theme-card shadow-sm">
+              <PermissionMatrix currentRole={currentRole} />
+            </div>
+          </section>
+
+          <section>
+            <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">Role Details</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              {ROLES.map((role) => (
+                <RoleCard isCurrent={role.key === currentRole} key={role.key} role={role} />
+              ))}
+            </div>
+          </section>
+        </>
       )}
 
-      <section>
-        <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">Permission Matrix</h3>
-        <div className="rounded-lg border border-theme-border bg-theme-card shadow-sm">
-          <PermissionMatrix currentRole={currentRole} />
-        </div>
-      </section>
+      {tab === 'docs' && <RolesDocumentation />}
+    </div>
+  );
+}
 
-      <section>
-        <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">Role Details</h3>
-        <div className="grid gap-4 md:grid-cols-2">
-          {ROLES.map((role) => (
-            <RoleCard isCurrent={role.key === currentRole} key={role.key} role={role} />
+function DocSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-base font-semibold text-theme-text-primary">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function DocTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-theme-border">
+      <table className="min-w-full divide-y divide-theme-border text-sm">
+        <thead className="bg-theme-main">
+          <tr>
+            {headers.map((h) => (
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-theme-text-muted" key={h}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-theme-border bg-theme-card">
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {row.map((cell, j) => (
+                <td className="px-4 py-2 text-theme-text-secondary" key={j}>
+                  {cell === 'Y' ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : cell === '-' ? (
+                    <Minus className="h-4 w-4 text-theme-text-muted" />
+                  ) : (
+                    <code className="rounded bg-theme-card-elevated px-1 py-0.5 text-xs text-brand-600">{cell}</code>
+                  )}
+                </td>
+              ))}
+            </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RolesDocumentation() {
+  return (
+    <div className="space-y-8 text-sm text-theme-text-secondary">
+
+      <DocSection title="How Access Control Works">
+        <p>The portal uses role-based access control (RBAC) with permission strings.</p>
+        <ul className="list-inside list-disc space-y-1">
+          <li>Each user has exactly one role.</li>
+          <li>Each role maps to a fixed set of permissions.</li>
+          <li>Backend APIs enforce authorization using <code className="rounded bg-theme-card-elevated px-1 text-xs text-brand-600">require_permission(...)</code>.</li>
+          <li>The frontend uses the permissions array on the authenticated user to control visible routes and nav items.</li>
+          <li>Dashboard, reports, and approvals also apply service-layer data scoping in addition to permission checks.</li>
+        </ul>
+      </DocSection>
+
+      <DocSection title="Common Authenticated Experience">
+        <p>All authenticated users have access to these baseline features regardless of role:</p>
+        <ul className="list-inside list-disc space-y-1">
+          <li>Sign in and refresh session tokens</li>
+          <li>Change password</li>
+          <li>View profile</li>
+          <li>Open the dashboard</li>
+          <li>View notifications</li>
+        </ul>
+        <p className="mt-2 rounded-md border border-theme-border bg-theme-card-elevated p-3">
+          The dashboard route is not permission-gated on the frontend. The backend scopes returned data — company-wide for <code className="text-xs text-brand-600">admin</code>, <code className="text-xs text-brand-600">general_manager</code>, <code className="text-xs text-brand-600">operation_manager</code>, and scoped for all other roles.
+        </p>
+      </DocSection>
+
+      <DocSection title="Implemented Roles">
+        <DocTable
+          headers={['Role Key', 'Plain-English Meaning', 'Notes']}
+          rows={[
+            ['admin', 'Platform administrator', 'Full permission set in code'],
+            ['general_manager', 'Senior company-wide manager', 'Company-wide operational visibility; same permission set as operation manager in current code'],
+            ['operation_manager', 'Operations manager', 'Company-wide operational visibility and approvals'],
+            ['project_manager', 'Project-level manager', 'Scoped dashboard plus project, approvals, finance, and document access'],
+            ['civil_engineer', 'Site engineer', 'Can submit reports and work with project-scoped operational features'],
+            ['civil_supervisor', 'Site supervisor', 'Can submit supervisor updates and use project-scoped reporting features'],
+            ['store_keeper', 'Inventory and stores operator', 'Inventory-heavy role with supplier access'],
+            ['accounts', 'Finance and accounting user', 'Finance, documents, and scoped reporting visibility'],
+          ]}
+        />
+      </DocSection>
+
+      <DocSection title="Permission Glossary">
+        <DocTable
+          headers={['Permission', 'Meaning']}
+          rows={[
+            ['users:manage', 'Create and manage users; also gates the imports screen'],
+            ['users:read', 'Read user-management data'],
+            ['projects:manage', 'Create or manage projects and project UI controls'],
+            ['projects:read', 'View project data and access project-related screens'],
+            ['audit:view', 'Access audit and security-oriented monitoring screens'],
+            ['dashboard:company', 'Company-wide management features — analytics and delivery planning'],
+            ['dashboard:scoped', 'Scoped dashboard access for non-company-wide roles'],
+            ['reports:view', 'View reporting content such as photos and report visibility flows'],
+            ['reports:submit', 'Submit daily reports or supervisor updates'],
+            ['reports:approve', 'Approve report workflows and access the approvals inbox'],
+            ['inventory:view', 'View inventory and materials pages'],
+            ['inventory:manage', 'Manage inventory operations'],
+            ['suppliers:manage', 'Manage supplier records and supplier TDS document flows'],
+            ['documents:manage', 'Access document management features'],
+            ['financial:view', 'Access finance features'],
+          ]}
+        />
+      </DocSection>
+
+      <DocSection title="Role-Permission Matrix">
+        <div className="overflow-x-auto rounded-lg border border-theme-border">
+          <table className="min-w-full divide-y divide-theme-border text-xs">
+            <thead className="bg-theme-main">
+              <tr>
+                <th className="sticky left-0 z-10 bg-theme-main px-3 py-2 text-left font-semibold uppercase text-theme-text-muted">Permission</th>
+                {ROLES.map((r) => (
+                  <th className="px-3 py-2 text-center font-semibold uppercase text-theme-text-muted" key={r.key}>{r.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-theme-border bg-theme-card">
+              {PERMISSIONS.map((perm) => (
+                <tr key={perm}>
+                  <td className="sticky left-0 z-10 bg-theme-card px-3 py-2 font-medium text-theme-text-primary">
+                    <code className="text-xs text-brand-600">{perm}</code>
+                  </td>
+                  {ROLES.map((r) => (
+                    <td className="px-3 py-2 text-center" key={r.key}>
+                      {r.permissions.includes(perm)
+                        ? <Check className="mx-auto h-4 w-4 text-green-600" />
+                        : <Minus className="mx-auto h-4 w-4 text-theme-text-muted" />}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </section>
+      </DocSection>
+
+      <DocSection title="Route-Level Access">
+        <DocTable
+          headers={['Route', 'Permission Required', 'Notes']}
+          rows={[
+            ['/dashboard', 'None', 'Always reachable; backend scopes returned data'],
+            ['/profile', 'None', 'Authenticated baseline'],
+            ['/change-password', 'None', 'Authenticated baseline'],
+            ['/notifications', 'None', 'Authenticated baseline'],
+            ['/projects', 'projects:read', 'Project list and detail workflows'],
+            ['/admin/users', 'users:read', 'User management screen'],
+            ['/admin/audit-logs', 'audit:view', 'Audit log screen'],
+            ['/admin/imports', 'users:manage', 'Imports administration'],
+            ['/documents', 'documents:manage', 'Documents page'],
+            ['/photos', 'reports:view', 'Photo / report evidence view'],
+            ['/materials', 'inventory:view', 'Inventory and materials page'],
+            ['/finance', 'financial:view', 'Finance page'],
+            ['/analytics', 'dashboard:company', 'Management analytics'],
+            ['/security', 'audit:view', 'Security page'],
+            ['/delivery', 'dashboard:company', 'Delivery planning page'],
+            ['/reports/daily', 'reports:submit', 'Daily report workflow'],
+            ['/reports/supervisor-update', 'reports:submit', 'Supervisor update workflow'],
+            ['/approvals', 'reports:approve', 'Approval inbox'],
+          ]}
+        />
+      </DocSection>
+
+      <DocSection title="Navigation Special Behavior">
+        <ul className="list-inside list-disc space-y-1">
+          <li>The Reports nav item points to <code className="text-xs text-brand-600">/reports/supervisor-update</code> when the user role is <code className="text-xs text-brand-600">civil_supervisor</code>; all other roles with reporting access go to <code className="text-xs text-brand-600">/reports/daily</code>.</li>
+          <li>Users with <code className="text-xs text-brand-600">dashboard:company</code> permission see the <strong>Analytics</strong> and <strong>Delivery</strong> tabs at the end of the main navigation.</li>
+        </ul>
+      </DocSection>
+
+      <DocSection title="Functional Access By Business Area">
+        <DocTable
+          headers={['Business Area', 'Primary Permission', 'Outcome']}
+          rows={[
+            ['User administration', 'users:manage / users:read', 'Read or manage users depending on permission'],
+            ['Project portfolio', 'projects:read / projects:manage', 'View projects; management controls enabled for projects:manage'],
+            ['Dashboard', 'dashboard:company / dashboard:scoped', 'Company-wide or scoped visibility; dashboard:company also unlocks Analytics and Delivery tabs'],
+            ['Daily reports', 'reports:submit', 'Submit daily reports or supervisor updates'],
+            ['Approvals', 'reports:approve', 'Approval inbox and workflows'],
+            ['Report evidence', 'reports:view', 'Photos and report-adjacent content'],
+            ['Inventory and materials', 'inventory:view / inventory:manage', 'View materials page and manage inventory operations'],
+            ['Suppliers', 'suppliers:manage', 'Supplier APIs, TDS upload/download, supplier-backed finance selections'],
+            ['Documents', 'documents:manage', 'Documents page and document workflows'],
+            ['Finance', 'financial:view', 'Finance page and financial reporting'],
+            ['Imports', 'users:manage', 'Import administration'],
+            ['Audit and security', 'audit:view', 'Audit logs and security page'],
+            ['Analytics and delivery', 'dashboard:company', 'Management-only analytics and delivery planning'],
+          ]}
+        />
+      </DocSection>
+
+      <DocSection title="Caveats">
+        <ul className="list-inside list-disc space-y-1">
+          <li><strong>General Manager</strong> and <strong>Operation Manager</strong> have identical permission sets in the current code.</li>
+          <li>Dashboard authorization is service-scoped, not route-decorated — all authenticated users can open <code className="text-xs text-brand-600">/dashboard</code>.</li>
+          <li>Reports and approvals apply additional service-layer checks beyond the permission flags (engineer-only submission, project membership, admin override).</li>
+          <li>There is no standalone Suppliers page in the frontend navigation; supplier data feeds into finance workflows only.</li>
+        </ul>
+      </DocSection>
+
     </div>
   );
 }
