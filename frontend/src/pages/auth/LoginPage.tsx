@@ -1,11 +1,13 @@
 import { FormEvent, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
 
 export function LoginPage() {
   const { isAuthenticated, login, verifyOtp } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const successNotice = (location.state as { notice?: string } | null)?.notice ?? null;
   const [email, setEmail] = useState('admin@garrisons.qa');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
@@ -95,6 +97,11 @@ export function LoginPage() {
           {devOtp ? (
             <p className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
               Development code: <span className="font-semibold tracking-widest">{devOtp}</span>
+            </p>
+          ) : null}
+          {successNotice ? (
+            <p className="rounded-md border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-sm text-[var(--status-success-text)]">
+              {successNotice}
             </p>
           ) : null}
           {error ? (

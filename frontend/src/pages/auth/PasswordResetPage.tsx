@@ -1,9 +1,19 @@
 import { FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { confirmPasswordReset, requestPasswordReset } from '../../api/auth';
 
+function validatePasswordPolicy(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter.';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter.';
+  if (!/\d/.test(password)) return 'Password must include a number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Password must include a symbol.';
+  return null;
+}
+
 export function PasswordResetPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [devOtp, setDevOtp] = useState<string | null | undefined>(null);
@@ -29,8 +39,9 @@ export function PasswordResetPage() {
         return;
       }
 
-      if (newPassword.length < 8) {
-        setError('New password must be at least 8 characters.');
+      const policyError = validatePasswordPolicy(newPassword);
+      if (policyError) {
+        setError(policyError);
         return;
       }
       if (newPassword !== confirmPassword) {
@@ -39,10 +50,7 @@ export function PasswordResetPage() {
       }
 
       await confirmPasswordReset(challengeId, otp, newPassword);
-      setNotice('Password reset complete. You can sign in with the new password.');
-      setOtp('');
-      setNewPassword('');
-      setConfirmPassword('');
+      navigate('/login', { state: { notice: 'Password reset complete. You can sign in with your new password.' } });
     } catch {
       setError('Unable to reset password. Check the code and try again.');
     } finally {

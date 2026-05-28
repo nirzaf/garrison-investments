@@ -1079,7 +1079,11 @@ PUSH TO BRANCH
   - Log levels: DEBUG (dev), INFO (key operations), WARNING (recoverable), ERROR (exceptions)
   - Log categories: `app.api`, `app.service`, `app.security`, `app.task`
   - Format: `{"timestamp": "...", "level": "INFO", "logger": "app.service.report", "event": "report_created", "user_id": "...", "report_id": "..."}`
+- **Centralized event log**: Stored in `activity_log` with standardized fields such as `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `source_service`, `storage_tier`, and `context_payload`
+- **Remote access**: Search and real-time streaming are available through the secured log API and `backend/scripts/log_cli.py`
 - **Frontend**: Console logging in dev only; production errors captured via `POST /api/v1/logs/client-error`
+
+Operational usage is documented in [LOGGING_AND_REMOTE_CLI.md](./LOGGING_AND_REMOTE_CLI.md).
 
 ### 8.2 Error Handling (Frontend)
 
@@ -1103,7 +1107,7 @@ Every auditable action is recorded in `activity_log`:
 | Download | `user_id`, `action='download'`, `entity_type='document'/'photo'`, `entity_id` |
 | Admin Override | `user_id`, `action='admin_override'`, `entity_type`, `entity_id`, `comments`, `old_values`, `new_values` |
 
-Audit logs retained for 7 years. Admin-only access.
+Audit and event-log access is admin-controlled through RBAC. For remote usage, filtering, and streaming examples, see [LOGGING_AND_REMOTE_CLI.md](./LOGGING_AND_REMOTE_CLI.md).
 
 ### 8.4 Notification System
 

@@ -51,6 +51,10 @@ celery_app.conf.beat_schedule = {
         "task": "cleanup_old_notifications",
         "schedule": crontab(hour=3, minute=0),
     },
+    "archive-and-purge-logs-daily": {
+        "task": "archive_and_purge_logs",
+        "schedule": crontab(hour=3, minute=30),
+    },
     "check-supplier-tds-expiry-daily": {
         "task": "check_supplier_tds_expiry",
         "schedule": crontab(hour=4, minute=0),

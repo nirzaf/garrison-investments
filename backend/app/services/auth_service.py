@@ -29,8 +29,12 @@ LOGIN_FAILURE_MESSAGE = "Invalid email, password, or verification code."
 
 @dataclass(frozen=True)
 class RequestMeta:
+    request_id: str | None = None
+    session_id: str | None = None
     ip_address: str | None = None
     user_agent: str | None = None
+    endpoint: str | None = None
+    method: str | None = None
 
 
 @dataclass(frozen=True)
