@@ -11,3 +11,7 @@ Defined in `backend/app/models/inventory.py`
 | `location_id` | UUID | NOT NULL | — | storage_locations.id | — |
 | `on_hand_qty` | Numeric(14, 3) | NOT NULL | 0 | — | — |
 | `reserved_qty` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
+
