@@ -24,6 +24,7 @@ import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
 import { SecurityPage } from './pages/security/SecurityPage';
 import { SuppliersPage } from './pages/suppliers/SuppliersPage';
+import { ManualPage } from './pages/manual/ManualPage';
 
 export function App() {
   return (
@@ -157,6 +158,7 @@ export function App() {
           }
         />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/manual" element={<ManualPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

@@ -70,6 +70,7 @@ const navItems: NavItem[] = [
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
   { label: 'Delivery', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
   { label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
+  { label: 'User Manual', to: '/manual', icon: BookOpen },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
   { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
   { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog }
@@ -82,6 +83,9 @@ function canAccess(item: NavItem, permissions: string[]) {
 function labelFromPath(pathname: string) {
   if (pathname.startsWith('/reports')) {
     return 'Reports';
+  }
+  if (pathname === '/manual') {
+    return 'User Manual';
   }
   const current = navItems.find(
     (item) => pathname === item.to || pathname.startsWith(`${item.to}/`)
@@ -250,6 +254,14 @@ export function AppLayout() {
                     >
                       <ShieldCheck className="h-4 w-4" />
                       Security
+                    </Link>
+                    <Link
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-theme-text-secondary hover:bg-theme-card-elevated"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      to="/manual"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      User Manual
                     </Link>
                     <button
                       className="mt-2 w-full rounded-md border-t border-theme-border px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
