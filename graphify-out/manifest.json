@@ -60,8 +60,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/App.tsx": {
-    "mtime": 1780052021.405165,
-    "ast_hash": "5b59f3884ea9950e2228f72b6c57b4b2",
+    "mtime": 1780083301.6024227,
+    "ast_hash": "18d4b14d3b35f26ec03d4ca59fa228b3",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/main.tsx": {
@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/layout/AppLayout.tsx": {
-    "mtime": 1780052234.7465775,
-    "ast_hash": "1a0bc77a547e04b451d9978a8d0332ae",
+    "mtime": 1780083301.602742,
+    "ast_hash": "27098dc85f97e14fcb36c03e8ec80aad",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/layout/RequirePermission.tsx": {
@@ -110,7 +110,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/shared/OfflineIndicator.tsx": {
-    "mtime": 1780052556.524916,
+    "mtime": 1780083301.6394606,
     "ast_hash": "00c9c6c3351dfe6c9d4fe65bcb626f1d",
     "semantic_hash": ""
   },
@@ -1232,6 +1232,61 @@
   "/Users/qts/Repos/garrison-investments/docs/LOGGING_AND_REMOTE_CLI.md": {
     "mtime": 1779983363.6426427,
     "ast_hash": "ba94061ecdbe598e506d6d096d784ee5",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/ManualPage.tsx": {
+    "mtime": 1780083301.6030352,
+    "ast_hash": "4d098caacf0382f3887b70be6ab23dab",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/storeKeeper.ts": {
+    "mtime": 1780083301.6041112,
+    "ast_hash": "419f3768894808ea415a507d77e64539",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/civilSupervisor.ts": {
+    "mtime": 1780083301.6034827,
+    "ast_hash": "957a9da69942d68eeedd7f5611bd9bd7",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/generalManager.ts": {
+    "mtime": 1780083301.6036935,
+    "ast_hash": "2ba66f4755cb307a48c323015ddc4a5e",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/common.ts": {
+    "mtime": 1780083301.6035833,
+    "ast_hash": "aee61d9ac229c3c49ec7f9626cb4840a",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/admin.ts": {
+    "mtime": 1780083301.6032906,
+    "ast_hash": "2b86dbc052d7fa9c18da36fe025f768f",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/operationManager.ts": {
+    "mtime": 1780083301.6038833,
+    "ast_hash": "dc1d3ddf0ee768cf6b57acd9a6b12227",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/projectManager.ts": {
+    "mtime": 1780083301.6039994,
+    "ast_hash": "56220667149279de03a20839b401c332",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/accounts.ts": {
+    "mtime": 1780083301.6031833,
+    "ast_hash": "d547933cbd683b1b24722dcca37859b6",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/index.ts": {
+    "mtime": 1780083301.6037683,
+    "ast_hash": "f70ccab4b5622e3b3cc293fc63b8b50e",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/frontend/src/pages/manual/manuals/civilEngineer.ts": {
+    "mtime": 1780083301.6033885,
+    "ast_hash": "984feca812d945582c0e282fc16a2961",
     "semantic_hash": ""
   }
 }
