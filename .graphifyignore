@@ -10,14 +10,6 @@ backend/.venv/
 .ruff_cache/
 graphify-out/
 
-# Backend structural exclusions
-backend/tests/
-backend/scripts/
-backend/alembic/
-tests/
-scripts/
-alembic/
-
 # Frontend built/test exclusions
 frontend/node_modules/
 frontend/dist/
