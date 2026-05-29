@@ -1,31 +1,31 @@
-# `activity_log`
+# activity_log
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/activity_log.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `user_id` | `UUID` | Yes | `` | users.id |
-| `action` | `VARCHAR(64)` | No | `` |  |
-| `entity_type` | `VARCHAR(64)` | Yes | `` |  |
-| `entity_id` | `UUID` | Yes | `` |  |
-| `ip_address` | `VARCHAR(64)` | Yes | `` |  |
-| `user_agent` | `VARCHAR(512)` | Yes | `` |  |
-| `comments` | `TEXT` | Yes | `` |  |
-| `old_values` | `JSONB` | Yes | `` |  |
-| `new_values` | `JSONB` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `user_id` | `users.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `user_id` | UUID | NULL | — | users.id | — |
+| `event_type` | String(32) | NOT NULL | audit | — | — |
+| `severity` | String(16) | NOT NULL | INFO | — | — |
+| `action` | String(64) | NOT NULL | — | — | — |
+| `entity_type` | String(64) | NULL | — | — | — |
+| `entity_id` | UUID | NULL | — | — | — |
+| `request_id` | String(64) | NULL | — | — | — |
+| `session_id` | String(128) | NULL | — | — | — |
+| `ip_address` | String(64) | NULL | — | — | — |
+| `endpoint` | String(255) | NULL | — | — | — |
+| `http_method` | String(16) | NULL | — | — | — |
+| `status_code` | Integer | NULL | — | — | — |
+| `source_service` | String(64) | NULL | — | — | — |
+| `instance_id` | String(128) | NULL | — | — | — |
+| `storage_tier` | String(16) | NOT NULL | hot | — | — |
+| `archived_at` | TimestampTZ | NULL | — | — | — |
+| `retention_until` | TimestampTZ | NULL | — | — | — |
+| `user_agent` | String(512) | NULL | — | — | — |
+| `comments` | Text | NULL | — | — | — |
+| `context_payload` | JSONB | NULL | — | — | — |
+| `old_values` | JSONB | NULL | — | — | — |
+| `new_values` | JSONB | NULL | — | — | — |

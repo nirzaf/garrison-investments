@@ -1,27 +1,14 @@
-# `report_equipment`
+# report_equipment
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/daily_report.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `report_id` | `UUID` | No | `` | daily_reports.id |
-| `equipment_name` | `VARCHAR(120)` | No | `` |  |
-| `quantity` | `INTEGER` | No | `` |  |
-| `hours_used` | `NUMERIC(6, 2)` | No | `0` |  |
-| `remarks` | `TEXT` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `report_id` | `daily_reports.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `report_id` | UUID | NOT NULL | — | daily_reports.id | — |
+| `equipment_name` | String(120) | NOT NULL | — | — | — |
+| `quantity` | Integer | NOT NULL | — | — | — |
+| `hours_used` | Numeric(6, 2) | NOT NULL | 0 | — | — |
+| `remarks` | Text | NULL | — | — | — |

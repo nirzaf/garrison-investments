@@ -1,26 +1,13 @@
-# `auth_refresh_tokens`
+# auth_refresh_tokens
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/auth.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `user_id` | `UUID` | No | `` | users.id |
-| `token_hash` | `VARCHAR(255)` | No | `` |  |
-| `expires_at` | `DATETIME` | No | `` |  |
-| `revoked_at` | `DATETIME` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `user_id` | `users.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `user_id` | UUID | NOT NULL | — | users.id | — |
+| `token_hash` | String(255) | NOT NULL | — | — | — |
+| `expires_at` | TimestampTZ | NOT NULL | — | — | — |
+| `revoked_at` | TimestampTZ | NULL | — | — | — |

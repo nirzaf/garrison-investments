@@ -1,38 +1,25 @@
-# `photos`
+# photos
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/photo.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `filename` | `VARCHAR(255)` | No | `` |  |
-| `original_name` | `VARCHAR(255)` | No | `` |  |
-| `storage_path` | `VARCHAR(500)` | No | `` |  |
-| `compressed_path` | `VARCHAR(500)` | Yes | `` |  |
-| `thumbnail_path` | `VARCHAR(500)` | Yes | `` |  |
-| `mime_type` | `VARCHAR(80)` | No | `` |  |
-| `size_bytes` | `BIGINT` | No | `` |  |
-| `width` | `INTEGER` | Yes | `` |  |
-| `height` | `INTEGER` | Yes | `` |  |
-| `entity_type` | `VARCHAR(30)` | No | `` |  |
-| `entity_id` | `UUID` | No | `` |  |
-| `kind` | `VARCHAR(20)` | No | `'photo'` |  |
-| `caption` | `TEXT` | Yes | `` |  |
-| `taken_at` | `DATETIME` | Yes | `` |  |
-| `uploaded_by` | `UUID` | Yes | `` | users.id |
-| `processing_status` | `VARCHAR(20)` | No | `'ready'` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `uploaded_by` | `users.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `filename` | String(255) | NOT NULL | — | — | — |
+| `original_name` | String(255) | NOT NULL | — | — | — |
+| `storage_path` | String(500) | NOT NULL | — | — | — |
+| `compressed_path` | String(500) | NULL | — | — | — |
+| `thumbnail_path` | String(500) | NULL | — | — | — |
+| `mime_type` | String(80) | NOT NULL | — | — | — |
+| `size_bytes` | BigInteger | NOT NULL | — | — | — |
+| `width` | Integer | NULL | — | — | — |
+| `height` | Integer | NULL | — | — | — |
+| `entity_type` | String(30) | NOT NULL | — | — | — |
+| `entity_id` | UUID | NOT NULL | — | — | — |
+| `kind` | String(20) | NOT NULL | photo | — | — |
+| `caption` | Text | NULL | — | — | — |
+| `taken_at` | TimestampTZ | NULL | — | — | — |
+| `uploaded_by` | UUID | NULL | — | users.id | — |
+| `processing_status` | String(20) | NOT NULL | ready | — | — |

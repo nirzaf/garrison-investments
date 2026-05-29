@@ -1,29 +1,15 @@
-# `material_request_lines`
+# material_request_lines
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `request_id` | `UUID` | No | `` | material_requests.id |
-| `item_id` | `UUID` | No | `` | inventory_items.id |
-| `quantity` | `NUMERIC(14, 3)` | No | `` |  |
-| `reserved_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
-| `issued_quantity` | `NUMERIC(14, 3)` | No | `0` |  |
-| `unit_cost` | `NUMERIC(14, 2)` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `request_id` | `material_requests.id` |
-| `item_id` | `inventory_items.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `request_id` | UUID | NOT NULL | — | material_requests.id | — |
+| `item_id` | UUID | NOT NULL | — | inventory_items.id | — |
+| `quantity` | Numeric(14, 3) | NOT NULL | — | — | — |
+| `reserved_quantity` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `issued_quantity` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `unit_cost` | Numeric(14, 2) | NULL | — | — | — |

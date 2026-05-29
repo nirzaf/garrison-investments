@@ -1,47 +1,30 @@
-# `approvals`
+# approvals
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/approval.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `request_type` | `VARCHAR(60)` | No | `` |  |
-| `request_id` | `UUID` | No | `` |  |
-| `project_id` | `UUID` | Yes | `` | projects.id |
-| `submitter_id` | `UUID` | Yes | `` | users.id |
-| `approver_id` | `UUID` | Yes | `` | users.id |
-| `delegated_to_id` | `UUID` | Yes | `` | users.id |
-| `escalation_user_id` | `UUID` | Yes | `` | users.id |
-| `status` | `VARCHAR(30)` | No | `'pending'` |  |
-| `step_order` | `INTEGER` | No | `1` |  |
-| `amount` | `NUMERIC(14, 2)` | Yes | `` |  |
-| `currency` | `VARCHAR(3)` | Yes | `` |  |
-| `title` | `VARCHAR(200)` | No | `` |  |
-| `submitter_comments` | `TEXT` | Yes | `` |  |
-| `decision_comments` | `TEXT` | Yes | `` |  |
-| `delegation_reason` | `TEXT` | Yes | `` |  |
-| `override_reason` | `TEXT` | Yes | `` |  |
-| `submitted_at` | `DATETIME` | No | `` |  |
-| `due_at` | `DATETIME` | No | `` |  |
-| `reminded_at` | `DATETIME` | Yes | `` |  |
-| `escalated_at` | `DATETIME` | Yes | `` |  |
-| `decided_at` | `DATETIME` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-| `submitter_id` | `users.id` |
-| `approver_id` | `users.id` |
-| `delegated_to_id` | `users.id` |
-| `escalation_user_id` | `users.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `request_type` | String(60) | NOT NULL | — | — | — |
+| `request_id` | UUID | NOT NULL | — | — | — |
+| `project_id` | UUID | NULL | — | projects.id | — |
+| `submitter_id` | UUID | NULL | — | users.id | — |
+| `approver_id` | UUID | NULL | — | users.id | — |
+| `delegated_to_id` | UUID | NULL | — | users.id | — |
+| `escalation_user_id` | UUID | NULL | — | users.id | — |
+| `status` | String(30) | NOT NULL | pending | — | — |
+| `step_order` | Integer | NOT NULL | 1 | — | — |
+| `amount` | Numeric(14, 2) | NULL | — | — | — |
+| `currency` | String(3) | NULL | — | — | — |
+| `title` | String(200) | NOT NULL | — | — | — |
+| `submitter_comments` | Text | NULL | — | — | — |
+| `decision_comments` | Text | NULL | — | — | — |
+| `delegation_reason` | Text | NULL | — | — | — |
+| `override_reason` | Text | NULL | — | — | — |
+| `submitted_at` | TimestampTZ | NOT NULL | — | — | — |
+| `due_at` | TimestampTZ | NOT NULL | — | — | — |
+| `reminded_at` | TimestampTZ | NULL | — | — | — |
+| `escalated_at` | TimestampTZ | NULL | — | — | — |
+| `decided_at` | TimestampTZ | NULL | — | — | — |
