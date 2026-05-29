@@ -25,7 +25,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/package.json": {
-    "mtime": 1779981512.2653089,
+    "mtime": 1780052021.3876524,
     "ast_hash": "70b92854e4f685f80742bbf78c3f65d5",
     "semantic_hash": ""
   },
@@ -60,7 +60,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/App.tsx": {
-    "mtime": 1779981512.3116326,
+    "mtime": 1780052021.405165,
     "ast_hash": "5b59f3884ea9950e2228f72b6c57b4b2",
     "semantic_hash": ""
   },
@@ -70,7 +70,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/App.test.tsx": {
-    "mtime": 1779981512.3018596,
+    "mtime": 1780052021.3984349,
     "ast_hash": "99b7cefe81cd5b91a3b3832e15f9987d",
     "semantic_hash": ""
   },
@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/layout/AppLayout.tsx": {
-    "mtime": 1779981512.3238409,
-    "ast_hash": "48de5c6e85409da96f6806b92616a3a4",
+    "mtime": 1780052234.7465775,
+    "ast_hash": "1a0bc77a547e04b451d9978a8d0332ae",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/layout/RequirePermission.tsx": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/shared/OfflineIndicator.tsx": {
-    "mtime": 1779131452.762372,
-    "ast_hash": "af25429775e5aff92ad7d8bbe2dd7aef",
+    "mtime": 1780052556.524916,
+    "ast_hash": "00c9c6c3351dfe6c9d4fe65bcb626f1d",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/components/shared/EmptyState.tsx": {
@@ -130,13 +130,13 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/inventory.ts": {
-    "mtime": 1779131452.748276,
-    "ast_hash": "5116392c98d76b33995a4bb60e882c25",
+    "mtime": 1779985642.0957835,
+    "ast_hash": "7e9cccc41b9fb8f5ea0a9dd7f93c6b36",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/fileUrls.ts": {
-    "mtime": 1779136967.0139353,
-    "ast_hash": "9b3d119c41b93e46fe55c568d19533b5",
+    "mtime": 1779985589.4750516,
+    "ast_hash": "f21a3c4d7a1e6c01fcc254fa2b752944",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/photos.ts": {
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/users.ts": {
-    "mtime": 1779131452.7499485,
-    "ast_hash": "705b2db9b6b272586d6011b2b3aa20e6",
+    "mtime": 1779984457.2890217,
+    "ast_hash": "cf90321aad679c3c207b13c6a3db7b4d",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/approvals.ts": {
@@ -215,8 +215,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/finance.ts": {
-    "mtime": 1779131452.748042,
-    "ast_hash": "33f263fa2d7bb4571a6a6a56e740627f",
+    "mtime": 1779985658.3274724,
+    "ast_hash": "2554f4e2ee6db680819602ccff11c3c4",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/api/auth.ts": {
@@ -225,7 +225,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/suppliers/SuppliersPage.tsx": {
-    "mtime": 1779981512.3590508,
+    "mtime": 1780052021.4208345,
     "ast_hash": "59c7a2cfec875264a21125deb306d054",
     "semantic_hash": ""
   },
@@ -235,18 +235,18 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/auth/LoginPage.tsx": {
-    "mtime": 1778946862.5563514,
-    "ast_hash": "70a5b787048b305e568a73d97169c359",
+    "mtime": 1779983585.606604,
+    "ast_hash": "b8a6a87728ff83919338ca7ab4fc3c71",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/auth/ChangePasswordPage.tsx": {
-    "mtime": 1779981779.3077624,
+    "mtime": 1779982554.277876,
     "ast_hash": "a4fe67e848a2878b1a523fb7a02a7d10",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/auth/PasswordResetPage.tsx": {
-    "mtime": 1779981795.694489,
-    "ast_hash": "b38ae37c2df1fb0cf6b9fe2d85fe20c4",
+    "mtime": 1779983585.606814,
+    "ast_hash": "8992a1775a4c49c1c6c753878f5f7c1a",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/projects/ProjectListPage.tsx": {
@@ -255,8 +255,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/admin/UserManagementPage.tsx": {
-    "mtime": 1779131452.752035,
-    "ast_hash": "a1155ef77723d6c5b6c77b6994245914",
+    "mtime": 1779984457.2888603,
+    "ast_hash": "52c19936b1377ff8f8447a155756eb34",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/admin/AuditLogPage.tsx": {
@@ -330,7 +330,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/config.py": {
-    "mtime": 1779981906.5167735,
+    "mtime": 1780052021.1492918,
     "ast_hash": "f127962623e34e7c637c199cb0353d6b",
     "semantic_hash": ""
   },
@@ -365,13 +365,13 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/backup.py": {
-    "mtime": 1779131452.7388904,
-    "ast_hash": "0aeb6a0c90342125ba0f041b77b6793c",
+    "mtime": 1779986396.3716831,
+    "ast_hash": "235d6afa89427133879f81683ba0c2a2",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/celery_app.py": {
-    "mtime": 1779982176.2416618,
-    "ast_hash": "1d9467586f1a39d8a19d26484b079073",
+    "mtime": 1780052021.2169979,
+    "ast_hash": "01b0fa320509130ce74fb02081d7bc39",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/async_utils.py": {
@@ -380,8 +380,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/maintenance.py": {
-    "mtime": 1779982167.8909662,
-    "ast_hash": "6dada4d657c25785692464a7c3524a9d",
+    "mtime": 1780052021.228682,
+    "ast_hash": "cac6289f8ac4c22eb8b86eb7f52842e5",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/__init__.py": {
@@ -390,18 +390,18 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/imports.py": {
-    "mtime": 1779131494.2674017,
-    "ast_hash": "b8e7229b3969a3a412bfa17bec455908",
+    "mtime": 1779986409.4329185,
+    "ast_hash": "aaaea9d784ccd1841baeba31b121bca9",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/email.py": {
-    "mtime": 1779131452.8448102,
-    "ast_hash": "cc5f332e6631c9240c4429a4ddb55d0b",
+    "mtime": 1779986421.3003554,
+    "ast_hash": "bae4ec1a9c6dcb7e67220e427886c009",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/approval.py": {
-    "mtime": 1779131452.8444786,
-    "ast_hash": "cfc432cf8bea612e44cd5017a52fe7f9",
+    "mtime": 1779986523.2213132,
+    "ast_hash": "72465c5af01db96f75f70238a7132164",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/image.py": {
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/tasks/report.py": {
-    "mtime": 1779131452.845267,
-    "ast_hash": "64701b591b4afe01caf3964eb6462cd2",
+    "mtime": 1779986434.3517017,
+    "ast_hash": "726f06b946ccf8b4d5cd903bf68dee98",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/utils/security.py": {
@@ -550,7 +550,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/models/activity_log.py": {
-    "mtime": 1779981918.9047055,
+    "mtime": 1780052021.1550202,
     "ast_hash": "8a8699d7c193bbe3c29ff676cc864dbd",
     "semantic_hash": ""
   },
@@ -615,7 +615,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/schemas/audit.py": {
-    "mtime": 1779981989.722941,
+    "mtime": 1780052021.1747615,
     "ast_hash": "602255ccf85edea59967585b824df34a",
     "semantic_hash": ""
   },
@@ -625,8 +625,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/schemas/users.py": {
-    "mtime": 1778909300.1090384,
-    "ast_hash": "7c34821d2817e3e49e8bf48781f3008d",
+    "mtime": 1779984457.2886252,
+    "ast_hash": "bae805c12473e19d0c8dedbe8457c3c6",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/schemas/documents.py": {
@@ -695,7 +695,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/api/dependencies.py": {
-    "mtime": 1779982038.4254282,
+    "mtime": 1780052021.129318,
     "ast_hash": "187f0a7ceabccfbf708c7d2ea63ffe4d",
     "semantic_hash": ""
   },
@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/api/v1/users.py": {
-    "mtime": 1778909222.0753868,
-    "ast_hash": "8f3b1b42836dd52c90133f11aac997b0",
+    "mtime": 1779984457.2889197,
+    "ast_hash": "95b0980fc116876529f6ffd6e9ba1f5a",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/api/v1/documents.py": {
@@ -770,7 +770,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/api/v1/router.py": {
-    "mtime": 1779982026.476893,
+    "mtime": 1780052021.143563,
     "ast_hash": "769df169ebd2884bbcbf8260c2a7668d",
     "semantic_hash": ""
   },
@@ -790,7 +790,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/services/auth_service.py": {
-    "mtime": 1779982047.9874053,
+    "mtime": 1780052021.1972816,
     "ast_hash": "fca7a23e92d8664a4389760e42b2c414",
     "semantic_hash": ""
   },
@@ -840,7 +840,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/services/exception_reporter.py": {
-    "mtime": 1779982189.620905,
+    "mtime": 1780052021.2043803,
     "ast_hash": "7aff334f6e9c03d4a54acd6d0351f344",
     "semantic_hash": ""
   },
@@ -870,8 +870,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/services/user_service.py": {
-    "mtime": 1778909023.0774186,
-    "ast_hash": "63ffd9938a288d431deff74f5936ccc7",
+    "mtime": 1779984457.288592,
+    "ast_hash": "16e4443453e5d014ebe2e42b3bb88da5",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/services/import_service.py": {
@@ -905,28 +905,28 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docker-compose.staging.yml": {
-    "mtime": 1779136899.6054428,
-    "ast_hash": "e1be0aba77ccd592aa6ebcaefd282aa7",
+    "mtime": 1779986543.6099455,
+    "ast_hash": "aa39814ee1f4403a0d15b90837050805",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/README.md": {
-    "mtime": 1779981512.3742821,
+    "mtime": 1780052021.4440582,
     "ast_hash": "3b6d0f440128e2dfefea1655b3973fff",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/STAGING_DEPLOYMENT.md": {
-    "mtime": 1779981512.4416518,
+    "mtime": 1780052021.454855,
     "ast_hash": "011c2e4f7622dd4e276c0d6bb1e9eb4c",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docker-compose.yml": {
-    "mtime": 1779136787.8344405,
-    "ast_hash": "fbe666499a5224331d43d16c2bf36309",
+    "mtime": 1779986576.2355673,
+    "ast_hash": "10193a978222c0c837a842ab8b3a16d8",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docker-compose.prod.yml": {
-    "mtime": 1779136899.6046898,
-    "ast_hash": "0cb3503a38b901dc1f7c6a74a54c3a61",
+    "mtime": 1779986589.435122,
+    "ast_hash": "b47eeb3309ca8598446b7fe9b084f683",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/AGENTS.md": {
@@ -950,8 +950,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/ARCHITECTURE.md": {
-    "mtime": 1779973209.1910837,
-    "ast_hash": "29b2c8a3c89314cd4f9ea9f467d7d9b9",
+    "mtime": 1780052021.241173,
+    "ast_hash": "c46076861a5cb68820622be49510ab28",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/requirements.txt": {
@@ -960,13 +960,13 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docs/ARCHITECTURE.md": {
-    "mtime": 1779974292.0440717,
-    "ast_hash": "626e89e890e2a5672bf03473d9215bda",
+    "mtime": 1780052021.374481,
+    "ast_hash": "c3c946cbaef8740797ef575a78c7fe04",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docs/ROLES_AND_PERMISSIONS.md": {
-    "mtime": 1779974871.4471445,
-    "ast_hash": "8c18677d8745d695c67d3c14ce52604a",
+    "mtime": 1779997002.7783122,
+    "ast_hash": "c9a345f316f8819a884408962ebb8d82",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docs/README.md": {
@@ -975,8 +975,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1779827207.6813,
-    "ast_hash": "60c9989e7d36f831bef9f749c09b6a63",
+    "mtime": 1779983354.4741485,
+    "ast_hash": "47edd586649622523d41ecf2161cec84",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/docs/schema/notifications.md": {
@@ -1200,8 +1200,8 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/frontend/src/pages/roles/RolesPermissionsPage.tsx": {
-    "mtime": 1779980488.1440146,
-    "ast_hash": "c6994102e1171df7f96e49b71de6b0b9",
+    "mtime": 1779997121.7361994,
+    "ast_hash": "14328abe939228f1d231e21c55ffdfb7",
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/observability/logging.py": {
@@ -1210,7 +1210,7 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/observability/__init__.py": {
-    "mtime": 1779981899.1465566,
+    "mtime": 1780052021.1666007,
     "ast_hash": "a3576228ae72bd5026461d3269844f0d",
     "semantic_hash": ""
   },
@@ -1220,8 +1220,18 @@
     "semantic_hash": ""
   },
   "/Users/qts/Repos/garrison-investments/backend/app/api/v1/logs.py": {
-    "mtime": 1779982016.3531857,
+    "mtime": 1780052021.134313,
     "ast_hash": "d3006759ef1b488593bda6adf051a5a3",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/backend/app/tasks/base.py": {
+    "mtime": 1779986345.6440458,
+    "ast_hash": "af1f70686bde246f842f652af4f2f601",
+    "semantic_hash": ""
+  },
+  "/Users/qts/Repos/garrison-investments/docs/LOGGING_AND_REMOTE_CLI.md": {
+    "mtime": 1779983363.6426427,
+    "ast_hash": "ba94061ecdbe598e506d6d096d784ee5",
     "semantic_hash": ""
   }
 }
