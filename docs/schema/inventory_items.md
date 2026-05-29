@@ -1,35 +1,19 @@
-# `inventory_items`
+# inventory_items
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `name` | `VARCHAR(180)` | No | `` |  |
-| `item_code` | `VARCHAR(60)` | Yes | `` |  |
-| `category` | `VARCHAR(80)` | No | `` |  |
-| `item_type` | `VARCHAR(30)` | No | `` |  |
-| `unit` | `VARCHAR(20)` | No | `` |  |
-| `minimum_stock` | `NUMERIC(14, 3)` | No | `0` |  |
-| `reorder_level` | `NUMERIC(14, 3)` | No | `0` |  |
-| `unit_cost` | `NUMERIC(14, 2)` | Yes | `` |  |
-| `supplier_id` | `UUID` | Yes | `` |  |
-| `is_active` | `BOOLEAN` | No | `true` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `inventory_assets.item_id` | `inventory_items.id` |
-| `inventory_location_stock.item_id` | `inventory_items.id` |
-| `inventory_movements.item_id` | `inventory_items.id` |
-| `material_request_lines.item_id` | `inventory_items.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `name` | String(180) | NOT NULL | — | — | — |
+| `item_code` | String(60) | NULL | — | — | — |
+| `category` | String(80) | NOT NULL | — | — | — |
+| `item_type` | String(30) | NOT NULL | — | — | — |
+| `unit` | String(20) | NOT NULL | — | — | — |
+| `minimum_stock` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `reorder_level` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `unit_cost` | Numeric(14, 2) | NULL | — | — | — |
+| `supplier_id` | UUID | NULL | — | — | — |
+| `is_active` | Boolean | NOT NULL | true | — | — |

@@ -1,37 +1,17 @@
-# `documents`
+# documents
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/document.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `title` | `VARCHAR(255)` | No | `` |  |
-| `document_type` | `VARCHAR(30)` | No | `` |  |
-| `project_id` | `UUID` | Yes | `` | projects.id |
-| `status` | `VARCHAR(20)` | No | `'pending_approval'` |  |
-| `active_version` | `INTEGER` | Yes | `` |  |
-| `metadata` | `JSONB` | No | `` |  |
-| `expiry_date` | `DATE` | Yes | `` |  |
-| `uploaded_by` | `UUID` | Yes | `` | users.id |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-| `uploaded_by` | `users.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `document_versions.document_id` | `documents.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `title` | String(255) | NOT NULL | — | — | — |
+| `document_type` | String(30) | NOT NULL | — | — | — |
+| `project_id` | UUID | NULL | — | projects.id | — |
+| `status` | String(20) | NOT NULL | pending_approval | — | — |
+| `active_version` | Integer | NULL | — | — | — |
+| `metadata_json` | 'metadata' | NOT NULL | — | — | — |
+| `expiry_date` | Date | NULL | — | — | — |
+| `uploaded_by` | UUID | NULL | — | users.id | — |

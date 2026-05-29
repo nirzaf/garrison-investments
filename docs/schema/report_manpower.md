@@ -1,26 +1,13 @@
-# `report_manpower`
+# report_manpower
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/daily_report.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `report_id` | `UUID` | No | `` | daily_reports.id |
-| `trade` | `VARCHAR(100)` | No | `` |  |
-| `count` | `INTEGER` | No | `` |  |
-| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `report_id` | `daily_reports.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `report_id` | UUID | NOT NULL | — | daily_reports.id | — |
+| `trade` | String(100) | NOT NULL | — | — | — |
+| `count` | Integer | NOT NULL | — | — | — |
+| `overtime_hours` | Numeric(5, 2) | NOT NULL | 0 | — | — |

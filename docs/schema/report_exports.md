@@ -1,34 +1,20 @@
-# `report_exports`
+# report_exports
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/report_export.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `report_id` | `UUID` | No | `` | daily_reports.id |
-| `generated_by` | `UUID` | Yes | `` | users.id |
-| `file_name` | `VARCHAR(255)` | No | `` |  |
-| `object_key` | `VARCHAR(512)` | No | `` |  |
-| `content_type` | `VARCHAR(120)` | No | `` |  |
-| `status` | `VARCHAR(20)` | No | `'ready'` |  |
-| `error_message` | `TEXT` | Yes | `` |  |
-| `email_status` | `VARCHAR(20)` | Yes | `` |  |
-| `email_error` | `TEXT` | Yes | `` |  |
-| `emailed_at` | `DATETIME` | Yes | `` |  |
-| `generated_at` | `DATETIME` | No | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `report_id` | `daily_reports.id` |
-| `generated_by` | `users.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `report_id` | UUID | NOT NULL | — | daily_reports.id | — |
+| `generated_by` | UUID | NULL | — | users.id | — |
+| `file_name` | String(255) | NOT NULL | — | — | — |
+| `object_key` | String(512) | NOT NULL | — | — | — |
+| `content_type` | String(120) | NOT NULL | — | — | — |
+| `status` | String(20) | NOT NULL | ready | — | — |
+| `error_message` | Text | NULL | — | — | — |
+| `email_status` | String(20) | NULL | — | — | — |
+| `email_error` | Text | NULL | — | — | — |
+| `emailed_at` | TimestampTZ | NULL | — | — | — |
+| `generated_at` | TimestampTZ | NOT NULL | — | — | — |

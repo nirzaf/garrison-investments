@@ -1,37 +1,16 @@
-# `material_requests`
+# material_requests
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `request_number` | `VARCHAR(60)` | No | `` |  |
-| `project_id` | `UUID` | No | `` | projects.id |
-| `requester_id` | `UUID` | Yes | `` | users.id |
-| `from_location_id` | `UUID` | Yes | `` | storage_locations.id |
-| `status` | `VARCHAR(30)` | No | `'requested'` |  |
-| `total_estimated_cost` | `NUMERIC(14, 2)` | No | `0` |  |
-| `notes` | `TEXT` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-| `requester_id` | `users.id` |
-| `from_location_id` | `storage_locations.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `material_request_lines.request_id` | `material_requests.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `request_number` | String(60) | NOT NULL | — | — | — |
+| `project_id` | UUID | NOT NULL | — | projects.id | — |
+| `requester_id` | UUID | NULL | — | users.id | — |
+| `from_location_id` | UUID | NULL | — | storage_locations.id | — |
+| `status` | String(30) | NOT NULL | requested | — | — |
+| `total_estimated_cost` | Numeric(14, 2) | NOT NULL | 0 | — | — |
+| `notes` | Text | NULL | — | — | — |

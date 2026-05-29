@@ -1,38 +1,19 @@
-# `project_milestones`
+# project_milestones
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/project_milestone.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `project_id` | `UUID` | No | `` | projects.id |
-| `name` | `VARCHAR(150)` | No | `` |  |
-| `discipline` | `VARCHAR(50)` | Yes | `` |  |
-| `planned_start_date` | `DATE` | Yes | `` |  |
-| `planned_end_date` | `DATE` | Yes | `` |  |
-| `actual_start_date` | `DATE` | Yes | `` |  |
-| `actual_end_date` | `DATE` | Yes | `` |  |
-| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
-| `status` | `VARCHAR(30)` | No | `'not_started'` |  |
-| `sort_order` | `INTEGER` | No | `0` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
-
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `boq_items.milestone_id` | `project_milestones.id` |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `project_id` | UUID | NOT NULL | — | projects.id | — |
+| `name` | String(150) | NOT NULL | — | — | — |
+| `discipline` | String(50) | NULL | — | — | — |
+| `planned_start_date` | Date | NULL | — | — | — |
+| `planned_end_date` | Date | NULL | — | — | — |
+| `actual_start_date` | Date | NULL | — | — | — |
+| `actual_end_date` | Date | NULL | — | — | — |
+| `progress_percentage` | Numeric(5, 2) | NOT NULL | 0 | — | — |
+| `status` | String(30) | NOT NULL | not_started | — | — |
+| `sort_order` | Integer | NOT NULL | 0 | — | — |
