@@ -1269,7 +1269,7 @@
       "source_file": "frontend/src/components/shared/StatusBadge.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_shared_statusbadge_tsx",
-      "community": 84,
+      "community": 78,
       "norm_label": "statusbadge.tsx"
     },
     {
@@ -1278,7 +1278,7 @@
       "source_file": "frontend/src/components/shared/StatusBadge.tsx",
       "source_location": "L1",
       "id": "shared_statusbadge_toneclassnames",
-      "community": 84,
+      "community": 78,
       "norm_label": "toneclassnames"
     },
     {
@@ -1287,7 +1287,7 @@
       "source_file": "frontend/src/components/shared/StatusBadge.tsx",
       "source_location": "L9",
       "id": "shared_statusbadge_statusbadge",
-      "community": 84,
+      "community": 78,
       "norm_label": "statusbadge()"
     },
     {
@@ -2520,7 +2520,7 @@
       "source_file": "frontend/src/api/client.ts",
       "source_location": "L75",
       "id": "api_client_setaccesstoken",
-      "community": 75,
+      "community": 70,
       "norm_label": "setaccesstoken()"
     },
     {
@@ -3249,7 +3249,7 @@
       "source_file": "frontend/src/pages/security/SecurityPage.tsx",
       "source_location": "L1",
       "id": "frontend_src_pages_security_securitypage_tsx",
-      "community": 84,
+      "community": 78,
       "norm_label": "securitypage.tsx"
     },
     {
@@ -3258,7 +3258,7 @@
       "source_file": "frontend/src/pages/security/SecurityPage.tsx",
       "source_location": "L5",
       "id": "security_securitypage_controls",
-      "community": 84,
+      "community": 78,
       "norm_label": "controls"
     },
     {
@@ -3267,7 +3267,7 @@
       "source_file": "frontend/src/pages/security/SecurityPage.tsx",
       "source_location": "L46",
       "id": "security_securitypage_compliancerows",
-      "community": 84,
+      "community": 78,
       "norm_label": "compliancerows"
     },
     {
@@ -3276,7 +3276,7 @@
       "source_file": "frontend/src/pages/security/SecurityPage.tsx",
       "source_location": "L54",
       "id": "security_securitypage_securitypage",
-      "community": 84,
+      "community": 78,
       "norm_label": "securitypage()"
     },
     {
@@ -4068,7 +4068,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L1",
       "id": "frontend_src_pages_delivery_deliveryplanpage_tsx",
-      "community": 84,
+      "community": 78,
       "norm_label": "deliveryplanpage.tsx"
     },
     {
@@ -4077,7 +4077,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L5",
       "id": "delivery_deliveryplanpage_deliveryitems",
-      "community": 84,
+      "community": 78,
       "norm_label": "deliveryitems"
     },
     {
@@ -4086,7 +4086,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L46",
       "id": "delivery_deliveryplanpage_acceptancescenarios",
-      "community": 84,
+      "community": 78,
       "norm_label": "acceptancescenarios"
     },
     {
@@ -4095,7 +4095,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L59",
       "id": "delivery_deliveryplanpage_remaininginputs",
-      "community": 84,
+      "community": 78,
       "norm_label": "remaininginputs"
     },
     {
@@ -4104,7 +4104,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L67",
       "id": "delivery_deliveryplanpage_deliveryplanpage",
-      "community": 84,
+      "community": 78,
       "norm_label": "deliveryplanpage()"
     },
     {
@@ -4113,7 +4113,7 @@
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
       "source_location": "L119",
       "id": "delivery_deliveryplanpage_checklist",
-      "community": 84,
+      "community": 78,
       "norm_label": "checklist()"
     },
     {
@@ -4414,10 +4414,19 @@
       "norm_label": "formhasdraftcontent()"
     },
     {
-      "label": "DailyReportPage()",
+      "label": "t()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
       "source_location": "L119",
+      "id": "reports_dailyreportpage_t",
+      "community": 23,
+      "norm_label": "t()"
+    },
+    {
+      "label": "DailyReportPage()",
+      "file_type": "code",
+      "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
+      "source_location": "L121",
       "id": "reports_dailyreportpage_dailyreportpage",
       "community": 23,
       "norm_label": "dailyreportpage()"
@@ -4426,7 +4435,7 @@
       "label": "Alert()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
-      "source_location": "L1093",
+      "source_location": "L1102",
       "id": "reports_dailyreportpage_alert",
       "community": 23,
       "norm_label": "alert()"
@@ -4435,7 +4444,7 @@
       "label": "SectionHeader()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
-      "source_location": "L1104",
+      "source_location": "L1113",
       "id": "reports_dailyreportpage_sectionheader",
       "community": 23,
       "norm_label": "sectionheader()"
@@ -4444,7 +4453,7 @@
       "label": "Field()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
-      "source_location": "L1108",
+      "source_location": "L1117",
       "id": "reports_dailyreportpage_field",
       "community": 23,
       "norm_label": "field()"
@@ -4453,7 +4462,7 @@
       "label": "DynamicRows()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
-      "source_location": "L1128",
+      "source_location": "L1137",
       "id": "reports_dailyreportpage_dynamicrows",
       "community": 23,
       "norm_label": "dynamicrows()"
@@ -4462,7 +4471,7 @@
       "label": "RemoveButton()",
       "file_type": "code",
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
-      "source_location": "L1162",
+      "source_location": "L1171",
       "id": "reports_dailyreportpage_removebutton",
       "community": 23,
       "norm_label": "removebutton()"
@@ -4626,7 +4635,7 @@
       "source_file": "backend/app/config.py",
       "source_location": "L128",
       "id": "app_config_get_settings",
-      "community": 32,
+      "community": 4,
       "norm_label": "get_settings()"
     },
     {
@@ -4635,7 +4644,7 @@
       "source_file": "backend/app/database.py",
       "source_location": "L1",
       "id": "backend_app_database_py",
-      "community": 99,
+      "community": 191,
       "norm_label": "database.py"
     },
     {
@@ -4644,7 +4653,7 @@
       "source_file": "backend/app/database.py",
       "source_location": "L22",
       "id": "app_database_get_db",
-      "community": 99,
+      "community": 191,
       "norm_label": "get_db()"
     },
     {
@@ -4653,7 +4662,7 @@
       "source_file": "backend/app/database.py",
       "source_location": "L22",
       "id": "backend_app_database_py_asyncsession",
-      "community": 99,
+      "community": 191,
       "norm_label": "asyncsession"
     },
     {
@@ -4662,7 +4671,7 @@
       "source_file": "backend/app/database.py",
       "source_location": "L31",
       "id": "app_database_check_database",
-      "community": 99,
+      "community": 191,
       "norm_label": "check_database()"
     },
     {
@@ -4671,7 +4680,7 @@
       "source_file": "backend/app/database.py",
       "source_location": "L31",
       "id": "backend_app_database_py_bool",
-      "community": 99,
+      "community": 191,
       "norm_label": "bool"
     },
     {
@@ -4806,7 +4815,7 @@
       "source_file": "backend/app/middleware/rate_limit.py",
       "source_location": "L1",
       "id": "backend_app_middleware_rate_limit_py",
-      "community": 20,
+      "community": 32,
       "norm_label": "rate_limit.py"
     },
     {
@@ -5004,7 +5013,7 @@
       "source_file": "backend/app/tasks/async_utils.py",
       "source_location": "L1",
       "id": "backend_app_tasks_async_utils_py",
-      "community": 189,
+      "community": 10,
       "norm_label": "async_utils.py"
     },
     {
@@ -5013,7 +5022,7 @@
       "source_file": "backend/app/tasks/async_utils.py",
       "source_location": "L10",
       "id": "tasks_async_utils_run_with_fresh_pool",
-      "community": 189,
+      "community": 10,
       "norm_label": "_run_with_fresh_pool()"
     },
     {
@@ -5022,7 +5031,7 @@
       "source_file": "backend/app/tasks/async_utils.py",
       "source_location": "L10",
       "id": "t",
-      "community": 189,
+      "community": 10,
       "norm_label": "t"
     },
     {
@@ -5031,7 +5040,7 @@
       "source_file": "backend/app/tasks/async_utils.py",
       "source_location": "L18",
       "id": "tasks_async_utils_run_async_task",
-      "community": 189,
+      "community": 10,
       "norm_label": "run_async_task()"
     },
     {
@@ -5130,7 +5139,7 @@
       "source_file": "backend/app/tasks/maintenance.py",
       "source_location": "L267",
       "id": "backend_app_tasks_maintenance_py_bool",
-      "community": 8,
+      "community": 182,
       "norm_label": "bool"
     },
     {
@@ -5202,7 +5211,7 @@
       "source_file": "backend/app/tasks/email.py",
       "source_location": "L1",
       "id": "backend_app_tasks_email_py",
-      "community": 189,
+      "community": 4,
       "norm_label": "email.py"
     },
     {
@@ -5211,7 +5220,7 @@
       "source_file": "backend/app/tasks/email.py",
       "source_location": "L25",
       "id": "tasks_email_send_email_notification",
-      "community": 189,
+      "community": 4,
       "norm_label": "send_email_notification()"
     },
     {
@@ -5220,7 +5229,7 @@
       "source_file": "backend/app/tasks/email.py",
       "source_location": "L25",
       "id": "backend_app_tasks_email_py_str",
-      "community": 189,
+      "community": 4,
       "norm_label": "str"
     },
     {
@@ -5229,7 +5238,7 @@
       "source_file": "backend/app/tasks/email.py",
       "source_location": "L78",
       "id": "tasks_email_send_report_email",
-      "community": 189,
+      "community": 4,
       "norm_label": "send_report_email()"
     },
     {
@@ -5238,7 +5247,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L1",
       "id": "backend_app_tasks_approval_py",
-      "community": 24,
+      "community": 71,
       "norm_label": "approval.py"
     },
     {
@@ -5247,7 +5256,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L31",
       "id": "tasks_approval_process_approval_reminders",
-      "community": 24,
+      "community": 71,
       "norm_label": "process_approval_reminders()"
     },
     {
@@ -5256,7 +5265,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L31",
       "id": "backend_app_tasks_approval_py_str",
-      "community": 24,
+      "community": 71,
       "norm_label": "str"
     },
     {
@@ -5265,7 +5274,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L31",
       "id": "backend_app_tasks_approval_py_int",
-      "community": 24,
+      "community": 71,
       "norm_label": "int"
     },
     {
@@ -5274,7 +5283,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L49",
       "id": "tasks_approval_check_low_stock",
-      "community": 24,
+      "community": 71,
       "norm_label": "check_low_stock()"
     },
     {
@@ -5283,7 +5292,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L80",
       "id": "tasks_approval_low_stock_recipients",
-      "community": 24,
+      "community": 71,
       "norm_label": "_low_stock_recipients()"
     },
     {
@@ -5292,7 +5301,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L80",
       "id": "backend_app_tasks_approval_py_inventorylocationstock",
-      "community": 24,
+      "community": 71,
       "norm_label": "inventorylocationstock"
     },
     {
@@ -5301,7 +5310,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L80",
       "id": "backend_app_tasks_approval_py_uuid",
-      "community": 24,
+      "community": 71,
       "norm_label": "uuid"
     },
     {
@@ -5310,7 +5319,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L105",
       "id": "tasks_approval_recent_notification_exists",
-      "community": 24,
+      "community": 71,
       "norm_label": "_recent_notification_exists()"
     },
     {
@@ -5319,7 +5328,7 @@
       "source_file": "backend/app/tasks/approval.py",
       "source_location": "L105",
       "id": "backend_app_tasks_approval_py_bool",
-      "community": 24,
+      "community": 71,
       "norm_label": "bool"
     },
     {
@@ -5535,7 +5544,7 @@
       "source_file": "backend/app/tasks/report.py",
       "source_location": "L57",
       "id": "tasks_report_generate_excel_export",
-      "community": 174,
+      "community": 10,
       "norm_label": "generate_excel_export()"
     },
     {
@@ -5751,7 +5760,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L1",
       "id": "backend_app_utils_links_py",
-      "community": 1,
+      "community": 14,
       "norm_label": "links.py"
     },
     {
@@ -5760,7 +5769,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L7",
       "id": "utils_links_build_frontend_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "build_frontend_url()"
     },
     {
@@ -5769,7 +5778,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L7",
       "id": "backend_app_utils_links_py_str",
-      "community": 1,
+      "community": 14,
       "norm_label": "str"
     },
     {
@@ -5778,7 +5787,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L22",
       "id": "utils_links_approval_inbox_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "approval_inbox_url()"
     },
     {
@@ -5787,7 +5796,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L22",
       "id": "backend_app_utils_links_py_uuid",
-      "community": 1,
+      "community": 14,
       "norm_label": "uuid"
     },
     {
@@ -5796,7 +5805,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L38",
       "id": "utils_links_daily_report_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "daily_report_url()"
     },
     {
@@ -5805,7 +5814,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L42",
       "id": "utils_links_document_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "document_url()"
     },
     {
@@ -5814,7 +5823,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L52",
       "id": "utils_links_finance_invoice_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "finance_invoice_url()"
     },
     {
@@ -5823,7 +5832,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L56",
       "id": "utils_links_material_request_url",
-      "community": 1,
+      "community": 14,
       "norm_label": "material_request_url()"
     },
     {
@@ -5832,7 +5841,7 @@
       "source_file": "backend/app/utils/links.py",
       "source_location": "L60",
       "id": "utils_links_append_link",
-      "community": 1,
+      "community": 14,
       "norm_label": "append_link()"
     },
     {
@@ -5931,7 +5940,7 @@
       "source_file": "",
       "source_location": "",
       "id": "basemodel",
-      "community": 14,
+      "community": 0,
       "norm_label": "basemodel"
     },
     {
@@ -6219,7 +6228,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L1",
       "id": "backend_app_repositories_approval_repository_py",
-      "community": 125,
+      "community": 14,
       "norm_label": "approval_repository.py"
     },
     {
@@ -6228,7 +6237,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L10",
       "id": "repositories_approval_repository_approvalrepository",
-      "community": 3,
+      "community": 14,
       "norm_label": "approvalrepository"
     },
     {
@@ -6237,7 +6246,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L11",
       "id": "repositories_approval_repository_approvalrepository_init",
-      "community": 3,
+      "community": 14,
       "norm_label": ".__init__()"
     },
     {
@@ -6246,7 +6255,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L11",
       "id": "backend_app_repositories_approval_repository_py_asyncsession",
-      "community": 3,
+      "community": 14,
       "norm_label": "asyncsession"
     },
     {
@@ -6255,7 +6264,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L14",
       "id": "repositories_approval_repository_approvalrepository_add",
-      "community": 125,
+      "community": 14,
       "norm_label": ".add()"
     },
     {
@@ -6264,7 +6273,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L14",
       "id": "backend_app_repositories_approval_repository_py_approval",
-      "community": 125,
+      "community": 14,
       "norm_label": "approval"
     },
     {
@@ -6273,7 +6282,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L19",
       "id": "repositories_approval_repository_approvalrepository_get_by_id",
-      "community": 125,
+      "community": 14,
       "norm_label": ".get_by_id()"
     },
     {
@@ -6282,7 +6291,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L19",
       "id": "backend_app_repositories_approval_repository_py_uuid",
-      "community": 125,
+      "community": 14,
       "norm_label": "uuid"
     },
     {
@@ -6291,7 +6300,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L19",
       "id": "backend_app_repositories_approval_repository_py_bool",
-      "community": 125,
+      "community": 14,
       "norm_label": "bool"
     },
     {
@@ -6300,7 +6309,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L25",
       "id": "repositories_approval_repository_approvalrepository_get_open_for_request",
-      "community": 125,
+      "community": 14,
       "norm_label": ".get_open_for_request()"
     },
     {
@@ -6309,7 +6318,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L25",
       "id": "backend_app_repositories_approval_repository_py_str",
-      "community": 125,
+      "community": 14,
       "norm_label": "str"
     },
     {
@@ -6318,7 +6327,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L35",
       "id": "repositories_approval_repository_approvalrepository_list_for_user",
-      "community": 125,
+      "community": 14,
       "norm_label": ".list_for_user()"
     },
     {
@@ -6327,7 +6336,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L35",
       "id": "backend_app_repositories_approval_repository_py_int",
-      "community": 125,
+      "community": 14,
       "norm_label": "int"
     },
     {
@@ -6336,7 +6345,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L67",
       "id": "repositories_approval_repository_approvalrepository_list_due_for_reminder",
-      "community": 125,
+      "community": 14,
       "norm_label": ".list_due_for_reminder()"
     },
     {
@@ -6345,7 +6354,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L67",
       "id": "backend_app_repositories_approval_repository_py_datetime",
-      "community": 125,
+      "community": 14,
       "norm_label": "datetime"
     },
     {
@@ -6354,7 +6363,7 @@
       "source_file": "backend/app/repositories/approval_repository.py",
       "source_location": "L81",
       "id": "repositories_approval_repository_approvalrepository_list_due_for_escalation",
-      "community": 125,
+      "community": 14,
       "norm_label": ".list_due_for_escalation()"
     },
     {
@@ -6750,7 +6759,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L17",
       "id": "repositories_project_repository_projectrepository_next_project_sequence",
-      "community": 26,
+      "community": 3,
       "norm_label": ".next_project_sequence()"
     },
     {
@@ -6759,7 +6768,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L17",
       "id": "backend_app_repositories_project_repository_py_int",
-      "community": 26,
+      "community": 3,
       "norm_label": "int"
     },
     {
@@ -6786,7 +6795,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L21",
       "id": "backend_app_repositories_project_repository_py_project",
-      "community": 26,
+      "community": 3,
       "norm_label": "project"
     },
     {
@@ -6795,7 +6804,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L27",
       "id": "repositories_project_repository_projectrepository_list_projects",
-      "community": 26,
+      "community": 3,
       "norm_label": ".list_projects()"
     },
     {
@@ -6813,7 +6822,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L27",
       "id": "backend_app_repositories_project_repository_py_str",
-      "community": 26,
+      "community": 3,
       "norm_label": "str"
     },
     {
@@ -6822,7 +6831,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L53",
       "id": "repositories_project_repository_projectrepository_add_project",
-      "community": 26,
+      "community": 3,
       "norm_label": ".add_project()"
     },
     {
@@ -6966,7 +6975,7 @@
       "source_file": "backend/app/repositories/project_repository.py",
       "source_location": "L138",
       "id": "repositories_project_repository_projectrepository_apply_filters",
-      "community": 26,
+      "community": 3,
       "norm_label": "._apply_filters()"
     },
     {
@@ -7209,7 +7218,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L1",
       "id": "backend_app_repositories_user_repository_py",
-      "community": 6,
+      "community": 13,
       "norm_label": "user_repository.py"
     },
     {
@@ -7227,7 +7236,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L10",
       "id": "repositories_user_repository_userrepository_init",
-      "community": 6,
+      "community": 13,
       "norm_label": ".__init__()"
     },
     {
@@ -7236,7 +7245,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L10",
       "id": "backend_app_repositories_user_repository_py_asyncsession",
-      "community": 6,
+      "community": 13,
       "norm_label": "asyncsession"
     },
     {
@@ -7245,7 +7254,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L13",
       "id": "repositories_user_repository_userrepository_get_by_email",
-      "community": 6,
+      "community": 13,
       "norm_label": ".get_by_email()"
     },
     {
@@ -7254,7 +7263,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L13",
       "id": "backend_app_repositories_user_repository_py_str",
-      "community": 6,
+      "community": 13,
       "norm_label": "str"
     },
     {
@@ -7263,7 +7272,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L13",
       "id": "backend_app_repositories_user_repository_py_user",
-      "community": 6,
+      "community": 13,
       "norm_label": "user"
     },
     {
@@ -7272,7 +7281,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L19",
       "id": "repositories_user_repository_userrepository_get_by_id",
-      "community": 6,
+      "community": 13,
       "norm_label": ".get_by_id()"
     },
     {
@@ -7281,7 +7290,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L19",
       "id": "backend_app_repositories_user_repository_py_uuid",
-      "community": 6,
+      "community": 13,
       "norm_label": "uuid"
     },
     {
@@ -7290,7 +7299,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L25",
       "id": "repositories_user_repository_userrepository_list_users",
-      "community": 6,
+      "community": 13,
       "norm_label": ".list_users()"
     },
     {
@@ -7299,7 +7308,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L25",
       "id": "backend_app_repositories_user_repository_py_bool",
-      "community": 6,
+      "community": 13,
       "norm_label": "bool"
     },
     {
@@ -7308,7 +7317,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L25",
       "id": "backend_app_repositories_user_repository_py_int",
-      "community": 6,
+      "community": 13,
       "norm_label": "int"
     },
     {
@@ -7317,7 +7326,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L50",
       "id": "repositories_user_repository_userrepository_add",
-      "community": 6,
+      "community": 13,
       "norm_label": ".add()"
     },
     {
@@ -7326,7 +7335,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L55",
       "id": "repositories_user_repository_userrepository_apply_filters",
-      "community": 6,
+      "community": 13,
       "norm_label": "._apply_filters()"
     },
     {
@@ -7335,7 +7344,7 @@
       "source_file": "backend/app/repositories/user_repository.py",
       "source_location": "L55",
       "id": "backend_app_repositories_user_repository_py_select",
-      "community": 6,
+      "community": 13,
       "norm_label": "select"
     },
     {
@@ -7506,7 +7515,7 @@
       "source_file": "backend/app/models/user.py",
       "source_location": "L1",
       "id": "backend_app_models_user_py",
-      "community": 6,
+      "community": 13,
       "norm_label": "user.py"
     },
     {
@@ -7515,7 +7524,7 @@
       "source_file": "backend/app/models/user.py",
       "source_location": "L11",
       "id": "models_user_user",
-      "community": 6,
+      "community": 13,
       "norm_label": "user"
     },
     {
@@ -7596,7 +7605,7 @@
       "source_file": "backend/app/models/finance.py",
       "source_location": "L1",
       "id": "backend_app_models_finance_py",
-      "community": 8,
+      "community": 3,
       "norm_label": "finance.py"
     },
     {
@@ -7605,7 +7614,7 @@
       "source_file": "backend/app/models/finance.py",
       "source_location": "L12",
       "id": "models_finance_invoice",
-      "community": 8,
+      "community": 3,
       "norm_label": "invoice"
     },
     {
@@ -7614,7 +7623,7 @@
       "source_file": "backend/app/models/finance.py",
       "source_location": "L67",
       "id": "models_finance_payment",
-      "community": 8,
+      "community": 3,
       "norm_label": "payment"
     },
     {
@@ -7623,7 +7632,7 @@
       "source_file": "backend/app/models/project_member.py",
       "source_location": "L1",
       "id": "backend_app_models_project_member_py",
-      "community": 8,
+      "community": 71,
       "norm_label": "project_member.py"
     },
     {
@@ -7632,7 +7641,7 @@
       "source_file": "backend/app/models/project_member.py",
       "source_location": "L11",
       "id": "models_project_member_projectmember",
-      "community": 8,
+      "community": 71,
       "norm_label": "projectmember"
     },
     {
@@ -7893,7 +7902,7 @@
       "source_file": "backend/app/models/project.py",
       "source_location": "L1",
       "id": "backend_app_models_project_py",
-      "community": 8,
+      "community": 3,
       "norm_label": "project.py"
     },
     {
@@ -7902,7 +7911,7 @@
       "source_file": "backend/app/models/project.py",
       "source_location": "L12",
       "id": "models_project_project",
-      "community": 8,
+      "community": 3,
       "norm_label": "project"
     },
     {
@@ -8118,7 +8127,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L1",
       "id": "backend_app_schemas_auth_py",
-      "community": 14,
+      "community": 38,
       "norm_label": "auth.py"
     },
     {
@@ -8127,7 +8136,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L7",
       "id": "schemas_auth_authuserresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "authuserresponse"
     },
     {
@@ -8136,7 +8145,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L22",
       "id": "schemas_auth_loginrequest",
-      "community": 14,
+      "community": 38,
       "norm_label": "loginrequest"
     },
     {
@@ -8145,7 +8154,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L27",
       "id": "schemas_auth_loginchallengeresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "loginchallengeresponse"
     },
     {
@@ -8154,7 +8163,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L34",
       "id": "schemas_auth_verifyotprequest",
-      "community": 14,
+      "community": 38,
       "norm_label": "verifyotprequest"
     },
     {
@@ -8163,7 +8172,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L39",
       "id": "schemas_auth_tokenresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "tokenresponse"
     },
     {
@@ -8172,7 +8181,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L46",
       "id": "schemas_auth_refreshresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "refreshresponse"
     },
     {
@@ -8181,7 +8190,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L50",
       "id": "schemas_auth_passwordchangerequest",
-      "community": 14,
+      "community": 38,
       "norm_label": "passwordchangerequest"
     },
     {
@@ -8190,7 +8199,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L55",
       "id": "schemas_auth_passwordresetrequest",
-      "community": 14,
+      "community": 38,
       "norm_label": "passwordresetrequest"
     },
     {
@@ -8199,7 +8208,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L59",
       "id": "schemas_auth_passwordresetchallengeresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "passwordresetchallengeresponse"
     },
     {
@@ -8208,7 +8217,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L67",
       "id": "schemas_auth_passwordresetconfirmrequest",
-      "community": 14,
+      "community": 38,
       "norm_label": "passwordresetconfirmrequest"
     },
     {
@@ -8217,7 +8226,7 @@
       "source_file": "backend/app/schemas/auth.py",
       "source_location": "L73",
       "id": "schemas_auth_messageresponse",
-      "community": 14,
+      "community": 38,
       "norm_label": "messageresponse"
     },
     {
@@ -8280,7 +8289,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L1",
       "id": "backend_app_schemas_finance_py",
-      "community": 14,
+      "community": 0,
       "norm_label": "finance.py"
     },
     {
@@ -8289,7 +8298,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L8",
       "id": "schemas_finance_invoicecreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "invoicecreaterequest"
     },
     {
@@ -8298,7 +8307,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L20",
       "id": "schemas_finance_invoiceupdaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "invoiceupdaterequest"
     },
     {
@@ -8307,7 +8316,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L25",
       "id": "schemas_finance_paymentcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "paymentcreaterequest"
     },
     {
@@ -8316,7 +8325,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L33",
       "id": "schemas_finance_paymentresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "paymentresponse"
     },
     {
@@ -8325,7 +8334,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L47",
       "id": "schemas_finance_invoiceresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "invoiceresponse"
     },
     {
@@ -8334,7 +8343,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L69",
       "id": "schemas_finance_invoicelistresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "invoicelistresponse"
     },
     {
@@ -8343,7 +8352,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L74",
       "id": "schemas_finance_budgetsummaryresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "budgetsummaryresponse"
     },
     {
@@ -8352,7 +8361,7 @@
       "source_file": "backend/app/schemas/finance.py",
       "source_location": "L82",
       "id": "schemas_finance_invoiceattachmenturlresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "invoiceattachmenturlresponse"
     },
     {
@@ -8361,7 +8370,7 @@
       "source_file": "backend/app/schemas/audit.py",
       "source_location": "L1",
       "id": "backend_app_schemas_audit_py",
-      "community": 14,
+      "community": 0,
       "norm_label": "audit.py"
     },
     {
@@ -8370,7 +8379,7 @@
       "source_file": "backend/app/schemas/audit.py",
       "source_location": "L7",
       "id": "schemas_audit_auditlogresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "auditlogresponse"
     },
     {
@@ -8379,7 +8388,7 @@
       "source_file": "backend/app/schemas/audit.py",
       "source_location": "L36",
       "id": "schemas_audit_auditloglistresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "auditloglistresponse"
     },
     {
@@ -8397,7 +8406,7 @@
       "source_file": "backend/app/schemas/approvals.py",
       "source_location": "L8",
       "id": "schemas_approvals_approvalcreaterequest",
-      "community": 8,
+      "community": 14,
       "norm_label": "approvalcreaterequest"
     },
     {
@@ -8568,7 +8577,7 @@
       "source_file": "backend/app/schemas/imports.py",
       "source_location": "L1",
       "id": "backend_app_schemas_imports_py",
-      "community": 14,
+      "community": 0,
       "norm_label": "imports.py"
     },
     {
@@ -8577,7 +8586,7 @@
       "source_file": "backend/app/schemas/imports.py",
       "source_location": "L6",
       "id": "schemas_imports_importerroritem",
-      "community": 14,
+      "community": 0,
       "norm_label": "importerroritem"
     },
     {
@@ -8586,7 +8595,7 @@
       "source_file": "backend/app/schemas/imports.py",
       "source_location": "L12",
       "id": "schemas_imports_importpreviewresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "importpreviewresponse"
     },
     {
@@ -8595,7 +8604,7 @@
       "source_file": "backend/app/schemas/imports.py",
       "source_location": "L19",
       "id": "schemas_imports_importrunresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "importrunresponse"
     },
     {
@@ -8604,7 +8613,7 @@
       "source_file": "backend/app/schemas/imports.py",
       "source_location": "L29",
       "id": "schemas_imports_importbatchlistresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "importbatchlistresponse"
     },
     {
@@ -8631,7 +8640,7 @@
       "source_file": "backend/app/schemas/common.py",
       "source_location": "L1",
       "id": "backend_app_schemas_common_py",
-      "community": 14,
+      "community": 0,
       "norm_label": "common.py"
     },
     {
@@ -8640,7 +8649,7 @@
       "source_file": "backend/app/schemas/common.py",
       "source_location": "L8",
       "id": "schemas_common_erroritem",
-      "community": 14,
+      "community": 0,
       "norm_label": "erroritem"
     },
     {
@@ -8649,7 +8658,7 @@
       "source_file": "backend/app/schemas/common.py",
       "source_location": "L13",
       "id": "schemas_common_errorresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "errorresponse"
     },
     {
@@ -8658,7 +8667,7 @@
       "source_file": "backend/app/schemas/common.py",
       "source_location": "L19",
       "id": "schemas_common_paginatedresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "paginatedresponse"
     },
     {
@@ -8667,7 +8676,7 @@
       "source_file": "backend/app/schemas/common.py",
       "source_location": "L27",
       "id": "schemas_common_baseormmodel",
-      "community": 14,
+      "community": 0,
       "norm_label": "baseormmodel"
     },
     {
@@ -8775,7 +8784,7 @@
       "source_file": "backend/app/schemas/analytics.py",
       "source_location": "L7",
       "id": "schemas_analytics_projectanalyticsrow",
-      "community": 10,
+      "community": 3,
       "norm_label": "projectanalyticsrow"
     },
     {
@@ -8784,7 +8793,7 @@
       "source_file": "backend/app/schemas/analytics.py",
       "source_location": "L16",
       "id": "schemas_analytics_materialusagerow",
-      "community": 10,
+      "community": 3,
       "norm_label": "materialusagerow"
     },
     {
@@ -9117,7 +9126,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L1",
       "id": "backend_app_schemas_inventory_py",
-      "community": 14,
+      "community": 0,
       "norm_label": "inventory.py"
     },
     {
@@ -9126,7 +9135,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L8",
       "id": "schemas_inventory_locationcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "locationcreaterequest"
     },
     {
@@ -9135,7 +9144,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L16",
       "id": "schemas_inventory_locationresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "locationresponse"
     },
     {
@@ -9144,7 +9153,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L23",
       "id": "schemas_inventory_inventoryitemcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "inventoryitemcreaterequest"
     },
     {
@@ -9153,7 +9162,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L35",
       "id": "schemas_inventory_inventoryitemresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "inventoryitemresponse"
     },
     {
@@ -9162,7 +9171,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L51",
       "id": "schemas_inventory_stockresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "stockresponse"
     },
     {
@@ -9171,7 +9180,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L61",
       "id": "schemas_inventory_assetcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "assetcreaterequest"
     },
     {
@@ -9180,7 +9189,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L68",
       "id": "schemas_inventory_assetresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "assetresponse"
     },
     {
@@ -9189,7 +9198,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L79",
       "id": "schemas_inventory_movementcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "movementcreaterequest"
     },
     {
@@ -9198,7 +9207,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L94",
       "id": "schemas_inventory_movementresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "movementresponse"
     },
     {
@@ -9207,7 +9216,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L112",
       "id": "schemas_inventory_materialrequestlinecreate",
-      "community": 14,
+      "community": 0,
       "norm_label": "materialrequestlinecreate"
     },
     {
@@ -9216,7 +9225,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L117",
       "id": "schemas_inventory_materialrequestcreaterequest",
-      "community": 14,
+      "community": 0,
       "norm_label": "materialrequestcreaterequest"
     },
     {
@@ -9225,7 +9234,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L124",
       "id": "schemas_inventory_materialrequestlineresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "materialrequestlineresponse"
     },
     {
@@ -9234,7 +9243,7 @@
       "source_file": "backend/app/schemas/inventory.py",
       "source_location": "L135",
       "id": "schemas_inventory_materialrequestresponse",
-      "community": 14,
+      "community": 0,
       "norm_label": "materialrequestresponse"
     },
     {
@@ -9252,7 +9261,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L1",
       "id": "backend_app_api_dependencies_py",
-      "community": 38,
+      "community": 181,
       "norm_label": "dependencies.py"
     },
     {
@@ -9261,7 +9270,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L18",
       "id": "api_dependencies_get_request_meta",
-      "community": 38,
+      "community": 18,
       "norm_label": "get_request_meta()"
     },
     {
@@ -9270,7 +9279,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L18",
       "id": "backend_app_api_dependencies_py_request",
-      "community": 38,
+      "community": 18,
       "norm_label": "request"
     },
     {
@@ -9279,7 +9288,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L18",
       "id": "requestmeta",
-      "community": 38,
+      "community": 18,
       "norm_label": "requestmeta"
     },
     {
@@ -9288,7 +9297,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L32",
       "id": "api_dependencies_get_current_user",
-      "community": 38,
+      "community": 181,
       "norm_label": "get_current_user()"
     },
     {
@@ -9306,7 +9315,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L32",
       "id": "httpauthorizationcredentials",
-      "community": 38,
+      "community": 181,
       "norm_label": "httpauthorizationcredentials"
     },
     {
@@ -9315,7 +9324,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L32",
       "id": "depends",
-      "community": 38,
+      "community": 181,
       "norm_label": "depends"
     },
     {
@@ -9324,7 +9333,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L32",
       "id": "bearer_scheme",
-      "community": 38,
+      "community": 181,
       "norm_label": "bearer_scheme"
     },
     {
@@ -9333,7 +9342,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L32",
       "id": "backend_app_api_dependencies_py_user",
-      "community": 38,
+      "community": 181,
       "norm_label": "user"
     },
     {
@@ -9342,7 +9351,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L46",
       "id": "api_dependencies_require_permission",
-      "community": 38,
+      "community": 181,
       "norm_label": "require_permission()"
     },
     {
@@ -9351,7 +9360,7 @@
       "source_file": "backend/app/api/dependencies.py",
       "source_location": "L46",
       "id": "backend_app_api_dependencies_py_str",
-      "community": 38,
+      "community": 181,
       "norm_label": "str"
     },
     {
@@ -13185,7 +13194,7 @@
       "source_file": "backend/app/services/document_service.py",
       "source_location": "L1",
       "id": "backend_app_services_document_service_py",
-      "community": 9,
+      "community": 32,
       "norm_label": "document_service.py"
     },
     {
@@ -13401,7 +13410,7 @@
       "source_file": "backend/app/services/document_service.py",
       "source_location": "L263",
       "id": "services_document_service_documentservice_client",
-      "community": 9,
+      "community": 125,
       "norm_label": "._client()"
     },
     {
@@ -13716,7 +13725,7 @@
       "source_file": "backend/app/services/inventory_service.py",
       "source_location": "L50",
       "id": "services_inventory_service_inventoryservice_init",
-      "community": 24,
+      "community": 9,
       "norm_label": ".__init__()"
     },
     {
@@ -14454,7 +14463,7 @@
       "source_file": "backend/app/services/notification_service.py",
       "source_location": "L52",
       "id": "services_notification_service_notificationservice",
-      "community": 24,
+      "community": 9,
       "norm_label": "notificationservice"
     },
     {
@@ -14598,7 +14607,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L52",
       "id": "services_finance_service_financeservice_init",
-      "community": 8,
+      "community": 13,
       "norm_label": ".__init__()"
     },
     {
@@ -14607,7 +14616,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L52",
       "id": "backend_app_services_finance_service_py_asyncsession",
-      "community": 8,
+      "community": 13,
       "norm_label": "asyncsession"
     },
     {
@@ -14643,7 +14652,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L65",
       "id": "backend_app_services_finance_service_py_invoicecreaterequest",
-      "community": 8,
+      "community": 13,
       "norm_label": "invoicecreaterequest"
     },
     {
@@ -14679,7 +14688,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L102",
       "id": "backend_app_services_finance_service_py_str",
-      "community": 8,
+      "community": 13,
       "norm_label": "str"
     },
     {
@@ -14688,7 +14697,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L102",
       "id": "backend_app_services_finance_service_py_int",
-      "community": 8,
+      "community": 3,
       "norm_label": "int"
     },
     {
@@ -14715,7 +14724,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L156",
       "id": "backend_app_services_finance_service_py_invoiceupdaterequest",
-      "community": 8,
+      "community": 13,
       "norm_label": "invoiceupdaterequest"
     },
     {
@@ -14742,7 +14751,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L206",
       "id": "backend_app_services_finance_service_py_uploadfile",
-      "community": 8,
+      "community": 13,
       "norm_label": "uploadfile"
     },
     {
@@ -14769,7 +14778,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L256",
       "id": "backend_app_services_finance_service_py_paymentcreaterequest",
-      "community": 8,
+      "community": 13,
       "norm_label": "paymentcreaterequest"
     },
     {
@@ -14787,7 +14796,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L300",
       "id": "backend_app_services_finance_service_py_decimal",
-      "community": 8,
+      "community": 13,
       "norm_label": "decimal"
     },
     {
@@ -14796,7 +14805,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L335",
       "id": "services_finance_service_financeservice_validate_file",
-      "community": 8,
+      "community": 13,
       "norm_label": "._validate_file()"
     },
     {
@@ -14805,7 +14814,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L335",
       "id": "backend_app_services_finance_service_py_bytes",
-      "community": 8,
+      "community": 3,
       "norm_label": "bytes"
     },
     {
@@ -14832,7 +14841,7 @@
       "source_file": "backend/app/services/finance_service.py",
       "source_location": "L349",
       "id": "services_finance_service_financeservice_upload_object",
-      "community": 8,
+      "community": 13,
       "norm_label": "._upload_object()"
     },
     {
@@ -14958,7 +14967,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L67",
       "id": "backend_app_services_report_export_service_py_bytes",
-      "community": 1,
+      "community": 16,
       "norm_label": "bytes"
     },
     {
@@ -14967,7 +14976,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L98",
       "id": "services_report_export_service_reportexportservice_build_pdf",
-      "community": 1,
+      "community": 16,
       "norm_label": ".build_pdf()"
     },
     {
@@ -14976,7 +14985,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L98",
       "id": "backend_app_services_report_export_service_py_dailyreport",
-      "community": 1,
+      "community": 16,
       "norm_label": "dailyreport"
     },
     {
@@ -14985,7 +14994,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L191",
       "id": "services_report_export_service_reportexportservice_table",
-      "community": 1,
+      "community": 16,
       "norm_label": "._table()"
     },
     {
@@ -14994,7 +15003,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L191",
       "id": "backend_app_services_report_export_service_py_str",
-      "community": 1,
+      "community": 16,
       "norm_label": "str"
     },
     {
@@ -15003,7 +15012,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L191",
       "id": "table",
-      "community": 1,
+      "community": 16,
       "norm_label": "table"
     },
     {
@@ -15030,7 +15039,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L216",
       "id": "services_report_export_service_reportexportservice_upload_pdf",
-      "community": 1,
+      "community": 16,
       "norm_label": "._upload_pdf()"
     },
     {
@@ -15039,7 +15048,7 @@
       "source_file": "backend/app/services/report_export_service.py",
       "source_location": "L228",
       "id": "services_report_export_service_reportexportservice_download_pdf",
-      "community": 1,
+      "community": 16,
       "norm_label": "._download_pdf()"
     },
     {
@@ -15048,7 +15057,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L1",
       "id": "backend_app_services_approval_service_py",
-      "community": 3,
+      "community": 14,
       "norm_label": "approval_service.py"
     },
     {
@@ -15057,7 +15066,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L37",
       "id": "services_approval_service_approvalservice",
-      "community": 24,
+      "community": 14,
       "norm_label": "approvalservice"
     },
     {
@@ -15066,7 +15075,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L38",
       "id": "services_approval_service_approvalservice_init",
-      "community": 8,
+      "community": 9,
       "norm_label": ".__init__()"
     },
     {
@@ -15075,7 +15084,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L38",
       "id": "backend_app_services_approval_service_py_asyncsession",
-      "community": 8,
+      "community": 9,
       "norm_label": "asyncsession"
     },
     {
@@ -15084,7 +15093,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L45",
       "id": "services_approval_service_approvalservice_create_approval",
-      "community": 3,
+      "community": 14,
       "norm_label": ".create_approval()"
     },
     {
@@ -15093,7 +15102,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L45",
       "id": "backend_app_services_approval_service_py_approvalcreaterequest",
-      "community": 3,
+      "community": 9,
       "norm_label": "approvalcreaterequest"
     },
     {
@@ -15102,7 +15111,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L45",
       "id": "backend_app_services_approval_service_py_user",
-      "community": 3,
+      "community": 14,
       "norm_label": "user"
     },
     {
@@ -15111,7 +15120,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L45",
       "id": "backend_app_services_approval_service_py_bool",
-      "community": 3,
+      "community": 14,
       "norm_label": "bool"
     },
     {
@@ -15120,7 +15129,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L45",
       "id": "backend_app_services_approval_service_py_approval",
-      "community": 3,
+      "community": 14,
       "norm_label": "approval"
     },
     {
@@ -15129,7 +15138,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L115",
       "id": "services_approval_service_approvalservice_list_for_user",
-      "community": 3,
+      "community": 14,
       "norm_label": ".list_for_user()"
     },
     {
@@ -15138,7 +15147,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L115",
       "id": "backend_app_services_approval_service_py_str",
-      "community": 3,
+      "community": 14,
       "norm_label": "str"
     },
     {
@@ -15147,7 +15156,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L115",
       "id": "backend_app_services_approval_service_py_int",
-      "community": 8,
+      "community": 9,
       "norm_label": "int"
     },
     {
@@ -15156,7 +15165,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L135",
       "id": "services_approval_service_approvalservice_get_for_actor",
-      "community": 3,
+      "community": 14,
       "norm_label": ".get_for_actor()"
     },
     {
@@ -15165,7 +15174,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L135",
       "id": "backend_app_services_approval_service_py_uuid",
-      "community": 3,
+      "community": 14,
       "norm_label": "uuid"
     },
     {
@@ -15174,7 +15183,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L145",
       "id": "services_approval_service_approvalservice_approve",
-      "community": 3,
+      "community": 14,
       "norm_label": ".approve()"
     },
     {
@@ -15183,7 +15192,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L164",
       "id": "services_approval_service_approvalservice_reject",
-      "community": 3,
+      "community": 14,
       "norm_label": ".reject()"
     },
     {
@@ -15192,7 +15201,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L189",
       "id": "services_approval_service_approvalservice_delegate",
-      "community": 3,
+      "community": 14,
       "norm_label": ".delegate()"
     },
     {
@@ -15201,7 +15210,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L231",
       "id": "services_approval_service_approvalservice_override",
-      "community": 3,
+      "community": 14,
       "norm_label": ".override()"
     },
     {
@@ -15210,7 +15219,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L271",
       "id": "services_approval_service_approvalservice_send_reminders_and_escalations",
-      "community": 1,
+      "community": 14,
       "norm_label": ".send_reminders_and_escalations()"
     },
     {
@@ -15219,7 +15228,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L313",
       "id": "services_approval_service_approvalservice_get",
-      "community": 3,
+      "community": 14,
       "norm_label": "._get()"
     },
     {
@@ -15228,7 +15237,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L319",
       "id": "services_approval_service_approvalservice_get_actionable",
-      "community": 3,
+      "community": 14,
       "norm_label": "._get_actionable()"
     },
     {
@@ -15237,7 +15246,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L335",
       "id": "services_approval_service_approvalservice_resolve_approver",
-      "community": 3,
+      "community": 14,
       "norm_label": "._resolve_approver()"
     },
     {
@@ -15246,7 +15255,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L383",
       "id": "services_approval_service_approvalservice_first_active_role_user",
-      "community": 3,
+      "community": 14,
       "norm_label": "._first_active_role_user()"
     },
     {
@@ -15255,7 +15264,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L390",
       "id": "services_approval_service_approvalservice_can_view",
-      "community": 3,
+      "community": 14,
       "norm_label": "._can_view()"
     },
     {
@@ -15264,7 +15273,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L398",
       "id": "services_approval_service_approvalservice_can_act",
-      "community": 3,
+      "community": 14,
       "norm_label": "._can_act()"
     },
     {
@@ -15273,7 +15282,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L401",
       "id": "services_approval_service_approvalservice_apply_entity_decision",
-      "community": 3,
+      "community": 14,
       "norm_label": "._apply_entity_decision()"
     },
     {
@@ -15282,7 +15291,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L501",
       "id": "services_approval_service_approvalservice_notify_submitter",
-      "community": 3,
+      "community": 14,
       "norm_label": "._notify_submitter()"
     },
     {
@@ -15291,7 +15300,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L516",
       "id": "services_approval_service_approvalservice_submitter_target_url",
-      "community": 3,
+      "community": 14,
       "norm_label": "._submitter_target_url()"
     },
     {
@@ -15300,7 +15309,7 @@
       "source_file": "backend/app/services/approval_service.py",
       "source_location": "L527",
       "id": "services_approval_service_approvalservice_submitter_link_label",
-      "community": 3,
+      "community": 14,
       "norm_label": "._submitter_link_label()"
     },
     {
@@ -16056,7 +16065,7 @@
       "source_file": "backend/app/services/email_service.py",
       "source_location": "L12",
       "id": "services_email_service_emailservice_init",
-      "community": 32,
+      "community": 4,
       "norm_label": ".__init__()"
     },
     {
@@ -16101,7 +16110,7 @@
       "source_file": "backend/app/services/audit_service.py",
       "source_location": "L14",
       "id": "services_audit_service_auditservice",
-      "community": 8,
+      "community": 9,
       "norm_label": "auditservice"
     },
     {
@@ -16110,7 +16119,7 @@
       "source_file": "backend/app/services/audit_service.py",
       "source_location": "L15",
       "id": "services_audit_service_auditservice_init",
-      "community": 32,
+      "community": 26,
       "norm_label": ".__init__()"
     },
     {
@@ -16119,7 +16128,7 @@
       "source_file": "backend/app/services/audit_service.py",
       "source_location": "L15",
       "id": "backend_app_services_audit_service_py_asyncsession",
-      "community": 32,
+      "community": 26,
       "norm_label": "asyncsession"
     },
     {
@@ -16245,7 +16254,7 @@
       "source_file": "backend/app/services/audit_service.py",
       "source_location": "L245",
       "id": "timedelta",
-      "community": 26,
+      "community": 8,
       "norm_label": "timedelta"
     },
     {
@@ -16263,7 +16272,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L1",
       "id": "backend_app_services_user_service_py",
-      "community": 2,
+      "community": 89,
       "norm_label": "user_service.py"
     },
     {
@@ -16281,7 +16290,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L16",
       "id": "services_user_service_userservice_init",
-      "community": 2,
+      "community": 83,
       "norm_label": ".__init__()"
     },
     {
@@ -16299,7 +16308,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L21",
       "id": "services_user_service_userservice_list_users",
-      "community": 2,
+      "community": 89,
       "norm_label": ".list_users()"
     },
     {
@@ -16308,7 +16317,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L21",
       "id": "backend_app_services_user_service_py_bool",
-      "community": 2,
+      "community": 89,
       "norm_label": "bool"
     },
     {
@@ -16317,7 +16326,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L21",
       "id": "backend_app_services_user_service_py_str",
-      "community": 2,
+      "community": 89,
       "norm_label": "str"
     },
     {
@@ -16326,7 +16335,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L21",
       "id": "backend_app_services_user_service_py_int",
-      "community": 2,
+      "community": 89,
       "norm_label": "int"
     },
     {
@@ -16335,7 +16344,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L21",
       "id": "backend_app_services_user_service_py_user",
-      "community": 2,
+      "community": 89,
       "norm_label": "user"
     },
     {
@@ -16344,7 +16353,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L39",
       "id": "services_user_service_userservice_create_user",
-      "community": 2,
+      "community": 89,
       "norm_label": ".create_user()"
     },
     {
@@ -16362,7 +16371,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L70",
       "id": "services_user_service_userservice_update_user",
-      "community": 2,
+      "community": 89,
       "norm_label": ".update_user()"
     },
     {
@@ -16371,7 +16380,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L70",
       "id": "backend_app_services_user_service_py_uuid",
-      "community": 2,
+      "community": 89,
       "norm_label": "uuid"
     },
     {
@@ -16380,7 +16389,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L70",
       "id": "backend_app_services_user_service_py_userupdaterequest",
-      "community": 2,
+      "community": 89,
       "norm_label": "userupdaterequest"
     },
     {
@@ -16389,7 +16398,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L126",
       "id": "services_user_service_userservice_deactivate_user",
-      "community": 2,
+      "community": 89,
       "norm_label": ".deactivate_user()"
     },
     {
@@ -16398,7 +16407,7 @@
       "source_file": "backend/app/services/user_service.py",
       "source_location": "L129",
       "id": "services_user_service_userservice_admin_reset_password",
-      "community": 2,
+      "community": 89,
       "norm_label": ".admin_reset_password()"
     },
     {
@@ -16677,7 +16686,7 @@
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L1",
       "id": "backend_app_services_storage_service_py",
-      "community": 29,
+      "community": 125,
       "norm_label": "storage_service.py"
     },
     {
@@ -16686,7 +16695,7 @@
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L6",
       "id": "services_storage_service_minio_client",
-      "community": 29,
+      "community": 125,
       "norm_label": "minio_client()"
     },
     {
@@ -16695,7 +16704,7 @@
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L6",
       "id": "backend_app_services_storage_service_py_settings",
-      "community": 29,
+      "community": 125,
       "norm_label": "settings"
     },
     {
@@ -16704,7 +16713,7 @@
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L6",
       "id": "backend_app_services_storage_service_py_minio",
-      "community": 29,
+      "community": 125,
       "norm_label": "minio"
     },
     {
@@ -16713,7 +16722,7 @@
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L16",
       "id": "services_storage_service_minio_signed_url_client",
-      "community": 29,
+      "community": 125,
       "norm_label": "minio_signed_url_client()"
     },
     {
@@ -16722,7 +16731,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L1",
       "id": "backend_app_services_analytics_service_py",
-      "community": 10,
+      "community": 3,
       "norm_label": "analytics_service.py"
     },
     {
@@ -16740,7 +16749,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L29",
       "id": "services_analytics_service_analyticsservice_init",
-      "community": 8,
+      "community": 3,
       "norm_label": ".__init__()"
     },
     {
@@ -16749,7 +16758,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L29",
       "id": "backend_app_services_analytics_service_py_asyncsession",
-      "community": 8,
+      "community": 3,
       "norm_label": "asyncsession"
     },
     {
@@ -16758,7 +16767,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L33",
       "id": "services_analytics_service_analyticsservice_ensure_management_access",
-      "community": 10,
+      "community": 3,
       "norm_label": ".ensure_management_access()"
     },
     {
@@ -16767,7 +16776,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L33",
       "id": "backend_app_services_analytics_service_py_user",
-      "community": 10,
+      "community": 3,
       "norm_label": "user"
     },
     {
@@ -16776,7 +16785,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L41",
       "id": "services_analytics_service_analyticsservice_summary",
-      "community": 10,
+      "community": 3,
       "norm_label": ".summary()"
     },
     {
@@ -16785,7 +16794,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L41",
       "id": "backend_app_services_analytics_service_py_uuid",
-      "community": 10,
+      "community": 3,
       "norm_label": "uuid"
     },
     {
@@ -16794,7 +16803,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L41",
       "id": "backend_app_services_analytics_service_py_date",
-      "community": 10,
+      "community": 3,
       "norm_label": "date"
     },
     {
@@ -16803,7 +16812,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L41",
       "id": "backend_app_services_analytics_service_py_str",
-      "community": 10,
+      "community": 3,
       "norm_label": "str"
     },
     {
@@ -16812,7 +16821,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L41",
       "id": "backend_app_services_analytics_service_py_analyticssummaryresponse",
-      "community": 10,
+      "community": 3,
       "norm_label": "analyticssummaryresponse"
     },
     {
@@ -16821,7 +16830,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L56",
       "id": "services_analytics_service_analyticsservice_project_progress_export",
-      "community": 10,
+      "community": 3,
       "norm_label": ".project_progress_export()"
     },
     {
@@ -16830,7 +16839,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L56",
       "id": "backend_app_services_analytics_service_py_bytes",
-      "community": 10,
+      "community": 3,
       "norm_label": "bytes"
     },
     {
@@ -16839,7 +16848,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L84",
       "id": "services_analytics_service_analyticsservice_material_usage_export",
-      "community": 10,
+      "community": 3,
       "norm_label": ".material_usage_export()"
     },
     {
@@ -16848,7 +16857,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L104",
       "id": "services_analytics_service_analyticsservice_management_pdf_summary",
-      "community": 10,
+      "community": 3,
       "norm_label": ".management_pdf_summary()"
     },
     {
@@ -16857,7 +16866,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L155",
       "id": "services_analytics_service_analyticsservice_upload_export",
-      "community": 10,
+      "community": 3,
       "norm_label": ".upload_export()"
     },
     {
@@ -16866,7 +16875,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L169",
       "id": "services_analytics_service_analyticsservice_project_rows_for_export",
-      "community": 10,
+      "community": 3,
       "norm_label": "._project_rows_for_export()"
     },
     {
@@ -16875,7 +16884,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L169",
       "id": "projectanalyticsrow",
-      "community": 10,
+      "community": 3,
       "norm_label": "projectanalyticsrow"
     },
     {
@@ -16884,7 +16893,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L181",
       "id": "services_analytics_service_analyticsservice_project_rows",
-      "community": 10,
+      "community": 3,
       "norm_label": "._project_rows()"
     },
     {
@@ -16893,7 +16902,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L228",
       "id": "services_analytics_service_analyticsservice_material_rows",
-      "community": 10,
+      "community": 3,
       "norm_label": "._material_rows()"
     },
     {
@@ -16902,7 +16911,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L228",
       "id": "materialusagerow",
-      "community": 10,
+      "community": 3,
       "norm_label": "materialusagerow"
     },
     {
@@ -16911,7 +16920,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L276",
       "id": "services_analytics_service_analyticsservice_client",
-      "community": 8,
+      "community": 3,
       "norm_label": "._client()"
     },
     {
@@ -16920,7 +16929,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L276",
       "id": "backend_app_services_analytics_service_py_minio",
-      "community": 8,
+      "community": 3,
       "norm_label": "minio"
     },
     {
@@ -16929,7 +16938,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L285",
       "id": "services_analytics_service_build_xlsx",
-      "community": 10,
+      "community": 3,
       "norm_label": "build_xlsx()"
     },
     {
@@ -16938,7 +16947,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L296",
       "id": "services_analytics_service_workbook_xml",
-      "community": 10,
+      "community": 3,
       "norm_label": "workbook_xml()"
     },
     {
@@ -16947,7 +16956,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L304",
       "id": "services_analytics_service_worksheet_xml",
-      "community": 10,
+      "community": 3,
       "norm_label": "worksheet_xml()"
     },
     {
@@ -16956,7 +16965,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L318",
       "id": "services_analytics_service_column_letter",
-      "community": 10,
+      "community": 3,
       "norm_label": "column_letter()"
     },
     {
@@ -16965,7 +16974,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L318",
       "id": "backend_app_services_analytics_service_py_int",
-      "community": 10,
+      "community": 3,
       "norm_label": "int"
     },
     {
@@ -16974,7 +16983,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L326",
       "id": "services_analytics_service_escape_xml",
-      "community": 10,
+      "community": 3,
       "norm_label": "escape_xml()"
     },
     {
@@ -16983,7 +16992,7 @@
       "source_file": "backend/app/services/analytics_service.py",
       "source_location": "L326",
       "id": "backend_app_services_analytics_service_py_object",
-      "community": 10,
+      "community": 3,
       "norm_label": "object"
     },
     {
@@ -17154,7 +17163,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L1",
       "id": "backend_tests_test_audit_logs_py",
-      "community": 83,
+      "community": 179,
       "norm_label": "test_audit_logs.py"
     },
     {
@@ -17163,7 +17172,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L17",
       "id": "tests_test_audit_logs_isolated_engine_pool",
-      "community": 83,
+      "community": 179,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -17172,7 +17181,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L23",
       "id": "tests_test_audit_logs_skip_if_database_unavailable",
-      "community": 83,
+      "community": 179,
       "norm_label": "skip_if_database_unavailable()"
     },
     {
@@ -17181,7 +17190,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L28",
       "id": "tests_test_audit_logs_create_user",
-      "community": 83,
+      "community": 179,
       "norm_label": "create_user()"
     },
     {
@@ -17190,7 +17199,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L28",
       "id": "backend_tests_test_audit_logs_py_str",
-      "community": 83,
+      "community": 179,
       "norm_label": "str"
     },
     {
@@ -17199,7 +17208,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L47",
       "id": "tests_test_audit_logs_create_test_client",
-      "community": 83,
+      "community": 179,
       "norm_label": "create_test_client()"
     },
     {
@@ -17208,7 +17217,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L47",
       "id": "backend_tests_test_audit_logs_py_asyncclient",
-      "community": 83,
+      "community": 179,
       "norm_label": "asyncclient"
     },
     {
@@ -17217,7 +17226,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L52",
       "id": "tests_test_audit_logs_login_for_token",
-      "community": 83,
+      "community": 179,
       "norm_label": "login_for_token()"
     },
     {
@@ -17226,7 +17235,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L65",
       "id": "tests_test_audit_logs_test_admin_can_filter_audit_logs_and_non_admin_is_blocked",
-      "community": 83,
+      "community": 179,
       "norm_label": "test_admin_can_filter_audit_logs_and_non_admin_is_blocked()"
     },
     {
@@ -17235,7 +17244,7 @@
       "source_file": "backend/tests/test_audit_logs.py",
       "source_location": "L104",
       "id": "tests_test_audit_logs_test_authenticated_request_is_recorded_in_audit_log",
-      "community": 83,
+      "community": 179,
       "norm_label": "test_authenticated_request_is_recorded_in_audit_log()"
     },
     {
@@ -17532,7 +17541,7 @@
       "source_file": "backend/tests/test_storage_service.py",
       "source_location": "L1",
       "id": "backend_tests_test_storage_service_py",
-      "community": 29,
+      "community": 125,
       "norm_label": "test_storage_service.py"
     },
     {
@@ -17541,7 +17550,7 @@
       "source_file": "backend/tests/test_storage_service.py",
       "source_location": "L7",
       "id": "tests_test_storage_service_test_presigned_url_uses_public_minio_endpoint",
-      "community": 29,
+      "community": 125,
       "norm_label": "test_presigned_url_uses_public_minio_endpoint()"
     },
     {
@@ -17604,7 +17613,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L1",
       "id": "backend_tests_test_imports_py",
-      "community": 181,
+      "community": 26,
       "norm_label": "test_imports.py"
     },
     {
@@ -17613,7 +17622,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L22",
       "id": "tests_test_imports_isolated_engine_pool",
-      "community": 181,
+      "community": 26,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -17622,7 +17631,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L28",
       "id": "tests_test_imports_skip_if_database_unavailable",
-      "community": 181,
+      "community": 26,
       "norm_label": "skip_if_database_unavailable()"
     },
     {
@@ -17631,7 +17640,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L33",
       "id": "tests_test_imports_create_admin",
-      "community": 181,
+      "community": 26,
       "norm_label": "create_admin()"
     },
     {
@@ -17640,7 +17649,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L33",
       "id": "backend_tests_test_imports_py_str",
-      "community": 181,
+      "community": 26,
       "norm_label": "str"
     },
     {
@@ -17658,7 +17667,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L51",
       "id": "tests_test_imports_csv_bytes",
-      "community": 181,
+      "community": 26,
       "norm_label": "csv_bytes()"
     },
     {
@@ -17667,7 +17676,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L51",
       "id": "backend_tests_test_imports_py_bytes",
-      "community": 181,
+      "community": 26,
       "norm_label": "bytes"
     },
     {
@@ -17676,7 +17685,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L55",
       "id": "tests_test_imports_xlsx_bytes",
-      "community": 181,
+      "community": 26,
       "norm_label": "xlsx_bytes()"
     },
     {
@@ -17685,7 +17694,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L84",
       "id": "tests_test_imports_test_import_preview_accepts_xlsx_files",
-      "community": 181,
+      "community": 26,
       "norm_label": "test_import_preview_accepts_xlsx_files()"
     },
     {
@@ -17694,7 +17703,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L98",
       "id": "tests_test_imports_test_import_templates_create_records_and_opening_stock_transactionally",
-      "community": 181,
+      "community": 26,
       "norm_label": "test_import_templates_create_records_and_opening_stock_transactionally()"
     },
     {
@@ -17703,7 +17712,7 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L207",
       "id": "tests_test_imports_test_async_import_marks_existing_batch_failed_on_unexpected_exception",
-      "community": 181,
+      "community": 26,
       "norm_label": "test_async_import_marks_existing_batch_failed_on_unexpected_exception()"
     },
     {
@@ -17721,7 +17730,7 @@
       "source_file": "backend/tests/test_photos.py",
       "source_location": "L1",
       "id": "backend_tests_test_photos_py",
-      "community": 12,
+      "community": 193,
       "norm_label": "test_photos.py"
     },
     {
@@ -17730,7 +17739,7 @@
       "source_file": "backend/tests/test_photos.py",
       "source_location": "L18",
       "id": "tests_test_photos_isolated_engine_pool",
-      "community": 12,
+      "community": 193,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -17739,7 +17748,7 @@
       "source_file": "backend/tests/test_photos.py",
       "source_location": "L24",
       "id": "tests_test_photos_jpeg_bytes",
-      "community": 12,
+      "community": 193,
       "norm_label": "jpeg_bytes()"
     },
     {
@@ -17748,7 +17757,7 @@
       "source_file": "backend/tests/test_photos.py",
       "source_location": "L24",
       "id": "backend_tests_test_photos_py_bytes",
-      "community": 12,
+      "community": 193,
       "norm_label": "bytes"
     },
     {
@@ -17757,7 +17766,7 @@
       "source_file": "backend/tests/test_photos.py",
       "source_location": "L30",
       "id": "tests_test_photos_test_photo_upload_download_url_and_delete_lock",
-      "community": 12,
+      "community": 193,
       "norm_label": "test_photo_upload_download_url_and_delete_lock()"
     },
     {
@@ -18279,7 +18288,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L1",
       "id": "backend_tests_test_approvals_py",
-      "community": 179,
+      "community": 14,
       "norm_label": "test_approvals.py"
     },
     {
@@ -18288,7 +18297,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L25",
       "id": "tests_test_approvals_isolated_engine_pool",
-      "community": 179,
+      "community": 14,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -18297,7 +18306,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L32",
       "id": "tests_test_approvals_frontend_base_url",
-      "community": 179,
+      "community": 14,
       "norm_label": "frontend_base_url()"
     },
     {
@@ -18306,7 +18315,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L39",
       "id": "tests_test_approvals_skip_if_database_unavailable",
-      "community": 179,
+      "community": 14,
       "norm_label": "skip_if_database_unavailable()"
     },
     {
@@ -18315,7 +18324,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L44",
       "id": "tests_test_approvals_create_user",
-      "community": 179,
+      "community": 14,
       "norm_label": "create_user()"
     },
     {
@@ -18324,7 +18333,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L44",
       "id": "backend_tests_test_approvals_py_str",
-      "community": 179,
+      "community": 14,
       "norm_label": "str"
     },
     {
@@ -18333,7 +18342,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L44",
       "id": "backend_tests_test_approvals_py_user",
-      "community": 179,
+      "community": 14,
       "norm_label": "user"
     },
     {
@@ -18342,7 +18351,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L62",
       "id": "tests_test_approvals_create_project",
-      "community": 179,
+      "community": 14,
       "norm_label": "create_project()"
     },
     {
@@ -18351,7 +18360,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L62",
       "id": "backend_tests_test_approvals_py_project",
-      "community": 8,
+      "community": 14,
       "norm_label": "project"
     },
     {
@@ -18360,7 +18369,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L96",
       "id": "tests_test_approvals_create_test_client",
-      "community": 179,
+      "community": 14,
       "norm_label": "create_test_client()"
     },
     {
@@ -18369,7 +18378,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L96",
       "id": "backend_tests_test_approvals_py_asyncclient",
-      "community": 8,
+      "community": 14,
       "norm_label": "asyncclient"
     },
     {
@@ -18378,7 +18387,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L101",
       "id": "tests_test_approvals_login_for_token",
-      "community": 179,
+      "community": 14,
       "norm_label": "login_for_token()"
     },
     {
@@ -18387,7 +18396,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L117",
       "id": "tests_test_approvals_test_generic_approval_chain_delegation_rejection_and_override",
-      "community": 179,
+      "community": 14,
       "norm_label": "test_generic_approval_chain_delegation_rejection_and_override()"
     },
     {
@@ -18396,7 +18405,7 @@
       "source_file": "backend/tests/test_approvals.py",
       "source_location": "L220",
       "id": "tests_test_approvals_test_project_manager_material_request_approval_routes_to_operations",
-      "community": 179,
+      "community": 14,
       "norm_label": "test_project_manager_material_request_approval_routes_to_operations()"
     },
     {
@@ -18405,7 +18414,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L1",
       "id": "backend_tests_test_notifications_py",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_notifications.py"
     },
     {
@@ -18414,7 +18423,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L24",
       "id": "tests_test_notifications_isolated_engine_pool",
-      "community": 12,
+      "community": 192,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -18423,7 +18432,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L31",
       "id": "tests_test_notifications_frontend_base_url",
-      "community": 12,
+      "community": 192,
       "norm_label": "frontend_base_url()"
     },
     {
@@ -18432,7 +18441,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L39",
       "id": "tests_test_notifications_test_report_submission_and_decision_create_notifications",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_report_submission_and_decision_create_notifications()"
     },
     {
@@ -18441,7 +18450,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L122",
       "id": "tests_test_notifications_test_notification_email_updates_status_when_delivery_succeeds",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_notification_email_updates_status_when_delivery_succeeds()"
     },
     {
@@ -18450,7 +18459,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L163",
       "id": "tests_test_notifications_test_send_email_notification_requires_notification_id",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_send_email_notification_requires_notification_id()"
     },
     {
@@ -18459,7 +18468,7 @@
       "source_file": "backend/tests/test_notifications.py",
       "source_location": "L168",
       "id": "tests_test_notifications_test_cleanup_old_notifications_soft_deletes_stale_items",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_cleanup_old_notifications_soft_deletes_stale_items()"
     },
     {
@@ -18945,7 +18954,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L1",
       "id": "backend_tests_test_documents_py",
-      "community": 12,
+      "community": 189,
       "norm_label": "test_documents.py"
     },
     {
@@ -18954,7 +18963,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L16",
       "id": "tests_test_documents_isolated_engine_pool",
-      "community": 12,
+      "community": 189,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -18963,7 +18972,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L23",
       "id": "tests_test_documents_frontend_base_url",
-      "community": 12,
+      "community": 189,
       "norm_label": "frontend_base_url()"
     },
     {
@@ -18972,7 +18981,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L30",
       "id": "tests_test_documents_pdf_bytes",
-      "community": 12,
+      "community": 189,
       "norm_label": "pdf_bytes()"
     },
     {
@@ -18981,7 +18990,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L30",
       "id": "backend_tests_test_documents_py_str",
-      "community": 12,
+      "community": 189,
       "norm_label": "str"
     },
     {
@@ -18990,7 +18999,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L30",
       "id": "backend_tests_test_documents_py_bytes",
-      "community": 12,
+      "community": 189,
       "norm_label": "bytes"
     },
     {
@@ -18999,7 +19008,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L34",
       "id": "tests_test_documents_test_document_upload_approval_versioning_and_superseded_download",
-      "community": 12,
+      "community": 189,
       "norm_label": "test_document_upload_approval_versioning_and_superseded_download()"
     },
     {
@@ -19008,7 +19017,7 @@
       "source_file": "backend/tests/test_documents.py",
       "source_location": "L137",
       "id": "tests_test_documents_test_document_search_finds_uploaded_metadata",
-      "community": 12,
+      "community": 189,
       "norm_label": "test_document_search_finds_uploaded_metadata()"
     },
     {
@@ -19638,7 +19647,7 @@
       "source_file": "backend/scripts/push_to_storage.py",
       "source_location": "L1",
       "id": "backend_scripts_push_to_storage_py",
-      "community": 29,
+      "community": 125,
       "norm_label": "push_to_storage.py"
     },
     {
@@ -19647,7 +19656,7 @@
       "source_file": "backend/scripts/push_to_storage.py",
       "source_location": "L13",
       "id": "scripts_push_to_storage_main",
-      "community": 29,
+      "community": 125,
       "norm_label": "main()"
     },
     {
@@ -19881,7 +19890,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1",
       "id": "backend_scripts_seed_py",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed.py"
     },
     {
@@ -19890,7 +19899,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L70",
       "id": "scripts_seed_get_asset_bytes",
-      "community": 26,
+      "community": 8,
       "norm_label": "get_asset_bytes()"
     },
     {
@@ -19899,7 +19908,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L70",
       "id": "backend_scripts_seed_py_str",
-      "community": 26,
+      "community": 8,
       "norm_label": "str"
     },
     {
@@ -19917,7 +19926,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L117",
       "id": "scripts_seed_ensure_seed_storage_objects",
-      "community": 26,
+      "community": 8,
       "norm_label": "ensure_seed_storage_objects()"
     },
     {
@@ -19926,7 +19935,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L480",
       "id": "scripts_seed_seed_launch_data",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_launch_data()"
     },
     {
@@ -19935,7 +19944,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L702",
       "id": "scripts_seed_seed_suppliers",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_suppliers()"
     },
     {
@@ -19953,7 +19962,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L748",
       "id": "scripts_seed_seed_project_tasks",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_project_tasks()"
     },
     {
@@ -19971,7 +19980,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L799",
       "id": "scripts_seed_upsert_project_task",
-      "community": 26,
+      "community": 8,
       "norm_label": "upsert_project_task()"
     },
     {
@@ -19980,7 +19989,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L799",
       "id": "backend_scripts_seed_py_decimal",
-      "community": 26,
+      "community": 8,
       "norm_label": "decimal"
     },
     {
@@ -20007,7 +20016,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L841",
       "id": "scripts_seed_seed_inventory",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_inventory()"
     },
     {
@@ -20034,7 +20043,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L986",
       "id": "scripts_seed_seed_inventory_movements",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_inventory_movements()"
     },
     {
@@ -20043,7 +20052,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1094",
       "id": "scripts_seed_seed_material_requests",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_material_requests()"
     },
     {
@@ -20052,7 +20061,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1191",
       "id": "scripts_seed_seed_finance",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_finance()"
     },
     {
@@ -20061,7 +20070,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1284",
       "id": "scripts_seed_seed_supervisor_updates",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_supervisor_updates()"
     },
     {
@@ -20070,7 +20079,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1382",
       "id": "scripts_seed_seed_photos",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_photos()"
     },
     {
@@ -20079,7 +20088,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1480",
       "id": "scripts_seed_seed_documents",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_documents()"
     },
     {
@@ -20088,7 +20097,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1721",
       "id": "scripts_seed_seed_daily_reports",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_daily_reports()"
     },
     {
@@ -20097,7 +20106,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L1903",
       "id": "scripts_seed_seed_approvals",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_approvals()"
     },
     {
@@ -20106,7 +20115,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L2008",
       "id": "scripts_seed_seed_notifications",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_notifications()"
     },
     {
@@ -20115,7 +20124,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L2125",
       "id": "scripts_seed_seed_activity_logs",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_activity_logs()"
     },
     {
@@ -20124,7 +20133,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L2199",
       "id": "scripts_seed_seed_report_exports",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_report_exports()"
     },
     {
@@ -20133,7 +20142,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L2242",
       "id": "scripts_seed_seed_import_batches",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed_import_batches()"
     },
     {
@@ -20142,7 +20151,7 @@
       "source_file": "backend/scripts/seed.py",
       "source_location": "L2290",
       "id": "scripts_seed_main",
-      "community": 26,
+      "community": 8,
       "norm_label": "main()"
     },
     {
@@ -20619,7 +20628,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L1",
       "id": "backend_alembic_env_py",
-      "community": 89,
+      "community": 13,
       "norm_label": "env.py"
     },
     {
@@ -20628,7 +20637,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L22",
       "id": "alembic_env_get_url",
-      "community": 89,
+      "community": 13,
       "norm_label": "get_url()"
     },
     {
@@ -20637,7 +20646,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L22",
       "id": "backend_alembic_env_py_str",
-      "community": 89,
+      "community": 13,
       "norm_label": "str"
     },
     {
@@ -20646,7 +20655,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L26",
       "id": "alembic_env_run_migrations_offline",
-      "community": 89,
+      "community": 13,
       "norm_label": "run_migrations_offline()"
     },
     {
@@ -20655,7 +20664,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L38",
       "id": "alembic_env_do_run_migrations",
-      "community": 89,
+      "community": 13,
       "norm_label": "do_run_migrations()"
     },
     {
@@ -20664,7 +20673,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L45",
       "id": "alembic_env_run_async_migrations",
-      "community": 89,
+      "community": 13,
       "norm_label": "run_async_migrations()"
     },
     {
@@ -20673,7 +20682,7 @@
       "source_file": "backend/alembic/env.py",
       "source_location": "L60",
       "id": "alembic_env_run_migrations_online",
-      "community": 89,
+      "community": 13,
       "norm_label": "run_migrations_online()"
     },
     {
@@ -22680,7 +22689,7 @@
       "source_file": ".trae/skills/graphify/SKILL.md",
       "source_location": "L560",
       "id": "graphify_skill_step_7_neo4j_export_only_if_neo4j_or_neo4j_push_flag",
-      "community": 81,
+      "community": 194,
       "norm_label": "step 7 - neo4j export (only if --neo4j or --neo4j-push flag)"
     },
     {
@@ -22689,7 +22698,7 @@
       "source_file": ".trae/skills/graphify/SKILL.md",
       "source_location": "L564",
       "id": "graphify_skill_codeblock_17",
-      "community": 81,
+      "community": 194,
       "norm_label": "code:bash ($(cat .graphify_python) -c \")"
     },
     {
@@ -22698,7 +22707,7 @@
       "source_file": ".trae/skills/graphify/SKILL.md",
       "source_location": "L579",
       "id": "graphify_skill_codeblock_18",
-      "community": 81,
+      "community": 194,
       "norm_label": "code:bash ($(cat .graphify_python) -c \")"
     },
     {
@@ -27386,7 +27395,7 @@
       "file_type": "code",
       "source_file": "backend/app/services/storage_service.py",
       "source_location": "L6",
-      "community": 29,
+      "community": 125,
       "norm_label": "settings",
       "id": "settings"
     },
@@ -27422,7 +27431,7 @@
       "file_type": "code",
       "source_file": "app/database.py",
       "source_location": "L1",
-      "community": 99,
+      "community": 191,
       "norm_label": "database.py",
       "id": "app_database_py"
     },
@@ -27431,7 +27440,7 @@
       "file_type": "code",
       "source_file": "app/database.py",
       "source_location": "L22",
-      "community": 99,
+      "community": 191,
       "norm_label": "asyncsession",
       "id": "app_database_py_asyncsession"
     },
@@ -27440,7 +27449,7 @@
       "file_type": "code",
       "source_file": "app/database.py",
       "source_location": "L31",
-      "community": 99,
+      "community": 191,
       "norm_label": "bool",
       "id": "app_database_py_bool"
     },
@@ -27602,7 +27611,7 @@
       "file_type": "code",
       "source_file": "app/tasks/async_utils.py",
       "source_location": "L1",
-      "community": 189,
+      "community": 10,
       "norm_label": "async_utils.py",
       "id": "app_tasks_async_utils_py"
     },
@@ -27683,7 +27692,7 @@
       "file_type": "code",
       "source_file": "app/tasks/email.py",
       "source_location": "L1",
-      "community": 189,
+      "community": 4,
       "norm_label": "email.py",
       "id": "app_tasks_email_py"
     },
@@ -27692,7 +27701,7 @@
       "file_type": "code",
       "source_file": "app/tasks/email.py",
       "source_location": "L22",
-      "community": 189,
+      "community": 4,
       "norm_label": "str",
       "id": "app_tasks_email_py_str"
     },
@@ -27701,7 +27710,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L1",
-      "community": 24,
+      "community": 71,
       "norm_label": "approval.py",
       "id": "app_tasks_approval_py"
     },
@@ -27710,7 +27719,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L28",
-      "community": 24,
+      "community": 71,
       "norm_label": "str",
       "id": "app_tasks_approval_py_str"
     },
@@ -27719,7 +27728,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L28",
-      "community": 24,
+      "community": 71,
       "norm_label": "int",
       "id": "app_tasks_approval_py_int"
     },
@@ -27728,7 +27737,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L74",
-      "community": 24,
+      "community": 71,
       "norm_label": "inventorylocationstock",
       "id": "app_tasks_approval_py_inventorylocationstock"
     },
@@ -27737,7 +27746,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L74",
-      "community": 24,
+      "community": 71,
       "norm_label": "uuid",
       "id": "app_tasks_approval_py_uuid"
     },
@@ -27746,7 +27755,7 @@
       "file_type": "code",
       "source_file": "app/tasks/approval.py",
       "source_location": "L99",
-      "community": 24,
+      "community": 71,
       "norm_label": "bool",
       "id": "app_tasks_approval_py_bool"
     },
@@ -27845,7 +27854,7 @@
       "file_type": "code",
       "source_file": "app/utils/request.py",
       "source_location": "L1",
-      "community": 32,
+      "community": 18,
       "norm_label": "request.py",
       "id": "app_utils_request_py"
     },
@@ -27881,7 +27890,7 @@
       "file_type": "code",
       "source_file": "app/utils/links.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 14,
       "norm_label": "links.py",
       "id": "app_utils_links_py"
     },
@@ -27890,7 +27899,7 @@
       "file_type": "code",
       "source_file": "app/utils/links.py",
       "source_location": "L7",
-      "community": 1,
+      "community": 14,
       "norm_label": "str",
       "id": "app_utils_links_py_str"
     },
@@ -27899,7 +27908,7 @@
       "file_type": "code",
       "source_file": "app/utils/links.py",
       "source_location": "L22",
-      "community": 1,
+      "community": 14,
       "norm_label": "uuid",
       "id": "app_utils_links_py_uuid"
     },
@@ -28043,7 +28052,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L1",
-      "community": 125,
+      "community": 14,
       "norm_label": "approval_repository.py",
       "id": "app_repositories_approval_repository_py"
     },
@@ -28052,7 +28061,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L11",
-      "community": 3,
+      "community": 14,
       "norm_label": "asyncsession",
       "id": "app_repositories_approval_repository_py_asyncsession"
     },
@@ -28061,7 +28070,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L14",
-      "community": 125,
+      "community": 14,
       "norm_label": "approval",
       "id": "app_repositories_approval_repository_py_approval"
     },
@@ -28070,7 +28079,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L19",
-      "community": 125,
+      "community": 14,
       "norm_label": "uuid",
       "id": "app_repositories_approval_repository_py_uuid"
     },
@@ -28079,7 +28088,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L19",
-      "community": 125,
+      "community": 14,
       "norm_label": "bool",
       "id": "app_repositories_approval_repository_py_bool"
     },
@@ -28088,7 +28097,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L25",
-      "community": 125,
+      "community": 14,
       "norm_label": "str",
       "id": "app_repositories_approval_repository_py_str"
     },
@@ -28097,7 +28106,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L35",
-      "community": 125,
+      "community": 14,
       "norm_label": "int",
       "id": "app_repositories_approval_repository_py_int"
     },
@@ -28106,7 +28115,7 @@
       "file_type": "code",
       "source_file": "app/repositories/approval_repository.py",
       "source_location": "L67",
-      "community": 125,
+      "community": 14,
       "norm_label": "datetime",
       "id": "app_repositories_approval_repository_py_datetime"
     },
@@ -28295,7 +28304,7 @@
       "file_type": "code",
       "source_file": "app/repositories/project_repository.py",
       "source_location": "L17",
-      "community": 26,
+      "community": 3,
       "norm_label": "int",
       "id": "app_repositories_project_repository_py_int"
     },
@@ -28313,7 +28322,7 @@
       "file_type": "code",
       "source_file": "app/repositories/project_repository.py",
       "source_location": "L21",
-      "community": 26,
+      "community": 3,
       "norm_label": "project",
       "id": "app_repositories_project_repository_py_project"
     },
@@ -28331,7 +28340,7 @@
       "file_type": "code",
       "source_file": "app/repositories/project_repository.py",
       "source_location": "L27",
-      "community": 26,
+      "community": 3,
       "norm_label": "str",
       "id": "app_repositories_project_repository_py_str"
     },
@@ -28475,7 +28484,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L1",
-      "community": 6,
+      "community": 13,
       "norm_label": "user_repository.py",
       "id": "app_repositories_user_repository_py"
     },
@@ -28484,7 +28493,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L10",
-      "community": 6,
+      "community": 13,
       "norm_label": "asyncsession",
       "id": "app_repositories_user_repository_py_asyncsession"
     },
@@ -28493,7 +28502,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L13",
-      "community": 6,
+      "community": 13,
       "norm_label": "str",
       "id": "app_repositories_user_repository_py_str"
     },
@@ -28502,7 +28511,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L13",
-      "community": 6,
+      "community": 13,
       "norm_label": "user",
       "id": "app_repositories_user_repository_py_user"
     },
@@ -28511,7 +28520,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L19",
-      "community": 6,
+      "community": 13,
       "norm_label": "uuid",
       "id": "app_repositories_user_repository_py_uuid"
     },
@@ -28520,7 +28529,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L25",
-      "community": 6,
+      "community": 13,
       "norm_label": "bool",
       "id": "app_repositories_user_repository_py_bool"
     },
@@ -28529,7 +28538,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L25",
-      "community": 6,
+      "community": 13,
       "norm_label": "int",
       "id": "app_repositories_user_repository_py_int"
     },
@@ -28538,7 +28547,7 @@
       "file_type": "code",
       "source_file": "app/repositories/user_repository.py",
       "source_location": "L55",
-      "community": 6,
+      "community": 13,
       "norm_label": "select",
       "id": "app_repositories_user_repository_py_select"
     },
@@ -28781,7 +28790,7 @@
       "file_type": "code",
       "source_file": "app/schemas/auth.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 38,
       "norm_label": "auth.py",
       "id": "app_schemas_auth_py"
     },
@@ -28799,7 +28808,7 @@
       "file_type": "code",
       "source_file": "app/schemas/finance.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 0,
       "norm_label": "finance.py",
       "id": "app_schemas_finance_py"
     },
@@ -28808,7 +28817,7 @@
       "file_type": "code",
       "source_file": "app/schemas/audit.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 0,
       "norm_label": "audit.py",
       "id": "app_schemas_audit_py"
     },
@@ -28853,7 +28862,7 @@
       "file_type": "code",
       "source_file": "app/schemas/imports.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 0,
       "norm_label": "imports.py",
       "id": "app_schemas_imports_py"
     },
@@ -28871,7 +28880,7 @@
       "file_type": "code",
       "source_file": "app/schemas/common.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 0,
       "norm_label": "common.py",
       "id": "app_schemas_common_py"
     },
@@ -28934,7 +28943,7 @@
       "file_type": "code",
       "source_file": "app/schemas/inventory.py",
       "source_location": "L1",
-      "community": 14,
+      "community": 0,
       "norm_label": "inventory.py",
       "id": "app_schemas_inventory_py"
     },
@@ -28952,7 +28961,7 @@
       "file_type": "code",
       "source_file": "app/api/dependencies.py",
       "source_location": "L1",
-      "community": 38,
+      "community": 181,
       "norm_label": "dependencies.py",
       "id": "app_api_dependencies_py"
     },
@@ -28961,7 +28970,7 @@
       "file_type": "code",
       "source_file": "app/api/dependencies.py",
       "source_location": "L18",
-      "community": 38,
+      "community": 18,
       "norm_label": "request",
       "id": "app_api_dependencies_py_request"
     },
@@ -28979,7 +28988,7 @@
       "file_type": "code",
       "source_file": "app/api/dependencies.py",
       "source_location": "L28",
-      "community": 38,
+      "community": 181,
       "norm_label": "user",
       "id": "app_api_dependencies_py_user"
     },
@@ -28988,7 +28997,7 @@
       "file_type": "code",
       "source_file": "app/api/dependencies.py",
       "source_location": "L42",
-      "community": 38,
+      "community": 181,
       "norm_label": "str",
       "id": "app_api_dependencies_py_str"
     },
@@ -31247,7 +31256,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L1",
-      "community": 8,
+      "community": 3,
       "norm_label": "finance_service.py",
       "id": "app_services_finance_service_py"
     },
@@ -31256,7 +31265,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L52",
-      "community": 8,
+      "community": 3,
       "norm_label": "asyncsession",
       "id": "app_services_finance_service_py_asyncsession"
     },
@@ -31274,7 +31283,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L65",
-      "community": 8,
+      "community": 3,
       "norm_label": "invoicecreaterequest",
       "id": "app_services_finance_service_py_invoicecreaterequest"
     },
@@ -31292,7 +31301,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L102",
-      "community": 8,
+      "community": 13,
       "norm_label": "str",
       "id": "app_services_finance_service_py_str"
     },
@@ -31301,7 +31310,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L102",
-      "community": 8,
+      "community": 3,
       "norm_label": "int",
       "id": "app_services_finance_service_py_int"
     },
@@ -31310,7 +31319,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L156",
-      "community": 8,
+      "community": 3,
       "norm_label": "invoiceupdaterequest",
       "id": "app_services_finance_service_py_invoiceupdaterequest"
     },
@@ -31319,7 +31328,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L206",
-      "community": 8,
+      "community": 3,
       "norm_label": "uploadfile",
       "id": "app_services_finance_service_py_uploadfile"
     },
@@ -31328,7 +31337,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L256",
-      "community": 8,
+      "community": 3,
       "norm_label": "paymentcreaterequest",
       "id": "app_services_finance_service_py_paymentcreaterequest"
     },
@@ -31337,7 +31346,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L300",
-      "community": 8,
+      "community": 3,
       "norm_label": "decimal",
       "id": "app_services_finance_service_py_decimal"
     },
@@ -31346,7 +31355,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L335",
-      "community": 8,
+      "community": 3,
       "norm_label": "bytes",
       "id": "app_services_finance_service_py_bytes"
     },
@@ -31355,7 +31364,7 @@
       "file_type": "code",
       "source_file": "app/services/finance_service.py",
       "source_location": "L346",
-      "community": 8,
+      "community": 3,
       "norm_label": "minio",
       "id": "app_services_finance_service_py_minio"
     },
@@ -31409,7 +31418,7 @@
       "file_type": "code",
       "source_file": "app/services/report_export_service.py",
       "source_location": "L67",
-      "community": 1,
+      "community": 16,
       "norm_label": "bytes",
       "id": "app_services_report_export_service_py_bytes"
     },
@@ -31418,7 +31427,7 @@
       "file_type": "code",
       "source_file": "app/services/report_export_service.py",
       "source_location": "L98",
-      "community": 1,
+      "community": 16,
       "norm_label": "dailyreport",
       "id": "app_services_report_export_service_py_dailyreport"
     },
@@ -31427,7 +31436,7 @@
       "file_type": "code",
       "source_file": "app/services/report_export_service.py",
       "source_location": "L191",
-      "community": 1,
+      "community": 16,
       "norm_label": "str",
       "id": "app_services_report_export_service_py_str"
     },
@@ -31445,7 +31454,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L1",
-      "community": 8,
+      "community": 14,
       "norm_label": "approval_service.py",
       "id": "app_services_approval_service_py"
     },
@@ -31454,7 +31463,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L38",
-      "community": 8,
+      "community": 9,
       "norm_label": "asyncsession",
       "id": "app_services_approval_service_py_asyncsession"
     },
@@ -31463,7 +31472,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L45",
-      "community": 3,
+      "community": 9,
       "norm_label": "approvalcreaterequest",
       "id": "app_services_approval_service_py_approvalcreaterequest"
     },
@@ -31472,7 +31481,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L45",
-      "community": 3,
+      "community": 14,
       "norm_label": "user",
       "id": "app_services_approval_service_py_user"
     },
@@ -31481,7 +31490,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L45",
-      "community": 3,
+      "community": 14,
       "norm_label": "bool",
       "id": "app_services_approval_service_py_bool"
     },
@@ -31490,7 +31499,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L45",
-      "community": 3,
+      "community": 14,
       "norm_label": "approval",
       "id": "app_services_approval_service_py_approval"
     },
@@ -31499,7 +31508,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L115",
-      "community": 3,
+      "community": 14,
       "norm_label": "str",
       "id": "app_services_approval_service_py_str"
     },
@@ -31508,7 +31517,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L115",
-      "community": 8,
+      "community": 9,
       "norm_label": "int",
       "id": "app_services_approval_service_py_int"
     },
@@ -31517,7 +31526,7 @@
       "file_type": "code",
       "source_file": "app/services/approval_service.py",
       "source_location": "L135",
-      "community": 3,
+      "community": 14,
       "norm_label": "uuid",
       "id": "app_services_approval_service_py_uuid"
     },
@@ -31787,7 +31796,7 @@
       "file_type": "code",
       "source_file": "app/services/email_service.py",
       "source_location": "L1",
-      "community": 32,
+      "community": 4,
       "norm_label": "email_service.py",
       "id": "app_services_email_service_py"
     },
@@ -31814,7 +31823,7 @@
       "file_type": "code",
       "source_file": "app/services/audit_service.py",
       "source_location": "L1",
-      "community": 8,
+      "community": 9,
       "norm_label": "audit_service.py",
       "id": "app_services_audit_service_py"
     },
@@ -31823,7 +31832,7 @@
       "file_type": "code",
       "source_file": "app/services/audit_service.py",
       "source_location": "L11",
-      "community": 32,
+      "community": 26,
       "norm_label": "asyncsession",
       "id": "app_services_audit_service_py_asyncsession"
     },
@@ -31868,7 +31877,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L16",
-      "community": 2,
+      "community": 83,
       "norm_label": "asyncsession",
       "id": "app_services_user_service_py_asyncsession"
     },
@@ -31877,7 +31886,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L21",
-      "community": 2,
+      "community": 89,
       "norm_label": "bool",
       "id": "app_services_user_service_py_bool"
     },
@@ -31886,7 +31895,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L21",
-      "community": 2,
+      "community": 89,
       "norm_label": "str",
       "id": "app_services_user_service_py_str"
     },
@@ -31895,7 +31904,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L21",
-      "community": 2,
+      "community": 89,
       "norm_label": "int",
       "id": "app_services_user_service_py_int"
     },
@@ -31904,7 +31913,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L21",
-      "community": 2,
+      "community": 89,
       "norm_label": "user",
       "id": "app_services_user_service_py_user"
     },
@@ -31913,7 +31922,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L39",
-      "community": 2,
+      "community": 89,
       "norm_label": "usercreaterequest",
       "id": "app_services_user_service_py_usercreaterequest"
     },
@@ -31922,7 +31931,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L70",
-      "community": 2,
+      "community": 89,
       "norm_label": "uuid",
       "id": "app_services_user_service_py_uuid"
     },
@@ -31931,7 +31940,7 @@
       "file_type": "code",
       "source_file": "app/services/user_service.py",
       "source_location": "L70",
-      "community": 2,
+      "community": 89,
       "norm_label": "userupdaterequest",
       "id": "app_services_user_service_py_userupdaterequest"
     },
@@ -32030,7 +32039,7 @@
       "file_type": "code",
       "source_file": "app/services/storage_service.py",
       "source_location": "L1",
-      "community": 29,
+      "community": 125,
       "norm_label": "storage_service.py",
       "id": "app_services_storage_service_py"
     },
@@ -32039,7 +32048,7 @@
       "file_type": "code",
       "source_file": "app/services/storage_service.py",
       "source_location": "L6",
-      "community": 29,
+      "community": 125,
       "norm_label": "minio",
       "id": "app_services_storage_service_py_minio"
     },
@@ -32048,7 +32057,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L1",
-      "community": 10,
+      "community": 3,
       "norm_label": "analytics_service.py",
       "id": "app_services_analytics_service_py"
     },
@@ -32057,7 +32066,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L29",
-      "community": 8,
+      "community": 3,
       "norm_label": "asyncsession",
       "id": "app_services_analytics_service_py_asyncsession"
     },
@@ -32066,7 +32075,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L33",
-      "community": 10,
+      "community": 3,
       "norm_label": "user",
       "id": "app_services_analytics_service_py_user"
     },
@@ -32075,7 +32084,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L41",
-      "community": 10,
+      "community": 3,
       "norm_label": "uuid",
       "id": "app_services_analytics_service_py_uuid"
     },
@@ -32084,7 +32093,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L41",
-      "community": 10,
+      "community": 3,
       "norm_label": "date",
       "id": "app_services_analytics_service_py_date"
     },
@@ -32093,7 +32102,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L41",
-      "community": 10,
+      "community": 3,
       "norm_label": "str",
       "id": "app_services_analytics_service_py_str"
     },
@@ -32102,7 +32111,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L41",
-      "community": 8,
+      "community": 3,
       "norm_label": "analyticssummaryresponse",
       "id": "app_services_analytics_service_py_analyticssummaryresponse"
     },
@@ -32111,7 +32120,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L56",
-      "community": 10,
+      "community": 3,
       "norm_label": "bytes",
       "id": "app_services_analytics_service_py_bytes"
     },
@@ -32120,7 +32129,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L276",
-      "community": 8,
+      "community": 3,
       "norm_label": "minio",
       "id": "app_services_analytics_service_py_minio"
     },
@@ -32129,7 +32138,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L318",
-      "community": 10,
+      "community": 3,
       "norm_label": "int",
       "id": "app_services_analytics_service_py_int"
     },
@@ -32138,7 +32147,7 @@
       "file_type": "code",
       "source_file": "app/services/analytics_service.py",
       "source_location": "L326",
-      "community": 8,
+      "community": 3,
       "norm_label": "object",
       "id": "app_services_analytics_service_py_object"
     },
@@ -32210,7 +32219,7 @@
       "file_type": "code",
       "source_file": "tests/test_audit_logs.py",
       "source_location": "L1",
-      "community": 83,
+      "community": 179,
       "norm_label": "test_audit_logs.py",
       "id": "tests_test_audit_logs_py"
     },
@@ -32219,7 +32228,7 @@
       "file_type": "code",
       "source_file": "tests/test_audit_logs.py",
       "source_location": "L28",
-      "community": 83,
+      "community": 179,
       "norm_label": "str",
       "id": "tests_test_audit_logs_py_str"
     },
@@ -32228,7 +32237,7 @@
       "file_type": "code",
       "source_file": "tests/test_audit_logs.py",
       "source_location": "L47",
-      "community": 83,
+      "community": 179,
       "norm_label": "asyncclient",
       "id": "tests_test_audit_logs_py_asyncclient"
     },
@@ -32327,7 +32336,7 @@
       "file_type": "code",
       "source_file": "tests/test_storage_service.py",
       "source_location": "L1",
-      "community": 29,
+      "community": 125,
       "norm_label": "test_storage_service.py",
       "id": "tests_test_storage_service_py"
     },
@@ -32354,7 +32363,7 @@
       "file_type": "code",
       "source_file": "tests/test_imports.py",
       "source_location": "L1",
-      "community": 181,
+      "community": 26,
       "norm_label": "test_imports.py",
       "id": "tests_test_imports_py"
     },
@@ -32363,7 +32372,7 @@
       "file_type": "code",
       "source_file": "tests/test_imports.py",
       "source_location": "L33",
-      "community": 181,
+      "community": 26,
       "norm_label": "str",
       "id": "tests_test_imports_py_str"
     },
@@ -32381,7 +32390,7 @@
       "file_type": "code",
       "source_file": "tests/test_imports.py",
       "source_location": "L51",
-      "community": 181,
+      "community": 26,
       "norm_label": "bytes",
       "id": "tests_test_imports_py_bytes"
     },
@@ -32399,7 +32408,7 @@
       "file_type": "code",
       "source_file": "tests/test_photos.py",
       "source_location": "L1",
-      "community": 12,
+      "community": 193,
       "norm_label": "test_photos.py",
       "id": "tests_test_photos_py"
     },
@@ -32408,7 +32417,7 @@
       "file_type": "code",
       "source_file": "tests/test_photos.py",
       "source_location": "L24",
-      "community": 12,
+      "community": 193,
       "norm_label": "bytes",
       "id": "tests_test_photos_py_bytes"
     },
@@ -32507,7 +32516,7 @@
       "file_type": "code",
       "source_file": "tests/test_approvals.py",
       "source_location": "L1",
-      "community": 179,
+      "community": 14,
       "norm_label": "test_approvals.py",
       "id": "tests_test_approvals_py"
     },
@@ -32516,7 +32525,7 @@
       "file_type": "code",
       "source_file": "tests/test_approvals.py",
       "source_location": "L44",
-      "community": 179,
+      "community": 14,
       "norm_label": "str",
       "id": "tests_test_approvals_py_str"
     },
@@ -32525,7 +32534,7 @@
       "file_type": "code",
       "source_file": "tests/test_approvals.py",
       "source_location": "L44",
-      "community": 179,
+      "community": 14,
       "norm_label": "user",
       "id": "tests_test_approvals_py_user"
     },
@@ -32534,7 +32543,7 @@
       "file_type": "code",
       "source_file": "tests/test_approvals.py",
       "source_location": "L62",
-      "community": 8,
+      "community": 14,
       "norm_label": "project",
       "id": "tests_test_approvals_py_project"
     },
@@ -32543,7 +32552,7 @@
       "file_type": "code",
       "source_file": "tests/test_approvals.py",
       "source_location": "L96",
-      "community": 8,
+      "community": 14,
       "norm_label": "asyncclient",
       "id": "tests_test_approvals_py_asyncclient"
     },
@@ -32552,7 +32561,7 @@
       "file_type": "code",
       "source_file": "tests/test_notifications.py",
       "source_location": "L1",
-      "community": 12,
+      "community": 192,
       "norm_label": "test_notifications.py",
       "id": "tests_test_notifications_py"
     },
@@ -32696,7 +32705,7 @@
       "file_type": "code",
       "source_file": "tests/test_documents.py",
       "source_location": "L1",
-      "community": 12,
+      "community": 189,
       "norm_label": "test_documents.py",
       "id": "tests_test_documents_py"
     },
@@ -32705,7 +32714,7 @@
       "file_type": "code",
       "source_file": "tests/test_documents.py",
       "source_location": "L30",
-      "community": 12,
+      "community": 189,
       "norm_label": "str",
       "id": "tests_test_documents_py_str"
     },
@@ -32714,7 +32723,7 @@
       "file_type": "code",
       "source_file": "tests/test_documents.py",
       "source_location": "L30",
-      "community": 12,
+      "community": 189,
       "norm_label": "bytes",
       "id": "tests_test_documents_py_bytes"
     },
@@ -32849,7 +32858,7 @@
       "file_type": "code",
       "source_file": "scripts/seed.py",
       "source_location": "L1",
-      "community": 26,
+      "community": 8,
       "norm_label": "seed.py",
       "id": "scripts_seed_py"
     },
@@ -32885,7 +32894,7 @@
       "file_type": "code",
       "source_file": "scripts/seed.py",
       "source_location": "L675",
-      "community": 26,
+      "community": 8,
       "norm_label": "decimal",
       "id": "scripts_seed_py_decimal"
     },
@@ -33074,7 +33083,7 @@
       "file_type": "code",
       "source_file": "alembic/env.py",
       "source_location": "L1",
-      "community": 89,
+      "community": 13,
       "norm_label": "env.py",
       "id": "alembic_env_py"
     },
@@ -33083,7 +33092,7 @@
       "file_type": "code",
       "source_file": "alembic/env.py",
       "source_location": "L22",
-      "community": 89,
+      "community": 13,
       "norm_label": "str",
       "id": "alembic_env_py_str"
     },
@@ -42370,6 +42379,16 @@
       "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
       "source_location": "L119",
       "weight": 1.0,
+      "source": "frontend_src_pages_reports_dailyreportpage_tsx",
+      "target": "reports_dailyreportpage_t",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
+      "source_location": "L119",
+      "weight": 1.0,
       "confidence_score": 1.0,
       "source": "frontend_src_pages_reports_dailyreportpage_tsx",
       "target": "reports_dailyreportpage_dailyreportpage"
@@ -42434,6 +42453,17 @@
       "confidence_score": 1.0,
       "source": "reports_dailyreportpage_dailyreportpage",
       "target": "reports_dailyreportpage_extravalue"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "frontend/src/pages/reports/DailyReportPage.tsx",
+      "source_location": "L591",
+      "weight": 1.0,
+      "source": "reports_dailyreportpage_dailyreportpage",
+      "target": "reports_dailyreportpage_t",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -211476,9 +211506,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_md",
-      "target": "docs_production_readiness_review_production_readiness_review_prr",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_production_readiness_review_prr"
     },
     {
       "relation": "contains",
@@ -211486,9 +211516,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L8",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_1_executive_summary_production_verdict",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_1_executive_summary_production_verdict"
     },
     {
       "relation": "contains",
@@ -211496,9 +211526,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L16",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_2_architectural_system_design_review",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_2_architectural_system_design_review"
     },
     {
       "relation": "contains",
@@ -211506,9 +211536,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L39",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_3_security_cryptography_access_control",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_3_security_cryptography_access_control"
     },
     {
       "relation": "contains",
@@ -211516,9 +211546,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_4_resiliency_disaster_recovery_dr",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_4_resiliency_disaster_recovery_dr"
     },
     {
       "relation": "contains",
@@ -211526,9 +211556,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L74",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_5_observability_remote_diagnostics_alerting",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_5_observability_remote_diagnostics_alerting"
     },
     {
       "relation": "contains",
@@ -211536,9 +211566,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L85",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_6_recent_enhancements_fixed_risks",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_6_recent_enhancements_fixed_risks"
     },
     {
       "relation": "contains",
@@ -211546,9 +211576,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L95",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_readiness_review_prr",
-      "target": "docs_production_readiness_review_7_pre_release_operations_checklist",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_7_pre_release_operations_checklist"
     },
     {
       "relation": "contains",
@@ -211556,9 +211586,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_2_architectural_system_design_review",
-      "target": "docs_production_readiness_review_codeblock_1",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_codeblock_1"
     },
     {
       "relation": "contains",
@@ -211566,9 +211596,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L32",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_2_architectural_system_design_review",
-      "target": "docs_production_readiness_review_architectural_highlights",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_architectural_highlights"
     },
     {
       "relation": "contains",
@@ -211576,9 +211606,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L43",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_3_security_cryptography_access_control",
-      "target": "docs_production_readiness_review_access_control_rbac",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_access_control_rbac"
     },
     {
       "relation": "contains",
@@ -211586,9 +211616,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L50",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_3_security_cryptography_access_control",
-      "target": "docs_production_readiness_review_cryptographic_security_credentials",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_cryptographic_security_credentials"
     },
     {
       "relation": "contains",
@@ -211596,9 +211626,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L99",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_7_pre_release_operations_checklist",
-      "target": "docs_production_readiness_review_codeblock_2",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_codeblock_2"
     },
     {
       "relation": "contains",
@@ -211606,9 +211636,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_7_pre_release_operations_checklist",
-      "target": "docs_production_readiness_review_production_release_commands",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_production_release_commands"
     },
     {
       "relation": "contains",
@@ -211616,9 +211646,9 @@
       "source_file": "docs/PRODUCTION_READINESS_REVIEW.md",
       "source_location": "L115",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_production_readiness_review_production_release_commands",
-      "target": "docs_production_readiness_review_codeblock_3",
-      "confidence_score": 1.0
+      "target": "docs_production_readiness_review_codeblock_3"
     },
     {
       "relation": "contains",
@@ -216759,5 +216789,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "e6250adb7b858e09cc5fb875d4a0d45d49b513be"
+  "built_at_commit": "0b522d085d0dd29377751ed88bd90bff0f6c0654"
 }

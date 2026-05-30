@@ -116,6 +116,8 @@ function formHasDraftContent(payload: DailyReportPayload) {
   );
 }
 
+const t = (str: string) => str;
+
 export function DailyReportPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
@@ -135,6 +137,7 @@ export function DailyReportPage() {
   const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const persistedDraftSnapshot = useRef(JSON.stringify(emptyPayload));
   const serverSavedSnapshot = useRef(JSON.stringify(emptyPayload));
@@ -206,6 +209,7 @@ export function DailyReportPage() {
 
   useEffect(() => {
     const syncQueued = () => {
+      setIsOnline(true);
       void flushPhotoQueue()
         .then(() => queuedPhotoCount())
         .then(setQueuedUploads);
@@ -213,11 +217,16 @@ export function DailyReportPage() {
     const refreshQueuedCount = () => {
       void queuedPhotoCount().then(setQueuedUploads);
     };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
     window.addEventListener('online', syncQueued);
+    window.addEventListener('offline', handleOffline);
     window.addEventListener('photo-queue-sync-complete', refreshQueuedCount);
     if (navigator.onLine) syncQueued();
     return () => {
       window.removeEventListener('online', syncQueued);
+      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('photo-queue-sync-complete', refreshQueuedCount);
     };
   }, []);
@@ -519,7 +528,7 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
-        {draftStatus === 'local' || queuedUploads > 0 ? (
+        {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
             Local draft active
             {queuedUploads > 0
@@ -579,9 +588,9 @@ export function DailyReportPage() {
                   onChange={(event) => updateExtraField('day_type', event.target.value)}
                   value={extraValue(form, 'day_type') || 'weekday'}
                 >
-                  <option value="weekday">Weekday</option>
-                  <option value="friday">Friday</option>
-                  <option value="public_holiday">Public holiday</option>
+                  <option value="weekday">{t('Weekday')}</option>
+                  <option value="friday">{t('Friday')}</option>
+                  <option value="public_holiday">{t('Public holiday')}</option>
                 </select>
               </Field>
               <Field label="Weather" error={errors.weather_condition}>
@@ -589,7 +598,7 @@ export function DailyReportPage() {
                   className="form-field"
                   list="weather-options"
                   onChange={(event) => updateExtraField('weather_condition', event.target.value)}
-                  placeholder="Sunny, cloudy, rainy, windy"
+                  placeholder={t('Sunny, cloudy, rainy, windy')}
                   value={extraValue(form, 'weather_condition')}
                 />
                 <datalist id="weather-options">
@@ -607,7 +616,7 @@ export function DailyReportPage() {
             <SectionHeader title="Supervisor Updates" />
             {supervisorUpdates.length === 0 ? (
               <p className="text-sm text-theme-text-muted">
-                No submitted supervisor updates found.
+                {t('No submitted supervisor updates found.')}
               </p>
             ) : (
               <div className="grid gap-2">
