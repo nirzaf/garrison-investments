@@ -29,6 +29,17 @@ The staging SMTP settings are stored only in the VPS `.env.staging` file. They u
 
 Add `FRONTEND_BASE_URL=https://garrisonstg.seasonenterprise.com` to `/opt/garrison-investments-staging/.env.staging` so outgoing approval notification emails contain the correct absolute portal URLs.
 
+Set public MinIO signing through the staging app host, not the internal MinIO port:
+
+```sh
+MINIO_ENDPOINT=minio:9000
+MINIO_PUBLIC_ENDPOINT=garrisonstg.seasonenterprise.com
+MINIO_SECURE=false
+MINIO_PUBLIC_SECURE=true
+```
+
+Fresh image/document preview URLs should look like `https://garrisonstg.seasonenterprise.com/portal-files/...`. Direct public `:9000` URLs are not expected to work in staging.
+
 For UAT speed, staging can accept a shared login OTP by setting `APP_ENV=staging` and `STAGING_LOGIN_OTP=<six-digit-code>` in `/opt/garrison-investments-staging/.env.staging`. This shortcut applies only to login OTP verification and is ignored outside `APP_ENV=staging`.
 
 ## Deploy Commands

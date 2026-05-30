@@ -1,14 +1,18 @@
 import asyncio
+import base64
 import os
 import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from minio.error import S3Error
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.activity_log import ActivityLog
 from app.models.approval import Approval
@@ -42,11 +46,103 @@ from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.storage_service import minio_client
 from app.utils.security import hash_password
 
 DEFAULT_ADMIN_EMAIL = "admin.test@garrisons.lk"
 DEFAULT_PASSWORD = os.getenv("SEED_DEFAULT_PASSWORD") or "ChangeMe123!"
 DEFAULT_ADMIN_PASSWORD = DEFAULT_PASSWORD
+SEED_JPEG_BYTES = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////"
+    "////////////////////////////////////////////2wBDAf//////////////////////////////"
+    "////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB"
+    "/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAA"
+    "AAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA"
+    "/9oACAEDAQE/ASP/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/ASP/xAAUEAEAAAAAAAAA"
+    "AAAAAAAAAAAA/9oACAEBAAY/Al//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gA"
+    "MAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAA"
+    "AAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z"
+)
+SEED_PDF_BYTES = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def get_asset_bytes(filename: str, default_bytes: bytes) -> bytes:
+    filepath = ASSETS_DIR / filename
+    if filepath.exists():
+        try:
+            return filepath.read_bytes()
+        except Exception:
+            pass
+    return default_bytes
+
+
+SEED_PHOTO_OBJECTS = {
+    "seed-photos/site_overview.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/site_overview_compressed.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview_compressed.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/site_overview_thumb.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview_thumb.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5_compressed.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5_compressed.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5_thumb.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5_thumb.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-attachments/plaster_check.pdf": ("application/pdf", SEED_PDF_BYTES),
+}
+SEED_DOCUMENT_OBJECTS = {
+    "seed-docs/pep_v1.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/pep_v2.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/mar_cement_mix_design.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/mir_steel_rebar_delivery.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/wir_plaster_zone_a.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/delivery_note_cement_batch001.pdf": ("application/pdf", SEED_PDF_BYTES),
+}
+
+
+def ensure_seed_storage_objects(objects: dict[str, tuple[str, bytes]]) -> None:
+    settings = get_settings()
+    client = minio_client(settings)
+    force = (os.getenv("SEED_FORCE_STORAGE") == "true") or ("--force-storage" in sys.argv)
+    try:
+        if not client.bucket_exists(settings.minio_bucket):
+            client.make_bucket(settings.minio_bucket)
+        uploaded = 0
+        for object_key, (content_type, data) in objects.items():
+            try:
+                stat = client.stat_object(settings.minio_bucket, object_key)
+                is_placeholder = stat.size <= 2000
+                has_real_data = len(data) > 2000
+                if not force and not (is_placeholder and has_real_data):
+                    continue
+            except S3Error as exc:
+                if exc.code not in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                    raise
+            client.put_object(
+                settings.minio_bucket,
+                object_key,
+                BytesIO(data),
+                length=len(data),
+                content_type=content_type,
+            )
+            uploaded += 1
+        print(f"Seeded storage objects: {uploaded} uploaded, {len(objects) - uploaded} existing")
+    except Exception as exc:
+        print(f"Skipped seed storage objects: {exc}")
 
 SEED_USERS = [
     {
@@ -1286,6 +1382,7 @@ async def seed_supervisor_updates(
 async def seed_photos(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
+    ensure_seed_storage_objects(SEED_PHOTO_OBJECTS)
     engineer = user_by_email.get("engineer.test@garrisons.lk")
     supervisor = user_by_email.get("supervisor.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
@@ -1383,6 +1480,7 @@ async def seed_photos(
 async def seed_documents(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
+    ensure_seed_storage_objects(SEED_DOCUMENT_OBJECTS)
     pm = user_by_email.get("pm.test@garrisons.lk")
     engineer = user_by_email.get("engineer.test@garrisons.lk")
     ops = user_by_email.get("operations.test@garrisons.lk")
