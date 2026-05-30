@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-05-30)
 
 ## Corpus Check
-- 302 files · ~232,362 words
+- 303 files · ~233,396 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3685 nodes · 17752 edges · 180 communities (164 shown, 16 thin omitted)
+- 3701 nodes · 17767 edges · 191 communities (175 shown, 16 thin omitted)
 - Extraction: 49% EXTRACTED · 51% INFERRED · 0% AMBIGUOUS · INFERRED: 9094 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `00c7424f`
+- Built from commit: `e6250adb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -107,6 +107,7 @@
 - [[_COMMUNITY_Community 96|Community 96]]
 - [[_COMMUNITY_Community 97|Community 97]]
 - [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
 - [[_COMMUNITY_Community 100|Community 100]]
 - [[_COMMUNITY_Community 101|Community 101]]
 - [[_COMMUNITY_Community 102|Community 102]]
@@ -132,6 +133,7 @@
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
 - [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 126|Community 126]]
 - [[_COMMUNITY_Community 127|Community 127]]
 - [[_COMMUNITY_Community 128|Community 128]]
@@ -162,11 +164,20 @@
 - [[_COMMUNITY_Community 153|Community 153]]
 - [[_COMMUNITY_Community 154|Community 154]]
 - [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 172|Community 172]]
 - [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
+- [[_COMMUNITY_Community 175|Community 175]]
 - [[_COMMUNITY_Community 176|Community 176]]
+- [[_COMMUNITY_Community 177|Community 177]]
 - [[_COMMUNITY_Community 178|Community 178]]
+- [[_COMMUNITY_Community 179|Community 179]]
 - [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
 - [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 189|Community 189]]
+- [[_COMMUNITY_Community 190|Community 190]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `User` - 868 edges
@@ -181,94 +192,94 @@
 10. `DailyReport` - 182 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `AsyncSession` --uses--> `SupervisorUpdate`  [INFERRED]
-  app/repositories/supervisor_update_repository.py → backend/app/models/supervisor_update.py
-- `str` --uses--> `SupervisorUpdate`  [INFERRED]
-  app/repositories/supervisor_update_repository.py → backend/app/models/supervisor_update.py
-- `int` --uses--> `SupervisorUpdate`  [INFERRED]
-  app/repositories/supervisor_update_repository.py → backend/app/models/supervisor_update.py
+- `AsyncSession` --uses--> `ReportExport`  [INFERRED]
+  app/repositories/report_export_repository.py → backend/app/models/report_export.py
 - `AsyncSession` --uses--> `Notification`  [INFERRED]
   app/repositories/notification_repository.py → backend/app/models/notification.py
 - `AsyncSession` --uses--> `ActivityLog`  [INFERRED]
   app/services/audit_service.py → backend/app/models/activity_log.py
+- `int` --uses--> `ActivityLog`  [INFERRED]
+  app/services/audit_service.py → backend/app/models/activity_log.py
+- `str` --uses--> `Settings`  [INFERRED]
+  tests/test_daily_reports.py → backend/app/config.py
 
-## Communities (180 total, 16 thin omitted)
+## Communities (191 total, 16 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.25
-Nodes (53): AssetCreateRequest, DbSession, InventoryItemCreateRequest, InventoryLocationStock, LocationCreateRequest, MaterialRequestCreateRequest, max_length, MovementCreateRequest (+45 more)
+Nodes (48): AssetCreateRequest, DbSession, InventoryItemCreateRequest, InventoryLocationStock, LocationCreateRequest, MaterialRequestCreateRequest, max_length, MovementCreateRequest (+40 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.09
-Nodes (82): CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, ge, int, le, Query (+74 more)
+Cohesion: 0.07
+Nodes (94): CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, ge, int, le, Query (+86 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.11
-Nodes (74): bool, DbSession, ge, int, le, max_length, Query, str (+66 more)
+Cohesion: 0.18
+Nodes (55): bool, DbSession, ge, int, le, max_length, Query, str (+47 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.11
-Nodes (36): Approval, AsyncSession, bool, datetime, int, str, UUID, Approval (+28 more)
+Cohesion: 0.25
+Nodes (15): AsyncSession, Approval, ApprovalCreateRequest, bool, str, User, UUID, AsyncSession (+7 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.10
-Nodes (32): Any, get_settings(), lifespan(), AsyncSession, int, str, Any, Exception (+24 more)
+Cohesion: 0.21
+Nodes (20): Any, Any, Exception, Request, str, Any, BaseException, Exception (+12 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.09
-Nodes (67): DbSession, File, Form, ge, int, le, Query, str (+59 more)
+Cohesion: 0.06
+Nodes (91): DbSession, File, Form, ge, int, le, Query, str (+83 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.05
-Nodes (146): DbSession, ge, int, le, max_length, Query, str, UUID (+138 more)
+Cohesion: 0.10
+Nodes (82): bool, DbSession, File, ge, int, le, max_length, Query (+74 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.08
-Nodes (143): DbSession, ge, int, le, max_length, ProjectCreateRequest, ProjectMemberCreateRequest, ProjectTaskCreateRequest (+135 more)
+Cohesion: 0.18
+Nodes (81): DbSession, ge, int, le, max_length, ProjectCreateRequest, ProjectMemberCreateRequest, ProjectTaskCreateRequest (+73 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.23
-Nodes (32): AnalyticsSummaryResponse, AsyncSession, bytes, date, int, Minio, object, str (+24 more)
+Cohesion: 0.15
+Nodes (40): AnalyticsSummaryResponse, AsyncSession, Minio, object, AsyncSession, int, AsyncSession, bytes (+32 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.06
-Nodes (63): AsyncSession, DocumentVersion, Select, AsyncSession, datetime, int, Notification, UUID (+55 more)
+Cohesion: 0.12
+Nodes (42): AsyncSession, Document, DocumentVersion, int, Select, str, UUID, AsyncSession (+34 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.14
-Nodes (52): alias, AnalyticsSummaryResponse, bool, CurrentUser, date, DbSession, max_length, Query (+44 more)
+Nodes (59): alias, AnalyticsSummaryResponse, bool, CurrentUser, date, DbSession, max_length, Query (+51 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.07
-Nodes (71): DbSession, File, ImportPreviewResponse, ImportRunResponse, Response, str, UploadFile, UUID (+63 more)
+Cohesion: 0.09
+Nodes (58): DbSession, File, ImportPreviewResponse, ImportRunResponse, Response, str, UploadFile, UUID (+50 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.05
-Nodes (92): cors_origins_list(), exception_email_recipients_list(), minio_signed_url_endpoint(), minio_signed_url_secure(), normalized_frontend_base_url(), bool, str, Settings (+84 more)
+Cohesion: 0.12
+Nodes (46): AsyncClient, str, bytes, str, bytes, create_test_client(), create_user(), isolated_engine_pool() (+38 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.08
-Nodes (128): alias, ApprovalCreateRequest, CurrentUser, DbSession, ge, int, le, max_length (+120 more)
+Cohesion: 0.16
+Nodes (48): alias, DbSession, File, ge, int, InvoiceCreateRequest, InvoiceUpdateRequest, le (+40 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.24
-Nodes (7): InventoryLocationStock, UUID, Decimal, InventoryLocationStock, UUID, InventoryMovement, MaterialRequest
+Cohesion: 0.09
+Nodes (84): alias, ApprovalCreateRequest, CurrentUser, DbSession, ge, int, le, max_length (+76 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.25
-Nodes (20): bool, datetime, str, UUID, bool, datetime, str, UUID (+12 more)
+Cohesion: 0.32
+Nodes (19): bool, datetime, str, UUID, bool, datetime, str, UUID (+11 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.20
 Nodes (34): AsyncSession, DailyReport, int, object, Select, str, UUID, AsyncSession (+26 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.15
-Nodes (26): AsyncSession, bool, str, UUID, AsyncSession, str, User, UUID (+18 more)
+Cohesion: 0.14
+Nodes (25): AsyncSession, bool, str, UUID, AsyncSession, str, User, UUID (+17 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.11
-Nodes (25): get_request_meta(), Request, Request, Response, str, UUID, str, Request (+17 more)
+Cohesion: 0.13
+Nodes (21): Request, Response, str, UUID, str, Request, Response, str (+13 more)
 
 ### Community 19 - "Community 19"
 Cohesion: 0.06
@@ -279,8 +290,8 @@ Cohesion: 0.31
 Nodes (9): bool, int, Request, str, bool, int, Request, str (+1 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.29
-Nodes (11): bool, int, str, UUID, int, str, UUID, check_low_stock() (+3 more)
+Cohesion: 0.10
+Nodes (30): AsyncSession, datetime, int, Notification, UUID, AsyncSession, bool, int (+22 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.16
@@ -291,16 +302,16 @@ Cohesion: 0.07
 Nodes (36): claimQueuedPhoto(), clearReportDraft(), drainPhotoQueue(), flushPhotoQueue(), getReportDraft(), listenForSyncMessages(), openDb(), QueuedPhoto (+28 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.11
-Nodes (77): ApprovalCreateRequest, AsyncSession, int, AsyncSession, ImportPreviewResponse, ImportRunResponse, Path, UUID (+69 more)
+Cohesion: 0.13
+Nodes (59): AssetCreateRequest, AsyncSession, bool, DailyReport, Decimal, int, InventoryItem, InventoryItemCreateRequest (+51 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.28
 Nodes (21): int, Minio, Namespace, Path, str, cleanup_retention(), create_dump(), encrypt_file() (+13 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.15
-Nodes (39): str, str, Decimal, str, ActivityLog, ensure_seed_storage_objects(), get_asset_bytes(), main() (+31 more)
+Cohesion: 0.08
+Nodes (83): AsyncSession, bool, int, Project, ProjectMember, ProjectTask, Select, str (+75 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.09
@@ -311,27 +322,27 @@ Cohesion: 0.07
 Nodes (36): AssetCreatePayload, AssetRecord, cancelMaterialRequest(), createAsset(), createInventoryItem(), createLocation(), createMaterialRequest(), createMovement() (+28 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.27
-Nodes (8): Document, int, str, UUID, Document, int, str, UUID
+Cohesion: 0.13
+Nodes (33): Settings, Minio, Any, Settings, str, Minio, Settings, AsyncClient (+25 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.09
-Nodes (54): Request, Request, int, Namespace, str, Any, int, Namespace (+46 more)
+Nodes (55): Request, Request, int, Namespace, str, Any, int, Namespace (+47 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.42
-Nodes (15): AsyncClient, str, create_test_client(), create_user(), isolated_engine_pool(), login_for_token(), project_payload(), AsyncClient (+7 more)
+Cohesion: 0.41
+Nodes (16): AsyncClient, str, create_test_client(), create_user(), isolated_engine_pool(), login_for_token(), project_payload(), AsyncClient (+8 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.21
-Nodes (11): str, create_app(), str, FastAPI, FakeExceptionSettings, test_celery_task_failure_sends_configured_email(), test_unhandled_exception_email_respects_disabled_config(), test_unhandled_exception_sends_configured_email_with_debug_context() (+3 more)
+Cohesion: 0.13
+Nodes (15): str, get_settings(), create_app(), lifespan(), AsyncSession, str, AsyncSession, FastAPI (+7 more)
 
 ### Community 33 - "Community 33"
 Cohesion: 0.11
-Nodes (55): CurrentUser, DbSession, ge, int, le, Query, str, SupervisorUpdateCreateRequest (+47 more)
+Nodes (56): CurrentUser, DbSession, ge, int, le, Query, str, SupervisorUpdateCreateRequest (+48 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.14
+Cohesion: 0.15
 Nodes (18): ActivityLog, int, str, UUID, Any, str, bool, datetime (+10 more)
 
 ### Community 35 - "Community 35"
@@ -347,8 +358,8 @@ Cohesion: 0.29
 Nodes (8): bool, str, bool, str, backup_command(), run_database_backup(), test_backup_command_uses_current_python_and_monthly_flag(), test_celery_beat_schedules_operational_maintenance_tasks()
 
 ### Community 38 - "Community 38"
-Cohesion: 0.07
-Nodes (115): get_current_user(), require_permission(), DbSession, str, User, alias, CurrentUser, DbSession (+107 more)
+Cohesion: 0.08
+Nodes (115): get_current_user(), get_request_meta(), require_permission(), DbSession, Request, str, User, DbSession (+107 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.23
@@ -455,8 +466,8 @@ Cohesion: 0.12
 Nodes (16): AttachmentRef, createSupervisorUpdate(), listSupervisorUpdates(), submitSupervisorUpdate(), SupervisorUpdateListResponse, SupervisorUpdatePayload, SupervisorUpdateRecord, updateSupervisorUpdate() (+8 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.46
-Nodes (4): int, str, int, str
+Cohesion: 0.15
+Nodes (33): AsyncClient, str, AsyncClient, MonkeyPatch, Project, str, Supplier, User (+25 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.10
@@ -513,6 +524,10 @@ Nodes (10): APP_SHELL, claimQueuedPhoto(), createReportFromQueue(), drainPhotoQu
 ### Community 98 - "Community 98"
 Cohesion: 0.18
 Nodes (11): code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:block8 (You are a graphify extraction subagent. Read the files liste), code:bash ($(cat graphify-out/.graphify_python) -c "), Part A - Structural extraction for code files (+3 more)
+
+### Community 99 - "Community 99"
+Cohesion: 0.17
+Nodes (22): check_database(), get_db(), AsyncSession, bool, AsyncSession, bool, AsyncClient, Project (+14 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.20
@@ -613,6 +628,10 @@ Nodes (5): Columns, Keys, Outbound Relationships, Referenced By, storage_locatio
 ### Community 124 - "Community 124"
 Cohesion: 0.33
 Nodes (6): code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), code:bash (if [ ! -f graphify-out/.graphify_extract.json ]; then), code:bash ($(cat .graphify_python) -c "), code:bash ($(cat .graphify_python) -c "), For --update (incremental re-extraction)
+
+### Community 125 - "Community 125"
+Cohesion: 0.19
+Nodes (12): Approval, bool, datetime, int, str, UUID, Approval, bool (+4 more)
 
 ### Community 126 - "Community 126"
 Cohesion: 0.40
@@ -722,36 +741,72 @@ Nodes (3): code:bash ($(cat .graphify_python) -c "), code:block24 (Graph complet
 Cohesion: 0.36
 Nodes (13): ArgumentParser, Any, int, str, build_parser(), _clean_params(), _cli_headers(), _login() (+5 more)
 
+### Community 172 - "Community 172"
+Cohesion: 0.20
+Nodes (11): AsyncClient, str, CliTestClientAdapter, create_async_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_admin_can_search_log_events_and_non_admin_cannot() (+3 more)
+
 ### Community 173 - "Community 173"
 Cohesion: 0.67
 Nodes (3): 5.9 Filter by Status Code or Time Window, code:bash (python scripts/log_cli.py \), code:bash (python scripts/log_cli.py \)
+
+### Community 174 - "Community 174"
+Cohesion: 0.27
+Nodes (16): AsyncClient, str, User, generate_excel_export(), create_test_client(), create_user(), isolated_engine_pool(), login_for_token() (+8 more)
+
+### Community 175 - "Community 175"
+Cohesion: 0.12
+Nodes (15): 1. Executive Summary & Production Verdict, 2. Architectural & System Design Review, 3. Security, Cryptography & Access Control, 4. Resiliency & Disaster Recovery (DR), 5. Observability, Remote Diagnostics & Alerting, 6. Recent Enhancements & Fixed Risks, 7. Pre-Release Operations Checklist, Access Control & RBAC (+7 more)
 
 ### Community 176 - "Community 176"
 Cohesion: 0.53
 Nodes (5): main(), _random_equipment(), _random_manpower(), _random_materials(), Generate missing daily reports for all active projects.  Run from the backend di
 
+### Community 177 - "Community 177"
+Cohesion: 0.34
+Nodes (13): cors_origins_list(), exception_email_recipients_list(), minio_signed_url_endpoint(), minio_signed_url_secure(), normalized_frontend_base_url(), bool, str, should_expose_dev_otp() (+5 more)
+
 ### Community 178 - "Community 178"
 Cohesion: 0.40
 Nodes (4): current, expected, tempDir, tempPath
 
+### Community 179 - "Community 179"
+Cohesion: 0.36
+Nodes (13): str, User, create_project(), create_test_client(), create_user(), frontend_base_url(), isolated_engine_pool(), login_for_token() (+5 more)
+
 ### Community 180 - "Community 180"
-Cohesion: 0.19
-Nodes (19): check_database(), get_db(), AsyncSession, bool, AsyncSession, bool, AsyncClient, str (+11 more)
+Cohesion: 0.39
+Nodes (13): AsyncClient, str, create_test_client(), create_user(), isolated_engine_pool(), login_for_token(), project_payload(), AsyncClient (+5 more)
+
+### Community 181 - "Community 181"
+Cohesion: 0.37
+Nodes (12): bytes, str, create_admin(), csv_bytes(), isolated_engine_pool(), bytes, str, skip_if_database_unavailable() (+4 more)
+
+### Community 182 - "Community 182"
+Cohesion: 0.37
+Nodes (11): bool, str, str, archive_and_purge_logs(), _business_now(), check_late_reports(), check_supplier_tds_expiry(), cleanup_old_notifications() (+3 more)
+
+### Community 189 - "Community 189"
+Cohesion: 0.33
+Nodes (7): str, str, T, run_async_task(), _run_with_fresh_pool(), send_email_notification(), send_report_email()
+
+### Community 190 - "Community 190"
+Cohesion: 0.40
+Nodes (4): int, str, int, str
 
 ## Knowledge Gaps
-- **568 isolated node(s):** `composite`, `skipLibCheck`, `module`, `moduleResolution`, `allowSyntheticDefaultImports` (+563 more)
+- **578 isolated node(s):** `composite`, `skipLibCheck`, `module`, `moduleResolution`, `allowSyntheticDefaultImports` (+573 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `User` connect `Community 6` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 21`, `Community 22`, `Community 24`, `Community 26`, `Community 31`, `Community 33`, `Community 38`, `Community 39`, `Community 43`, `Community 180`, `Community 71`, `Community 76`, `Community 89`?**
-  _High betweenness centrality (0.147) - this node is a cross-community bridge._
-- **Why does `AppException` connect `Community 13` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 14`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 22`, `Community 24`, `Community 32`, `Community 33`, `Community 38`, `Community 180`, `Community 83`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Why does `AuditService` connect `Community 6` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 9`, `Community 11`, `Community 13`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 22`, `Community 24`, `Community 26`, `Community 32`, `Community 33`, `Community 34`, `Community 38`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `User` connect `Community 6` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 12`, `Community 13`, `Community 14`, `Community 15`, `Community 16`, `Community 17`, `Community 21`, `Community 22`, `Community 24`, `Community 26`, `Community 29`, `Community 31`, `Community 33`, `Community 38`, `Community 39`, `Community 43`, `Community 172`, `Community 174`, `Community 179`, `Community 180`, `Community 181`, `Community 182`, `Community 71`, `Community 76`, `Community 83`, `Community 89`, `Community 99`?**
+  _High betweenness centrality (0.157) - this node is a cross-community bridge._
+- **Why does `AppException` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 13`, `Community 14`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 22`, `Community 24`, `Community 26`, `Community 32`, `Community 33`, `Community 38`?**
+  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+- **Why does `AuditService` connect `Community 8` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 9`, `Community 11`, `Community 13`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 22`, `Community 24`, `Community 26`, `Community 32`, `Community 33`, `Community 34`, `Community 38`, `Community 172`, `Community 182`, `Community 83`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **Are the 804 inferred relationships involving `User` (e.g. with `TimestampMixin` and `SoftDeleteMixin`) actually correct?**
   _`User` has 804 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 426 inferred relationships involving `AppException` (e.g. with `FastAPI` and `Request`) actually correct?**
