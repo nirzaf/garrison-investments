@@ -1,0 +1,76 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "{environment=\"production\", service=~\"$service\"} | json | request_id=~\"$request_id\" | task_id=~\"$task_id\" | severity=~\"WARNING|ERROR|CRITICAL\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Correlated warnings and errors",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 10},
+      "id": 2,
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "quantile_over_time(0.95, {environment=\"production\", service=\"backend\"} | json | message=\"http_request_completed\" | unwrap duration_ms [$__auto])",
+          "legendFormat": "HTTP p95",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP p95 duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 10},
+      "id": 3,
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "{environment=\"production\", service=~\"celery_worker|celery_beat\"} | json | message=~\"task_(retried|failed)\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Celery retries and failures",
+      "type": "logs"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 42,
+  "tags": ["garrison", "incident-response", "logs"],
+  "templating": {
+    "list": [
+      {"current": {"text": "All", "value": "$__all"}, "datasource": {"type": "loki", "uid": "loki"}, "definition": "label_values({environment=\"production\"}, service)", "includeAll": true, "label": "Service", "name": "service", "query": "label_values({environment=\"production\"}, service)", "refresh": 1, "type": "query"},
+      {"current": {"text": ".*", "value": ".*"}, "label": "Request ID regex", "name": "request_id", "query": ".*", "type": "textbox"},
+      {"current": {"text": ".*", "value": ".*"}, "label": "Task ID regex", "name": "task_id", "query": ".*", "type": "textbox"}
+    ]
+  },
+  "time": {"from": "now-2h", "to": "now"},
+  "timezone": "browser",
+  "title": "Garrison Incident Explorer",
+  "uid": "garrison-incident-explorer",
+  "version": 1
+}

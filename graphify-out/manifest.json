@@ -405,8 +405,8 @@
     "semantic_hash": ""
   },
   "backend/app/config.py": {
-    "mtime": 1780052021.1492918,
-    "ast_hash": "f127962623e34e7c637c199cb0353d6b",
+    "mtime": 1785181760.907904,
+    "ast_hash": "e04ea64324e0ab31fdc6c610e23c7eb1",
     "semantic_hash": ""
   },
   "backend/app/database.py": {
@@ -420,8 +420,8 @@
     "semantic_hash": ""
   },
   "backend/app/main.py": {
-    "mtime": 1779982363.727921,
-    "ast_hash": "7ba34071cf09ee155acb5e2ccb804b8d",
+    "mtime": 1785182402.0935805,
+    "ast_hash": "86f918b7df4c240395826a923e0c0bf5",
     "semantic_hash": ""
   },
   "backend/app/middleware/audit.py": {
@@ -440,13 +440,13 @@
     "semantic_hash": ""
   },
   "backend/app/tasks/backup.py": {
-    "mtime": 1779986396.3716831,
-    "ast_hash": "235d6afa89427133879f81683ba0c2a2",
+    "mtime": 1785182170.359862,
+    "ast_hash": "721b974e47a0c10800dbba130ed02244",
     "semantic_hash": ""
   },
   "backend/app/tasks/celery_app.py": {
-    "mtime": 1780052021.2169979,
-    "ast_hash": "01b0fa320509130ce74fb02081d7bc39",
+    "mtime": 1785182450.6430357,
+    "ast_hash": "b26e263cf3af31b724942d35602020fa",
     "semantic_hash": ""
   },
   "backend/app/tasks/async_utils.py": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "backend/app/tasks/base.py": {
-    "mtime": 1779986345.6440458,
-    "ast_hash": "af1f70686bde246f842f652af4f2f601",
+    "mtime": 1785182170.3602629,
+    "ast_hash": "7556c6c64cdcd20a6c7265573130fe0d",
     "semantic_hash": ""
   },
   "backend/app/tasks/report.py": {
@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "backend/app/observability/logging.py": {
-    "mtime": 1779982372.7371845,
-    "ast_hash": "e3d0e3b74bdbe1f99e0b9e76bfa39419",
+    "mtime": 1785182450.642264,
+    "ast_hash": "5a0855f171d58107b92dc6057f2b8e80",
     "semantic_hash": ""
   },
   "backend/app/observability/__init__.py": {
@@ -1075,8 +1075,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_operations_schedule.py": {
-    "mtime": 1778944104.4929235,
-    "ast_hash": "4241942c096448a037d71e3a8dfe5a20",
+    "mtime": 1785182327.4573011,
+    "ast_hash": "e9f1e1a564fc4db110dc92157536ec2b",
     "semantic_hash": ""
   },
   "backend/tests/test_users.py": {
@@ -1120,8 +1120,8 @@
     "semantic_hash": ""
   },
   "backend/scripts/backup.py": {
-    "mtime": 1778907636.0672386,
-    "ast_hash": "954b1bfd8afa08e73081ba7e1fa94af0",
+    "mtime": 1785182002.069094,
+    "ast_hash": "4854fe5a44ccdde7b9ef094d9ca8cb72",
     "semantic_hash": ""
   },
   "backend/scripts/log_cli.py": {
@@ -1285,7 +1285,7 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1785180702.7227066,
+    "mtime": 1785180786.9792423,
     "ast_hash": "9a4cdd3173ac9785cab287a37d3cb79a",
     "semantic_hash": ""
   },
@@ -1300,8 +1300,8 @@
     "semantic_hash": ""
   },
   "docker-compose.prod.yml": {
-    "mtime": 1779986589.435122,
-    "ast_hash": "b47eeb3309ca8598446b7fe9b084f683",
+    "mtime": 1785182117.8808427,
+    "ast_hash": "1af6dfb6151de1c58bc5dfe92b438d40",
     "semantic_hash": ""
   },
   "AGENTS.md": {
@@ -1335,7 +1335,7 @@
     "semantic_hash": ""
   },
   "backend/ARCHITECTURE.md": {
-    "mtime": 1785180251.6021698,
+    "mtime": 1785180786.9655256,
     "ast_hash": "3a84973e719cffc7a415a8f04cc8c6ed",
     "semantic_hash": ""
   },
@@ -1345,28 +1345,28 @@
     "semantic_hash": ""
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1785180640.8334188,
-    "ast_hash": "4a294340aca921b18511e76727d637fb",
+    "mtime": 1785182082.170338,
+    "ast_hash": "c2cc3e5d39fb554cbf0b3ccb95dbf07e",
     "semantic_hash": ""
   },
   "docs/ROLES_AND_PERMISSIONS.md": {
-    "mtime": 1785180325.2306144,
+    "mtime": 1785180786.9655397,
     "ast_hash": "5b9ee9257e40a314da8440c3a9c2a0ec",
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1785180674.5222032,
+    "mtime": 1785180786.9792423,
     "ast_hash": "b28f68485563d99a487f642d8abdd6b5",
     "semantic_hash": ""
   },
   "docs/LOGGING_AND_REMOTE_CLI.md": {
-    "mtime": 1785180674.5282142,
-    "ast_hash": "81de358ece031452bc32f72807fb1db9",
+    "mtime": 1785182082.168236,
+    "ast_hash": "e69a398e40d2b332dbfe5c8da2e4e51a",
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1785180464.7098138,
-    "ast_hash": "581b4cacac5298f2b7d321074d5c8e52",
+    "mtime": 1785182082.1690392,
+    "ast_hash": "024c8139b55349f2b54c682d47b2423b",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -1630,7 +1630,7 @@
     "semantic_hash": ""
   },
   "docs/PRODUCTION_READINESS_REVIEW.md": {
-    "mtime": 1785180403.0996892,
+    "mtime": 1785180786.965731,
     "ast_hash": "5ac8058b8551671613da1eeb1c9e9a26",
     "semantic_hash": ""
   },
@@ -1647,6 +1647,51 @@
   ".kunsdd/draft/3d762da6-0c03-41d9-97fe-3e8574baa704/requirement.md": {
     "mtime": 1780917147.9967346,
     "ast_hash": "6d8ef03fec12cc81affb5db22ad55024",
+    "semantic_hash": ""
+  },
+  "backend/tests/test_structured_logging.py": {
+    "mtime": 1785182312.9799242,
+    "ast_hash": "a6fdb4f6fd5b508bbbaa57d45e46c555",
+    "semantic_hash": ""
+  },
+  "observability/grafana/dashboards/incidents.json": {
+    "mtime": 1785181942.4733348,
+    "ast_hash": "005cebabc5abb2d2187c4d2247ca13ac",
+    "semantic_hash": ""
+  },
+  "observability/grafana/dashboards/operations.json": {
+    "mtime": 1785181942.4729767,
+    "ast_hash": "9895bc83dee5540eed44d6637f15d0fd",
+    "semantic_hash": ""
+  },
+  "observability/minio/loki-policy.json": {
+    "mtime": 1785181863.0486708,
+    "ast_hash": "fd53f6acefa4d2fed2600d99898994af",
+    "semantic_hash": ""
+  },
+  "observability/postgres/init-grafana-db.sh": {
+    "mtime": 1785181863.0482197,
+    "ast_hash": "1beaf3c73c2f5c07d406bccc84b877d2",
+    "semantic_hash": ""
+  },
+  "observability/grafana/provisioning/alerting/alerts.yml": {
+    "mtime": 1785182117.8814106,
+    "ast_hash": "74881a77b1fb10673803752e09cfa2a0",
+    "semantic_hash": ""
+  },
+  "observability/grafana/provisioning/dashboards/dashboards.yml": {
+    "mtime": 1785181863.0497224,
+    "ast_hash": "df9cdfd5b22358ac3a19e9578d9b1a59",
+    "semantic_hash": ""
+  },
+  "observability/grafana/provisioning/datasources/loki.yml": {
+    "mtime": 1785181863.0494907,
+    "ast_hash": "3b4c8d4598c1fc9d44d1773a2071569c",
+    "semantic_hash": ""
+  },
+  "observability/loki-config.yml": {
+    "mtime": 1785181863.0488617,
+    "ast_hash": "b4d3b5f493da348112c793ad65cb9d86",
     "semantic_hash": ""
   }
 }

@@ -1,0 +1,191 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Garrison Operations Email
+    receivers:
+      - uid: garrison-operations-email
+        type: email
+        settings:
+          addresses: $GRAFANA_ALERT_EMAILS
+          singleEmail: true
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: Garrison Operations Email
+    group_by: [grafana_folder, alertname, service]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: Production log alerts
+    folder: Garrison Alerts
+    interval: 1m
+    rules:
+      - uid: garrison-unhandled-errors
+        title: Unhandled application or task failure
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment="production"} | json | message=~"unhandled_request_exception|task_failed" [5m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [0], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Production emitted an unhandled exception or terminal task failure.
+        labels: {service: application, severity: critical}
+
+      - uid: garrison-http-5xx-burst
+        title: HTTP 5xx burst
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment="production", service="backend"} | json | message="http_request_completed" | status_code >= 500 [5m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [4], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: At least five HTTP 5xx responses occurred within five minutes.
+        labels: {service: backend, severity: critical}
+
+      - uid: garrison-celery-retries
+        title: Repeated Celery retries
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment="production", service=~"celery_worker|celery_beat"} | json | message="task_retried" [10m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [2], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: More than two Celery retries occurred within ten minutes.
+        labels: {service: celery, severity: warning}
+
+      - uid: garrison-slow-http
+        title: Sustained slow HTTP requests
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'quantile_over_time(0.95, {environment="production", service="backend"} | json | message="http_request_completed" | unwrap duration_ms [10m])'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [2000], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: HTTP p95 duration has remained above two seconds.
+        labels: {service: backend, severity: warning}
+
+      - uid: garrison-log-pipeline-errors
+        title: Logging pipeline errors
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment="production", service=~"loki|alloy"} |~ "(?i)(error|failed)" [5m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [0], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: Loki or Alloy is reporting ingestion or storage errors.
+        labels: {service: observability, severity: critical}
