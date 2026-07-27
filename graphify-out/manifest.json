@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "frontend/vite.config.ts": {
-    "mtime": 1779820107.5737433,
-    "ast_hash": "f95faae41ebd364d367c4f8c601d6423",
+    "mtime": 1785185046.9511952,
+    "ast_hash": "4612aa72eb212b9c1988b7d8ea8aa347",
     "semantic_hash": ""
   },
   "frontend/postcss.config.js": {
@@ -1290,8 +1290,8 @@
     "semantic_hash": ""
   },
   "STAGING_DEPLOYMENT.md": {
-    "mtime": 1785184507.1130688,
-    "ast_hash": "e6f91b63b87196d5fa638eacb3fc9a8a",
+    "mtime": 1785185375.9891253,
+    "ast_hash": "f3b6f8fe158e930ad8434c07b0510893",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
