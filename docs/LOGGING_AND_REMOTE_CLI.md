@@ -404,3 +404,67 @@ python scripts/log_cli.py \
   --token-file .log-token \
   search --event-type log_access
 ```
+
+## 11. Grafana, Loki, and Alloy
+
+Production container logs use a separate operational pipeline:
+
+```text
+container stdout -> Grafana Alloy -> Loki -> Grafana
+```
+
+This does not replace `activity_log`. PostgreSQL remains the authoritative audit and business-event
+store; Loki retains operational container output for 14 days to support incident investigation.
+
+Grafana is available only through the HTTPS hostname configured by `GRAFANA_DOMAIN`. Anonymous access
+and public sign-up are disabled. Loki and Alloy have no host-published ports.
+
+### Useful LogQL
+
+Unhandled application and task failures:
+
+```logql
+{environment="production"} | json
+  | message=~"unhandled_request_exception|task_failed"
+```
+
+Follow one request:
+
+```logql
+{environment="production"} | json | request_id="req-123"
+```
+
+Slow API requests:
+
+```logql
+{environment="production", service="backend"} | json
+  | message="http_request_completed" | duration_ms > 2000
+```
+
+Celery retries:
+
+```logql
+{environment="production", service=~"celery_worker|celery_beat"} | json
+  | message="task_retried"
+```
+
+The provisioned dashboards are **Garrison Production Logs** and **Garrison Incident Explorer**.
+Provisioned alerts cover unhandled failures, 5xx bursts, repeated task retries, sustained slow
+requests, and Loki/Alloy errors. Alert query failures enter the alerting state; ordinary no-data
+periods remain healthy.
+
+### Sensitive Data Policy
+
+- Never log request bodies, authorization headers, cookies, OTPs, passwords, tokens, task arguments,
+  or task results.
+- The central processor recursively redacts sensitive keys, bearer tokens, JWT-like values, and
+  credentials embedded in URLs.
+- `request_id`, `session_id`, `user_id`, and `task_id` are query-time JSON fields, not Loki labels.
+- Loki labels are restricted to low-cardinality deployment metadata.
+
+### Incident Fallback
+
+If Grafana, Loki, or Alloy is unavailable, application services continue writing rotated Docker JSON
+logs. Use `docker compose -f docker-compose.prod.yml logs --since 30m backend celery_worker` while the
+observability stack is restored. Re-enable `EXCEPTION_EMAIL_ENABLED=true` if Grafana alerting must be
+rolled back.

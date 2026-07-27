@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from minio import Minio
 
@@ -94,25 +94,51 @@ def redact_url(url: str) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create encrypted PostgreSQL backups in MinIO.")
     parser.add_argument("--monthly", action="store_true", help="Store backup under monthly prefix.")
+    parser.add_argument(
+        "--target",
+        choices=("all", "application", "grafana"),
+        default="application",
+        help="Database to back up. Scheduled tasks explicitly back up both databases.",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    database_url = os.environ["DATABASE_URL"]
-    bucket = os.getenv("MINIO_BUCKET", "portal-files")
-    local_dir = Path(os.getenv("BACKUP_LOCAL_DIR", "/tmp/garrison-backups"))
-    local_dir.mkdir(parents=True, exist_ok=True)
+def grafana_database_url() -> str:
+    password = quote(os.environ["GRAFANA_DB_PASSWORD"], safe="")
+    return f"postgresql://grafana:{password}@postgres:5432/grafana"
 
+
+def database_targets(target: str) -> list[tuple[str, str]]:
+    if target == "application":
+        return [("application", os.environ["DATABASE_URL"])]
+    if target == "grafana":
+        return [("grafana", grafana_database_url())]
+    if target == "all":
+        return [
+            ("application", os.environ["DATABASE_URL"]),
+            ("grafana", grafana_database_url()),
+        ]
+    raise ValueError(f"Unsupported backup target: {target}")
+
+
+def backup_database(
+    *,
+    name: str,
+    database_url: str,
+    monthly: bool,
+    bucket: str,
+    local_dir: Path,
+) -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = local_dir / f"garrison-{timestamp}.sql.gz"
+    backup_path = local_dir / f"{name}-{timestamp}.sql.gz"
     create_dump(database_url, backup_path)
 
     encryption_password = os.getenv("BACKUP_ENCRYPTION_PASSWORD")
     if encryption_password:
         backup_path = encrypt_file(backup_path, encryption_password)
 
-    prefix = "backups/monthly" if args.monthly else "backups/daily"
+    cadence = "monthly" if monthly else "daily"
+    prefix = f"backups/{cadence}" if name == "application" else f"backups/{name}/{cadence}"
     object_name = f"{prefix}/{backup_path.name}"
     client = get_minio_client()
     ensure_bucket(client, bucket)
@@ -120,12 +146,31 @@ def main() -> None:
 
     retention_days = (
         monthly_retention_days(int(os.getenv("MONTHLY_BACKUP_RETENTION_MONTHS", "12")))
-        if args.monthly
+        if monthly
         else int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
     )
     cleanup_retention(client, bucket, prefix, retention_days)
-    shutil.rmtree(local_dir, ignore_errors=True)
-    print(f"Uploaded backup {object_name} from {redact_url(database_url)}")
+    return f"Uploaded backup {object_name} from {redact_url(database_url)}"
+
+
+def main() -> None:
+    args = parse_args()
+    bucket = os.getenv("MINIO_BUCKET", "portal-files")
+    local_dir = Path(os.getenv("BACKUP_LOCAL_DIR", "/tmp/garrison-backups"))
+    local_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for name, database_url in database_targets(args.target):
+            print(
+                backup_database(
+                    name=name,
+                    database_url=database_url,
+                    monthly=args.monthly,
+                    bucket=bucket,
+                    local_dir=local_dir,
+                )
+            )
+    finally:
+        shutil.rmtree(local_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

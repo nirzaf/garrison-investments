@@ -62,7 +62,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    configure_logging(settings)
+    # API imports can load Celery modules in-process before application creation.
+    # Re-apply the API identity so backend records are never mislabeled as worker records.
+    configure_logging(settings, source_service=settings.log_source_service, force=True)
     auth_rate_limiter = AuthRateLimiter(
         redis_url=settings.redis_url,
         window_seconds=settings.auth_rate_limit_window_seconds,
@@ -106,6 +108,19 @@ def create_app() -> FastAPI:
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Session-ID"] = session_id
             response.headers["X-Process-Time"] = f"{duration:.6f}"
+            if settings.log_healthchecks or request.url.path not in {
+                "/health",
+                "/health/readiness",
+            }:
+                route = request.scope.get("route")
+                logger.info(
+                    "http_request_completed",
+                    event_type="api_request",
+                    method=request.method,
+                    route=getattr(route, "path", request.url.path),
+                    status_code=response.status_code,
+                    duration_ms=round(duration * 1000, 2),
+                )
             return response
         finally:
             clear_log_context()
@@ -200,6 +215,7 @@ def create_app() -> FastAPI:
             path=request.url.path,
             exception_type=type(exc).__name__,
             exception_message=str(exc),
+            exc_info=exc,
         )
         try:
             async with AsyncSessionLocal() as session:

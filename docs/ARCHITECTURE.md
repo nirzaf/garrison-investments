@@ -1085,10 +1085,16 @@ PUSH TO BRANCH
 
 ### 8.1 Logging
 
-- **Backend**: `structlog` for structured JSON logging, configured in `app/observability/` (`logging.py` for processor setup, `context.py` for request/task context propagation)
-  - Log levels: DEBUG (dev), INFO (key operations), WARNING (recoverable), ERROR (exceptions)
-  - Log categories: `app.api`, `app.service`, `app.security`, `app.task`
-  - Format: `{"timestamp": "...", "level": "INFO", "logger": "app.service.report", "event": "report_created", "user_id": "...", "report_id": "..."}`
+- **Backend and workers**: one `structlog`/standard-library JSON pipeline configured in
+  `app/observability/`, with request/task correlation, recursive sensitive-value redaction, structured
+  exception traces, and an environment-controlled minimum level.
+  - Production defaults to `INFO`; temporary `DEBUG` is enabled only through `LOG_LEVEL`.
+  - Every record includes timestamp, severity, logger, environment, service, and instance identifiers.
+  - HTTP completion records include normalized route, status, duration, and request correlation.
+- **Operational aggregation**: Grafana Alloy discovers Docker containers and sends stdout to Loki.
+  Loki uses TSDB indexes and a dedicated MinIO bucket with 14-day Compactor retention. Grafana uses a
+  dedicated PostgreSQL database and provisioned dashboards, queries, SMTP alerts, and a Loki data source.
+  Grafana is exposed only through its HTTPS Nginx virtual host; Loki and Alloy remain internal.
 - **Centralized event log**: Stored in `activity_log` with standardized fields such as `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `source_service`, `storage_tier`, and `context_payload`
 - **Remote access**: Search and real-time streaming are available through the secured log API and `backend/scripts/log_cli.py`
 - **Frontend**: Console logging in dev only; production errors captured via `POST /api/v1/logs/client-error`
