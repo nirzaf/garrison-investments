@@ -19,7 +19,7 @@ The application's architecture conforms exactly to a disciplined **Three-Tier Se
 
 ```mermaid
 graph TD
-    Client[Vue/Vite PWA Client] -->|HTTPS & Secure HTTPOnly Cookie| Nginx{Nginx Gateway}
+    Client[React/Vite PWA Client] -->|HTTPS & Secure HTTPOnly Cookie| Nginx{Nginx Gateway}
     Nginx -->|Static SPA Assets| Disk[(Frontend Build)]
     Nginx -->|API Route /api/v1/| FastAPI[FastAPI Server]
     Nginx -->|Storage Proxy /portal-files/| MinIO[MinIO Storage Server]
@@ -41,7 +41,7 @@ graph TD
 The security framework has been engineered defensively to mitigate standard OWASP Top 10 risks.
 
 ### Access Control & RBAC
-* **Role-Based Access Control**: Standardized single-role model with 8 defined roles and 15 explicit permission scopes defined in `backend/app/utils/permissions.py`.
+* **Role-Based Access Control**: Standardized single-role model with 8 defined roles and 16 explicit permission scopes defined in `backend/app/utils/permissions.py`.
 * **Deep Scoped Enforcement**: Critical endpoints implement dual-layer verification:
   1. **Route Level**: `require_permission(...)` validates the broad user capability.
   2. **Service Level**: Contextual checks (e.g., `ReportService` checking project membership, supervisor assignment) prevent cross-tenant/project horizontal escalation.

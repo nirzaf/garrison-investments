@@ -68,6 +68,17 @@ BACKUP_RETENTION_DAYS=30
 MONTHLY_BACKUP_RETENTION_MONTHS=12
 
 MONITOR_ALERT_RECIPIENTS=admin@garrisons.lk
+
+# Optional overrides (defaults shown)
+EXCEPTION_EMAIL_ENABLED=true
+NOTIFICATION_RETENTION_DAYS=90
+LOG_HOT_RETENTION_DAYS=30
+LOG_ARCHIVE_RETENTION_DAYS=365
+LOG_STREAM_POLL_SECONDS=1.0
+LOG_INSTANCE_ID=<host-or-container-identifier>
+LOG_SOURCE_SERVICE=backend-api
+TRUSTED_PROXY_IPS=127.0.0.1,::1
+BUSINESS_TIMEZONE=Asia/Qatar
 ```
 
 ---
@@ -89,6 +100,7 @@ docker compose -f docker-compose.prod.yml config --quiet
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 curl --fail http://localhost/health
+curl --fail http://localhost/health/readiness
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/validate_import_sources.py --check
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py
 ```
@@ -96,6 +108,21 @@ docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.
 ---
 
 ## 3. Operations, Backup & Restore
+
+### Scheduled Background Jobs (Celery Beat)
+
+The Celery beat container runs these schedules automatically (defined in `backend/app/tasks/celery_app.py`, all times UTC):
+
+| Task | Schedule | Purpose |
+| --- | --- | --- |
+| `run_database_backup` | Daily 01:00 | Encrypted daily database backup to MinIO |
+| `run_database_backup` (monthly) | 1st of month 02:00 | Monthly archive backup |
+| `check_late_reports` | Hourly | Detect and notify late daily reports |
+| `process_approval_reminders` | Hourly | Send approval reminder notifications |
+| `check_low_stock` | Hourly | Low-stock inventory alerts |
+| `cleanup_old_notifications` | Daily 03:00 | Purge notifications older than `NOTIFICATION_RETENTION_DAYS` |
+| `archive_and_purge_logs` | Daily 03:30 | Move hot logs to archive tier and purge expired archives |
+| `check_supplier_tds_expiry` | Daily 04:00 | Alert on expiring supplier TDS documents |
 
 ### Backup Procedure
 

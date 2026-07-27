@@ -2,7 +2,7 @@
 
 Implementation workspace for the Construction Internal Portal.
 
-All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/README.md), then use the [architecture](docs/ARCHITECTURE.md), [roles and permissions](docs/ROLES_AND_PERMISSIONS.md), [operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md), and [user stories](docs/user-stories/README.md) as the source of truth.
+All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/README.md), then use the [architecture](docs/ARCHITECTURE.md), [roles and permissions](docs/ROLES_AND_PERMISSIONS.md), and [operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md) as the source of truth.
 
 ## Local Development
 
@@ -54,7 +54,7 @@ npm run dev
 
 ## Current Implementation Status
 
-This repository contains production implementation work across all user stories in `docs/user-stories/`, including authentication, RBAC, projects/BOQ, daily reports, approvals, uploads, documents, notifications, audit logs, operations, inventory, suppliers, finance, analytics, PWA/offline primitives, and data imports. All core implementation packages are fully completed and verified.
+This repository contains the completed production implementation of the portal, including authentication, RBAC, projects/BOQ, daily reports, approvals, uploads, documents, notifications, audit logs, operations, inventory, suppliers, finance, analytics, PWA/offline primitives, and data imports. All core implementation packages are fully completed and verified.
 
 Current local verification commands:
 
