@@ -14,7 +14,7 @@
         {
           "datasource": {"type": "loki", "uid": "loki"},
           "editorMode": "code",
-          "expr": "{environment=\"production\", service=~\"$service\"} | json | request_id=~\"$request_id\" | task_id=~\"$task_id\" | severity=~\"WARNING|ERROR|CRITICAL\"",
+          "expr": "{environment=\"$environment\", service=~\"$service\"} | json | request_id=~\"$request_id\" | task_id=~\"$task_id\" | severity=~\"WARNING|ERROR|CRITICAL\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -31,7 +31,7 @@
         {
           "datasource": {"type": "loki", "uid": "loki"},
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {environment=\"production\", service=\"backend\"} | json | message=\"http_request_completed\" | unwrap duration_ms [$__auto])",
+          "expr": "quantile_over_time(0.95, {environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" | unwrap duration_ms [$__auto])",
           "legendFormat": "HTTP p95",
           "queryType": "range",
           "refId": "A"
@@ -49,7 +49,7 @@
         {
           "datasource": {"type": "loki", "uid": "loki"},
           "editorMode": "code",
-          "expr": "{environment=\"production\", service=~\"celery_worker|celery_beat\"} | json | message=~\"task_(retried|failed)\"",
+          "expr": "{environment=\"$environment\", service=~\"celery_worker|celery_beat\"} | json | message=~\"task_(retried|failed)\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -63,7 +63,8 @@
   "tags": ["garrison", "incident-response", "logs"],
   "templating": {
     "list": [
-      {"current": {"text": "All", "value": "$__all"}, "datasource": {"type": "loki", "uid": "loki"}, "definition": "label_values({environment=\"production\"}, service)", "includeAll": true, "label": "Service", "name": "service", "query": "label_values({environment=\"production\"}, service)", "refresh": 1, "type": "query"},
+      {"current": {"text": "production", "value": "production"}, "hide": 0, "label": "Environment", "name": "environment", "options": [{"selected": true, "text": "production", "value": "production"}, {"selected": false, "text": "staging", "value": "staging"}], "query": "production,staging", "type": "custom"},
+      {"current": {"text": "All", "value": "$__all"}, "datasource": {"type": "loki", "uid": "loki"}, "definition": "label_values({environment=\"$environment\"}, service)", "includeAll": true, "label": "Service", "name": "service", "query": "label_values({environment=\"$environment\"}, service)", "refresh": 1, "type": "query"},
       {"current": {"text": ".*", "value": ".*"}, "label": "Request ID regex", "name": "request_id", "query": ".*", "type": "textbox"},
       {"current": {"text": ".*", "value": ".*"}, "label": "Task ID regex", "name": "task_id", "query": ".*", "type": "textbox"}
     ]

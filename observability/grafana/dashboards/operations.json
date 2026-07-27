@@ -66,7 +66,7 @@
   "tags": ["garrison", "operations", "logs"],
   "templating": {
     "list": [
-      {"current": {"text": "production", "value": "production"}, "hide": 0, "label": "Environment", "name": "environment", "options": [{"selected": true, "text": "production", "value": "production"}], "query": "production", "type": "custom"},
+      {"current": {"text": "production", "value": "production"}, "hide": 0, "label": "Environment", "name": "environment", "options": [{"selected": true, "text": "production", "value": "production"}, {"selected": false, "text": "staging", "value": "staging"}], "query": "production,staging", "type": "custom"},
       {"current": {"text": "All", "value": "$__all"}, "datasource": {"type": "loki", "uid": "loki"}, "definition": "label_values({environment=\"$environment\"}, service)", "includeAll": true, "label": "Service", "name": "service", "query": "label_values({environment=\"$environment\"}, service)", "refresh": 1, "type": "query"},
       {"current": {"text": "All", "value": "$__all"}, "includeAll": true, "label": "Severity", "name": "severity", "options": [], "query": "DEBUG,INFO,WARNING,ERROR,CRITICAL", "type": "custom"}
     ]

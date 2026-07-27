@@ -22435,7 +22435,7 @@
       "label": "time",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L71",
+      "source_location": "L72",
       "id": "dashboards_incidents_time",
       "community": 21,
       "norm_label": "time"
@@ -22444,7 +22444,7 @@
       "label": "from",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L71",
+      "source_location": "L72",
       "id": "dashboards_incidents_time_from",
       "community": 21,
       "norm_label": "from"
@@ -22453,7 +22453,7 @@
       "label": "to",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L71",
+      "source_location": "L72",
       "id": "dashboards_incidents_time_to",
       "community": 21,
       "norm_label": "to"
@@ -22462,7 +22462,7 @@
       "label": "timezone",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L72",
+      "source_location": "L73",
       "id": "dashboards_incidents_timezone",
       "community": 21,
       "norm_label": "timezone"
@@ -22471,7 +22471,7 @@
       "label": "title",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L73",
+      "source_location": "L74",
       "id": "dashboards_incidents_title",
       "community": 21,
       "norm_label": "title"
@@ -22480,7 +22480,7 @@
       "label": "uid",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L74",
+      "source_location": "L75",
       "id": "dashboards_incidents_uid",
       "community": 21,
       "norm_label": "uid"
@@ -22489,7 +22489,7 @@
       "label": "version",
       "file_type": "code",
       "source_file": "observability/grafana/dashboards/incidents.json",
-      "source_location": "L75",
+      "source_location": "L76",
       "id": "dashboards_incidents_version",
       "community": 21,
       "norm_label": "version"
@@ -23595,52 +23595,25 @@
       "label": "Runtime Layout",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L15",
+      "source_location": "L16",
       "id": "staging_deployment_runtime_layout",
       "community": 39,
       "norm_label": "runtime layout"
     },
     {
-      "label": "code:sh (MINIO_ENDPOINT=minio:9000)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L34",
-      "id": "staging_deployment_codeblock_1",
-      "community": 39,
-      "norm_label": "code:sh (minio_endpoint=minio:9000)"
-    },
-    {
       "label": "Deploy Commands",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L45",
+      "source_location": "L55",
       "id": "staging_deployment_deploy_commands",
       "community": 39,
       "norm_label": "deploy commands"
     },
     {
-      "label": "code:sh (rsync -az --delete \\)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L49",
-      "id": "staging_deployment_codeblock_2",
-      "community": 39,
-      "norm_label": "code:sh (rsync -az --delete \\)"
-    },
-    {
-      "label": "code:sh (cd /opt/garrison-investments-staging)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L70",
-      "id": "staging_deployment_codeblock_3",
-      "community": 39,
-      "norm_label": "code:sh (cd /opt/garrison-investments-staging)"
-    },
-    {
       "label": "Staging Test Credentials",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L78",
+      "source_location": "L88",
       "id": "staging_deployment_staging_test_credentials",
       "community": 39,
       "norm_label": "staging test credentials"
@@ -23649,7 +23622,7 @@
       "label": "What Each Test User Can Do",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L101",
+      "source_location": "L111",
       "id": "staging_deployment_what_each_test_user_can_do",
       "community": 39,
       "norm_label": "what each test user can do"
@@ -23658,43 +23631,16 @@
       "label": "Verification",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L119",
+      "source_location": "L129",
       "id": "staging_deployment_verification",
       "community": 39,
       "norm_label": "verification"
     },
     {
-      "label": "code:sh (curl -fsS http://127.0.0.1:3310/health)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L121",
-      "id": "staging_deployment_codeblock_4",
-      "community": 39,
-      "norm_label": "code:sh (curl -fss http://127.0.0.1:3310/health)"
-    },
-    {
-      "label": "code:sh (nginx -t)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L131",
-      "id": "staging_deployment_codeblock_5",
-      "community": 39,
-      "norm_label": "code:sh (nginx -t)"
-    },
-    {
-      "label": "code:sh (curl -sS https://seasonenterprise.com/login | grep -E 'Seaso)",
-      "file_type": "document",
-      "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L138",
-      "id": "staging_deployment_codeblock_6",
-      "community": 39,
-      "norm_label": "code:sh (curl -ss https://seasonenterprise.com/login | grep -e 'seaso)"
-    },
-    {
       "label": "Current Deployment Notes",
       "file_type": "document",
       "source_file": "STAGING_DEPLOYMENT.md",
-      "source_location": "L146",
+      "source_location": "L157",
       "id": "staging_deployment_current_deployment_notes",
       "community": 39,
       "norm_label": "current deployment notes"
@@ -26551,6 +26497,60 @@
       "id": "schema_users_columns",
       "community": 146,
       "norm_label": "columns"
+    },
+    {
+      "label": "code:sh (MINIO_ENDPOINT=minio:9000)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L34",
+      "community": 39,
+      "norm_label": "code:sh (minio_endpoint=minio:9000)",
+      "id": "staging_deployment_codeblock_1"
+    },
+    {
+      "label": "code:sh (rsync -az --delete \\)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L49",
+      "community": 39,
+      "norm_label": "code:sh (rsync -az --delete \\)",
+      "id": "staging_deployment_codeblock_2"
+    },
+    {
+      "label": "code:sh (cd /opt/garrison-investments-staging)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L70",
+      "community": 39,
+      "norm_label": "code:sh (cd /opt/garrison-investments-staging)",
+      "id": "staging_deployment_codeblock_3"
+    },
+    {
+      "label": "code:sh (curl -fsS http://127.0.0.1:3310/health)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L121",
+      "community": 39,
+      "norm_label": "code:sh (curl -fss http://127.0.0.1:3310/health)",
+      "id": "staging_deployment_codeblock_4"
+    },
+    {
+      "label": "code:sh (nginx -t)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L131",
+      "community": 39,
+      "norm_label": "code:sh (nginx -t)",
+      "id": "staging_deployment_codeblock_5"
+    },
+    {
+      "label": "code:sh (curl -sS https://seasonenterprise.com/login | grep -E 'Seaso)",
+      "file_type": "document",
+      "source_file": "STAGING_DEPLOYMENT.md",
+      "source_location": "L138",
+      "community": 39,
+      "norm_label": "code:sh (curl -ss https://seasonenterprise.com/login | grep -e 'seaso)",
+      "id": "staging_deployment_codeblock_6"
     },
     {
       "label": "query_20260727_193636_can_we_use_grafana_for_centralized_application_log.md",
@@ -172709,5 +172709,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "27d1b0e759964aa89dd2f801a296d57341cb2a58"
+  "built_at_commit": "686d8b2468fb5fa3276eee4aac1fb424b18d06d7"
 }
