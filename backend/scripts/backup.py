@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import BinaryIO, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from minio import Minio
@@ -24,7 +25,7 @@ def create_dump(database_url: str, output_path: Path) -> None:
             subprocess.run(
                 ["pg_dump", "--format=plain", "--no-owner", normalize_pg_url(database_url)],
                 check=True,
-                stdout=gzip_file,
+                stdout=cast(BinaryIO, gzip_file),
             )
 
 

@@ -137,6 +137,27 @@ curl -fsS https://erp.garrisons.lk/grafana/api/health
 docker ps --filter 'name=garrisonstg' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
+Before deployment, run the focused regression and configuration checks locally:
+
+```bash
+cd backend
+pytest -q tests/test_structured_logging.py tests/test_observability_config.py
+ruff check .
+mypy .
+
+cd ../frontend
+npm run lint
+npm test
+npm run build
+
+cd ..
+docker compose -p garrisonstg --env-file .env.example \
+  -f docker-compose.staging.yml config --quiet
+```
+
+The `grafana_db_init` and `loki_minio_init` jobs must finish with exit code 0. Both are idempotent and
+safe to rerun. Do not start Grafana against SQLite or bypass a failed initializer.
+
 After any Nginx routing edit:
 
 ```sh

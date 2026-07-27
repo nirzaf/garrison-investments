@@ -120,6 +120,29 @@ Before starting production, create DNS for `GRAFANA_DOMAIN` and install a certif
 that hostname. The `grafana_db_init` and `loki_minio_init` jobs are idempotent and must exit successfully.
 Grafana, Loki, and Alloy must report healthy; none of their internal ports should be published.
 
+Before changing a running environment, run the repository checks:
+
+```bash
+cd backend
+pytest -q tests/test_structured_logging.py tests/test_observability_config.py
+ruff check .
+mypy .
+
+cd ../frontend
+npm run lint
+npm run api:types:check
+npm test
+npm run build
+
+cd ..
+docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+```
+
+The Grafana database initializer uses PostgreSQL `ON_ERROR_STOP` and idempotent role/database checks.
+Any non-zero `grafana_db_init` or `loki_minio_init` exit is a deployment failure; inspect the job
+logs instead of manually bypassing the dependency.
+
 ---
 
 ## 3. Operations, Backup & Restore
@@ -199,6 +222,8 @@ For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_R
 3. Rebuild and restart with `docker compose -f docker-compose.prod.yml up -d --build`.
 4. Apply backward-compatible migrations (or downgrade if safe).
 5. Verify `/health`.
+6. If the observability stack is the failure source, set `EXCEPTION_EMAIL_ENABLED=true`, stop
+   Grafana/Loki/Alloy, and continue incident diagnosis from rotated Docker JSON logs.
 
 ---
 

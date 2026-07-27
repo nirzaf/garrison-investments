@@ -1,5 +1,6 @@
-import structlog
 from uuid import UUID
+
+import structlog
 
 from app.database import AsyncSessionLocal
 from app.models.import_batch import ImportBatch

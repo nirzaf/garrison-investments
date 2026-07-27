@@ -1059,7 +1059,7 @@ PUSH TO BRANCH
     |
     v
 [DEPLOY TO STAGING]  (on push to develop)
-  - docker-compose -f docker-compose.prod.yml up -d
+  - docker compose -f docker-compose.prod.yml up -d
   - alembic upgrade head
   - Smoke test (curl health check)
     |
@@ -1095,6 +1095,13 @@ PUSH TO BRANCH
   Loki uses TSDB indexes and a dedicated MinIO bucket with 14-day Compactor retention. Grafana uses a
   dedicated PostgreSQL database and provisioned dashboards, queries, SMTP alerts, and a Loki data source.
   Grafana is exposed only through its HTTPS Nginx virtual host; Loki and Alloy remain internal.
+- **Defence in depth for log data**: the application recursively redacts sensitive keys, bearer/JWT
+  patterns, credential-bearing URLs, and credential-like query parameters before JSON serialization;
+  Alloy applies an additional pattern-redaction stage before Loki ingestion. Request IDs, task IDs,
+  users, sessions, and endpoints remain parsed fields rather than Loki labels.
+- **Failure isolation**: Grafana, Loki, and Alloy are not in the application request path. Docker's
+  rotated `json-file` output remains available if collection or storage is unavailable, while
+  PostgreSQL `activity_log` remains the authoritative business/audit record.
 - **Centralized event log**: Stored in `activity_log` with standardized fields such as `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `source_service`, `storage_tier`, and `context_payload`
 - **Remote access**: Search and real-time streaming are available through the secured log API and `backend/scripts/log_cli.py`
 - **Frontend**: Console logging in dev only; production errors captured via `POST /api/v1/logs/client-error`

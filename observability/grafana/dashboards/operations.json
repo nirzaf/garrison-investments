@@ -45,8 +45,27 @@
     },
     {
       "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 13, "w": 24, "x": 0, "y": 8},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}, "overrides": []},
       "id": 3,
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "sum by (status_code) (count_over_time({environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" [$__auto]))",
+          "legendFormat": "HTTP {{status_code}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP responses by status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 13, "w": 24, "x": 0, "y": 16},
+      "id": 4,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
       "targets": [
         {

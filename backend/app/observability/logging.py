@@ -32,6 +32,10 @@ _SENSITIVE_KEY_PARTS = {
 _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _URL_CREDENTIAL_PATTERN = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^@\s]+@")
+_KEY_VALUE_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)(?P<prefix>(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|"
+    r"pass(?:word)?|secret|session|token)=)[^&\s\"']+"
+)
 
 
 def _inject_standard_fields(
@@ -56,7 +60,8 @@ def _is_sensitive_key(key: object) -> bool:
 def _redact_string(value: str) -> str:
     value = _BEARER_PATTERN.sub("Bearer [redacted]", value)
     value = _JWT_PATTERN.sub("[redacted-jwt]", value)
-    return _URL_CREDENTIAL_PATTERN.sub(r"\g<scheme>[redacted]@", value)
+    value = _URL_CREDENTIAL_PATTERN.sub(r"\g<scheme>[redacted]@", value)
+    return _KEY_VALUE_CREDENTIAL_PATTERN.sub(r"\g<prefix>[redacted]", value)
 
 
 def _redact_value(value: Any, *, key: object | None = None) -> Any:

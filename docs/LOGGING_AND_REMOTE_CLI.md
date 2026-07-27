@@ -416,6 +416,11 @@ container stdout -> Grafana Alloy -> Loki -> Grafana
 This does not replace `activity_log`. PostgreSQL remains the authoritative audit and business-event
 store; Loki retains operational container output for 14 days to support incident investigation.
 
+Before serialization, the backend recursively redacts sensitive keys and credential patterns,
+including bearer tokens, JWTs, cookies, passwords, OTPs, credential-bearing URLs, and sensitive
+query parameters such as `token=...`. Request bodies, headers, raw Celery arguments, and task results
+must not be attached to operational records.
+
 Grafana is available only through the HTTPS hostname configured by `GRAFANA_DOMAIN`. Anonymous access
 and public sign-up are disabled. Loki and Alloy have no host-published ports.
 
@@ -449,6 +454,9 @@ Celery retries:
 ```
 
 The provisioned dashboards are **Garrison Production Logs** and **Garrison Incident Explorer**.
+The operations dashboard includes log volume, error counts, HTTP response status distribution, and
+the searchable log stream. The incident dashboard includes request/task correlation, HTTP p95
+duration, and Celery retry/failure exploration.
 Provisioned alerts cover unhandled failures, 5xx bursts, repeated task retries, sustained slow
 requests, and Loki/Alloy errors. Alert query failures enter the alerting state; ordinary no-data
 periods remain healthy.
@@ -468,3 +476,17 @@ If Grafana, Loki, or Alloy is unavailable, application services continue writing
 logs. Use `docker compose -f docker-compose.prod.yml logs --since 30m backend celery_worker` while the
 observability stack is restored. Re-enable `EXCEPTION_EMAIL_ENABLED=true` if Grafana alerting must be
 rolled back.
+
+### Configuration regression tests
+
+Run the focused, service-independent checks before deployment:
+
+```bash
+cd backend
+pytest -q tests/test_structured_logging.py tests/test_observability_config.py
+```
+
+They validate JSON shape and redaction, request and task context cleanup, health-check suppression,
+Celery lifecycle safety, image digests, private ports, 14-day retention, low-cardinality labels,
+Grafana security settings, dashboard JSON, alert policy semantics, and idempotent database
+initialization. Compose rendering and live service health remain separate deployment gates.

@@ -1,6 +1,6 @@
 # Production Readiness Review (PRR)
 **Project**: Construction Internal Portal (Garrison Investments)  
-**Date**: May 30, 2026  
+**Date**: July 27, 2026
 **Status**: **APPROVED FOR PRODUCTION RELEASE (With Recommended Operations Checklist)**
 
 ---
@@ -75,10 +75,16 @@ The operations framework features robust, automated capabilities to recover from
 
 System health and behavior are highly visible, enabling rapid detection and diagnosis of runtime anomalies.
 
-* **Structured Logging**: Standardized JSON output utilizing `structlog`. Every log line includes contextual identifiers such as `request_id`, `session_id`, `ip_address`, `method`, `endpoint`, and `source_service`.
+* **Structured Logging**: Standardized JSON output utilizing `structlog`. Records include standard
+  timestamp, severity, logger, environment, service, and instance fields plus available request/task
+  correlation. Credentials, bearer/JWT values, sensitive query parameters, request payloads, and raw
+  Celery arguments/results are excluded or redacted.
 * **Centralized Remote Diagnostics**: Operators can securely search, filter, and stream application logs via the robust `scripts/log_cli.py` CLI without requiring direct SSH shell access to the backend host.
 * **Defensive Exception Redaction**: Unhandled exceptions trigger the `report_unhandled_exception` routine, which redacts sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, passwords) before reporting failure context via Celery email notifications to the admin.
 * **Active Health Audits**: Dedicated `scripts/health_monitor.py` pings application health endpoints (`/health` and `/health/readiness`) and sends priority email alerts if degradation is identified.
+* **Operational Log Stack**: Grafana 13.1.1, Loki 3.7.4, and Alloy 1.18.0 are digest-pinned in the
+  production/staging Compose definitions. Loki retains operational logs for 14 days in a dedicated
+  MinIO bucket; Grafana metadata uses a dedicated PostgreSQL database.
 
 ---
 
@@ -86,7 +92,10 @@ System health and behavior are highly visible, enabling rapid detection and diag
 
 Our recent fixes addressing storage and staging environments have resolved critical release blockers:
 
-1. **Proxying & URL Normalization**: Resolved private `:9000` presigned URL unreachable errors on staging by implementing Nginx routing proxying through `/portal-files/`. Previews are signed natively as standard SSL URLs (`https://garrisonstg.seasonenterprise.com/portal-files/...`).
+1. **Proxying & URL Normalization**: Resolved private `:9000` presigned URL unreachable errors on
+   staging by routing `/portal-files/` through Nginx. The current public staging URL is
+   `https://erp.garrisons.lk`, and fresh previews use
+   `https://erp.garrisons.lk/portal-files/...`.
 2. **Dynamic High-Resolution Seeding**: Upgraded the seed script (`seed.py`) to seamlessly utilize high-resolution, real-life visual JPEGs (which are now versioned in `backend/scripts/assets/`) if present, instead of tiny 1-pixel placeholders.
 3. **Smart Overwriting**: Seeding logic now automatically updates object stores if a 1-pixel placeholder is replaced by high-resolution visual data, ensuring clean system upgrades.
 
@@ -107,6 +116,8 @@ Prior to initiating the production release, the release owner must complete and 
       - Remove STAGING_LOGIN_OTP and set APP_ENV=production in Nginx/Docker environments.
 - [ ] 6. Confirm Nginx SSL certificates (e.g., Let's Encrypt fullchain.pem/privkey.pem) are mounted under /etc/nginx/ssl/.
 - [ ] 7. Confirm exception email SMTP routing works correctly (test unhandled exception mail delivery).
+- [ ] 8. Trigger the provisioned Grafana alerts in staging and verify SMTP delivery, recovery
+      notifications, grouping, and working log links before setting `EXCEPTION_EMAIL_ENABLED=false`.
 ```
 
 ### Production Release Commands

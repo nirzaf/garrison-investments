@@ -18,10 +18,14 @@ from app.utils.exceptions import AppException, NotFoundException
 pil_module = ModuleType("PIL")
 pil_image_module = ModuleType("PIL.Image")
 pil_image_draw_module = ModuleType("PIL.ImageDraw")
-pil_image_module.open = lambda *_args, **_kwargs: None
-pil_image_draw_module.Draw = lambda *_args, **_kwargs: SimpleNamespace(text=lambda *_a, **_k: None)
-pil_module.Image = pil_image_module
-pil_module.ImageDraw = pil_image_draw_module
+setattr(pil_image_module, "open", lambda *_args, **_kwargs: None)  # noqa: B010
+setattr(  # noqa: B010
+    pil_image_draw_module,
+    "Draw",
+    lambda *_args, **_kwargs: SimpleNamespace(text=lambda *_a, **_k: None),
+)
+setattr(pil_module, "Image", pil_image_module)  # noqa: B010
+setattr(pil_module, "ImageDraw", pil_image_draw_module)  # noqa: B010
 sys.modules.setdefault("PIL", pil_module)
 sys.modules.setdefault("PIL.Image", pil_image_module)
 sys.modules.setdefault("PIL.ImageDraw", pil_image_draw_module)
