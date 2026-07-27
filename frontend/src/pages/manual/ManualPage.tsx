@@ -8,7 +8,7 @@ import {
   Lightbulb,
   Lock,
   Unlock,
-  User,
+  User
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -23,7 +23,7 @@ import {
   generalManagerManual,
   operationManagerManual,
   projectManagerManual,
-  storeKeeperManual,
+  storeKeeperManual
 } from './manuals';
 import type { Manual, ManualSection } from './manuals';
 
@@ -35,7 +35,7 @@ const MANUALS: Record<string, Manual> = {
   civil_engineer: civilEngineerManual,
   civil_supervisor: civilSupervisorManual,
   store_keeper: storeKeeperManual,
-  accounts: accountsManual,
+  accounts: accountsManual
 };
 
 function Diagram({ text }: { text: string }) {
@@ -56,9 +56,7 @@ function StepList({ steps }: { steps: NonNullable<ManualSection['steps']> }) {
           </span>
           <div className="min-w-0 pt-0.5">
             <span className="font-semibold text-theme-text-primary">{s.action}</span>
-            {s.detail && (
-              <p className="mt-0.5 text-sm text-theme-text-secondary">{s.detail}</p>
-            )}
+            {s.detail && <p className="mt-0.5 text-sm text-theme-text-secondary">{s.detail}</p>}
           </div>
         </li>
       ))}
@@ -173,8 +171,12 @@ function RoleHero({ manual }: { manual: Manual }) {
             <User className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Your Role</p>
-            <h2 className="mt-0.5 text-2xl font-bold text-theme-text-primary">{manual.roleLabel}</h2>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">
+              Your Role
+            </p>
+            <h2 className="mt-0.5 text-2xl font-bold text-theme-text-primary">
+              {manual.roleLabel}
+            </h2>
             <p className="mt-1 text-sm text-theme-text-secondary">{manual.tagline}</p>
           </div>
         </div>
@@ -204,9 +206,14 @@ export function ManualPage() {
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <AlertTriangle className="h-10 w-10 text-amber-500" />
         <div>
-          <p className="text-lg font-semibold text-theme-text-primary">No manual found for your role</p>
+          <p className="text-lg font-semibold text-theme-text-primary">
+            No manual found for your role
+          </p>
           <p className="mt-1 text-sm text-theme-text-secondary">
-            Role key: <code className="rounded bg-theme-card-elevated px-1 text-xs text-brand-600">{role || 'unknown'}</code>
+            Role key:{' '}
+            <code className="rounded bg-theme-card-elevated px-1 text-xs text-brand-600">
+              {role || 'unknown'}
+            </code>
           </p>
         </div>
       </div>
@@ -216,7 +223,7 @@ export function ManualPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'manual', label: 'How-To Guide' },
     { key: 'permissions', label: 'Permissions & Limits' },
-    { key: 'common', label: 'Common Features' },
+    { key: 'common', label: 'Common Features' }
   ];
 
   return (
@@ -275,7 +282,9 @@ export function ManualPage() {
                   key={s.id}
                   onClick={() => {
                     setActiveSectionId(activeSectionId === s.id ? null : s.id);
-                    document.getElementById(`section-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    document
+                      .getElementById(`section-${s.id}`)
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   type="button"
                 >
@@ -320,8 +329,8 @@ export function ManualPage() {
             <div className="flex gap-2">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
               <p className="text-sm text-blue-700">
-                Permissions are set by an Admin and cannot be changed by you. If you believe your role
-                is incorrect, contact your system administrator.{' '}
+                Permissions are set by an Admin and cannot be changed by you. If you believe your
+                role is incorrect, contact your system administrator.{' '}
                 <Link className="font-semibold underline" to="/roles">
                   View the full permissions matrix →
                 </Link>
@@ -335,8 +344,9 @@ export function ManualPage() {
       {activeTab === 'common' && (
         <div className="space-y-4">
           <div className="rounded-lg border border-theme-border bg-theme-card p-4 text-sm text-theme-text-secondary">
-            These features are available to <strong className="text-theme-text-primary">all authenticated users</strong>{' '}
-            regardless of role.
+            These features are available to{' '}
+            <strong className="text-theme-text-primary">all authenticated users</strong> regardless
+            of role.
           </div>
           {COMMON_SECTIONS.map((section) => (
             <SectionCard key={section.id} section={section} />

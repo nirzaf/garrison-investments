@@ -126,7 +126,12 @@ class UserService:
     async def deactivate_user(self, user_id: UUID, actor: User) -> User:
         return await self.update_user(user_id, UserUpdateRequest(is_active=False), actor)
 
-    async def admin_reset_password(self, user_id: UUID, payload: AdminPasswordResetRequest, actor: User) -> User:
+    async def admin_reset_password(
+        self,
+        user_id: UUID,
+        payload: AdminPasswordResetRequest,
+        actor: User,
+    ) -> User:
         if user_id == actor.id:
             raise AppException(
                 "Use the change-password endpoint to update your own password.",

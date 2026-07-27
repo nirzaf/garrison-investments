@@ -298,8 +298,8 @@ export function UserManagementPage() {
           <div className="w-full max-w-sm rounded-lg border border-theme-border bg-theme-card p-6 shadow-lg">
             <h2 className="mb-1 text-base font-semibold text-theme-text-primary">Reset password</h2>
             <p className="mb-4 text-sm text-theme-text-secondary">
-              Set a new temporary password for <strong>{resetTarget.full_name}</strong>. They will be
-              required to change it on next sign-in.
+              Set a new temporary password for <strong>{resetTarget.full_name}</strong>. They will
+              be required to change it on next sign-in.
             </p>
             <form onSubmit={(e) => void handleResetPassword(e)}>
               <input

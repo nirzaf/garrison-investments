@@ -15,6 +15,7 @@
 | Task Queue | Celery | Background jobs for email, image, report, backup, and maintenance workloads |
 | Auth | JWT (RS256) + OTP | Access/refresh tokens, TOTP challenge-response |
 | Logging | structlog | Structured JSON logging |
+| Log aggregation | Grafana + Loki + Alloy | Search, dashboards, retention, and SMTP alerting |
 | Migrations | Alembic | Schema versioning (19 migrations) |
 
 ## Directory Structure
@@ -105,7 +106,7 @@ backend/
 │   │   └── rate_limit.py # Redis-backed auth rate limiter
 │   ├── observability/    # Structured logging + request context
 │   │   ├── context.py    # Request/task context propagation
-│   │   └── logging.py    # structlog configuration
+│   │   └── logging.py    # structlog configuration + recursive/pattern redaction
 │   ├── utils/            # Shared utilities
 │   │   ├── exceptions.py # AppException hierarchy
 │   │   ├── permissions.py # RBAC permission checks
