@@ -329,8 +329,9 @@ The backend retention task runs through Celery and keeps archived logs accessibl
 
 - Hot retention window: `LOG_HOT_RETENTION_DAYS`
 - Archive retention window: `LOG_ARCHIVE_RETENTION_DAYS`
+- Stream poll interval: `LOG_STREAM_POLL_SECONDS` (default `1.0`, used by `GET /api/v1/log-events/stream`)
 - Maintenance task: `archive_and_purge_logs`
-- Scheduler entry: Celery beat in `backend/app/tasks/celery_app.py`
+- Scheduler entry: Celery beat in `backend/app/tasks/celery_app.py` (daily 03:30 UTC)
 
 Operational effect:
 

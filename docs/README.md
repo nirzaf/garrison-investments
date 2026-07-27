@@ -15,9 +15,10 @@ This folder has been aggressively consolidated down to the core living artifacts
 | 1 | [Architecture](ARCHITECTURE.md) | Codebase-derived architecture, layering rules, runtime boundaries, component tree, and API design. |
 | 2 | [User Roles And Permissions](ROLES_AND_PERMISSIONS.md) | Current code-derived RBAC roles, permissions, frontend visibility, and backend enforcement. |
 | 3 | [Operations and Deployment](OPERATIONS_AND_DEPLOYMENT.md) | Unified runbook for staging/prod deployment, CI/CD, backup/restore, alerts, UAT, and launch evidence. |
-| 4 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations. |
-| 5 | [User Stories](user-stories/README.md) | Tracking for the portal's work packages. |
-| 6 | [Import Templates](import_templates/) | CSV templates for importing initial data (Users, BOQ, Projects, etc.). |
+| 4 | [Logging and Remote CLI](LOGGING_AND_REMOTE_CLI.md) | Centralized event logging, remote log search/streaming API, and `log_cli.py` usage. |
+| 5 | [Production Readiness Review](PRODUCTION_READINESS_REVIEW.md) | Final PRR verdict, security/DR review, and pre-release operations checklist. |
+| 6 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations. |
+| 7 | [Import Templates](import_templates/) | CSV templates for importing initial data (Users, BOQ, Projects, etc.). |
 
 ## Quick Start (Development)
 
