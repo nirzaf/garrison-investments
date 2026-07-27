@@ -3,6 +3,7 @@
 ## Environment
 
 - Public URLs: `https://garrisonstg.seasonenterprise.com` and `https://www.garrisonstg.seasonenterprise.com`
+- Grafana: `https://garrisonstg.seasonenterprise.com/grafana/`
 - VPS: Contabo `207.180.209.123`
 - SSH: `ssh -i /Users/qts/.ssh/id_ed25519 root@207.180.209.123`
 - Remote path: `/opt/garrison-investments-staging`
@@ -19,13 +20,22 @@ Staging uses its own Compose file and private Docker resources:
 - Compose file: `/opt/garrison-investments-staging/docker-compose.staging.yml`
 - Environment file: `/opt/garrison-investments-staging/.env.staging`
 - Frontend entrypoint: `127.0.0.1:3310`
+- Grafana entrypoint: `127.0.0.1:3311` (host Nginx only)
 - Internal backend: `backend:8000`
 - Volumes:
   - `garrisonstg-pgdata`
   - `garrisonstg-redisdata`
   - `garrisonstg-miniodata`
+  - `garrisonstg-grafanadata`
+  - `garrisonstg-lokidata`
+  - `garrisonstg-alloydata`
 
 The staging SMTP settings are stored only in the VPS `.env.staging` file. They use Office365 SMTP through `smtp.office365.com:587`, TLS enabled, and the sender identity `Quadrate Mail Service <mail@quadrate.lk>`. Do not commit SMTP passwords or Contabo/API secrets to this repository.
+
+Set `DOCKER_SOCKET_GID` to the numeric group of `/var/run/docker.sock` on the
+deployment host (`stat -c %g /var/run/docker.sock`). Alloy runs as UID/GID 473
+and receives this supplemental group so it can discover only the `garrisonstg`
+Compose containers. Loki and Alloy do not publish host ports.
 
 Add `FRONTEND_BASE_URL=https://garrisonstg.seasonenterprise.com` to `/opt/garrison-investments-staging/.env.staging` so outgoing approval notification emails contain the correct absolute portal URLs.
 
@@ -123,6 +133,7 @@ curl -fsS http://127.0.0.1:3310/health
 curl -I http://127.0.0.1:3310/
 curl -I https://garrisonstg.seasonenterprise.com/
 curl -fsS https://garrisonstg.seasonenterprise.com/health
+curl -fsS https://garrisonstg.seasonenterprise.com/grafana/api/health
 docker ps --filter 'name=garrisonstg' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 

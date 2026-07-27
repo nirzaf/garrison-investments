@@ -35,7 +35,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'sum(count_over_time({environment="production"} | json | message=~"unhandled_request_exception|task_failed" [5m]))'
+              expr: 'sum(count_over_time({environment=~"production|staging"} | json | message=~"unhandled_request_exception|task_failed" [5m]))'
               queryType: instant
               refId: A
           - refId: B
@@ -68,7 +68,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'sum(count_over_time({environment="production", service="backend"} | json | message="http_request_completed" | status_code >= 500 [5m]))'
+              expr: 'sum(count_over_time({environment=~"production|staging", service="backend"} | json | message="http_request_completed" | status_code >= 500 [5m]))'
               queryType: instant
               refId: A
           - refId: B
@@ -101,7 +101,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'sum(count_over_time({environment="production", service=~"celery_worker|celery_beat"} | json | message="task_retried" [10m]))'
+              expr: 'sum(count_over_time({environment=~"production|staging", service=~"celery_worker|celery_beat"} | json | message="task_retried" [10m]))'
               queryType: instant
               refId: A
           - refId: B
@@ -134,7 +134,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'quantile_over_time(0.95, {environment="production", service="backend"} | json | message="http_request_completed" | unwrap duration_ms [10m])'
+              expr: 'quantile_over_time(0.95, {environment=~"production|staging", service="backend"} | json | message="http_request_completed" | unwrap duration_ms [10m])'
               queryType: instant
               refId: A
           - refId: B
@@ -167,7 +167,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'sum(count_over_time({environment="production", service=~"loki|alloy"} |~ "(?i)(error|failed)" [5m]))'
+              expr: 'sum(count_over_time({environment=~"production|staging", service=~"loki|alloy"} |~ "(?i)(error|failed)" [5m]))'
               queryType: instant
               refId: A
           - refId: B

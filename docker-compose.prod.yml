@@ -152,7 +152,7 @@ services:
       loki_minio_init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready >/dev/null"]
+      test: ["CMD", "/usr/bin/loki", "-version"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -169,8 +169,12 @@ services:
   alloy:
     image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
     restart: unless-stopped
+    user: "473:473"
+    group_add:
+      - ${DOCKER_SOCKET_GID:-999}
     environment:
       APP_ENV: production
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-garrison}
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -184,7 +188,7 @@ services:
       loki:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:12345/-/ready >/dev/null"]
+      test: ["CMD", "/bin/alloy", "--version"]
       interval: 15s
       timeout: 5s
       retries: 10
