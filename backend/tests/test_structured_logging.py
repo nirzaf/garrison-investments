@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import Mock
 
+import pytest
 import structlog
 from fastapi.testclient import TestClient
 
@@ -46,7 +47,8 @@ def test_structured_logging_emits_standard_fields_and_context(capfd) -> None:
     assert record["severity"] == "INFO"
     assert record["logger"] == "app.test"
     assert record["environment"] == "production"
-    assert record["service"] == "backend-api"
+    assert record["source_service"] == "backend-api"
+    assert "service" not in record
     assert record["instance_id"] == "test-instance"
     assert record["timestamp"].endswith("Z")
     assert record["request_id"] == "req-123"
@@ -75,6 +77,73 @@ def test_structured_logging_redacts_nested_secrets_and_credentials(capfd) -> Non
     assert record["authorization_text"] == "[redacted]"
     assert "plain-secret" not in output
     assert "nested-secret" not in output
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("authorization", "Basic dXNlcjpwYXNz"),
+        ("cookie", "sessionid=leaked-cookie-value"),
+        ("set_cookie", "refresh=leaked-refresh-value"),
+        ("credential", "leaked-credential-value"),
+        ("jwt", "leaked-jwt-value"),
+        ("otp_code", "123456"),
+        ("passphrase", "leaked-passphrase-value"),
+        ("private_key_pem", "-----BEGIN PRIVATE KEY-----leaked"),
+        ("client_secret", "leaked-secret-value"),
+        ("refresh_token", "leaked-token-value"),
+        ("x_api_key", "leaked-api-key-value"),
+        ("X-API-Key", "leaked-header-key-value"),
+    ],
+)
+def test_every_sensitive_key_class_is_redacted(capfd, field: str, value: str) -> None:
+    _configure()
+    capfd.readouterr()
+
+    structlog.get_logger("app.test").warning("redaction_check", **{field: value})
+
+    output = capfd.readouterr().err
+    assert _last_record(output)[field] == "[redacted]"
+    assert value not in output
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.leaked-signature-value",
+        "callback?token=leaked-signature-value&page=2",
+        "upstream said: Bearer leaked-signature-value",
+        "postgresql://user:leaked-signature-value@postgres/garrison",
+    ],
+)
+def test_credential_patterns_are_redacted_in_free_text(capfd, value: str) -> None:
+    _configure()
+    capfd.readouterr()
+
+    structlog.get_logger("app.test").warning(
+        "redaction_check",
+        note=value,
+        nested={"list": [value]},
+    )
+
+    output = capfd.readouterr().err
+    assert "leaked-signature-value" not in output
+
+
+def test_deeply_nested_payloads_are_truncated_instead_of_raising(capfd) -> None:
+    _configure()
+    capfd.readouterr()
+
+    payload: dict = {"password": "leaked-deep-secret"}
+    for _ in range(60):
+        payload = {"level": payload}
+
+    structlog.get_logger("app.test").warning("redaction_check", payload=payload)
+
+    output = capfd.readouterr().err
+    assert _last_record(output)["message"] == "redaction_check"
+    assert "[redacted-depth-limit]" in output
+    assert "leaked-deep-secret" not in output
 
 
 def test_standard_library_logs_are_json_and_level_is_respected(capfd) -> None:

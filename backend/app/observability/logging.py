@@ -4,6 +4,7 @@ import logging
 import re
 import socket
 from collections.abc import MutableMapping
+from functools import lru_cache
 from typing import Any
 
 import structlog
@@ -36,6 +37,7 @@ _KEY_VALUE_CREDENTIAL_PATTERN = re.compile(
     r"(?i)(?P<prefix>(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|"
     r"pass(?:word)?|secret|session|token)=)[^&\s\"']+"
 )
+_MAX_REDACTION_DEPTH = 24
 
 
 def _inject_standard_fields(
@@ -52,8 +54,9 @@ def _inject_standard_fields(
     return event_dict
 
 
-def _is_sensitive_key(key: object) -> bool:
-    normalized = str(key).lower().replace("-", "_")
+@lru_cache(maxsize=512)
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.lower().replace("-", "_")
     return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
 
 
@@ -64,15 +67,20 @@ def _redact_string(value: str) -> str:
     return _KEY_VALUE_CREDENTIAL_PATTERN.sub(r"\g<prefix>[redacted]", value)
 
 
-def _redact_value(value: Any, *, key: object | None = None) -> Any:
-    if key is not None and _is_sensitive_key(key):
+def _redact_value(value: Any, *, key: object | None = None, depth: int = 0) -> Any:
+    if key is not None and _is_sensitive_key(str(key)):
         return "[redacted]"
+    if depth >= _MAX_REDACTION_DEPTH:
+        return "[redacted-depth-limit]"
     if isinstance(value, MutableMapping):
-        return {item_key: _redact_value(item, key=item_key) for item_key, item in value.items()}
+        return {
+            item_key: _redact_value(item, key=item_key, depth=depth + 1)
+            for item_key, item in value.items()
+        }
     if isinstance(value, list):
-        return [_redact_value(item) for item in value]
+        return [_redact_value(item, depth=depth + 1) for item in value]
     if isinstance(value, tuple):
-        return tuple(_redact_value(item) for item in value)
+        return tuple(_redact_value(item, depth=depth + 1) for item in value)
     if isinstance(value, str):
         return _redact_string(value)
     return value
@@ -83,7 +91,16 @@ def _redact_sensitive_fields(
     __: str,
     event_dict: MutableMapping[str, Any],
 ) -> MutableMapping[str, Any]:
-    return _redact_value(event_dict)
+    try:
+        return _redact_value(event_dict)
+    except RecursionError:
+        # The offending payload is exactly what defeated redaction, so it must not be emitted.
+        return {
+            "message": "log_redaction_failed",
+            "severity": "ERROR",
+            "event_type": "system_event",
+            "logger": event_dict.get("logger"),
+        }
 
 
 def configure_logging(
@@ -102,7 +119,6 @@ def configure_logging(
     _standard_context.update(
         {
             "environment": settings.app_env,
-            "service": service,
             "source_service": service,
             "instance_id": instance_id,
         }

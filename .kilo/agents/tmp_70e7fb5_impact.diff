@@ -1,0 +1,1095 @@
+commit 70e7fb5ea573489731d1948cb88f8786e50ea0f0
+Author: Mohamed Fazrin <mfmfazrin1986@gmail.com>
+Date:   Tue Jul 28 00:01:08 2026 +0300
+
+    test(observability): strengthen regression coverage and reconcile docs
+
+diff --git a/README.md b/README.md
+index 528ec91..706f8ed 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,12 @@ docker compose exec backend alembic upgrade head
+ - Health check: http://localhost:8000/health
+ - MinIO console: http://localhost:9001
+ 
++Production and staging add Grafana, Loki, and Alloy for container-log aggregation. Applications
++continue writing structured JSON to stdout, Docker retains rotated local logs, and PostgreSQL
++`activity_log` remains the authoritative business and audit record. See the
++[logging guide](docs/LOGGING_AND_REMOTE_CLI.md) and
++[operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md).
++
+ ## Local Commands
+ 
+ Backend:
+@@ -69,6 +75,10 @@ npm run lint
+ npm run api:types:check
+ npm test
+ npm run build
++
++cd ..
++docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
++docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+ ```
+ 
+ Backend tests that need PostgreSQL, Redis, and MinIO intentionally skip when those services are unavailable. Use `pytest -q -rs` to make the skip reasons visible.
+@@ -109,3 +119,13 @@ while True:
+ PY
+ pytest -q -rs
+ ```
++
++The observability regression suite validates structured fields and redaction, request-context
++cleanup, Celery lifecycle records, immutable Grafana/Loki/Alloy image references, private port
++exposure, Loki retention, Alloy label cardinality, dashboards, alert rules, database initialization,
++and the staging hostname:
++
++```bash
++cd backend
++pytest -q tests/test_structured_logging.py tests/test_observability_config.py
++```
+diff --git a/STAGING_DEPLOYMENT.md b/STAGING_DEPLOYMENT.md
+index aeba1cf..f16a419 100644
+--- a/STAGING_DEPLOYMENT.md
++++ b/STAGING_DEPLOYMENT.md
+@@ -137,6 +137,27 @@ curl -fsS https://erp.garrisons.lk/grafana/api/health
+ docker ps --filter 'name=garrisonstg' --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+ ```
+ 
++Before deployment, run the focused regression and configuration checks locally:
++
++```bash
++cd backend
++pytest -q tests/test_structured_logging.py tests/test_observability_config.py
++ruff check .
++mypy .
++
++cd ../frontend
++npm run lint
++npm test
++npm run build
++
++cd ..
++docker compose -p garrisonstg --env-file .env.example \
++  -f docker-compose.staging.yml config --quiet
++```
++
++The `grafana_db_init` and `loki_minio_init` jobs must finish with exit code 0. Both are idempotent and
++safe to rerun. Do not start Grafana against SQLite or bypass a failed initializer.
++
+ After any Nginx routing edit:
+ 
+ ```sh
+diff --git a/backend/ARCHITECTURE.md b/backend/ARCHITECTURE.md
+index e26c43e..e5cf128 100644
+--- a/backend/ARCHITECTURE.md
++++ b/backend/ARCHITECTURE.md
+@@ -15,6 +15,7 @@
+ | Task Queue | Celery | Background jobs for email, image, report, backup, and maintenance workloads |
+ | Auth | JWT (RS256) + OTP | Access/refresh tokens, TOTP challenge-response |
+ | Logging | structlog | Structured JSON logging |
++| Log aggregation | Grafana + Loki + Alloy | Search, dashboards, retention, and SMTP alerting |
+ | Migrations | Alembic | Schema versioning (19 migrations) |
+ 
+ ## Directory Structure
+@@ -105,7 +106,7 @@ backend/
+ │   │   └── rate_limit.py # Redis-backed auth rate limiter
+ │   ├── observability/    # Structured logging + request context
+ │   │   ├── context.py    # Request/task context propagation
+-│   │   └── logging.py    # structlog configuration
++│   │   └── logging.py    # structlog configuration + recursive/pattern redaction
+ │   ├── utils/            # Shared utilities
+ │   │   ├── exceptions.py # AppException hierarchy
+ │   │   ├── permissions.py # RBAC permission checks
+diff --git a/backend/alembic/versions/202605280001_centralize_event_logs.py b/backend/alembic/versions/202605280001_centralize_event_logs.py
+index ff89323..39def68 100644
+--- a/backend/alembic/versions/202605280001_centralize_event_logs.py
++++ b/backend/alembic/versions/202605280001_centralize_event_logs.py
+@@ -45,7 +45,8 @@ def upgrade() -> None:
+         "activity_log", sa.Column("retention_until", sa.DateTime(timezone=True), nullable=True)
+     )
+     op.add_column(
+-        "activity_log", sa.Column("context_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True)
++        "activity_log",
++        sa.Column("context_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+     )
+ 
+     op.execute(
+diff --git a/backend/app/api/v1/logs.py b/backend/app/api/v1/logs.py
+index 6431071..4443993 100644
+--- a/backend/app/api/v1/logs.py
++++ b/backend/app/api/v1/logs.py
+@@ -7,7 +7,7 @@ from uuid import UUID
+ from fastapi import APIRouter, Depends, Query, Request
+ from fastapi.responses import StreamingResponse
+ 
+-from app.api.dependencies import CurrentUser, DbSession, require_permission
++from app.api.dependencies import DbSession, require_permission
+ from app.config import get_settings
+ from app.database import AsyncSessionLocal
+ from app.models.user import User
+diff --git a/backend/app/api/v1/users.py b/backend/app/api/v1/users.py
+index d852542..c374094 100644
+--- a/backend/app/api/v1/users.py
++++ b/backend/app/api/v1/users.py
+@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, Query, status
+ 
+ from app.api.dependencies import DbSession, require_permission
+ from app.models.user import User
+-from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserListResponse, UserResponse, UserUpdateRequest
++from app.schemas.users import (
++    AdminPasswordResetRequest,
++    UserCreateRequest,
++    UserListResponse,
++    UserResponse,
++    UserUpdateRequest,
++)
+ from app.services.user_service import UserService
+ from app.utils.permissions import PERMISSION_USERS_MANAGE, PERMISSION_USERS_READ
+ 
+diff --git a/backend/app/middleware/audit.py b/backend/app/middleware/audit.py
+index 4d50198..912de61 100644
+--- a/backend/app/middleware/audit.py
++++ b/backend/app/middleware/audit.py
+@@ -52,7 +52,11 @@ async def audit_authenticated_request(request: Request, response: Response) -> N
+     )
+ 
+     severity = (
+-        "ERROR" if response.status_code >= 500 else "WARNING" if response.status_code >= 400 else "INFO"
++        "ERROR"
++        if response.status_code >= 500
++        else "WARNING"
++        if response.status_code >= 400
++        else "INFO"
+     )
+ 
+     try:
+diff --git a/backend/app/models/activity_log.py b/backend/app/models/activity_log.py
+index 2da2704..8f9c4dd 100644
+--- a/backend/app/models/activity_log.py
++++ b/backend/app/models/activity_log.py
+@@ -22,7 +22,9 @@ class ActivityLog(TimestampMixin, SoftDeleteMixin, Base):
+         ForeignKey("users.id", ondelete="SET NULL"),
+         nullable=True,
+     )
+-    event_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'audit'"))
++    event_type: Mapped[str] = mapped_column(
++        String(32), nullable=False, server_default=text("'audit'")
++    )
+     severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'INFO'"))
+     action: Mapped[str] = mapped_column(String(64), nullable=False)
+     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+diff --git a/backend/app/observability/context.py b/backend/app/observability/context.py
+index 2bd5523..08392fb 100644
+--- a/backend/app/observability/context.py
++++ b/backend/app/observability/context.py
+@@ -18,11 +18,11 @@ class LogContext:
+     cli_session_id: str | None = None
+ 
+ 
+-_log_context: ContextVar[LogContext] = ContextVar("log_context", default=LogContext())
++_log_context: ContextVar[LogContext | None] = ContextVar("log_context", default=None)
+ 
+ 
+ def get_log_context() -> LogContext:
+-    return _log_context.get()
++    return _log_context.get() or LogContext()
+ 
+ 
+ def bind_log_context(**values: str | None) -> None:
+diff --git a/backend/app/observability/logging.py b/backend/app/observability/logging.py
+index fbc8977..dac5659 100644
+--- a/backend/app/observability/logging.py
++++ b/backend/app/observability/logging.py
+@@ -32,6 +32,10 @@ _SENSITIVE_KEY_PARTS = {
+ _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+ _JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
+ _URL_CREDENTIAL_PATTERN = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^@\s]+@")
++_KEY_VALUE_CREDENTIAL_PATTERN = re.compile(
++    r"(?i)(?P<prefix>(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|"
++    r"pass(?:word)?|secret|session|token)=)[^&\s\"']+"
++)
+ 
+ 
+ def _inject_standard_fields(
+@@ -56,7 +60,8 @@ def _is_sensitive_key(key: object) -> bool:
+ def _redact_string(value: str) -> str:
+     value = _BEARER_PATTERN.sub("Bearer [redacted]", value)
+     value = _JWT_PATTERN.sub("[redacted-jwt]", value)
+-    return _URL_CREDENTIAL_PATTERN.sub(r"\g<scheme>[redacted]@", value)
++    value = _URL_CREDENTIAL_PATTERN.sub(r"\g<scheme>[redacted]@", value)
++    return _KEY_VALUE_CREDENTIAL_PATTERN.sub(r"\g<prefix>[redacted]", value)
+ 
+ 
+ def _redact_value(value: Any, *, key: object | None = None) -> Any:
+diff --git a/backend/app/services/audit_service.py b/backend/app/services/audit_service.py
+index a69420c..2fdf614 100644
+--- a/backend/app/services/audit_service.py
++++ b/backend/app/services/audit_service.py
+@@ -71,7 +71,11 @@ class AuditService:
+                 endpoint=endpoint or context.endpoint,
+                 http_method=http_method or context.method,
+                 status_code=status_code,
+-                source_service=source_service or context.source_service or self.settings.log_source_service,
++                source_service=(
++                    source_service
++                    or context.source_service
++                    or self.settings.log_source_service
++                ),
+                 instance_id=instance_id or context.instance_id or self.settings.log_instance_id,
+                 storage_tier=storage_tier,
+                 archived_at=archived_at,
+diff --git a/backend/app/services/user_service.py b/backend/app/services/user_service.py
+index 69d99f8..f2a3c86 100644
+--- a/backend/app/services/user_service.py
++++ b/backend/app/services/user_service.py
+@@ -126,7 +126,12 @@ class UserService:
+     async def deactivate_user(self, user_id: UUID, actor: User) -> User:
+         return await self.update_user(user_id, UserUpdateRequest(is_active=False), actor)
+ 
+-    async def admin_reset_password(self, user_id: UUID, payload: AdminPasswordResetRequest, actor: User) -> User:
++    async def admin_reset_password(
++        self,
++        user_id: UUID,
++        payload: AdminPasswordResetRequest,
++        actor: User,
++    ) -> User:
+         if user_id == actor.id:
+             raise AppException(
+                 "Use the change-password endpoint to update your own password.",
+diff --git a/backend/app/tasks/approval.py b/backend/app/tasks/approval.py
+index 1e9301e..83bcb73 100644
+--- a/backend/app/tasks/approval.py
++++ b/backend/app/tasks/approval.py
+@@ -71,7 +71,11 @@ def check_low_stock() -> dict[str, int]:
+                     )
+                     sent += 1
+             await session.commit()
+-            logger.info("low_stock_check_completed", low_stock_items=len(rows), notifications_sent=sent)
++            logger.info(
++                "low_stock_check_completed",
++                low_stock_items=len(rows),
++                notifications_sent=sent,
++            )
+             return {"low_stock_items": len(rows), "notifications_sent": sent}
+ 
+     return run_async_task(run())
+diff --git a/backend/app/tasks/email.py b/backend/app/tasks/email.py
+index e1cf7b0..5f96b65 100644
+--- a/backend/app/tasks/email.py
++++ b/backend/app/tasks/email.py
+@@ -1,6 +1,7 @@
+-import structlog
+ from uuid import UUID
+ 
++import structlog
++
+ from app.config import get_settings
+ from app.database import AsyncSessionLocal
+ from app.repositories.notification_repository import NotificationRepository
+@@ -117,5 +118,10 @@ async def _send_report_email(export_id: str) -> str:
+         export.email_error = None
+         export.emailed_at = utc_now()
+         await session.commit()
+-    logger.info("report_email_sent", export_id=export_id, file_name=export.file_name, recipients=recipients)
++    logger.info(
++        "report_email_sent",
++        export_id=export_id,
++        file_name=export.file_name,
++        recipients=recipients,
++    )
+     return f"report email sent to {delivered} recipients"
+diff --git a/backend/app/tasks/imports.py b/backend/app/tasks/imports.py
+index b4b172a..2529b17 100644
+--- a/backend/app/tasks/imports.py
++++ b/backend/app/tasks/imports.py
+@@ -1,6 +1,7 @@
+-import structlog
+ from uuid import UUID
+ 
++import structlog
++
+ from app.database import AsyncSessionLocal
+ from app.models.import_batch import ImportBatch
+ from app.models.user import User
+diff --git a/backend/app/tasks/maintenance.py b/backend/app/tasks/maintenance.py
+index 3b95296..1ceca39 100644
+--- a/backend/app/tasks/maintenance.py
++++ b/backend/app/tasks/maintenance.py
+@@ -1,7 +1,7 @@
+-import structlog
+ from datetime import time, timedelta
+ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+ 
++import structlog
+ from sqlalchemy import select
+ 
+ from app.config import get_settings
+diff --git a/backend/app/tasks/report.py b/backend/app/tasks/report.py
+index 9ca3c9e..dc7f291 100644
+--- a/backend/app/tasks/report.py
++++ b/backend/app/tasks/report.py
+@@ -1,7 +1,8 @@
+-import structlog
+ from datetime import date
+ from uuid import UUID
+ 
++import structlog
++
+ from app.database import AsyncSessionLocal
+ from app.models.user import User
+ from app.services.analytics_service import AnalyticsService
+diff --git a/backend/scripts/backup.py b/backend/scripts/backup.py
+index fbbcd2c..5f29e60 100644
+--- a/backend/scripts/backup.py
++++ b/backend/scripts/backup.py
+@@ -7,6 +7,7 @@ import shutil
+ import subprocess
+ from datetime import UTC, datetime, timedelta
+ from pathlib import Path
++from typing import BinaryIO, cast
+ from urllib.parse import quote, urlsplit, urlunsplit
+ 
+ from minio import Minio
+@@ -24,7 +25,7 @@ def create_dump(database_url: str, output_path: Path) -> None:
+             subprocess.run(
+                 ["pg_dump", "--format=plain", "--no-owner", normalize_pg_url(database_url)],
+                 check=True,
+-                stdout=gzip_file,
++                stdout=cast(BinaryIO, gzip_file),
+             )
+ 
+ 
+diff --git a/backend/scripts/generate_assets.py b/backend/scripts/generate_assets.py
+index 117643d..cf8158b 100644
+--- a/backend/scripts/generate_assets.py
++++ b/backend/scripts/generate_assets.py
+@@ -1,6 +1,5 @@
+-import os
+ from pathlib import Path
+-from io import BytesIO
++
+ from PIL import Image, ImageDraw
+ 
+ BRAIN_DIR = Path("/Users/qts/.gemini/antigravity-ide/brain/8db6cf06-1ec3-44ea-9ee7-406361996c4a")
+diff --git a/backend/scripts/generate_missing_reports.py b/backend/scripts/generate_missing_reports.py
+index 5a05adf..ebe4c59 100644
+--- a/backend/scripts/generate_missing_reports.py
++++ b/backend/scripts/generate_missing_reports.py
+@@ -8,7 +8,7 @@ Targets 2026-05-28 (the date flagged as missing by check_late_reports).
+ 
+ import asyncio
+ import sys
+-from datetime import date, timedelta
++from datetime import date
+ from decimal import Decimal
+ from pathlib import Path
+ from random import choice, randint
+diff --git a/backend/scripts/log_cli.py b/backend/scripts/log_cli.py
+index 0e33da8..94cfc47 100644
+--- a/backend/scripts/log_cli.py
++++ b/backend/scripts/log_cli.py
+@@ -76,7 +76,9 @@ def run(argv: list[str] | None = None, *, client_factory=None, stdout=None) -> i
+ 
+     token = _resolve_token(args)
+     if not token:
+-        raise SystemExit("A bearer token is required. Use --token, --token-file, or GARRISON_LOG_TOKEN.")
++        raise SystemExit(
++            "A bearer token is required. Use --token, --token-file, or GARRISON_LOG_TOKEN."
++        )
+ 
+     with _make_client(args.base_url, token=token, client_factory=client_factory) as client:
+         if args.command == "search":
+@@ -98,7 +100,9 @@ def _login(client, args, *, stdout, session_id: str) -> int:
+     challenge = login_response.json()
+     otp = args.otp or challenge.get("dev_otp")
+     if not otp:
+-        raise SystemExit("OTP required. Re-run with --otp or use an environment where dev_otp is returned.")
++        raise SystemExit(
++            "OTP required. Re-run with --otp or use an environment where dev_otp is returned."
++        )
+ 
+     verify_response = client.post(
+         "/api/v1/auth/verify-otp",
+@@ -140,7 +144,11 @@ def _search(client, args, *, stdout, session_id: str) -> int:
+         "limit": args.limit,
+         "offset": args.offset,
+     }
+-    response = client.get("/api/v1/log-events", params=_clean_params(params), headers=_cli_headers(session_id))
++    response = client.get(
++        "/api/v1/log-events",
++        params=_clean_params(params),
++        headers=_cli_headers(session_id),
++    )
+     response.raise_for_status()
+     payload = response.json()
+ 
+diff --git a/backend/scripts/push_to_storage.py b/backend/scripts/push_to_storage.py
+index 5ad5f45..1cef7a4 100644
+--- a/backend/scripts/push_to_storage.py
++++ b/backend/scripts/push_to_storage.py
+@@ -1,7 +1,6 @@
+-import os
+-from pathlib import Path
+ import sys
+ from io import BytesIO
++from pathlib import Path
+ 
+ # Add backend directory to sys.path so we can import from app
+ sys.path.append(str(Path(__file__).resolve().parents[1]))
+@@ -10,6 +9,7 @@ from app.config import get_settings
+ from app.services.storage_service import minio_client
+ from scripts.seed import SEED_PHOTO_OBJECTS
+ 
++
+ def main():
+     settings = get_settings()
+     client = minio_client(settings)
+diff --git a/backend/tests/test_log_events.py b/backend/tests/test_log_events.py
+index d9a91cd..59c5b79 100644
+--- a/backend/tests/test_log_events.py
++++ b/backend/tests/test_log_events.py
+@@ -138,7 +138,10 @@ async def test_log_event_stream_returns_matching_events() -> None:
+         async with client.stream(
+             "GET",
+             "/api/v1/log-events/stream",
+-            params={"action": "maintenance.logs_retention", "created_from": (utc_now() - timedelta(minutes=5)).isoformat()},
++            params={
++                "action": "maintenance.logs_retention",
++                "created_from": (utc_now() - timedelta(minutes=5)).isoformat(),
++            },
+             headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"},
+         ) as response:
+             assert response.status_code == 200
+@@ -171,7 +174,10 @@ async def test_log_retention_archives_then_purges_old_logs() -> None:
+         assert archived >= 1
+         await session.commit()
+ 
+-        logs, _ = await AuditService(session).list_logs(action="system.old_log", storage_tier="archive")
++        logs, _ = await AuditService(session).list_logs(
++            action="system.old_log",
++            storage_tier="archive",
++        )
+         assert logs
+         logs[0].archived_at = utc_now() - timedelta(days=400)
+         await session.commit()
+diff --git a/backend/tests/test_observability_config.py b/backend/tests/test_observability_config.py
+new file mode 100644
+index 0000000..14b8f93
+--- /dev/null
++++ b/backend/tests/test_observability_config.py
+@@ -0,0 +1,114 @@
++from __future__ import annotations
++
++import json
++import re
++from pathlib import Path
++
++import yaml  # type: ignore[import-untyped]
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++def _compose(name: str) -> dict:
++    return yaml.safe_load((ROOT / name).read_text())
++
++
++def test_observability_images_are_digest_pinned_and_ports_are_private() -> None:
++    expected_images = {
++        "grafana": "grafana/grafana:13.1.1@sha256:",
++        "loki": "grafana/loki:3.7.4@sha256:",
++        "alloy": "grafana/alloy:v1.18.0@sha256:",
++    }
++    for filename in ("docker-compose.prod.yml", "docker-compose.staging.yml"):
++        services = _compose(filename)["services"]
++        for service, prefix in expected_images.items():
++            assert services[service]["image"].startswith(prefix)
++            assert len(services[service]["image"].split("@sha256:", 1)[1]) == 64
++        assert "ports" not in services["loki"]
++        assert "ports" not in services["alloy"]
++
++    production = _compose("docker-compose.prod.yml")["services"]
++    staging = _compose("docker-compose.staging.yml")["services"]
++    assert "ports" not in production["grafana"]
++    assert staging["grafana"]["ports"] == ["127.0.0.1:3311:3000"]
++
++
++def test_grafana_security_database_and_public_urls_are_provisioned() -> None:
++    production = _compose("docker-compose.prod.yml")["services"]["grafana"]["environment"]
++    staging = _compose("docker-compose.staging.yml")["services"]["grafana"]["environment"]
++
++    for environment in (production, staging):
++        assert environment["GF_DATABASE_TYPE"] == "postgres"
++        assert environment["GF_DATABASE_NAME"] == "grafana"
++        assert environment["GF_USERS_ALLOW_SIGN_UP"] == "false"
++        assert environment["GF_AUTH_ANONYMOUS_ENABLED"] == "false"
++        assert environment["GF_SECURITY_COOKIE_SECURE"] == "true"
++        assert environment["GF_SECURITY_COOKIE_SAMESITE"] == "strict"
++
++    assert production["GF_SERVER_ROOT_URL"] == "https://${GRAFANA_DOMAIN}"
++    assert staging["GF_SERVER_ROOT_URL"] == "https://${GRAFANA_DOMAIN}/grafana/"
++    assert staging["GF_SERVER_SERVE_FROM_SUB_PATH"] == "true"
++
++
++def test_loki_retention_storage_and_alloy_labels_match_policy() -> None:
++    loki = yaml.safe_load((ROOT / "observability/loki-config.yml").read_text())
++    assert loki["auth_enabled"] is False
++    assert loki["schema_config"]["configs"][0]["store"] == "tsdb"
++    assert loki["common"]["storage"]["s3"]["bucketnames"] == "loki"
++    assert loki["compactor"]["retention_enabled"] is True
++    assert loki["limits_config"]["retention_period"] == "336h"
++    assert loki["limits_config"]["max_query_lookback"] == "336h"
++
++    alloy = (ROOT / "observability/alloy-config.alloy").read_text()
++    for label in ("environment", "compose_project", "service", "container", "severity"):
++        assert re.search(rf'target_label\s*=\s*"{label}"', alloy) or re.search(
++            rf"^\s*{label}\s*=", alloy, re.MULTILINE
++        )
++    for forbidden_label in ("request_id", "session_id", "user_id", "endpoint", "task_id"):
++        assert f'target_label  = "{forbidden_label}"' not in alloy
++        assert f"{forbidden_label} = " not in alloy
++    assert 'url = "http://loki:3100/loki/api/v1/push"' in alloy
++
++
++def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> None:
++    dashboard_dir = ROOT / "observability/grafana/dashboards"
++    dashboards = [json.loads(path.read_text()) for path in sorted(dashboard_dir.glob("*.json"))]
++    assert {dashboard["title"] for dashboard in dashboards} == {
++        "Garrison Incident Explorer",
++        "Garrison Production Logs",
++    }
++    assert all(dashboard["panels"] for dashboard in dashboards)
++    dashboard_queries = json.dumps(dashboards)
++    for field in ("request_id", "task_id", "duration_ms", "status_code"):
++        assert field in dashboard_queries
++
++    alerts = yaml.safe_load(
++        (ROOT / "observability/grafana/provisioning/alerting/alerts.yml").read_text()
++    )
++    rules = alerts["groups"][0]["rules"]
++    assert {rule["uid"] for rule in rules} == {
++        "garrison-unhandled-errors",
++        "garrison-http-5xx-burst",
++        "garrison-celery-retries",
++        "garrison-slow-http",
++        "garrison-log-pipeline-errors",
++    }
++    assert all(rule["noDataState"] == "OK" for rule in rules)
++    assert all(rule["execErrState"] == "Alerting" for rule in rules)
++    assert alerts["policies"][0]["group_interval"] == "5m"
++
++
++def test_grafana_database_initializer_is_idempotent_and_fails_fast() -> None:
++    initializer = (ROOT / "observability/postgres/init-grafana-db.sh").read_text()
++    assert "--set=ON_ERROR_STOP=1" in initializer
++    assert "WHERE NOT EXISTS" in initializer
++    assert initializer.count("\\gexec") == 2
++    assert "ALTER ROLE grafana" in initializer
++
++
++def test_staging_domain_is_allowed_and_documented() -> None:
++    vite_config = (ROOT / "frontend/vite.config.ts").read_text()
++    staging_guide = (ROOT / "STAGING_DEPLOYMENT.md").read_text()
++    assert vite_config.count("'erp.garrisons.lk'") == 2
++    assert "https://erp.garrisons.lk" in staging_guide
++    assert "https://erp.garrisons.lk/grafana/" in staging_guide
+diff --git a/backend/tests/test_structured_logging.py b/backend/tests/test_structured_logging.py
+index ef2c9e0..8639f0d 100644
+--- a/backend/tests/test_structured_logging.py
++++ b/backend/tests/test_structured_logging.py
+@@ -1,22 +1,30 @@
+ import json
+ import logging
++from types import SimpleNamespace
++from typing import Literal
++from unittest.mock import Mock
+ 
+ import structlog
+ from fastapi.testclient import TestClient
+ 
+ from app.config import Settings
+ from app.main import create_app
+-from app.observability.context import bind_log_context, clear_log_context
++from app.observability.context import bind_log_context, clear_log_context, log_context_dict
+ from app.observability.logging import configure_logging
+-
+-
+-def _configure(*, level: str = "INFO") -> None:
+-    settings = Settings(
+-        _env_file=None,
+-        app_env="production",
+-        log_level=level,
+-        log_source_service="backend-api",
+-        log_instance_id="test-instance",
++from app.tasks.base import LoggedTask
++
++
++def _configure(
++    *,
++    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO",
++) -> None:
++    settings = Settings.model_validate(
++        {
++            "app_env": "production",
++            "log_level": level,
++            "log_source_service": "backend-api",
++            "log_instance_id": "test-instance",
++        }
+     )
+     configure_logging(settings, force=True)
+ 
+@@ -40,6 +48,7 @@ def test_structured_logging_emits_standard_fields_and_context(capfd) -> None:
+     assert record["environment"] == "production"
+     assert record["service"] == "backend-api"
+     assert record["instance_id"] == "test-instance"
++    assert record["timestamp"].endswith("Z")
+     assert record["request_id"] == "req-123"
+     assert record["user_id"] == "user-456"
+     clear_log_context()
+@@ -112,7 +121,85 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
+         for line in capfd.readouterr().err.splitlines()
+         if line.startswith("{")
+     ]
+-    completion = next(record for record in records if record.get("message") == "http_request_completed")
++    completion = next(
++        record for record in records if record.get("message") == "http_request_completed"
++    )
+     assert completion["route"] == "/api/v1/"
+     assert completion["status_code"] == 200
+     assert completion["duration_ms"] >= 0
++
++
++def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -> None:
++    _configure()
++    capfd.readouterr()
++
++    response = TestClient(create_app()).get(
++        "/api/v1/?token=must-not-leak",
++        headers={"X-Request-ID": "req-cleanup", "X-Session-ID": "session-cleanup"},
++    )
++
++    assert response.status_code == 200
++    assert response.headers["X-Request-ID"] == "req-cleanup"
++    output = capfd.readouterr().err
++    completion = next(
++        json.loads(line)
++        for line in output.splitlines()
++        if line.startswith("{") and '"message": "http_request_completed"' in line
++    )
++    assert completion["request_id"] == "req-cleanup"
++    assert completion["session_id"] == "session-cleanup"
++    assert completion["endpoint"] == "/api/v1/"
++    assert "must-not-leak" not in output
++    assert log_context_dict() == {}
++
++
++def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:
++    _configure()
++    capfd.readouterr()
++
++    response = TestClient(create_app()).get("/health")
++
++    assert response.status_code == 200
++    records = [
++        json.loads(line)
++        for line in capfd.readouterr().err.splitlines()
++        if line.startswith("{")
++    ]
++    assert not any(record.get("message") == "http_request_completed" for record in records)
++    assert log_context_dict() == {}
++
++
++class _TestLoggedTask(LoggedTask):
++    name = "tests.safe_task"
++
++    @property
++    def request(self):
++        return SimpleNamespace(delivery_info={"routing_key": "maintenance"}, retries=2)
++
++
++def test_celery_lifecycle_logs_context_without_args_or_results(monkeypatch) -> None:
++    task = _TestLoggedTask()
++    task_args = ("raw-password",)
++    task_kwargs = {"authorization": "Bearer secret"}
++    task_logger = Mock()
++    monkeypatch.setattr("app.tasks.base.logger", task_logger)
++
++    task.before_start("task-123", task_args, task_kwargs)
++    task.on_success({"access_token": "secret"}, "task-123", task_args, task_kwargs)
++
++    started = task_logger.info.call_args_list[0]
++    succeeded = task_logger.info.call_args_list[1]
++    assert started.args == ("task_started",)
++    assert started.kwargs == {
++        "task_name": "tests.safe_task",
++        "task_id": "task-123",
++        "queue": "maintenance",
++        "retry_count": 2,
++    }
++    assert succeeded.args == ("task_succeeded",)
++    assert succeeded.kwargs["task_name"] == "tests.safe_task"
++    assert succeeded.kwargs["task_id"] == "task-123"
++    assert "retval" not in succeeded.kwargs
++    assert "args" not in started.kwargs
++    assert "kwargs" not in started.kwargs
++    assert log_context_dict() == {}
+diff --git a/backend/tests/test_unit_edge_cases.py b/backend/tests/test_unit_edge_cases.py
+index ec37a82..bfbabdb 100644
+--- a/backend/tests/test_unit_edge_cases.py
++++ b/backend/tests/test_unit_edge_cases.py
+@@ -18,10 +18,14 @@ from app.utils.exceptions import AppException, NotFoundException
+ pil_module = ModuleType("PIL")
+ pil_image_module = ModuleType("PIL.Image")
+ pil_image_draw_module = ModuleType("PIL.ImageDraw")
+-pil_image_module.open = lambda *_args, **_kwargs: None
+-pil_image_draw_module.Draw = lambda *_args, **_kwargs: SimpleNamespace(text=lambda *_a, **_k: None)
+-pil_module.Image = pil_image_module
+-pil_module.ImageDraw = pil_image_draw_module
++setattr(pil_image_module, "open", lambda *_args, **_kwargs: None)  # noqa: B010
++setattr(  # noqa: B010
++    pil_image_draw_module,
++    "Draw",
++    lambda *_args, **_kwargs: SimpleNamespace(text=lambda *_a, **_k: None),
++)
++setattr(pil_module, "Image", pil_image_module)  # noqa: B010
++setattr(pil_module, "ImageDraw", pil_image_draw_module)  # noqa: B010
+ sys.modules.setdefault("PIL", pil_module)
+ sys.modules.setdefault("PIL.Image", pil_image_module)
+ sys.modules.setdefault("PIL.ImageDraw", pil_image_draw_module)
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index f743a38..8b77eb5 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -1059,7 +1059,7 @@ PUSH TO BRANCH
+     |
+     v
+ [DEPLOY TO STAGING]  (on push to develop)
+-  - docker-compose -f docker-compose.prod.yml up -d
++  - docker compose -f docker-compose.prod.yml up -d
+   - alembic upgrade head
+   - Smoke test (curl health check)
+     |
+@@ -1095,6 +1095,13 @@ PUSH TO BRANCH
+   Loki uses TSDB indexes and a dedicated MinIO bucket with 14-day Compactor retention. Grafana uses a
+   dedicated PostgreSQL database and provisioned dashboards, queries, SMTP alerts, and a Loki data source.
+   Grafana is exposed only through its HTTPS Nginx virtual host; Loki and Alloy remain internal.
++- **Defence in depth for log data**: the application recursively redacts sensitive keys, bearer/JWT
++  patterns, credential-bearing URLs, and credential-like query parameters before JSON serialization;
++  Alloy applies an additional pattern-redaction stage before Loki ingestion. Request IDs, task IDs,
++  users, sessions, and endpoints remain parsed fields rather than Loki labels.
++- **Failure isolation**: Grafana, Loki, and Alloy are not in the application request path. Docker's
++  rotated `json-file` output remains available if collection or storage is unavailable, while
++  PostgreSQL `activity_log` remains the authoritative business/audit record.
+ - **Centralized event log**: Stored in `activity_log` with standardized fields such as `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `source_service`, `storage_tier`, and `context_payload`
+ - **Remote access**: Search and real-time streaming are available through the secured log API and `backend/scripts/log_cli.py`
+ - **Frontend**: Console logging in dev only; production errors captured via `POST /api/v1/logs/client-error`
+diff --git a/docs/LOGGING_AND_REMOTE_CLI.md b/docs/LOGGING_AND_REMOTE_CLI.md
+index 65c829d..c34f960 100644
+--- a/docs/LOGGING_AND_REMOTE_CLI.md
++++ b/docs/LOGGING_AND_REMOTE_CLI.md
+@@ -416,6 +416,11 @@ container stdout -> Grafana Alloy -> Loki -> Grafana
+ This does not replace `activity_log`. PostgreSQL remains the authoritative audit and business-event
+ store; Loki retains operational container output for 14 days to support incident investigation.
+ 
++Before serialization, the backend recursively redacts sensitive keys and credential patterns,
++including bearer tokens, JWTs, cookies, passwords, OTPs, credential-bearing URLs, and sensitive
++query parameters such as `token=...`. Request bodies, headers, raw Celery arguments, and task results
++must not be attached to operational records.
++
+ Grafana is available only through the HTTPS hostname configured by `GRAFANA_DOMAIN`. Anonymous access
+ and public sign-up are disabled. Loki and Alloy have no host-published ports.
+ 
+@@ -449,6 +454,9 @@ Celery retries:
+ ```
+ 
+ The provisioned dashboards are **Garrison Production Logs** and **Garrison Incident Explorer**.
++The operations dashboard includes log volume, error counts, HTTP response status distribution, and
++the searchable log stream. The incident dashboard includes request/task correlation, HTTP p95
++duration, and Celery retry/failure exploration.
+ Provisioned alerts cover unhandled failures, 5xx bursts, repeated task retries, sustained slow
+ requests, and Loki/Alloy errors. Alert query failures enter the alerting state; ordinary no-data
+ periods remain healthy.
+@@ -468,3 +476,17 @@ If Grafana, Loki, or Alloy is unavailable, application services continue writing
+ logs. Use `docker compose -f docker-compose.prod.yml logs --since 30m backend celery_worker` while the
+ observability stack is restored. Re-enable `EXCEPTION_EMAIL_ENABLED=true` if Grafana alerting must be
+ rolled back.
++
++### Configuration regression tests
++
++Run the focused, service-independent checks before deployment:
++
++```bash
++cd backend
++pytest -q tests/test_structured_logging.py tests/test_observability_config.py
++```
++
++They validate JSON shape and redaction, request and task context cleanup, health-check suppression,
++Celery lifecycle safety, image digests, private ports, 14-day retention, low-cardinality labels,
++Grafana security settings, dashboard JSON, alert policy semantics, and idempotent database
++initialization. Compose rendering and live service health remain separate deployment gates.
+diff --git a/docs/OPERATIONS_AND_DEPLOYMENT.md b/docs/OPERATIONS_AND_DEPLOYMENT.md
+index 61dee67..8910907 100644
+--- a/docs/OPERATIONS_AND_DEPLOYMENT.md
++++ b/docs/OPERATIONS_AND_DEPLOYMENT.md
+@@ -120,6 +120,29 @@ Before starting production, create DNS for `GRAFANA_DOMAIN` and install a certif
+ that hostname. The `grafana_db_init` and `loki_minio_init` jobs are idempotent and must exit successfully.
+ Grafana, Loki, and Alloy must report healthy; none of their internal ports should be published.
+ 
++Before changing a running environment, run the repository checks:
++
++```bash
++cd backend
++pytest -q tests/test_structured_logging.py tests/test_observability_config.py
++ruff check .
++mypy .
++
++cd ../frontend
++npm run lint
++npm run api:types:check
++npm test
++npm run build
++
++cd ..
++docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
++docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
++```
++
++The Grafana database initializer uses PostgreSQL `ON_ERROR_STOP` and idempotent role/database checks.
++Any non-zero `grafana_db_init` or `loki_minio_init` exit is a deployment failure; inspect the job
++logs instead of manually bypassing the dependency.
++
+ ---
+ 
+ ## 3. Operations, Backup & Restore
+@@ -199,6 +222,8 @@ For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_R
+ 3. Rebuild and restart with `docker compose -f docker-compose.prod.yml up -d --build`.
+ 4. Apply backward-compatible migrations (or downgrade if safe).
+ 5. Verify `/health`.
++6. If the observability stack is the failure source, set `EXCEPTION_EMAIL_ENABLED=true`, stop
++   Grafana/Loki/Alloy, and continue incident diagnosis from rotated Docker JSON logs.
+ 
+ ---
+ 
+diff --git a/docs/PRODUCTION_READINESS_REVIEW.md b/docs/PRODUCTION_READINESS_REVIEW.md
+index 824d4ce..dd1d702 100644
+--- a/docs/PRODUCTION_READINESS_REVIEW.md
++++ b/docs/PRODUCTION_READINESS_REVIEW.md
+@@ -1,6 +1,6 @@
+ # Production Readiness Review (PRR)
+ **Project**: Construction Internal Portal (Garrison Investments)  
+-**Date**: May 30, 2026  
++**Date**: July 27, 2026
+ **Status**: **APPROVED FOR PRODUCTION RELEASE (With Recommended Operations Checklist)**
+ 
+ ---
+@@ -75,10 +75,16 @@ The operations framework features robust, automated capabilities to recover from
+ 
+ System health and behavior are highly visible, enabling rapid detection and diagnosis of runtime anomalies.
+ 
+-* **Structured Logging**: Standardized JSON output utilizing `structlog`. Every log line includes contextual identifiers such as `request_id`, `session_id`, `ip_address`, `method`, `endpoint`, and `source_service`.
++* **Structured Logging**: Standardized JSON output utilizing `structlog`. Records include standard
++  timestamp, severity, logger, environment, service, and instance fields plus available request/task
++  correlation. Credentials, bearer/JWT values, sensitive query parameters, request payloads, and raw
++  Celery arguments/results are excluded or redacted.
+ * **Centralized Remote Diagnostics**: Operators can securely search, filter, and stream application logs via the robust `scripts/log_cli.py` CLI without requiring direct SSH shell access to the backend host.
+ * **Defensive Exception Redaction**: Unhandled exceptions trigger the `report_unhandled_exception` routine, which redacts sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, passwords) before reporting failure context via Celery email notifications to the admin.
+ * **Active Health Audits**: Dedicated `scripts/health_monitor.py` pings application health endpoints (`/health` and `/health/readiness`) and sends priority email alerts if degradation is identified.
++* **Operational Log Stack**: Grafana 13.1.1, Loki 3.7.4, and Alloy 1.18.0 are digest-pinned in the
++  production/staging Compose definitions. Loki retains operational logs for 14 days in a dedicated
++  MinIO bucket; Grafana metadata uses a dedicated PostgreSQL database.
+ 
+ ---
+ 
+@@ -86,7 +92,10 @@ System health and behavior are highly visible, enabling rapid detection and diag
+ 
+ Our recent fixes addressing storage and staging environments have resolved critical release blockers:
+ 
+-1. **Proxying & URL Normalization**: Resolved private `:9000` presigned URL unreachable errors on staging by implementing Nginx routing proxying through `/portal-files/`. Previews are signed natively as standard SSL URLs (`https://garrisonstg.seasonenterprise.com/portal-files/...`).
++1. **Proxying & URL Normalization**: Resolved private `:9000` presigned URL unreachable errors on
++   staging by routing `/portal-files/` through Nginx. The current public staging URL is
++   `https://erp.garrisons.lk`, and fresh previews use
++   `https://erp.garrisons.lk/portal-files/...`.
+ 2. **Dynamic High-Resolution Seeding**: Upgraded the seed script (`seed.py`) to seamlessly utilize high-resolution, real-life visual JPEGs (which are now versioned in `backend/scripts/assets/`) if present, instead of tiny 1-pixel placeholders.
+ 3. **Smart Overwriting**: Seeding logic now automatically updates object stores if a 1-pixel placeholder is replaced by high-resolution visual data, ensuring clean system upgrades.
+ 
+@@ -107,6 +116,8 @@ Prior to initiating the production release, the release owner must complete and
+       - Remove STAGING_LOGIN_OTP and set APP_ENV=production in Nginx/Docker environments.
+ - [ ] 6. Confirm Nginx SSL certificates (e.g., Let's Encrypt fullchain.pem/privkey.pem) are mounted under /etc/nginx/ssl/.
+ - [ ] 7. Confirm exception email SMTP routing works correctly (test unhandled exception mail delivery).
++- [ ] 8. Trigger the provisioned Grafana alerts in staging and verify SMTP delivery, recovery
++      notifications, grouping, and working log links before setting `EXCEPTION_EMAIL_ENABLED=false`.
+ ```
+ 
+ ### Production Release Commands
+diff --git a/docs/README.md b/docs/README.md
+index b9792a3..58c42de 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -26,14 +26,14 @@ This folder has been aggressively consolidated down to the core living artifacts
+ # Clone repo
+ git clone <repo-url> && cd garrison-investments
+ 
+-# Start all services
+-docker-compose up -d
++# Start all development services
++docker compose up -d
+ 
+ # Run migrations
+-docker-compose exec backend alembic upgrade head
++docker compose exec backend alembic upgrade head
+ 
+ # Seed sample data
+-docker-compose exec backend python scripts/seed.py
++docker compose exec backend python scripts/seed.py
+ 
+ # Frontend dev server (localhost:3000)
+ cd frontend && npm install && npm run dev
+@@ -41,3 +41,11 @@ cd frontend && npm install && npm run dev
+ # API docs (localhost:8000/docs)
+ open http://localhost:8000/docs
+ ```
++
++The current staging application is `https://erp.garrisons.lk`; Grafana is served at
++`https://erp.garrisons.lk/grafana/`. Environment-specific host, TLS, Compose project, and rollback
++details are maintained in [`STAGING_DEPLOYMENT.md`](../STAGING_DEPLOYMENT.md).
++
++Documentation scope was reconciled with the structured logging and self-hosted observability changes
++in July 2026. Schema and role documents are unchanged because these changes do not alter database
++tables or authorization policy.
+diff --git a/frontend/src/api/users.ts b/frontend/src/api/users.ts
+index 9b9b161..26c9218 100644
+--- a/frontend/src/api/users.ts
++++ b/frontend/src/api/users.ts
+@@ -28,7 +28,7 @@ export async function deactivateUser(userId: string): Promise<UserRecord> {
+ 
+ export async function adminResetPassword(userId: string, newPassword: string): Promise<UserRecord> {
+   const response = await apiClient.post<UserRecord>(`/users/${userId}/reset-password`, {
+-    new_password: newPassword,
++    new_password: newPassword
+   });
+   return response.data;
+ }
+diff --git a/frontend/src/i18n.ts b/frontend/src/i18n.ts
+index 363e1b1..a443af1 100644
+--- a/frontend/src/i18n.ts
++++ b/frontend/src/i18n.ts
+@@ -1,19 +1,17 @@
+ import i18n from 'i18next';
+ import { initReactI18next } from 'react-i18next';
+ 
+-void i18n
+-  .use(initReactI18next)
+-  .init({
+-    resources: {
+-      en: {
+-        translation: {}
+-      }
+-    },
+-    lng: 'en',
+-    fallbackLng: 'en',
+-    interpolation: {
+-      escapeValue: false // react already safes from xss
++void i18n.use(initReactI18next).init({
++  resources: {
++    en: {
++      translation: {}
+     }
+-  });
++  },
++  lng: 'en',
++  fallbackLng: 'en',
++  interpolation: {
++    escapeValue: false // react already safes from xss
++  }
++});
+ 
+ export default i18n;
+diff --git a/frontend/src/pages/admin/UserManagementPage.tsx b/frontend/src/pages/admin/UserManagementPage.tsx
+index b1f8f79..0a714da 100644
+--- a/frontend/src/pages/admin/UserManagementPage.tsx
++++ b/frontend/src/pages/admin/UserManagementPage.tsx
+@@ -298,8 +298,8 @@ export function UserManagementPage() {
+           <div className="w-full max-w-sm rounded-lg border border-theme-border bg-theme-card p-6 shadow-lg">
+             <h2 className="mb-1 text-base font-semibold text-theme-text-primary">Reset password</h2>
+             <p className="mb-4 text-sm text-theme-text-secondary">
+-              Set a new temporary password for <strong>{resetTarget.full_name}</strong>. They will be
+-              required to change it on next sign-in.
++              Set a new temporary password for <strong>{resetTarget.full_name}</strong>. They will
++              be required to change it on next sign-in.
+             </p>
+             <form onSubmit={(e) => void handleResetPassword(e)}>
+               <input
+diff --git a/frontend/src/pages/auth/PasswordResetPage.tsx b/frontend/src/pages/auth/PasswordResetPage.tsx
+index 90f9da3..73759cc 100644
+--- a/frontend/src/pages/auth/PasswordResetPage.tsx
++++ b/frontend/src/pages/auth/PasswordResetPage.tsx
+@@ -50,7 +50,9 @@ export function PasswordResetPage() {
+       }
+ 
+       await confirmPasswordReset(challengeId, otp, newPassword);
+-      navigate('/login', { state: { notice: 'Password reset complete. You can sign in with your new password.' } });
++      navigate('/login', {
++        state: { notice: 'Password reset complete. You can sign in with your new password.' }
++      });
+     } catch {
+       setError('Unable to reset password. Check the code and try again.');
+     } finally {
+diff --git a/observability/grafana/dashboards/operations.json b/observability/grafana/dashboards/operations.json
+index 3c382d2..272dbc0 100644
+--- a/observability/grafana/dashboards/operations.json
++++ b/observability/grafana/dashboards/operations.json
+@@ -45,8 +45,27 @@
+     },
+     {
+       "datasource": {"type": "loki", "uid": "loki"},
+-      "gridPos": {"h": 13, "w": 24, "x": 0, "y": 8},
++      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}, "overrides": []},
+       "id": 3,
++      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
++      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
++      "targets": [
++        {
++          "datasource": {"type": "loki", "uid": "loki"},
++          "editorMode": "code",
++          "expr": "sum by (status_code) (count_over_time({environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" [$__auto]))",
++          "legendFormat": "HTTP {{status_code}}",
++          "queryType": "range",
++          "refId": "A"
++        }
++      ],
++      "title": "HTTP responses by status",
++      "type": "timeseries"
++    },
++    {
++      "datasource": {"type": "loki", "uid": "loki"},
++      "gridPos": {"h": 13, "w": 24, "x": 0, "y": 16},
++      "id": 4,
+       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+       "targets": [
+         {
+diff --git a/observability/postgres/init-grafana-db.sh b/observability/postgres/init-grafana-db.sh
+index 4880da1..ecf4ab5 100644
+--- a/observability/postgres/init-grafana-db.sh
++++ b/observability/postgres/init-grafana-db.sh
+@@ -5,18 +5,14 @@ until pg_isready -q; do
+     sleep 2
+ done
+ 
+-if [ "$(psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'grafana'")" != "1" ]; then
+-    psql -v password="$GRAFANA_DB_PASSWORD" <<'SQL'
+-CREATE ROLE grafana LOGIN PASSWORD :'password';
++psql --set=ON_ERROR_STOP=1 --set=grafana_password="$GRAFANA_DB_PASSWORD" <<'SQL'
++SELECT format('CREATE ROLE grafana LOGIN PASSWORD %L', :'grafana_password')
++WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana') \gexec
++SELECT format('ALTER ROLE grafana WITH LOGIN PASSWORD %L', :'grafana_password') \gexec
+ SQL
+-else
+-    psql -v password="$GRAFANA_DB_PASSWORD" <<'SQL'
+-ALTER ROLE grafana WITH LOGIN PASSWORD :'password';
+-SQL
+-fi
+ 
+ if [ "$(psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'grafana'")" != "1" ]; then
+     createdb --owner=grafana grafana
+ fi
+ 
+-psql -d grafana -c "GRANT ALL ON SCHEMA public TO grafana"
++psql --set=ON_ERROR_STOP=1 -d grafana -c "GRANT ALL ON SCHEMA public TO grafana"

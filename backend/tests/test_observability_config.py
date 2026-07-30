@@ -70,6 +70,27 @@ def test_loki_retention_storage_and_alloy_labels_match_policy() -> None:
     assert 'url = "http://loki:3100/loki/api/v1/push"' in alloy
 
 
+def test_alloy_applies_second_stage_credential_redaction() -> None:
+    alloy = (ROOT / "observability/alloy-config.alloy").read_text()
+
+    assert alloy.count("stage.replace") == 3
+    assert alloy.count('replace    = "<redacted>"') == 3
+    for token in (
+        "access[_-]?token",
+        "api[_-]?key",
+        "auth(?:orization)?",
+        "cookie",
+        "jwt",
+        "otp",
+        "pass(?:word)?",
+        "secret",
+        "session",
+        "token",
+    ):
+        assert token in alloy
+    assert "Bearer" in alloy
+
+
 def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> None:
     dashboard_dir = ROOT / "observability/grafana/dashboards"
     dashboards = [json.loads(path.read_text()) for path in sorted(dashboard_dir.glob("*.json"))]
@@ -96,6 +117,28 @@ def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> No
     assert all(rule["noDataState"] == "OK" for rule in rules)
     assert all(rule["execErrState"] == "Alerting" for rule in rules)
     assert alerts["policies"][0]["group_interval"] == "5m"
+
+
+_EXPECTED_ALERT_PREDICATES = {
+    "garrison-unhandled-errors": ['message=~"unhandled_request_exception|task_failed"'],
+    "garrison-http-5xx-burst": ['message="http_request_completed"', "status_code >= 500"],
+    "garrison-celery-retries": ['message="task_retried"', 'service=~"celery_worker|celery_beat"'],
+    "garrison-slow-http": ['message="http_request_completed"', "unwrap duration_ms"],
+    "garrison-log-pipeline-errors": ['service=~"loki|alloy"'],
+}
+
+
+def test_alert_rule_queries_match_documented_signals() -> None:
+    alerts = yaml.safe_load(
+        (ROOT / "observability/grafana/provisioning/alerting/alerts.yml").read_text()
+    )
+    rules = {rule["uid"]: rule for rule in alerts["groups"][0]["rules"]}
+    assert set(rules) == set(_EXPECTED_ALERT_PREDICATES)
+
+    for uid, predicates in _EXPECTED_ALERT_PREDICATES.items():
+        expr = rules[uid]["data"][0]["model"]["expr"]
+        for predicate in predicates:
+            assert predicate in expr, f"{uid} lost predicate {predicate!r}"
 
 
 def test_grafana_database_initializer_is_idempotent_and_fails_fast() -> None:

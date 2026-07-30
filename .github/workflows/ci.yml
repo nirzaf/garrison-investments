@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-static:
+    name: Backend lint and types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy
+        run: mypy .
+
+  frontend:
+    name: Frontend lint, types, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Generated API types are current
+        run: npm run api:types:check
+      - name: Vitest
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  compose-validate:
+    name: Compose files are valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production compose file
+        run: docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+      - name: Validate staging compose file
+        run: docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    # These tests have never run against real services; keep the job advisory until
+    # it has been green once, then promote it to a required check.
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: garrison
+          POSTGRES_PASSWORD: garrison_dev_password
+          POSTGRES_DB: garrison_portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      # `services:` cannot pass a command, and the MinIO image requires `server /data`.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=garrison_minio \
+            -e MINIO_ROOT_PASSWORD=garrison_minio_password \
+            --health-cmd "mc ready local" \
+            minio/minio server /data
+      - name: Wait for MinIO
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO did not become ready" >&2
+          docker logs minio >&2
+          exit 1
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      # The suite has no schema-creating fixture, so migrations must run first.
+      - name: Apply migrations
+        run: alembic upgrade head
+      - name: Pytest
+        run: pytest -q -rs
