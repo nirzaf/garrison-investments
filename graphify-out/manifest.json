@@ -680,8 +680,8 @@
     "semantic_hash": ""
   },
   "backend/app/observability/logging.py": {
-    "mtime": 1785185698.838754,
-    "ast_hash": "8faeacf927070f16f508ba6f87e88f5b",
+    "mtime": 1785441719.7465506,
+    "ast_hash": "a9111b5c9fcea0b2d1438988c4d991d6",
     "semantic_hash": ""
   },
   "backend/app/observability/__init__.py": {
@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1785185993.8599331,
-    "ast_hash": "39e1ef38e4920dc47f4baff556f355f6",
+    "mtime": 1785442056.829501,
+    "ast_hash": "22535bdad070201bb8c72e37b1659925",
     "semantic_hash": ""
   },
   "docs/ROLES_AND_PERMISSIONS.md": {
@@ -1650,8 +1650,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_structured_logging.py": {
-    "mtime": 1785185968.6561775,
-    "ast_hash": "a4e87a225349d99724aa80bb2268c500",
+    "mtime": 1785441765.4794238,
+    "ast_hash": "db51a9f83ba4f54550f8de4c273395a5",
     "semantic_hash": ""
   },
   "observability/grafana/dashboards/incidents.json": {
@@ -1695,8 +1695,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_observability_config.py": {
-    "mtime": 1785185968.6555448,
-    "ast_hash": "c539eef66fe31fafea82a6f7205c253d",
+    "mtime": 1785441906.3820493,
+    "ast_hash": "5ac14c21b979bca3c01a71a32fbbf9e8",
     "semantic_hash": ""
   }
 }

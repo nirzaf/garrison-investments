@@ -1037,37 +1037,44 @@ volumes:
 | Rate limiting | Disabled | Enabled |
 | Monitoring | None | Not configured |
 
-### 7.3 CI/CD Pipeline
+### 7.3 CI Pipeline
+
+Defined in `.github/workflows/ci.yml`. Runs on every pull request and on pushes to
+`main`; in-progress runs for the same ref are cancelled when a new commit arrives.
+The four jobs are independent and run in parallel — there is no lint/test/build
+sequencing, because none of the jobs depend on another's output.
 
 ```
-PUSH TO BRANCH
+PULL REQUEST  /  PUSH TO main
     |
-    v
-[LINT]
-  - Backend: ruff + mypy
-  - Frontend: ESLint + Prettier
+    +--> [backend-static]     ruff check .  +  mypy .            (Python 3.12)
     |
-    v
-[TEST]
-  - Backend: pytest (PostgreSQL in Docker service container)
-  - Frontend: Vitest + React Testing Library
+    +--> [frontend]           npm ci -> lint -> api:types:check
+    |                         -> test (Vitest) -> build          (Node 20)
     |
-    v
-[BUILD]
-  - Frontend: vite build -> dist/
-  - Backend: docker build
+    +--> [compose-validate]   docker compose config --quiet for
+    |                         docker-compose.prod.yml and
+    |                         docker-compose.staging.yml
     |
-    v
-[DEPLOY TO STAGING]  (on push to develop)
-  - docker compose -f docker-compose.prod.yml up -d
-  - alembic upgrade head
-  - Smoke test (curl health check)
-    |
-    v
-[DEPLOY TO PRODUCTION]  (on push to main, manual approval required)
-  - Same as staging
-  - Requires Operation Manager approval in GitHub
+    +--> [backend-tests]      PostgreSQL 16 + Redis 7 service
+                              containers, MinIO started via
+                              docker run, then alembic upgrade
+                              head -> pytest -q -rs
 ```
+
+The jobs mirror the local verification commands documented in `README.md`, so a
+clean local run predicts a clean CI run.
+
+`backend-tests` is deliberately marked `continue-on-error: true`. The database-backed
+tests skip themselves when PostgreSQL is unreachable, so they had never executed
+before this pipeline existed; the job stays advisory until it has been green once,
+then it is promoted to a required check. The other three jobs were verified clean
+before being introduced and are required immediately.
+
+Deployment is **not** automated. There is no deploy job, no environment gate, and no
+smoke-test stage. Staging and production releases are performed manually by the
+launch owner following `STAGING_DEPLOYMENT.md` and `docs/OPERATIONS_AND_DEPLOYMENT.md`,
+which includes running `alembic upgrade head` against the target environment.
 
 ### 7.4 Backup Strategy
 
