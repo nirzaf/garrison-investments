@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -78,13 +79,15 @@ class PhotoService:
         width: int | None = None
         height: int | None = None
 
-        self._upload_object(storage_path, data, mime_type)
+        await asyncio.to_thread(self._upload_object, storage_path, data, mime_type)
         if normalized_kind == "photo" and mime_type in {"image/jpeg", "image/png"}:
-            compressed, thumbnail, width, height = self._create_photo_variants(data, mime_type)
+            compressed, thumbnail, width, height = await asyncio.to_thread(
+                self._create_photo_variants, data, mime_type
+            )
             compressed_path = f"{base_key}/display.jpg"
             thumbnail_path = f"{base_key}/thumbnail.jpg"
-            self._upload_object(compressed_path, compressed, "image/jpeg")
-            self._upload_object(thumbnail_path, thumbnail, "image/jpeg")
+            await asyncio.to_thread(self._upload_object, compressed_path, compressed, "image/jpeg")
+            await asyncio.to_thread(self._upload_object, thumbnail_path, thumbnail, "image/jpeg")
 
         photo = await self.photos.add(
             Photo(

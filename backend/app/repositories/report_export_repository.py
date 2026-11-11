@@ -24,11 +24,11 @@ class ReportExportRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, export_id: UUID) -> ReportExport | None:
-        result = await self.session.execute(
-            select(ReportExport).where(
-                ReportExport.id == export_id,
-                ReportExport.deleted_at.is_(None),
-            )
+    async def get_by_id(self, export_id: UUID, *, for_update: bool = False) -> ReportExport | None:
+        query = select(ReportExport).where(
+            ReportExport.id == export_id,
+            ReportExport.deleted_at.is_(None),
         )
-        return result.scalar_one_or_none()
+        if for_update:
+            query = query.with_for_update()
+        return await self.session.scalar(query)

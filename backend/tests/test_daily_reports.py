@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID, uuid4
 
 import httpx
@@ -9,9 +10,12 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.inventory import InventoryMovement
 from app.models.report_export import ReportExport
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.tasks.email import _send_report_email
+from app.tasks.outbox import _dispatch_task_outbox
+from app.tasks.report import _generate_report_pdf
 from app.utils.security import hash_password
 from app.utils.time import business_today
 
@@ -530,6 +534,63 @@ async def test_approved_report_can_be_downloaded_as_pdf(monkeypatch: pytest.Monk
         assert await _send_report_email(str(export.id)) == "report email skipped"
 
 
+async def test_report_outbox_retries_dispatch_and_reuses_the_export(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        created = await client.post(
+            "/api/v1/reports",
+            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert created.status_code == 201
+        report_id = created.json()["id"]
+        submitted = await client.post(
+            f"/api/v1/reports/{report_id}/submit",
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert submitted.status_code == 200
+        approved = await client.post(
+            f"/api/v1/reports/{report_id}/approve",
+            json={"comments": "Approved for export.", "target_covered": True},
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        assert approved.status_code == 200
+
+    published_ids: list[str] = []
+
+    def send_task(name, *, args, kwargs, task_id, **options):
+        assert name == "generate_report_pdf"
+        assert args[0] == report_id
+        assert kwargs == {"email_after": True}
+        assert options["queue"] == "report"
+        published_ids.append(task_id)
+        if len(published_ids) == 1:
+            raise ConnectionError("Broker unavailable")
+
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", send_task)
+    dedupe_key = f"report-pdf:{report_id}"
+    async with AsyncSessionLocal() as guard:
+        # Leave other tests' outbox entries alone.
+        await guard.execute(
+            select(TaskOutbox.id).where(TaskOutbox.dedupe_key != dedupe_key).with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 0
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+            )
+            assert row is not None and row.status == "pending" and row.attempts == 1
+        assert await _dispatch_task_outbox() == 1
+        assert await _dispatch_task_outbox() == 0
+    assert len(published_ids) == 2 and published_ids[0] == published_ids[1]
+    first, second = await asyncio.gather(
+        _generate_report_pdf(report_id, None),
+        _generate_report_pdf(report_id, None),
+    )
+    assert first == second
+
+
 async def test_report_email_updates_export_status_when_delivery_succeeds(monkeypatch) -> None:
     await skip_if_database_unavailable()
 
@@ -584,6 +645,7 @@ async def test_report_email_updates_export_status_when_delivery_succeeds(monkeyp
     monkeypatch.setattr("app.tasks.email.EmailService.send", fake_send)
 
     assert await _send_report_email(str(export.id)) == "report email sent to 2 recipients"
+    assert await _send_report_email(str(export.id)) == "report email already sent"
     assert sent_payload["recipients"] == ["pm@example.com", "om@example.com"]
 
     async with AsyncSessionLocal() as session:

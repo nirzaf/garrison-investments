@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import suppress
 from datetime import timedelta
 from decimal import Decimal
@@ -246,7 +247,7 @@ class FinanceService:
         mime_type = self._validate_file(file.filename or "invoice-attachment", data)
         extension = ".pdf" if mime_type == "application/pdf" else Path(file.filename or "").suffix
         object_key = f"finance/invoices/{invoice.id}/{uuid4().hex}{extension.lower()}"
-        self._upload_object(object_key, data, mime_type)
+        await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
         old_key = invoice.attachment_key
         invoice.attachment_key = object_key
         invoice_id = invoice.id

@@ -11,6 +11,7 @@ from app.models.daily_report import (
     ReportManpower,
     ReportMaterialConsumption,
 )
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.daily_report_repository import DailyReportRepository
 from app.repositories.project_repository import ProjectRepository
@@ -259,8 +260,8 @@ class ReportService:
             reference_type="daily_report",
             reference_id=report.id,
         )
-        await self.session.commit()
         self._queue_post_approval_tasks(report.id, actor.id)
+        await self.session.commit()
         return await self._get_required(report.id)
 
     async def override_report(
@@ -328,9 +329,9 @@ class ReportService:
             reference_type="daily_report",
             reference_id=report.id,
         )
-        await self.session.commit()
         if decision == "approved":
             self._queue_post_approval_tasks(report.id, actor.id)
+        await self.session.commit()
         return await self._get_required(report.id)
 
     async def reject_report(
@@ -595,13 +596,16 @@ class ReportService:
             )
 
     def _queue_post_approval_tasks(self, report_id: UUID, actor_id: UUID) -> None:
-        try:
-            from app.tasks.report import generate_report_pdf
+        self.session.add(
+            TaskOutbox(
+                dedupe_key=f"report-pdf:{report_id}",
+                task_name="generate_report_pdf",
+                args_json=[str(report_id), str(actor_id)],
+                kwargs_json={"email_after": True},
+            )
+        )
 
-            generate_report_pdf.delay(str(report_id), str(actor_id), email_after=True)
-        except Exception:
-            # Approval is the source-of-truth workflow action; export failures are tracked by tasks.
-            return
-
-    async def get_report_for_export(self, report_id: UUID) -> DailyReport:
-        return await self._get_required(report_id)
+    async def get_report_for_export(
+        self, report_id: UUID, *, for_update: bool = False
+    ) -> DailyReport:
+        return await self._get_required(report_id, for_update=for_update)

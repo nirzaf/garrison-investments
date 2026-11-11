@@ -91,10 +91,12 @@ async def _send_report_email(export_id: str) -> str:
         item.strip() for item in settings.report_email_recipients.split(",") if item.strip()
     ]
     async with AsyncSessionLocal() as session:
-        export = await ReportExportRepository(session).get_by_id(UUID(export_id))
+        export = await ReportExportRepository(session).get_by_id(UUID(export_id), for_update=True)
         if not export:
             logger.warning("report_email_export_not_found", export_id=export_id)
             return "report export not found"
+        if export.email_status == "sent":
+            return "report email already sent"
         if not recipients:
             export.email_status = "skipped"
             export.email_error = "No report email recipients configured."

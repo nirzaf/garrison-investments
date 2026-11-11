@@ -32,6 +32,7 @@ from app.models.project_task import ProjectTask
 from app.models.report_export import ReportExport
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 
 __all__ = [
@@ -68,5 +69,6 @@ __all__ = [
     "SupervisorUpdate",
     "Supplier",
     "StorageLocation",
+    "TaskOutbox",
     "User",
 ]

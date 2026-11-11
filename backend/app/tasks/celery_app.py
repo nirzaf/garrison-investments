@@ -29,6 +29,7 @@ celery_app = Celery(
         "app.tasks.backup",
         "app.tasks.maintenance",
         "app.tasks.imports",
+        "app.tasks.outbox",
     ],
 )
 
@@ -39,6 +40,10 @@ celery_app.conf.task_acks_late = True
 celery_app.conf.task_reject_on_worker_lost = True
 celery_app.conf.worker_hijack_root_logger = False
 celery_app.conf.beat_schedule = {
+    "dispatch-task-outbox-every-minute": {
+        "task": "dispatch_task_outbox",
+        "schedule": 60,
+    },
     "run-database-backup-daily": {
         "task": "run_database_backup",
         "schedule": crontab(hour=1, minute=0),

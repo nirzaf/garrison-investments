@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from uuid import UUID
 
@@ -39,8 +40,9 @@ async def _generate_report_pdf(report_id: str, actor_id: str | None) -> str:
         export = await ReportExportService(session).generate_pdf_export(
             UUID(report_id),
             actor=None,
+            reuse_existing=True,
         )
-        if actor_id:
+        if actor_id and export.generated_by is None:
             export.generated_by = UUID(actor_id)
             await session.commit()
         logger.info("pdf_generated", report_id=report_id, export_id=str(export.id))
@@ -125,6 +127,6 @@ async def _generate_management_export(export_type: str, actor_id: str, filters: 
             content_type = "application/pdf"
         else:
             raise ValueError("Unknown management export type")
-        object_key = service.upload_export(export_type, data, content_type)
+        object_key = await asyncio.to_thread(service.upload_export, export_type, data, content_type)
         logger.info("management_export_completed", export_type=export_type, object_key=object_key)
         return object_key

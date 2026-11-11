@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -247,7 +248,7 @@ class DocumentService:
     ) -> DocumentVersion:
         extension = ".pdf" if mime_type == "application/pdf" else Path(original_name).suffix.lower()
         object_key = f"documents/{document.id}/v{version_number}/{uuid4().hex}{extension}"
-        self._upload_object(object_key, data, mime_type)
+        await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
         return await self.documents.add_version(
             DocumentVersion(
                 document_id=document.id,

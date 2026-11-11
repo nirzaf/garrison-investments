@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -131,7 +132,7 @@ class SupplierService:
         mime_type = self._validate_file(file.filename or "tds-document", data)
         extension = ".pdf" if mime_type == "application/pdf" else Path(file.filename or "").suffix
         object_key = f"suppliers/{supplier.id}/tds/{uuid4().hex}{extension.lower()}"
-        self._upload_object(object_key, data, mime_type)
+        await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
         old_key = supplier.tds_document_key
         supplier.tds_document_key = object_key
         await self.audit.record(
