@@ -164,7 +164,7 @@ export function UserManagementPage() {
 
       {error ? <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p> : null}
 
-      <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+      <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
         <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
           <input
             className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
@@ -229,7 +229,7 @@ export function UserManagementPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-sm">
+      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-xs">
         <div className="border-b border-theme-border px-4 py-3 text-sm text-theme-text-secondary">
           {isLoading ? 'Loading users' : `${total} users`}
         </div>
@@ -305,7 +305,7 @@ export function UserManagementPage() {
               <input
                 autoComplete="new-password"
                 autoFocus
-                className="mb-3 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm text-theme-text-primary placeholder-theme-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="mb-3 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm text-theme-text-primary placeholder-theme-text-muted focus:outline-hidden focus:ring-2 focus:ring-brand-500"
                 onChange={(e) => setResetPassword(e.target.value)}
                 placeholder="New temporary password"
                 required

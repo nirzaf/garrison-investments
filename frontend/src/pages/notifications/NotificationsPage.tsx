@@ -77,7 +77,7 @@ export function NotificationsPage() {
         <div className="space-y-3">
           {notifications.map((notification) => (
             <article
-              className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-sm hover:bg-theme-card-elevated"
+              className="w-full rounded-lg border border-theme-border bg-theme-card p-4 text-left shadow-xs hover:bg-theme-card-elevated"
               key={notification.id}
             >
               <div className="flex items-start justify-between gap-3">

@@ -484,7 +484,7 @@ async def test_admin_can_override_submitted_report_with_target_confirmation() ->
         )
 
 
-async def test_approved_report_can_be_downloaded_as_pdf() -> None:
+async def test_approved_report_can_be_downloaded_as_pdf(monkeypatch: pytest.MonkeyPatch) -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
@@ -523,6 +523,9 @@ async def test_approved_report_can_be_downloaded_as_pdf() -> None:
                 select(ReportExport).where(ReportExport.report_id == approved["id"])
             )
         assert export is not None
+        monkeypatch.setattr(
+            "app.tasks.email.get_settings", lambda: Settings(report_email_recipients="")
+        )
         assert await _send_report_email(str(export.id)) == "report email skipped"
 
 

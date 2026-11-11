@@ -6,10 +6,10 @@
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Runtime | Python 3.12+ | Async-first backend |
+| Runtime | Python 3.14 | Async-first backend |
 | Framework | FastAPI | Async HTTP API with dependency injection |
-| ORM | SQLAlchemy 2.0 (async) + asyncpg | Database access via `AsyncSession` |
-| Database | PostgreSQL 16 | Primary data store (asyncpg driver) |
+| ORM | SQLAlchemy 2.1 (async) + asyncpg | Database access via `AsyncSession` |
+| Database | PostgreSQL 18.6 | Primary data store (asyncpg driver) |
 | Cache / Broker | Redis | Rate limiting, Celery task queue |
 | Object Storage | MinIO (S3-compatible) | Provider-isolated file storage for photos, documents, and exports |
 | Task Queue | Celery | Background jobs for email, image, report, backup, and maintenance workloads |
@@ -263,7 +263,7 @@ adapter work unless S3-specific assumptions stay out of application code.
 ## Infrastructure
 
 ### Database
-- PostgreSQL 16 with asyncpg driver
+- PostgreSQL 18.6 with asyncpg driver
 - Connection pooling via SQLAlchemy `create_async_engine`
 - Health check: `SELECT 1` probe at `/health`
 - Readiness probe: `/health/readiness`

@@ -184,7 +184,7 @@ export function ProjectListPage() {
       {error ? <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p> : null}
 
       {canManageProjects ? (
-        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
           <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
             <input
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
@@ -271,7 +271,7 @@ export function ProjectListPage() {
       ) : null}
 
       {canManageProjects ? (
-        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
           <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h3 className="text-base font-semibold text-theme-text-primary">
@@ -461,7 +461,7 @@ export function ProjectListPage() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-sm">
+      <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-xs">
         <div className="border-b border-theme-border px-4 py-3 text-sm text-theme-text-secondary">
           {isLoading ? 'Loading projects' : `${total} projects`}
         </div>

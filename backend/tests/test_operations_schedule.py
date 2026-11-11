@@ -1,6 +1,20 @@
+import gzip
+
 from app.tasks.backup import backup_command
 from app.tasks.celery_app import celery_app
-from scripts.backup import database_targets
+from scripts.backup import create_dump, database_targets
+
+
+def test_backup_dump_is_valid_gzip(tmp_path, monkeypatch) -> None:
+    pg_dump = tmp_path / "pg_dump"
+    pg_dump.write_text("#!/bin/sh\nprintf 'SELECT 1;\\n'\n")
+    pg_dump.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=":")
+
+    output = tmp_path / "backup.sql.gz"
+    create_dump("postgresql://localhost/test", output)
+
+    assert gzip.decompress(output.read_bytes()) == b"SELECT 1;\n"
 
 
 def test_backup_command_uses_current_python_and_monthly_flag() -> None:

@@ -436,7 +436,7 @@ export function DailyReportPage() {
           <div className="grid gap-3">
             {reports.map((report) => (
               <article
-                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                className={`rounded-lg border bg-theme-card p-4 shadow-xs ${
                   report.id === focusedReportId
                     ? 'border-brand-600 ring-2 ring-brand-600/20'
                     : 'border-theme-border'
@@ -535,7 +535,7 @@ export function DailyReportPage() {
         ) : null}
 
         <form className="space-y-4" onSubmit={submitReport}>
-          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Project" error={errors.project_id}>
                 <select
@@ -608,7 +608,7 @@ export function DailyReportPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Supervisor Updates" />
             {supervisorUpdates.length === 0 ? (
               <p className="text-sm text-theme-text-muted">
@@ -646,7 +646,7 @@ export function DailyReportPage() {
             )}
           </section>
 
-          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Work Summary" />
             <div className="grid gap-4">
               <Field label="Work completed" error={errors.work_completed}>
@@ -691,7 +691,7 @@ export function DailyReportPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Safety And Inspection" />
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Safety incidents">
@@ -931,7 +931,7 @@ export function DailyReportPage() {
             }
           />
 
-          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+          <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Photos And Attachments" />
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Upload photos">
@@ -1021,7 +1021,7 @@ export function DailyReportPage() {
           <div className="space-y-3">
             {reports.map((report) => (
               <article
-                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                className={`rounded-lg border bg-theme-card p-4 shadow-xs ${
                   report.id === focusedReportId
                     ? 'border-brand-600 ring-2 ring-brand-600/20'
                     : 'border-theme-border'
@@ -1146,7 +1146,7 @@ function DynamicRows<T>({
   title: string;
 }) {
   return (
-    <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+    <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-theme-text-primary">{title}</h3>
         <button

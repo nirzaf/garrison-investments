@@ -7,7 +7,6 @@ import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import BinaryIO, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from minio import Minio
@@ -20,13 +19,15 @@ def normalize_pg_url(database_url: str) -> str:
 
 
 def create_dump(database_url: str, output_path: Path) -> None:
-    with output_path.open("wb") as raw_file:
-        with gzip.GzipFile(fileobj=raw_file, mode="wb") as gzip_file:
-            subprocess.run(
-                ["pg_dump", "--format=plain", "--no-owner", normalize_pg_url(database_url)],
-                check=True,
-                stdout=cast(BinaryIO, gzip_file),
-            )
+    command = ["pg_dump", "--format=plain", "--no-owner", normalize_pg_url(database_url)]
+    with gzip.open(output_path, "wb") as compressed, subprocess.Popen(
+        command, stdout=subprocess.PIPE
+    ) as dump:
+        assert dump.stdout is not None
+        shutil.copyfileobj(dump.stdout, compressed)
+        exit_status = dump.wait()
+        if exit_status:
+            raise RuntimeError(f"pg_dump failed with exit status {exit_status}")
 
 
 def encrypt_file(input_path: Path, password: str) -> Path:

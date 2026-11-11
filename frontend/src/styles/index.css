@@ -1,6 +1,25 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 :root {
   --bg-main: #f5f7f8;
@@ -75,7 +94,7 @@ body {
 
 @layer components {
   .form-field {
-    @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
+    @apply w-full rounded-md border px-3 py-2 text-sm outline-hidden transition;
     border-color: var(--border);
     color: var(--text-primary);
     background: var(--bg-card);

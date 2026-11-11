@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 

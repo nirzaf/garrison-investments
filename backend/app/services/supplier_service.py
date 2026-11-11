@@ -56,7 +56,7 @@ class SupplierService:
         limit: int,
         offset: int,
     ) -> tuple[list[Supplier], int]:
-        query: Select[tuple[Supplier]] = select(Supplier).where(Supplier.deleted_at.is_(None))
+        query: Select[Supplier] = select(Supplier).where(Supplier.deleted_at.is_(None))
         if active is not None:
             query = query.where(Supplier.is_active.is_(active))
         if compliance_status:

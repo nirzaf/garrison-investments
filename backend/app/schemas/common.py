@@ -1,8 +1,4 @@
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, ConfigDict, Field
-
-T = TypeVar("T")
 
 
 class ErrorItem(BaseModel):
@@ -16,7 +12,7 @@ class ErrorResponse(BaseModel):
     errors: list[ErrorItem] = Field(default_factory=list)
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     items: list[T]
     total: int
     page: int

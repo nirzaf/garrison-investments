@@ -300,7 +300,7 @@ export function SupervisorUpdatePage() {
         ) : null}
 
         <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+          className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs"
           onSubmit={handleSubmit(submitUpdate)}
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -450,7 +450,7 @@ export function SupervisorUpdatePage() {
           <div className="space-y-3">
             {updates.map((update) => (
               <article
-                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm"
+                className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs"
                 key={update.id}
               >
                 <div className="flex items-start justify-between gap-3">

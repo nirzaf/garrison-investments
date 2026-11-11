@@ -61,7 +61,7 @@ export function AuditLogPage() {
           <div className="flex items-center gap-2 rounded-md border border-theme-border bg-theme-card px-3">
             <Search className="h-4 w-4 text-theme-text-muted" />
             <input
-              className="min-h-10 flex-1 border-0 bg-transparent text-sm text-theme-text-primary outline-none"
+              className="min-h-10 flex-1 border-0 bg-transparent text-sm text-theme-text-primary outline-hidden"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Action, entity, comment"
               value={search}

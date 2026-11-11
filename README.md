@@ -72,6 +72,9 @@ npm install
 npm run dev
 ```
 
+Existing PostgreSQL 16 volumes require a data migration before starting the PostgreSQL 18 image.
+See the [database upgrade runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#upgrade-an-existing-postgresql-16-database).
+
 ## API Contract
 
 [`docs/openapi.json`](docs/openapi.json) is the committed contract and
@@ -100,11 +103,11 @@ npm test
 npm run build
 
 cd ..
-docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
-docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+docker compose --env-file .env.example -f docker-compose.prod.yml config --no-env-resolution --quiet
+docker compose --env-file .env.example -f docker-compose.staging.yml config --no-env-resolution --quiet
 ```
 
-Backend tests that need PostgreSQL, Redis, and MinIO intentionally skip when those services are unavailable. Use `pytest -q -rs` to make the skip reasons visible.
+Database tests skip when PostgreSQL is unavailable. Run the full suite against disposable development services, including an S3 endpoint for report and document tests. Use `pytest -q -rs` to see skip reasons.
 
 To run the full backend suite locally with the required services available:
 
@@ -122,11 +125,8 @@ pytest -q -rs
 No manual bucket creation is needed: the storage services check for and create the `portal-files`
 bucket on first write, as do `scripts/seed.py` and `scripts/push_to_storage.py`.
 
-The `backend-tests` CI job provisions PostgreSQL, Redis, and MinIO but is currently
-`continue-on-error: true`. The integration suite has never run to completion against real
-services, so a green pull request proves the static, type, lint, build, and compose gates passed;
-it does not yet prove the integration tests passed. Run `pytest -q -rs` locally against the live
-services until that job is promoted to a required check.
+The `backend-tests` CI job uses PostgreSQL, Redis, and Moto's S3 test server. It is currently
+advisory (`continue-on-error: true`). Check the individual job result for integration test status.
 
 The observability regression suite validates application-side structured fields and redaction
 (including nested-secret classes, free-text credential patterns, and depth-limited truncation of
@@ -147,10 +147,10 @@ pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 
 | Job | Runtime | Steps | Failure blocks? |
 |---|---|---|---|
-| `backend-static` | Python 3.12 | `ruff check .`, `mypy .` | yes |
-| `frontend` | Node 20 | `npm run lint`, `api:types:check`, `npm test`, `npm run build` | yes |
+| `backend-static` | Python 3.14 | `ruff check .`, `mypy .` | yes |
+| `frontend` | Node 24 | `npm run lint`, `api:types:check`, `npm test`, `npm run build` | yes |
 | `compose-validate` | — | renders `docker-compose.prod.yml` and `docker-compose.staging.yml` with `.env.example` | yes |
-| `backend-tests` | Python 3.12 + PostgreSQL 16, Redis 7, MinIO | `alembic upgrade head`, then `pytest -q -rs` | no (`continue-on-error: true`) |
+| `backend-tests` | Python 3.14 + PostgreSQL 18.6, Redis 7, Moto S3 | `alembic upgrade head`, then `pytest -q -rs` | no (`continue-on-error: true`) |
 
 Whether a passing job is a merge requirement is set in branch protection, not in the workflow file.
 

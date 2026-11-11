@@ -99,7 +99,7 @@ class InventoryService:
         return item
 
     async def list_items(self, actor: User, search: str | None = None) -> list[InventoryItem]:
-        query: Select[tuple[InventoryItem]] = select(InventoryItem).where(
+        query: Select[InventoryItem] = select(InventoryItem).where(
             InventoryItem.deleted_at.is_(None)
         )
         if search:
@@ -254,7 +254,7 @@ class InventoryService:
         location_id: UUID | None = None,
         project_id: UUID | None = None,
     ) -> list[InventoryMovement]:
-        query: Select[tuple[InventoryMovement]] = select(InventoryMovement).where(
+        query: Select[InventoryMovement] = select(InventoryMovement).where(
             InventoryMovement.deleted_at.is_(None)
         )
         if item_id:

@@ -8,9 +8,11 @@ import pytest
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import AuditService
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -120,8 +122,8 @@ async def test_invoice_payment_budget_and_finance_visibility(
         lambda self, object_key, data, content_type: None,
     )
     monkeypatch.setattr(
-        "app.services.finance_service.FinanceService._client",
-        lambda self: FakeMinioClient(),
+        "app.services.finance_service.minio_signed_url_client",
+        lambda settings: FakeMinioClient(),
     )
     admin, _ = await create_user("admin")
     accounts, accounts_password = await create_user("accounts")
@@ -129,6 +131,15 @@ async def test_invoice_payment_budget_and_finance_visibility(
     operation_manager, op_password = await create_user("operation_manager")
     project_manager, pm_password = await create_user("project_manager")
     project, supplier = await create_project_and_supplier(admin)
+    async with AsyncSessionLocal() as session:
+        session.add(
+            ProjectMember(
+                project_id=project.id,
+                user_id=project_manager.id,
+                role_in_project="Project Manager",
+            )
+        )
+        await session.commit()
 
     async with create_test_client() as client:
         accounts_token = await login_for_token(client, accounts, accounts_password)
@@ -178,14 +189,15 @@ async def test_invoice_payment_budget_and_finance_visibility(
             list_invoices_called = True
             raise AssertionError("finance service should not be reached")
 
-        monkeypatch.setattr(
-            "app.services.finance_service.FinanceService.list_invoices",
-            fail_if_route_dependency_is_bypassed,
-        )
-        blocked = await client.get(
-            "/api/v1/finance/invoices",
-            headers={"Authorization": f"Bearer {engineer_token}"},
-        )
+        with monkeypatch.context() as blocked_route:
+            blocked_route.setattr(
+                "app.services.finance_service.FinanceService.list_invoices",
+                fail_if_route_dependency_is_bypassed,
+            )
+            blocked = await client.get(
+                "/api/v1/finance/invoices",
+                headers={"Authorization": f"Bearer {engineer_token}"},
+            )
         assert blocked.status_code == 403
         assert list_invoices_called is False
 
@@ -286,9 +298,12 @@ async def test_invoice_attachment_upload_is_compensated_when_commit_fails(
         del self
         deleted_keys.append(object_key)
 
-    async def fail_audit(*args, **kwargs) -> None:
-        del args, kwargs
-        raise RuntimeError("audit write failed")
+    record_audit = AuditService.record
+
+    async def fail_attachment_audit(self, *args, **kwargs):
+        if kwargs.get("action") == "finance.invoices.attachment_uploaded":
+            raise RuntimeError("audit write failed")
+        return await record_audit(self, *args, **kwargs)
 
     monkeypatch.setattr(
         "app.services.finance_service.FinanceService._upload_object",
@@ -300,7 +315,7 @@ async def test_invoice_attachment_upload_is_compensated_when_commit_fails(
     )
     monkeypatch.setattr(
         "app.services.audit_service.AuditService.record",
-        fail_audit,
+        fail_attachment_audit,
     )
 
     admin, _ = await create_user("admin")

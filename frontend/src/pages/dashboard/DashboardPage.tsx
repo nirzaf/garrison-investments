@@ -47,7 +47,7 @@ export function DashboardPage() {
       </div>
 
       {data?.recent_activity.length ? (
-        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
           <h3 className="text-base font-semibold text-theme-text-primary">Recent Activity</h3>
           <div className="mt-3 divide-y divide-theme-border">
             {data.recent_activity.map((item) => (
@@ -69,7 +69,7 @@ export function DashboardPage() {
 
 function StatusPanel({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm">
+    <div className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
       <p className="text-sm font-medium text-theme-text-muted">{label}</p>
       <p className="mt-2 text-xl font-semibold text-theme-text-primary">{value}</p>
     </div>

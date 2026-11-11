@@ -59,7 +59,7 @@ export function ChangePasswordPage() {
   }
 
   return (
-    <section className="mx-auto max-w-xl rounded-lg border border-theme-border bg-theme-card p-6 shadow-sm">
+    <section className="mx-auto max-w-xl rounded-lg border border-theme-border bg-theme-card p-6 shadow-xs">
       <p className="text-sm font-medium text-brand-600">Account Security</p>
       <h1 className="mt-2 text-2xl font-semibold text-theme-text-primary">Change password</h1>
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>

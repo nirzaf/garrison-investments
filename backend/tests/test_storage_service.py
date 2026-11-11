@@ -12,6 +12,7 @@ def test_presigned_url_uses_public_minio_endpoint() -> None:
         minio_root_password="garrison_minio_password",
         minio_secure=False,
         minio_public_secure=False,
+        minio_bucket="portal-files",
     )
 
     upload_client = minio_client(settings)

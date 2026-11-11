@@ -86,7 +86,7 @@ function TipList({ tips }: { tips: string[] }) {
 function SectionCard({ section }: { section: ManualSection }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="rounded-xl border border-theme-border bg-theme-card shadow-sm">
+    <div className="rounded-xl border border-theme-border bg-theme-card shadow-xs">
       <button
         className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
         onClick={() => setOpen((v) => !v)}
@@ -164,7 +164,7 @@ function LimitationPills({ limitations }: { limitations: string[] }) {
 
 function RoleHero({ manual }: { manual: Manual }) {
   return (
-    <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-brand-200 bg-linear-to-br from-brand-50 to-white p-6 shadow-xs">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-md">

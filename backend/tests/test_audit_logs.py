@@ -131,8 +131,8 @@ async def test_authenticated_request_is_recorded_in_audit_log() -> None:
         assert total >= 1
         assert any(
             log.comments == "GET /api/v1/auth/me -> 200"
-            and log.new_values is not None
-            and log.new_values.get("status_code") == 200
-            and log.new_values.get("path") == "/api/v1/auth/me"
+            and log.context_payload is not None
+            and log.context_payload.get("status_code") == 200
+            and log.context_payload.get("path") == "/api/v1/auth/me"
             for log in logs
         )

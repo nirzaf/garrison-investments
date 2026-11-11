@@ -170,7 +170,7 @@ export function DocumentsPage() {
 
       {canManageDocuments ? (
         <form
-          className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 shadow-sm lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
+          className="grid gap-3 rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs lg:grid-cols-[1fr_160px_180px_180px_1fr_auto]"
           onSubmit={submitUpload}
         >
           <input
@@ -232,7 +232,7 @@ export function DocumentsPage() {
             );
             return (
               <article
-                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                className={`rounded-lg border bg-theme-card p-4 shadow-xs ${
                   document.id === focusedDocumentId
                     ? 'border-brand-600 ring-2 ring-brand-600/20'
                     : 'border-theme-border'

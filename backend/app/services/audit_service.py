@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+from typing import Any
+from typing import cast as type_cast
 from uuid import UUID
 
-from sqlalchemy import Select, Text, cast, delete, func, or_, select
+from sqlalchemy import CursorResult, Select, Text, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -163,7 +165,7 @@ class AuditService:
                 )
             )
 
-        query: Select[tuple[ActivityLog]] = (
+        query: Select[ActivityLog] = (
             select(ActivityLog)
             .where(*filters)
             .order_by(
@@ -210,7 +212,7 @@ class AuditService:
                 func.coalesce(ActivityLog.archived_at, ActivityLog.created_at) < purge_cutoff,
             )
         )
-        return int(result.rowcount or 0)
+        return int(type_cast(CursorResult[Any], result).rowcount or 0)
 
     def _infer_event_type(
         self,

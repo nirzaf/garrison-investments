@@ -210,7 +210,7 @@ function RoleCard({ role, isCurrent }: { role: (typeof ROLES)[number]; isCurrent
 
   return (
     <div
-      className={`rounded-lg border bg-theme-card p-5 shadow-sm ${
+      className={`rounded-lg border bg-theme-card p-5 shadow-xs ${
         isCurrent ? 'border-brand-500 ring-2 ring-brand-500' : 'border-theme-border'
       }`}
     >
@@ -314,7 +314,7 @@ export function RolesPermissionsPage() {
             <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">
               Permission Matrix
             </h3>
-            <div className="rounded-lg border border-theme-border bg-theme-card shadow-sm">
+            <div className="rounded-lg border border-theme-border bg-theme-card shadow-xs">
               <PermissionMatrix currentRole={currentRole} />
             </div>
           </section>

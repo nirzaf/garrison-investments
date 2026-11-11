@@ -40,7 +40,7 @@ export function ProfilePage() {
         </Link>
       </div>
 
-      <section className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-sm">
+      <section className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-xl font-semibold text-theme-text-primary">{user.full_name}</h3>
@@ -65,7 +65,7 @@ export function ProfilePage() {
         />
       </section>
 
-      <section className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-sm">
+      <section className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs">
         <h3 className="text-lg font-semibold text-theme-text-primary">Access permissions</h3>
         <div className="mt-4 flex flex-wrap gap-2">
           {permissions.length > 0 ? (

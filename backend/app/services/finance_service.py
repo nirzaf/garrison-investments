@@ -109,7 +109,7 @@ class FinanceService:
         offset: int,
     ) -> tuple[list[Invoice], int]:
         self.ensure_finance_access(actor)
-        query: Select[tuple[Invoice]] = (
+        query: Select[Invoice] = (
             select(Invoice)
             .where(Invoice.deleted_at.is_(None))
             .options(selectinload(Invoice.payments))

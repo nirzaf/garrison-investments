@@ -62,7 +62,7 @@ export function PasswordResetPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-theme-main px-4">
-      <section className="w-full max-w-md rounded-lg border border-theme-border bg-theme-card p-6 shadow-sm">
+      <section className="w-full max-w-md rounded-lg border border-theme-border bg-theme-card p-6 shadow-xs">
         <img
           alt="Garrisons Investments Pvt Ltd"
           className="h-auto w-full rounded-md border border-theme-border object-cover"

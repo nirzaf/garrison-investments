@@ -100,6 +100,27 @@ BUSINESS_TIMEZONE=Asia/Qatar
 4. The Operation Manager or delegated release approver signs off before production deployment.
 5. The production deployment runs `docker compose -f docker-compose.prod.yml up -d --build`, applies Alembic migrations, and checks `/health`.
 
+### Upgrade an existing PostgreSQL 16 database
+
+Fresh environments initialize PostgreSQL 18.6 automatically. For an existing environment,
+schedule a maintenance window and rehearse the migration in staging first. The PostgreSQL 18
+image mounts `pgdata` at `/var/lib/postgresql` and refuses to start when it detects the legacy
+PostgreSQL 16 data directory in that volume.
+
+1. Record the current Compose project, database volume, and deployed revision. Stop application,
+   worker, and Grafana writes before taking the final backups. Keep PostgreSQL 16 available to
+   create and verify dumps of both the application database and Grafana's database. Capture the
+   roles and grants needed to restore their ownership and permissions.
+2. Create a fresh volume for PostgreSQL 18 and select it in a Compose override by setting
+   `volumes.pgdata.name` to the new volume's name. Keep the same Compose project and include the
+   override in every command for the upgraded environment.
+3. Start PostgreSQL 18, provision the required roles and empty databases, then restore both
+   dumps. Use PostgreSQL 18 client tools and fail the restore on any SQL error.
+4. Check the Alembic revision, compare representative record counts and permissions with the
+   source, and verify the application and Grafana before resuming writes. Keep the PostgreSQL 16
+   volume and backups. Before reopening writes, rollback is the prior revision with its original
+   volume. After reopening writes, account for any new data before rolling back.
+
 ### Post-Deploy Verification
 
 Run these checks from the repository root on the deployment host:

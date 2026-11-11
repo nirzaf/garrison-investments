@@ -4,13 +4,12 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import get_settings
 from app.utils.exceptions import AppException, ErrorDetail
 
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _dev_private_pem = """-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDAthkEzasri5OW
 a54Xb1kAFDuvacVLfpwrBFMVVIj1l/lsSvp4fHi0vx+ZKvhWBGZDb+/lx8fiErZK
@@ -57,13 +56,19 @@ def utc_now() -> datetime:
 
 
 def hash_password(password: str) -> str:
-    return password_context.hash(password)
+    if "\x00" in password:
+        raise ValueError("Passwords cannot contain null characters")
+    # Existing Passlib bcrypt hashes use at most the first 72 UTF-8 bytes.
+    return bcrypt.hashpw(password.encode("utf-8")[:72], bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(password: str, password_hash: str | None) -> bool:
-    if not password_hash:
+    if not password_hash or "\x00" in password:
         return False
-    return password_context.verify(password, password_hash)
+    try:
+        return bcrypt.checkpw(password.encode("utf-8")[:72], password_hash.encode("ascii"))
+    except ValueError:
+        return False
 
 
 def hash_secret(value: str) -> str:

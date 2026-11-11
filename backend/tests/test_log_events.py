@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import io
+import json
+import socket
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
+import uvicorn
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
@@ -133,9 +137,9 @@ async def test_log_event_stream_returns_matching_events() -> None:
         )
         await session.commit()
 
-    async with create_async_client() as client:
+    async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
         admin_token = await login_for_token(client, admin_email, admin_password)
-        async with client.stream(
+        async with asyncio.timeout(10), client.stream(
             "GET",
             "/api/v1/log-events/stream",
             params={
@@ -147,7 +151,7 @@ async def test_log_event_stream_returns_matching_events() -> None:
             assert response.status_code == 200
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
-                    payload = httpx.Response(200, text=line.removeprefix("data: ")).json()
+                    payload = json.loads(line.removeprefix("data: "))
                     assert payload["action"] == "maintenance.logs_retention"
                     break
             else:
@@ -187,27 +191,22 @@ async def test_log_retention_archives_then_purges_old_logs() -> None:
         await session.commit()
 
 
-class CliTestClientAdapter:
-    def __init__(self, *, base_url: str, token: str | None = None):
-        self.client = TestClient(create_app(), base_url=base_url.rstrip("/"))
-        if token:
-            self.client.headers.update({"Authorization": f"Bearer {token}"})
-
-    def __enter__(self):
-        self.client.__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return self.client.__exit__(exc_type, exc, tb)
-
-    def post(self, *args, **kwargs):
-        return self.client.post(*args, **kwargs)
-
-    def get(self, *args, **kwargs):
-        return self.client.get(*args, **kwargs)
-
-    def stream(self, *args, **kwargs):
-        return self.client.stream(*args, **kwargs)
+@asynccontextmanager
+async def serve_test_api():
+    # A real socket lets clients disconnect from SSE and keeps database I/O on the test loop.
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        host, port = listener.getsockname()
+        server = uvicorn.Server(uvicorn.Config(create_app(), lifespan="off", log_config=None))
+        server_task = asyncio.create_task(server.serve(sockets=[listener]))
+        try:
+            async with asyncio.timeout(5):
+                while not server.started:
+                    await asyncio.sleep(0.01)
+            yield f"http://{host}:{port}"
+        finally:
+            server.should_exit = True
+            await asyncio.wait_for(server_task, timeout=5)
 
 
 async def test_log_cli_login_and_search() -> None:
@@ -226,40 +225,41 @@ async def test_log_cli_login_and_search() -> None:
         )
         await session.commit()
 
-    login_output = io.StringIO()
-    assert (
-        log_cli.run(
-            [
-                "--base-url",
-                "http://testserver",
-                "login",
-                "--email",
-                admin_email,
-                "--password",
-                admin_password,
-            ],
-            client_factory=CliTestClientAdapter,
-            stdout=login_output,
+    async with serve_test_api() as base_url:
+        login_output = io.StringIO()
+        assert (
+            await asyncio.to_thread(
+                log_cli.run,
+                [
+                    "--base-url",
+                    base_url,
+                    "login",
+                    "--email",
+                    admin_email,
+                    "--password",
+                    admin_password,
+                ],
+                stdout=login_output,
+            )
+            == 0
         )
-        == 0
-    )
-    token = login_output.getvalue().split("access_token=", 1)[1].splitlines()[0].strip()
+        token = login_output.getvalue().split("access_token=", 1)[1].splitlines()[0].strip()
 
-    search_output = io.StringIO()
-    assert (
-        log_cli.run(
-            [
-                "--base-url",
-                "http://testserver",
-                "--token",
-                token,
-                "search",
-                "--action",
-                "users.created",
-            ],
-            client_factory=CliTestClientAdapter,
-            stdout=search_output,
+        search_output = io.StringIO()
+        assert (
+            await asyncio.to_thread(
+                log_cli.run,
+                [
+                    "--base-url",
+                    base_url,
+                    "--token",
+                    token,
+                    "search",
+                    "--action",
+                    "users.created",
+                ],
+                stdout=search_output,
+            )
+            == 0
         )
-        == 0
-    )
-    assert "users.created" in search_output.getvalue()
+        assert "users.created" in search_output.getvalue()

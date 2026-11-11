@@ -285,7 +285,7 @@ export function ApprovalInboxPage() {
           <div className="grid gap-4">
             {genericApprovals.map((approval) => (
               <article
-                className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+                className={`rounded-lg border bg-theme-card p-4 shadow-xs ${
                   approval.id === focusedApprovalId
                     ? 'border-brand-600 ring-2 ring-brand-600/20'
                     : 'border-theme-border'
@@ -453,7 +453,7 @@ export function ApprovalInboxPage() {
         <div className="grid gap-4">
           {reports.map((report) => (
             <article
-              className={`rounded-lg border bg-theme-card p-4 shadow-sm ${
+              className={`rounded-lg border bg-theme-card p-4 shadow-xs ${
                 report.id === focusedReportId
                   ? 'border-brand-600 ring-2 ring-brand-600/20'
                   : 'border-theme-border'

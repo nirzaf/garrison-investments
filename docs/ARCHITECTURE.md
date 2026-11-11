@@ -59,7 +59,7 @@ Last synced with `graphify-out/` (commit `ed3f1cca`, report date 2026-05-28): 22
               |                       DATA LAYER                         |
               |                                                         |
               |  +------------------+  +------------------+              |
-              |  |  PostgreSQL 16   |  |  Redis 7          |              |
+              |  |  PostgreSQL 18.6   |  |  Redis 7          |              |
               |  |  (Primary)       |  |  (Cache, Queue,   |              |
               |  |                  |  |   Rate Limiter)   |              |
               |  +------------------+  +------------------+              |
@@ -120,14 +120,14 @@ Last synced with `graphify-out/` (commit `ed3f1cca`, report date 2026-05-28): 22
 | Forms | React Hook Form + Zod | Performant forms with schema validation |
 | Charts | Recharts | Declarative React charting |
 | HTTP Client | Axios | Interceptors, JWT refresh logic |
-| Backend Runtime | Python 3.12 | Backend container runtime (see `backend/Dockerfile`) |
+| Backend Runtime | Python 3.14 | Backend container runtime (see `backend/Dockerfile`) |
 | Backend Framework | FastAPI | Async API framework, auto OpenAPI |
-| ORM | SQLAlchemy 2.0 (async) + asyncpg | Async ORM and PostgreSQL driver |
+| ORM | SQLAlchemy 2.1 (async) + asyncpg | Async ORM and PostgreSQL driver |
 | Migrations | Alembic | Schema versioning, auto-generated from models |
 | Validation | Pydantic (via pydantic-settings) | Request/response schemas and settings |
 | Auth | python-jose + bcrypt | JWT signing, password hashing |
 | Task Queue | Celery 5 + Redis broker | Email, image, report, backup, and maintenance jobs |
-| Database | PostgreSQL 16 | Primary relational data store |
+| Database | PostgreSQL 18.6 | Primary relational data store |
 | Cache/Broker | Redis | Caching, Celery broker, rate-limit counters |
 | Object Storage | MinIO | S3-compatible self-hosted file storage |
 | Reverse Proxy | Nginx | TLS termination, static files, security headers |
@@ -1000,9 +1000,9 @@ services:
     depends_on: [redis]
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18.6-alpine
     environment: [POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD]
-    volumes: [pgdata:/var/lib/postgresql/data]
+    volumes: [pgdata:/var/lib/postgresql]
     ports: ["5432:5432"]
 
   redis:
@@ -1047,29 +1047,26 @@ sequencing, because none of the jobs depend on another's output.
 ```
 PULL REQUEST  /  PUSH TO main
     |
-    +--> [backend-static]     ruff check .  +  mypy .            (Python 3.12)
+    +--> [backend-static]     ruff check .  +  mypy .            (Python 3.14)
     |
     +--> [frontend]           npm ci -> lint -> api:types:check
-    |                         -> test (Vitest) -> build          (Node 20)
+    |                         -> test (Vitest) -> build          (Node 24)
     |
     +--> [compose-validate]   docker compose config --quiet for
     |                         docker-compose.prod.yml and
     |                         docker-compose.staging.yml
     |
-    +--> [backend-tests]      PostgreSQL 16 + Redis 7 service
-                              containers, MinIO started via
-                              docker run, then alembic upgrade
-                              head -> pytest -q -rs
+    +--> [backend-tests]      PostgreSQL 18.6, Redis 7, and Moto S3
+                              service containers -> alembic upgrade head
+                              -> pytest -q -rs
 ```
 
 The jobs mirror the local verification commands documented in `README.md`, so a
 clean local run predicts a clean CI run.
 
-`backend-tests` is deliberately marked `continue-on-error: true`. The database-backed
-tests skip themselves when PostgreSQL is unreachable, so they had never executed
-before this pipeline existed; the job stays advisory until it has been green once,
-then it is promoted to a required check. The other three jobs were verified clean
-before being introduced and are required immediately.
+`backend-tests` remains advisory (`continue-on-error: true`). Check its individual
+job result for integration test status. Database-backed tests skip when PostgreSQL
+is unreachable.
 
 Deployment is **not** automated. There is no deploy job, no environment gate, and no
 smoke-test stage. Staging and production releases are performed manually by the
@@ -1527,7 +1524,7 @@ garrison-investments/
 
 ### ADR-009: PostgreSQL Over MongoDB
 
-**Decision**: Use PostgreSQL 16 as the primary database, not MongoDB or another NoSQL store.
+**Decision**: Use PostgreSQL as the primary database, not MongoDB or another NoSQL store.
 
 **Rationale**:
 - The domain is inherently relational: projects have reports, reports have manpower entries, inventory has movements, users have roles
@@ -1543,7 +1540,7 @@ garrison-investments/
 
 | Technology | Version | Notes |
 |-----------|---------|-------|
-| Python | 3.12 | Backend Docker base image (`backend/Dockerfile`) |
+| Python | 3.14 | Backend Docker base image (`backend/Dockerfile`) |
 | FastAPI | 0.136.1 | `backend/requirements.txt` |
 | SQLAlchemy | 2.0.41 | `backend/requirements.txt` |
 | asyncpg | 0.30.0 | Async PostgreSQL driver (`backend/requirements.txt`) |

@@ -112,7 +112,10 @@ def create_app() -> FastAPI:
                 "/health",
                 "/health/readiness",
             }:
-                route = request.scope.get("route")
+                # Included routers keep the original relative route in scope["route"].
+                # The effective route includes prefixes and preserves path parameters.
+                route = request.scope.get("fastapi", {}).get("effective_route_context")
+                route = route or request.scope.get("route")
                 logger.info(
                     "http_request_completed",
                     event_type="api_request",

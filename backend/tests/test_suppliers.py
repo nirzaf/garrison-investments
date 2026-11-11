@@ -81,8 +81,8 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
         lambda self, object_key, data, content_type: None,
     )
     monkeypatch.setattr(
-        "app.services.supplier_service.SupplierService._client",
-        lambda self: FakeMinioClient(),
+        "app.services.supplier_service.minio_signed_url_client",
+        lambda settings: FakeMinioClient(),
     )
 
     async with create_test_client() as client:
