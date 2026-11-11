@@ -25,9 +25,8 @@ docker compose run --rm --no-deps --build backend alembic upgrade head
 docker compose up -d --build
 ```
 
-4. Load sample data (optional; creates the role-based demo users, projects, BOQ, inventory, and
-   finance records used for local walkthroughs). The script prints the seeded admin email and
-   temporary password when it finishes:
+4. Load sample data for local walkthroughs. Set `SEED_DEFAULT_PASSWORD` in `.env` to choose the
+   local demo password. The script prints the seeded admin email when it finishes:
 
 ```bash
 docker compose exec backend python scripts/seed.py

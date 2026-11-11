@@ -152,6 +152,18 @@ docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.
 
 Before starting production, create DNS for `GRAFANA_DOMAIN` and install a certificate whose SAN covers
 that hostname. The `grafana_db_init` and `loki_minio_init` jobs are idempotent and must exit successfully.
+
+On an empty production database, have the deployment operator create the approved first administrator
+after migrating the schema. Run from an interactive terminal:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python scripts/bootstrap_admin.py \
+  --email admin@example.com --full-name "Portal Administrator"
+```
+
+The command prompts for a temporary password, records the account creation, and requires the
+administrator to change the password after sign-in. Verify OTP delivery for the administrator as
+part of the launch check.
 Grafana, Loki, and Alloy must report healthy; none of their internal ports should be published.
 
 Before changing a running environment, run the repository checks:

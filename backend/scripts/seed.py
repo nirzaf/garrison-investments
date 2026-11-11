@@ -47,11 +47,10 @@ from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.storage_service import minio_client
-from app.utils.security import hash_password
+from app.utils.security import hash_password, validate_password_policy
 
 DEFAULT_ADMIN_EMAIL = "admin.test@garrisons.lk"
-DEFAULT_PASSWORD = os.getenv("SEED_DEFAULT_PASSWORD") or "ChangeMe123!"
-DEFAULT_ADMIN_PASSWORD = DEFAULT_PASSWORD
+LOCAL_DEMO_PASSWORD = "ChangeMe123!"
 SEED_JPEG_BYTES = base64.b64decode(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////"
     "////////////////////////////////////////////2wBDAf//////////////////////////////"
@@ -478,6 +477,16 @@ SEED_LOCATIONS = [
 
 
 async def seed_launch_data() -> None:
+    environment = get_settings().app_env.strip().lower()
+    if environment not in {"development", "local", "test", "staging"}:
+        raise SystemExit("Demo data can only be seeded in development, test, or staging.")
+
+    password = os.getenv("SEED_DEFAULT_PASSWORD")
+    if environment == "staging" and (not password or password == LOCAL_DEMO_PASSWORD):
+        raise SystemExit("Set a unique SEED_DEFAULT_PASSWORD before seeding staging.")
+    password = password or LOCAL_DEMO_PASSWORD
+    validate_password_policy(password)
+
     async with AsyncSessionLocal() as session:
         users = UserRepository(session)
         legacy_admin = await users.get_by_email("admin@garrisons.local")
@@ -485,7 +494,7 @@ async def seed_launch_data() -> None:
             legacy_admin.employee_code = "LEGACY-ADMIN-001"
             legacy_admin.is_active = False
 
-        seed_password_hash = hash_password(DEFAULT_PASSWORD)
+        seed_password_hash = hash_password(password)
         created_users = 0
         updated_users = 0
         for seed_user in SEED_USERS:
@@ -696,7 +705,6 @@ async def seed_launch_data() -> None:
         print(f"Seeded users: {created_users} created, {updated_users} updated")
         print(f"Seeded projects: {created_projects} created, {updated_projects} updated")
         print(f"Admin user: {DEFAULT_ADMIN_EMAIL}")
-        print(f"Temporary password: {DEFAULT_ADMIN_PASSWORD}")
 
 
 async def seed_suppliers(session, user_by_email: dict) -> dict[str, Supplier]:
