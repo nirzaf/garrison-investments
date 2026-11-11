@@ -63,7 +63,7 @@ class AuthService:
         self.email = EmailService()
 
     async def login(self, email: str, password: str, meta: RequestMeta) -> OtpChallengeResult:
-        user = await self.users.get_by_email(email)
+        user = await self.users.get_by_email(email, for_update=True)
         if not user or not user.is_active or not verify_password(password, user.password_hash):
             if user:
                 await self._register_failed_login(user, meta)
@@ -108,7 +108,7 @@ class AuthService:
         )
 
     async def verify_otp(self, challenge_id: UUID, otp: str, meta: RequestMeta) -> SessionResult:
-        challenge = await self.auth.get_otp_challenge(challenge_id, for_update=True)
+        challenge, user = await self._get_otp_for_update(challenge_id)
         now = utc_now()
         max_attempts = self.settings.auth_failed_attempt_limit
         if not challenge or challenge.attempts >= max_attempts:
@@ -132,7 +132,6 @@ class AuthService:
             await self.session.commit()
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
-        user = await self.users.get_by_id(challenge.user_id)
         if not user or not user.is_active:
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
@@ -151,19 +150,19 @@ class AuthService:
         return result
 
     async def refresh(self, refresh_token: str, meta: RequestMeta) -> SessionResult:
-        token = await self.auth.get_refresh_token_by_hash(
-            hash_secret(refresh_token),
-            for_update=True,
-        )
+        token_hash = hash_secret(refresh_token)
+        token = await self.auth.get_refresh_token_by_hash(token_hash)
+        user = await self.users.get_by_id(token.user_id, for_update=True) if token else None
+        if user:
+            token = await self.auth.get_refresh_token_by_hash(token_hash, for_update=True)
         now = utc_now()
-        if not token or token.revoked_at or token.expires_at <= now:
-            raise AppException(
-                "Refresh session is invalid or expired.",
-                status_code=401,
-                error_code="REFRESH_TOKEN_INVALID",
-            )
-        user = await self.users.get_by_id(token.user_id)
-        if not user or not user.is_active:
+        if (
+            not user
+            or not user.is_active
+            or not token
+            or token.revoked_at
+            or token.expires_at <= now
+        ):
             raise AppException(
                 "Refresh session is invalid or expired.",
                 status_code=401,
@@ -212,15 +211,21 @@ class AuthService:
         new_password: str,
         meta: RequestMeta,
     ) -> None:
-        if not verify_password(current_password, user.password_hash):
+        locked_user = await self.users.get_by_id(user.id, for_update=True)
+        if (
+            not locked_user
+            or not locked_user.is_active
+            or not verify_password(current_password, locked_user.password_hash)
+        ):
             raise AppException(
                 "Current password is incorrect.",
                 status_code=400,
                 error_code="CURRENT_PASSWORD_INCORRECT",
             )
         validate_password_policy(new_password)
-        user.password_hash = hash_password(new_password)
-        user.must_change_password = False
+        locked_user.password_hash = hash_password(new_password)
+        locked_user.must_change_password = False
+        await self.auth.revoke_user_authentication(locked_user.id)
         await self.audit.record(
             action="auth.password_changed",
             user_id=user.id,
@@ -234,7 +239,7 @@ class AuthService:
         email: str,
         meta: RequestMeta,
     ) -> OtpChallengeResult | None:
-        user = await self.users.get_by_email(email)
+        user = await self.users.get_by_email(email, for_update=True)
         if not user or not user.is_active:
             return None
         otp = generate_otp()
@@ -302,7 +307,7 @@ class AuthService:
         meta: RequestMeta,
     ) -> None:
         validate_password_policy(new_password)
-        challenge = await self.auth.get_otp_challenge(challenge_id, for_update=True)
+        challenge, user = await self._get_otp_for_update(challenge_id)
         now = utc_now()
         max_attempts = self.settings.auth_failed_attempt_limit
         if not challenge or challenge.attempts >= max_attempts:
@@ -326,7 +331,6 @@ class AuthService:
                 status_code=401,
                 error_code="PASSWORD_RESET_FAILED",
             )
-        user = await self.users.get_by_id(challenge.user_id)
         if not user or not user.is_active:
             raise AppException(
                 "Invalid or expired password reset code.",
@@ -338,6 +342,7 @@ class AuthService:
         user.must_change_password = False
         user.failed_login_attempts = 0
         user.locked_until = None
+        await self.auth.revoke_user_authentication(user.id)
         await self.audit.record(
             action="auth.password_reset_completed",
             user_id=user.id,
@@ -345,6 +350,17 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
+
+    async def _get_otp_for_update(
+        self, challenge_id: UUID
+    ) -> tuple[AuthOtpChallenge | None, User | None]:
+        challenge = await self.auth.get_otp_challenge(challenge_id)
+        if not challenge:
+            return None, None
+        user = await self.users.get_by_id(challenge.user_id, for_update=True)
+        if not user:
+            return None, None
+        return await self.auth.get_otp_challenge(challenge_id, for_update=True), user
 
     async def _register_failed_login(self, user: User, meta: RequestMeta) -> None:
         user.failed_login_attempts += 1

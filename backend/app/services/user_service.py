@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.repositories.auth_repository import AuthRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserUpdateRequest
 from app.services.audit_service import AuditService
@@ -16,6 +17,7 @@ class UserService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.users = UserRepository(session)
+        self.auth = AuthRepository(session)
         self.audit = AuditService(session)
 
     async def list_users(
@@ -138,12 +140,13 @@ class UserService:
                 status_code=409,
                 error_code="SELF_PASSWORD_RESET_BLOCKED",
             )
-        user = await self.users.get_by_id(user_id)
+        user = await self.users.get_by_id(user_id, for_update=True)
         if not user:
             raise NotFoundException("User")
         validate_password_policy(payload.new_password)
         user.password_hash = hash_password(payload.new_password)
         user.must_change_password = True
+        await self.auth.revoke_user_authentication(user.id)
         await self.audit.record(
             action="users.password_reset_by_admin",
             user_id=actor.id,

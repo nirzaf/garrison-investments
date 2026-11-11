@@ -10,17 +10,18 @@ class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_by_email(self, email: str) -> User | None:
-        result = await self.session.execute(
-            select(User).where(User.email == email.lower(), User.deleted_at.is_(None))
-        )
-        return result.scalar_one_or_none()
+    async def get_by_email(self, email: str, *, for_update: bool = False) -> User | None:
+        query = select(User).where(User.email == email.lower(), User.deleted_at.is_(None))
+        return await self._get(query, for_update)
 
-    async def get_by_id(self, user_id: UUID) -> User | None:
-        result = await self.session.execute(
-            select(User).where(User.id == user_id, User.deleted_at.is_(None))
-        )
-        return result.scalar_one_or_none()
+    async def get_by_id(self, user_id: UUID, *, for_update: bool = False) -> User | None:
+        query = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+        return await self._get(query, for_update)
+
+    async def _get(self, query: Select[User], for_update: bool) -> User | None:
+        if for_update:
+            query = query.with_for_update(key_share=True).execution_options(populate_existing=True)
+        return await self.session.scalar(query)
 
     async def list_users(
         self,
