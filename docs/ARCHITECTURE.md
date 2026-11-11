@@ -1341,7 +1341,7 @@ garrison-investments/
 │       ├── launch_evidence.py         # Launch evidence capture
 │       ├── log_cli.py                 # Remote log search / tail CLI
 │       ├── generate_assets.py
-│       ├── generate_missing_reports.py
+│       ├── dev/generate_missing_reports.py
 │       ├── push_to_storage.py
 │       └── validate_import_sources.py
 │

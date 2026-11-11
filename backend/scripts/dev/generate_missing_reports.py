@@ -1,11 +1,12 @@
-"""Generate missing daily reports for all active projects.
+"""Generate demo daily reports for all active projects in a development database.
 
 Run from the backend directory:
-    python scripts/generate_missing_reports.py
+    python scripts/dev/generate_missing_reports.py --fabricate-demo-data
 
 Targets 2026-05-28 (the date flagged as missing by check_late_reports).
 """
 
+import argparse
 import asyncio
 import sys
 from datetime import date
@@ -13,10 +14,11 @@ from decimal import Decimal
 from pathlib import Path
 from random import choice, randint
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.daily_report import (
     DailyReport,
@@ -123,6 +125,8 @@ def _random_materials():
 
 
 async def main():
+    if get_settings().app_env.strip().lower() not in {"development", "local", "test"}:
+        raise SystemExit("Demo report generation is restricted to development, local, and test.")
     async with AsyncSessionLocal() as session:
         # Fetch all active, non-deleted projects
         projects = (
@@ -240,4 +244,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fabricate-demo-data", action="store_true", required=True)
+    parser.parse_args()
     asyncio.run(main())

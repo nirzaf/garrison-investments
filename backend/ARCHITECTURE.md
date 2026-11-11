@@ -122,7 +122,7 @@ backend/
 ├── scripts/              # Operational scripts
 │   ├── backup.py
 │   ├── generate_assets.py
-│   ├── generate_missing_reports.py
+│   ├── dev/generate_missing_reports.py
 │   ├── health_monitor.py
 │   ├── launch_evidence.py
 │   ├── log_cli.py        # Remote log search / tail CLI
