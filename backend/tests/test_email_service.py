@@ -1,3 +1,4 @@
+import smtplib
 from unittest.mock import Mock, patch
 
 import httpx
@@ -5,11 +6,11 @@ import pytest
 from pydantic import HttpUrl, SecretStr
 
 from app.config import Settings
-from app.services.email_service import EmailService
+from app.services.email_service import EmailDeliveryError, EmailService
 
 
-@pytest.mark.parametrize(("status", "expected"), [(200, 1), (401, 0)])
-def test_usesend_sends_text_and_checks_provider_response(status: int, expected: int) -> None:
+@pytest.mark.parametrize("status", [200, 401])
+def test_usesend_sends_text_and_checks_provider_response(status: int) -> None:
     endpoint = "https://mail.example.com/api/v1/emails"
     with patch(
         "app.services.email_service.get_settings",
@@ -22,9 +23,14 @@ def test_usesend_sends_text_and_checks_provider_response(status: int, expected: 
         service = EmailService()
     response = httpx.Response(status, request=httpx.Request("POST", endpoint))
     with patch("app.services.email_service.httpx.post", return_value=response) as post:
-        result = service.send(recipients=["test@example.com"], subject="Subject", body="Body")
+        if status == 200:
+            assert (
+                service.send(recipients=["test@example.com"], subject="Subject", body="Body") == 1
+            )
+        else:
+            with pytest.raises(EmailDeliveryError, match="useSend rejected"):
+                service.send(recipients=["test@example.com"], subject="Subject", body="Body")
 
-    assert result == expected
     post.assert_called_once_with(
         endpoint,
         headers={"Authorization": "Bearer test-key"},
@@ -47,5 +53,18 @@ def test_usesend_never_sends_key_to_unencrypted_endpoint() -> None:
         service = EmailService()
     post = Mock()
     with patch("app.services.email_service.httpx.post", post):
-        assert service.send(recipients=["test@example.com"], subject="Subject", body="Body") == 0
+        with pytest.raises(EmailDeliveryError, match="useSend is not configured"):
+            service.send(recipients=["test@example.com"], subject="Subject", body="Body")
     post.assert_not_called()
+
+
+def test_smtp_failure_raises_a_transport_error() -> None:
+    with (
+        patch("app.services.email_service.get_settings", return_value=Settings()),
+        patch(
+            "app.services.email_service.smtplib.SMTP",
+            side_effect=smtplib.SMTPConnectError(421, b"Service unavailable"),
+        ),
+        pytest.raises(EmailDeliveryError, match="SMTP delivery failed"),
+    ):
+        EmailService().send(recipients=["test@example.com"], subject="Subject", body="Body")

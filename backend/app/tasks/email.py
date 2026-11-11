@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 import structlog
@@ -7,7 +8,7 @@ from app.database import AsyncSessionLocal
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.report_export_repository import ReportExportRepository
 from app.repositories.user_repository import UserRepository
-from app.services.email_service import EmailService
+from app.services.email_service import EmailDeliveryError, EmailService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.security import utc_now
@@ -54,11 +55,14 @@ async def _send_email_notification(notification_id: str) -> str:
             return "notification recipient not found"
 
         try:
-            delivered = EmailService().send(
+            delivered = await asyncio.to_thread(
+                EmailService().send,
                 recipients=[user.email],
                 subject=notification.title,
                 body=notification.body,
             )
+            if delivered <= 0:
+                raise EmailDeliveryError("No notification recipient accepted the email.")
         except Exception:
             notification.email_status = "failed"
             await session.commit()
@@ -99,7 +103,8 @@ async def _send_report_email(export_id: str) -> str:
             return "report email skipped"
 
         try:
-            delivered = EmailService().send(
+            delivered = await asyncio.to_thread(
+                EmailService().send,
                 recipients=recipients,
                 subject=f"Daily report export ready: {export.file_name}",
                 body=(
@@ -109,6 +114,8 @@ async def _send_report_email(export_id: str) -> str:
                     f"Content type: {export.content_type}\n"
                 ),
             )
+            if delivered <= 0:
+                raise EmailDeliveryError("No report recipient accepted the email.")
         except Exception as exc:
             export.email_status = "failed"
             export.email_error = str(exc)

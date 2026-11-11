@@ -8,6 +8,7 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.email_service import EmailDeliveryError
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -268,6 +269,7 @@ async def test_generic_login_otp_is_ignored_outside_staging(monkeypatch) -> None
     monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
     # The real code is never echoed in production, so pin it to complete a valid login.
     monkeypatch.setattr("app.services.auth_service.generate_otp", lambda: "135790")
+    monkeypatch.setattr("app.services.auth_service.EmailService.send", lambda *_args, **_kwargs: 1)
 
     async with create_test_client() as client:
         login_response = await client.post(
@@ -300,6 +302,7 @@ async def test_dev_otp_is_never_exposed_in_staging(monkeypatch) -> None:
 
     custom_settings = Settings(app_env="staging", dev_expose_otp=True)
     monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
+    monkeypatch.setattr("app.services.auth_service.EmailService.send", lambda *_args, **_kwargs: 1)
 
     async with create_test_client() as client:
         login_response = await client.post(
@@ -309,6 +312,28 @@ async def test_dev_otp_is_never_exposed_in_staging(monkeypatch) -> None:
 
         assert login_response.status_code == 200
         assert login_response.json()["dev_otp"] is None
+
+
+async def test_auth_returns_service_unavailable_when_otp_delivery_fails(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    email = f"otp-mail-{uuid4().hex}@example.com"
+    await create_test_user(email=email)
+    settings = Settings(app_env="production", dev_expose_otp=True)
+    monkeypatch.setattr("app.services.auth_service.get_settings", lambda: settings)
+
+    def reject_delivery(*_args, **_kwargs):
+        raise EmailDeliveryError("Provider unavailable.")
+
+    monkeypatch.setattr("app.services.auth_service.EmailService.send", reject_delivery)
+    async with create_test_client() as client:
+        responses = [
+            await client.post("/api/v1/auth/login", json={"email": email, "password": "Start123!"}),
+            await client.post("/api/v1/auth/password-reset/request", json={"email": email}),
+        ]
+    for response in responses:
+        assert response.status_code == 503
+        assert response.json()["error_code"] == "EMAIL_DELIVERY_UNAVAILABLE"
+        assert "challenge_id" not in response.json()
 
 
 async def test_auth_rate_limit_blocks_repeated_login_attempts(monkeypatch) -> None:

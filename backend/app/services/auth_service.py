@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
@@ -10,7 +11,7 @@ from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
-from app.services.email_service import EmailService
+from app.services.email_service import EmailDeliveryError, EmailService
 from app.utils.exceptions import AppException
 from app.utils.security import (
     create_access_token,
@@ -92,8 +93,9 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
-        self.email.send(
-            recipients=[user.email],
+        await self._send_otp(
+            challenge,
+            recipient=user.email,
             subject="Your Verification Code",
             body=(
                 f"Your verification code is: {otp}\n\n"
@@ -251,8 +253,9 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
-        self.email.send(
-            recipients=[user.email],
+        await self._send_otp(
+            challenge,
+            recipient=user.email,
             subject="Password Reset Code",
             body=(
                 f"Your password reset code is: {otp}\n\n"
@@ -263,6 +266,33 @@ class AuthService:
             challenge=challenge,
             otp=otp if self.settings.should_expose_dev_otp else None,
         )
+
+    async def _send_otp(
+        self,
+        challenge: AuthOtpChallenge,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+    ) -> None:
+        try:
+            delivered = await asyncio.to_thread(
+                self.email.send, recipients=[recipient], subject=subject, body=body
+            )
+            if delivered <= 0:
+                raise EmailDeliveryError("No recipient accepted the OTP email.")
+        except EmailDeliveryError:
+            if self.settings.should_expose_dev_otp or (
+                challenge.purpose == "login" and self.settings.staging_login_otp_enabled
+            ):
+                return
+            challenge.consumed_at = utc_now()
+            await self.session.commit()
+            raise AppException(
+                "Email delivery is unavailable. Try again shortly.",
+                status_code=503,
+                error_code="EMAIL_DELIVERY_UNAVAILABLE",
+            ) from None
 
     async def confirm_password_reset(
         self,

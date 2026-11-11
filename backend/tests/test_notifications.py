@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal, engine
 from app.models.notification import Notification
 from app.repositories.user_repository import UserRepository
+from app.services.email_service import EmailDeliveryError
 from app.services.notification_service import NotificationService
 from app.tasks.email import _send_email_notification, send_email_notification
 from app.tasks.maintenance import _cleanup_old_notifications
@@ -119,7 +120,10 @@ async def test_report_submission_and_decision_create_notifications() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notification_email_updates_status_when_delivery_succeeds(monkeypatch) -> None:
+@pytest.mark.parametrize("accepted", [0, 1])
+async def test_notification_email_status_reflects_provider_acceptance(
+    monkeypatch, accepted
+) -> None:
     await skip_if_database_unavailable()
     user_email, _ = await create_user("project_manager")
 
@@ -142,13 +146,16 @@ async def test_notification_email_updates_status_when_delivery_succeeds(monkeypa
         sent_payload["recipients"] = recipients
         sent_payload["subject"] = subject
         sent_payload["body"] = body
-        return len(recipients)
+        return accepted
 
     monkeypatch.setattr("app.tasks.email.EmailService.send", fake_send)
 
-    result = await _send_email_notification(str(notification.id))
-
-    assert result == "notification email sent to 1 recipient"
+    if accepted:
+        result = await _send_email_notification(str(notification.id))
+        assert result == "notification email sent to 1 recipient"
+    else:
+        with pytest.raises(EmailDeliveryError):
+            await _send_email_notification(str(notification.id))
     assert sent_payload["recipients"] == [user_email]
     assert sent_payload["subject"] == "Approval required"
 
@@ -157,7 +164,7 @@ async def test_notification_email_updates_status_when_delivery_succeeds(monkeypa
             select(Notification).where(Notification.id == notification.id)
         )
         assert refreshed is not None
-        assert refreshed.email_status == "sent"
+        assert refreshed.email_status == ("sent" if accepted else "failed")
 
 
 def test_send_email_notification_requires_notification_id() -> None:
