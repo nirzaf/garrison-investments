@@ -30,6 +30,7 @@ from app.utils.permissions import (
     ROLE_PROJECT_MANAGER,
 )
 from app.utils.security import utc_now
+from app.utils.time import business_today
 
 REPORT_STATUSES = {"draft", "submitted", "approved", "rejected"}
 IDEMPOTENCY_ROUTE = "reports.create"
@@ -567,7 +568,7 @@ class ReportService:
     def _validate_report_date(self, report_date, actor: User) -> None:
         if actor.role == ROLE_ADMIN:
             return
-        if report_date < utc_now().date():
+        if report_date < business_today():
             raise AppException(
                 "Past-dated daily reports require Admin submission.",
                 status_code=422,

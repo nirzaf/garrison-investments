@@ -21,6 +21,7 @@ from app.utils.permissions import (
     ROLE_PROJECT_MANAGER,
 )
 from app.utils.security import utc_now
+from app.utils.time import business_today
 
 SUPERVISOR_UPDATE_STATUSES = {"draft", "submitted", "verified", "rejected"}
 
@@ -198,7 +199,7 @@ class ReportingService:
             ROLE_PROJECT_MANAGER,
             ROLE_CIVIL_ENGINEER,
         }
-        is_previous_date = payload.update_date < (utc_now().date() - timedelta(days=1))
+        is_previous_date = payload.update_date < (business_today() - timedelta(days=1))
         if is_previous_date and actor.role not in allowed_roles:
             raise AppException(
                 "Previous-date supervisor updates require admin approval.",

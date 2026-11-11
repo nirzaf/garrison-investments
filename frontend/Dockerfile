@@ -8,6 +8,7 @@ RUN npm ci
 COPY . .
 
 ARG VITE_API_BASE_URL
+ARG VITE_BUSINESS_TIMEZONE
 RUN npm run build
 
 FROM alpine:3.23 AS dist

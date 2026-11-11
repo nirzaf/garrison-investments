@@ -28,11 +28,20 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
-const today = new Date().toISOString().slice(0, 10);
+function businessDate() {
+  const now = new Date();
+  const timeZone = import.meta.env.VITE_BUSINESS_TIMEZONE || 'Asia/Qatar';
+  try {
+    return now.toLocaleDateString('en-CA', { timeZone });
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    return now.toISOString().slice(0, 10);
+  }
+}
 
 const emptyPayload: DailyReportPayload = {
   project_id: '',
-  report_date: today,
+  report_date: '',
   work_location: '',
   manpower_total: 0,
   overtime_hours: '0',
@@ -58,6 +67,10 @@ const emptyPayload: DailyReportPayload = {
     wir_number: ''
   }
 };
+
+function createEmptyPayload(): DailyReportPayload {
+  return { ...emptyPayload, report_date: businessDate() };
+}
 
 type ReportExtraField =
   'day_type' | 'weather_condition' | 'site_visitors' | 'subcontractors' | 'wir_number';
@@ -94,7 +107,7 @@ function formHasDraftContent(payload: DailyReportPayload) {
     payload.delay_notes?.trim() ||
     payload.next_day_plan.trim() ||
     payload.safety_notes?.trim() ||
-    payload.report_date !== today ||
+    payload.report_date !== businessDate() ||
     payload.progress_percentage !== emptyPayload.progress_percentage ||
     payload.safety_incidents !== emptyPayload.safety_incidents ||
     payload.supervisor_update_ids.length > 0 ||
@@ -122,7 +135,7 @@ export function DailyReportPage() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [reports, setReports] = useState<DailyReportRecord[]>([]);
-  const [form, setForm] = useState<DailyReportPayload>(emptyPayload);
+  const [form, setForm] = useState(createEmptyPayload);
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
@@ -137,8 +150,8 @@ export function DailyReportPage() {
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
-  const persistedDraftSnapshot = useRef(JSON.stringify(emptyPayload));
-  const serverSavedSnapshot = useRef(JSON.stringify(emptyPayload));
+  const persistedDraftSnapshot = useRef(JSON.stringify(form));
+  const serverSavedSnapshot = useRef(JSON.stringify(form));
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === form.project_id),
@@ -181,7 +194,7 @@ export function DailyReportPage() {
     if (!formHasDraftContent(form)) {
       const timer = window.setTimeout(() => {
         void clearReportDraft().then(() => {
-          persistedDraftSnapshot.current = JSON.stringify(emptyPayload);
+          persistedDraftSnapshot.current = snapshot;
           setDraftStatus('idle');
         });
       }, 800);
@@ -336,13 +349,14 @@ export function DailyReportPage() {
     setNotice(null);
     try {
       const report = await submitDailyReport(reportId);
-      setForm(emptyPayload);
+      const resetForm = createEmptyPayload();
+      setForm(resetForm);
       setPhotoNames('');
       setAttachmentNames('');
       setSavedReportId(null);
       await clearReportDraft();
-      serverSavedSnapshot.current = JSON.stringify(emptyPayload);
-      persistedDraftSnapshot.current = JSON.stringify(emptyPayload);
+      serverSavedSnapshot.current = JSON.stringify(resetForm);
+      persistedDraftSnapshot.current = JSON.stringify(resetForm);
       setDraftStatus('idle');
       setNotice(`Daily report ${report.report_number} submitted.`);
       await loadReports(report.project_id);

@@ -11,6 +11,7 @@ services:
       target: dist
       args:
         VITE_API_BASE_URL: /api/v1
+        VITE_BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     command: ["/bin/sh", "-ec", "cp -a /dist/. /usr/share/nginx/html/"]
     restart: "no"
     volumes:

@@ -8,7 +8,8 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password, utc_now
+from app.utils.security import hash_password
+from app.utils.time import business_today
 
 pytestmark = pytest.mark.asyncio
 
@@ -122,7 +123,7 @@ async def test_supervisor_can_create_and_submit_update_for_assigned_project() ->
         project, supervisor_token, engineer_token = await setup_assigned_supervisor_project(client)
         payload = {
             "project_id": project["id"],
-            "update_date": str(utc_now().date()),
+            "update_date": str(business_today()),
             "day_type": "weekday",
             "work_location": "Zone A",
             "attendance_count": 12,
@@ -167,7 +168,7 @@ async def test_supervisor_can_autosave_existing_draft_update() -> None:
         project, supervisor_token, _ = await setup_assigned_supervisor_project(client)
         payload = {
             "project_id": project["id"],
-            "update_date": str(utc_now().date()),
+            "update_date": str(business_today()),
             "day_type": "weekday",
             "work_location": "Zone A",
             "attendance_count": 12,
@@ -215,7 +216,7 @@ async def test_unassigned_supervisor_cannot_create_update() -> None:
             "/api/v1/supervisor-updates",
             json={
                 "project_id": project["id"],
-                "update_date": str(utc_now().date()),
+                "update_date": str(business_today()),
                 "work_location": "Zone B",
                 "attendance_count": 5,
                 "progress_notes": "Started cleanup.",
@@ -236,7 +237,7 @@ async def test_previous_date_update_is_blocked_for_supervisor() -> None:
             "/api/v1/supervisor-updates",
             json={
                 "project_id": project["id"],
-                "update_date": str(utc_now().date() - timedelta(days=3)),
+                "update_date": str(business_today() - timedelta(days=3)),
                 "work_location": "Zone C",
                 "attendance_count": 5,
                 "progress_notes": "Late entry.",

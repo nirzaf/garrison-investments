@@ -12,7 +12,8 @@ from app.models.report_export import ReportExport
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.tasks.email import _send_report_email
-from app.utils.security import hash_password, utc_now
+from app.utils.security import hash_password
+from app.utils.time import business_today
 
 pytestmark = pytest.mark.asyncio
 
@@ -138,7 +139,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
             "/api/v1/supervisor-updates",
             json={
                 "project_id": project["id"],
-                "update_date": str(utc_now().date()),
+                "update_date": str(business_today()),
                 "day_type": "weekday",
                 "work_location": "Zone A",
                 "attendance_count": 8,
@@ -167,7 +168,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
 def report_payload(project_id: str, supervisor_update_id: str | None = None) -> dict:
     return {
         "project_id": project_id,
-        "report_date": str(utc_now().date()),
+        "report_date": str(business_today()),
         "work_location": "Zone A",
         "manpower_total": 18,
         "overtime_hours": "2.5",

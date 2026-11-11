@@ -1,5 +1,4 @@
 from datetime import time, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from sqlalchemy import select
@@ -19,6 +18,7 @@ from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
+from app.utils.time import business_now
 
 logger = structlog.get_logger("celery.task")
 
@@ -105,9 +105,8 @@ def check_late_reports() -> str:
 
 async def _check_late_reports() -> str:
     cutoff = time(hour=10)
-    settings = get_settings()
     now = utc_now()
-    local_now = _business_now(settings.business_timezone)
+    local_now = business_now()
     if local_now.time() < cutoff:
         return "late report cutoff has not passed"
 
@@ -169,13 +168,6 @@ async def _check_late_reports() -> str:
             )
         await session.commit()
     return f"{missing_count} late daily report alerts recorded"
-
-
-def _business_now(timezone_name: str):
-    try:
-        return utc_now().astimezone(ZoneInfo(timezone_name))
-    except ZoneInfoNotFoundError:
-        return utc_now()
 
 
 @celery_app.task(

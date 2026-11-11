@@ -12,8 +12,8 @@ from app.models.user import User
 from app.services.document_service import MAX_DOCUMENT_SIZE, DocumentService
 from app.services.finance_service import MAX_INVOICE_FILE_SIZE, FinanceService
 from app.services.import_service import ImportService
-from app.tasks.maintenance import _business_now
 from app.utils.exceptions import AppException, NotFoundException
+from app.utils.time import business_now, business_today
 
 pil_module = ModuleType("PIL")
 pil_image_module = ModuleType("PIL.Image")
@@ -365,16 +365,23 @@ def test_business_now_falls_back_to_utc_when_timezone_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     frozen = datetime(2026, 5, 30, 7, 15, tzinfo=UTC)
-    monkeypatch.setattr("app.tasks.maintenance.utc_now", lambda: frozen)
+    monkeypatch.setattr("app.utils.time.utc_now", lambda: frozen)
+    monkeypatch.setattr(
+        "app.utils.time.get_settings", lambda: SimpleNamespace(business_timezone="Invalid/Zone")
+    )
 
-    assert _business_now("Invalid/Zone") == frozen
+    assert business_now() == frozen
 
 
 def test_business_now_uses_configured_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
-    frozen = datetime(2026, 5, 30, 7, 15, tzinfo=UTC)
-    monkeypatch.setattr("app.tasks.maintenance.utc_now", lambda: frozen)
+    frozen = datetime(2026, 5, 30, 22, 15, tzinfo=UTC)
+    monkeypatch.setattr("app.utils.time.utc_now", lambda: frozen)
+    monkeypatch.setattr(
+        "app.utils.time.get_settings", lambda: SimpleNamespace(business_timezone="Asia/Qatar")
+    )
 
-    local_now = _business_now("Asia/Qatar")
+    local_now = business_now()
 
-    assert local_now.hour == 10
+    assert local_now.hour == 1
     assert local_now.tzinfo is not None
+    assert business_today().isoformat() == "2026-05-31"
