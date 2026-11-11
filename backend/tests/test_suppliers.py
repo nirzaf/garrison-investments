@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import httpx
@@ -187,3 +187,48 @@ async def test_supplier_tds_expiry_reminder_notifies_accounts_and_operations() -
         recipient_ids = {notification.user_id for notification in notifications}
         assert accounts.id in recipient_ids
         assert operation_manager.id in recipient_ids
+
+
+async def test_supplier_tds_expiry_window_uses_the_business_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M9: just after local midnight the UTC date is still yesterday in Qatar."""
+    await skip_if_database_unavailable()
+    accounts, _ = await create_user("accounts")
+    # 2026-11-11T22:00Z is 2026-11-12T01:00 in Asia/Qatar (UTC+3).
+    frozen = datetime(2026, 11, 11, 22, 0, tzinfo=UTC)
+    monkeypatch.setattr("app.tasks.maintenance.utc_now", lambda: frozen)
+    monkeypatch.setattr("app.utils.time.utc_now", lambda: frozen)
+
+    async with AsyncSessionLocal() as session:
+        supplier = Supplier(
+            name=f"Boundary Supplier {uuid4().hex[:6]}",
+            category="Civil",
+            rating="A",
+            payment_terms="30 days",
+            contact_person="Compliance Contact",
+            phone="+97455550888",
+            email=f"boundary-{uuid4().hex}@example.com",
+            address="Doha",
+            tax_registration_number=f"TAX-{uuid4().hex[:8]}",
+            tds_certificate_number="TDS-BOUNDARY",
+            # Exactly 30 days after the business date, one day after the UTC date.
+            tds_expiry_date=date(2026, 12, 12),
+            compliance_status="compliant",
+        )
+        session.add(supplier)
+        await session.commit()
+        await session.refresh(supplier)
+        supplier_id = supplier.id
+
+    await _check_supplier_tds_expiry()
+
+    async with AsyncSessionLocal() as session:
+        notified = await session.scalar(
+            select(Notification).where(
+                Notification.title == "Supplier TDS expiring",
+                Notification.reference_id == supplier_id,
+                Notification.user_id == accounts.id,
+            )
+        )
+    assert notified is not None, "the 30-day window was anchored to the UTC date"

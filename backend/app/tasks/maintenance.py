@@ -18,7 +18,7 @@ from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
-from app.utils.time import business_now
+from app.utils.time import business_now, business_today
 
 logger = structlog.get_logger("celery.task")
 
@@ -184,7 +184,7 @@ def check_supplier_tds_expiry() -> str:
 
 
 async def _check_supplier_tds_expiry() -> str:
-    today = utc_now().date()
+    today = business_today()
     expiry_cutoff = today + timedelta(days=30)
     async with AsyncSessionLocal() as session:
         suppliers = list(
