@@ -147,10 +147,10 @@ pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 
 | Job | Runtime | Steps | Failure blocks? |
 |---|---|---|---|
-| `backend-static` | Python 3.14 | `ruff check .`, `mypy .` | yes |
+| `backend-static` | Python 3.14 | `ruff check .`, `mypy .`, OpenAPI contract check | yes |
 | `frontend` | Node 24 | `npm run lint`, `api:types:check`, `npm test`, `npm run build` | yes |
 | `compose-validate` | — | renders `docker-compose.prod.yml` and `docker-compose.staging.yml` with `.env.example` | yes |
-| `backend-tests` | Python 3.14 + PostgreSQL 18.6, Redis 7, Moto S3 | `alembic upgrade head`, then `pytest -q -rs` | no (`continue-on-error: true`) |
+| `backend-tests` | Python 3.14 + PostgreSQL 18.6, Redis 7, Moto S3 | `alembic upgrade head`, then `pytest -q -rs` | yes |
 
 Whether a passing job is a merge requirement is set in branch protection, not in the workflow file.
 
