@@ -249,6 +249,14 @@ docker compose -f docker-compose.prod.yml exec -T backend \
   python scripts/report_payment_overages.py --i-understand
 ```
 
+### Offline draft duplicate review
+
+Run `python scripts/repair_offline_duplicates.py` from the backend to list candidate pairs.
+The default mode reads the database and prints IDs for review. To consolidate a reviewed pair,
+stop portal writes and run the same command with `--apply --keep KEEP_ID --duplicate DUPLICATE_ID`.
+The script rechecks both drafts, moves their photo and retry references, and soft-deletes the
+duplicate in one transaction. Production reads and writes require `--i-understand`.
+
 ### Rollback
 1. Identify the last known good Git commit.
 2. Check out the known good commit on the host.
