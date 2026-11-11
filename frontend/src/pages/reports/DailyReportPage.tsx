@@ -60,11 +60,7 @@ const emptyPayload: DailyReportPayload = {
 };
 
 type ReportExtraField =
-  | 'day_type'
-  | 'weather_condition'
-  | 'site_visitors'
-  | 'subcontractors'
-  | 'wir_number';
+  'day_type' | 'weather_condition' | 'site_visitors' | 'subcontractors' | 'wir_number';
 
 function extraValue(form: DailyReportPayload, key: ReportExtraField) {
   const value = form.extra_fields?.[key];
