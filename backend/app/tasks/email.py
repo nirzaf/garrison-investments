@@ -1,5 +1,6 @@
-import structlog
 from uuid import UUID
+
+import structlog
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
@@ -117,5 +118,10 @@ async def _send_report_email(export_id: str) -> str:
         export.email_error = None
         export.emailed_at = utc_now()
         await session.commit()
-    logger.info("report_email_sent", export_id=export_id, file_name=export.file_name, recipients=recipients)
+    logger.info(
+        "report_email_sent",
+        export_id=export_id,
+        file_name=export.file_name,
+        recipients=recipients,
+    )
     return f"report email sent to {delivered} recipients"

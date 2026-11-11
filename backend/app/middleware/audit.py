@@ -52,7 +52,11 @@ async def audit_authenticated_request(request: Request, response: Response) -> N
     )
 
     severity = (
-        "ERROR" if response.status_code >= 500 else "WARNING" if response.status_code >= 400 else "INFO"
+        "ERROR"
+        if response.status_code >= 500
+        else "WARNING"
+        if response.status_code >= 400
+        else "INFO"
     )
 
     try:

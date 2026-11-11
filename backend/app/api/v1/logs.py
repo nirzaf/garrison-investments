@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.api.dependencies import DbSession, require_permission
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.user import User

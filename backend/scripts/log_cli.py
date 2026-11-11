@@ -76,7 +76,9 @@ def run(argv: list[str] | None = None, *, client_factory=None, stdout=None) -> i
 
     token = _resolve_token(args)
     if not token:
-        raise SystemExit("A bearer token is required. Use --token, --token-file, or GARRISON_LOG_TOKEN.")
+        raise SystemExit(
+            "A bearer token is required. Use --token, --token-file, or GARRISON_LOG_TOKEN."
+        )
 
     with _make_client(args.base_url, token=token, client_factory=client_factory) as client:
         if args.command == "search":
@@ -98,7 +100,9 @@ def _login(client, args, *, stdout, session_id: str) -> int:
     challenge = login_response.json()
     otp = args.otp or challenge.get("dev_otp")
     if not otp:
-        raise SystemExit("OTP required. Re-run with --otp or use an environment where dev_otp is returned.")
+        raise SystemExit(
+            "OTP required. Re-run with --otp or use an environment where dev_otp is returned."
+        )
 
     verify_response = client.post(
         "/api/v1/auth/verify-otp",
@@ -140,7 +144,11 @@ def _search(client, args, *, stdout, session_id: str) -> int:
         "limit": args.limit,
         "offset": args.offset,
     }
-    response = client.get("/api/v1/log-events", params=_clean_params(params), headers=_cli_headers(session_id))
+    response = client.get(
+        "/api/v1/log-events",
+        params=_clean_params(params),
+        headers=_cli_headers(session_id),
+    )
     response.raise_for_status()
     payload = response.json()
 

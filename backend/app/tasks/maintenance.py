@@ -1,7 +1,7 @@
-import structlog
 from datetime import time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from sqlalchemy import select
 
 from app.config import get_settings
