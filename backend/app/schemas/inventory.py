@@ -1,8 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LocationCreateRequest(BaseModel):
@@ -82,13 +83,19 @@ class MovementCreateRequest(BaseModel):
     movement_type: str = Field(
         pattern="^(receive|reserve|issue|transfer|return|consume|adjustment|wastage|damaged)$"
     )
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(description="Positive, or negative for a stock adjustment.")
     from_location_id: UUID | None = None
     to_location_id: UUID | None = None
     project_id: UUID | None = None
     reference_type: str | None = None
     reference_id: UUID | None = None
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_quantity(self) -> Self:
+        if self.quantity == 0 or (self.quantity < 0 and self.movement_type != "adjustment"):
+            raise ValueError("Use a positive quantity or a negative quantity for an adjustment.")
+        return self
 
 
 class MovementResponse(BaseModel):

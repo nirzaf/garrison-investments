@@ -27,8 +27,9 @@ export async function deactivateUser(userId: string): Promise<UserRecord> {
 }
 
 export async function adminResetPassword(userId: string, newPassword: string): Promise<UserRecord> {
-  const response = await apiClient.post<UserRecord>(`/users/${userId}/reset-password`, {
+  const payload: components['schemas']['AdminPasswordResetRequest'] = {
     new_password: newPassword
-  });
+  };
+  const response = await apiClient.post<UserRecord>(`/users/${userId}/reset-password`, payload);
   return response.data;
 }

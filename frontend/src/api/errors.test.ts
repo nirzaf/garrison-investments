@@ -21,4 +21,16 @@ describe('formatApiError', () => {
     expect(formatApiError(apiError([{ ctx: {} }]), fallback)).toBe(fallback);
     expect(formatApiError(new Error('network'), fallback)).toBe(fallback);
   });
+
+  it('uses structured validation issues in the API error envelope', () => {
+    const error = {
+      isAxiosError: true,
+      response: { data: {
+        detail: 'One or more request fields are invalid.',
+        error_code: 'VALIDATION_ERROR',
+        errors: [{ loc: ['body', 'quantity'], msg: 'Must be positive' }]
+      } }
+    };
+    expect(formatApiError(error, fallback)).toBe('quantity: Must be positive');
+  });
 });

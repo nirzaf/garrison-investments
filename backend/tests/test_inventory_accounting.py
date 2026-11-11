@@ -27,7 +27,7 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.inventory import LocationCreateRequest, MovementCreateRequest
+from app.schemas.inventory import LocationCreateRequest
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
 from app.utils.security import hash_password
@@ -322,36 +322,27 @@ async def test_cancel_preserves_other_reservations_when_legacy_line_is_overstate
 
 
 async def test_negative_adjustment_cannot_consume_reserved_stock() -> None:
-    """M5: an adjustment may not push on_hand below reserved.
-
-    ``MovementCreateRequest.quantity`` is ``gt=0`` at the API boundary, so this drives
-    the service directly to prove the invariant holds for internal callers too.
-    """
+    """M5: an adjustment may not push on_hand below reserved."""
     await skip_if_database_unavailable()
     fx = await seed(
         on_hand=Decimal("5"),
         quantity=Decimal("1"),
         stock_reserved=Decimal("3"),
     )
-    payload = MovementCreateRequest.model_construct(
-        item_id=fx.item.id,
-        movement_type="adjustment",
-        quantity=Decimal("-3"),
-        to_location_id=fx.location.id,
-        asset_id=None,
-        from_location_id=None,
-        project_id=None,
-        reference_type=None,
-        reference_id=None,
-        notes=None,
-    )
-
-    async with AsyncSessionLocal() as session:
-        with pytest.raises(AppException) as excinfo:
-            await InventoryService(session).create_movement(payload, fx.store)
-        await session.rollback()
-    assert excinfo.value.status_code == 409
-    assert excinfo.value.error_code == "INSUFFICIENT_STOCK"
+    async with create_test_client() as client:
+        token = await login_for_token(client, fx.store, "Start123!")
+        response = await client.post(
+            "/api/v1/inventory/movements",
+            json={
+                "item_id": str(fx.item.id),
+                "movement_type": "adjustment",
+                "quantity": "-3",
+                "to_location_id": str(fx.location.id),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "INSUFFICIENT_STOCK"
 
     stock = await read_stock(fx.item.id, fx.location.id)
     assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("5"), Decimal("3"))
@@ -365,21 +356,23 @@ async def test_negative_adjustment_down_to_reserved_succeeds() -> None:
         quantity=Decimal("1"),
         stock_reserved=Decimal("3"),
     )
-    payload = MovementCreateRequest.model_construct(
-        item_id=fx.item.id,
-        movement_type="adjustment",
-        quantity=Decimal("-2"),
-        to_location_id=fx.location.id,
-        asset_id=None,
-        from_location_id=None,
-        project_id=None,
-        reference_type=None,
-        reference_id=None,
-        notes=None,
-    )
-
-    async with AsyncSessionLocal() as session:
-        await InventoryService(session).create_movement(payload, fx.store)
+    payload = {
+        "item_id": str(fx.item.id),
+        "movement_type": "adjustment",
+        "quantity": "-2",
+        "to_location_id": str(fx.location.id),
+    }
+    async with create_test_client() as client:
+        token = await login_for_token(client, fx.store, "Start123!")
+        headers = {"Authorization": f"Bearer {token}"}
+        invalid = await client.post(
+            "/api/v1/inventory/movements",
+            json={**payload, "movement_type": "receive"},
+            headers=headers,
+        )
+        assert invalid.status_code == 422
+        response = await client.post("/api/v1/inventory/movements", json=payload, headers=headers)
+        assert response.status_code == 201
 
     stock = await read_stock(fx.item.id, fx.location.id)
     assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("3"), Decimal("3"))

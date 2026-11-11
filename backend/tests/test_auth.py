@@ -52,6 +52,22 @@ def create_test_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
+async def test_request_validation_uses_the_error_contract_without_echoing_inputs() -> None:
+    submitted = "not-an-email@example.com"
+    async with create_test_client() as client:
+        response = await client.post("/api/v1/auth/login", json={"email": [submitted]})
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["error_code"] == "VALIDATION_ERROR"
+    assert isinstance(payload["detail"], str)
+    assert {tuple(issue["loc"]) for issue in payload["errors"]} == {
+        ("body", "email"),
+        ("body", "password"),
+    }
+    assert all(set(issue) == {"loc", "msg", "type"} for issue in payload["errors"])
+    assert submitted not in response.text
+
+
 async def test_login_otp_me_refresh_and_logout_flow() -> None:
     await skip_if_database_unavailable()
     email = f"auth-{uuid4().hex}@example.com"

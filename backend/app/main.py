@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -14,7 +15,8 @@ from app.middleware import AuthRateLimiter, audit_authenticated_request
 from app.observability import bind_log_context, clear_log_context, configure_logging
 from app.services.audit_service import AuditService
 from app.services.exception_reporter import report_unhandled_exception
-from app.utils.exceptions import AppException
+from app.utils.exceptions import AppException, ValidationErrorResponse, ValidationIssue
+from app.utils.redaction import redact_text
 from app.utils.request import get_client_ip, trusted_correlation_ids
 from app.utils.security import validate_signing_keys
 
@@ -179,6 +181,21 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         await audit_authenticated_request(request, response)
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        issues = [
+            ValidationIssue(
+                loc=list(issue["loc"]), msg=redact_text(issue["msg"]), type=issue["type"]
+            )
+            for issue in exc.errors()
+        ]
+        response = ValidationErrorResponse(
+            detail="One or more request fields are invalid.",
+            error_code="VALIDATION_ERROR",
+            errors=issues,
+        )
+        return JSONResponse(status_code=422, content=response.model_dump(mode="json"))
 
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:

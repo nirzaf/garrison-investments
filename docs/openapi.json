@@ -40,6 +40,32 @@
         "title": "AnalyticsSummaryResponse",
         "type": "object"
       },
+      "AppErrorResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "error_code",
+          "errors"
+        ],
+        "title": "AppErrorResponse",
+        "type": "object"
+      },
       "ApprovalCreateRequest": {
         "properties": {
           "amount": {
@@ -2307,17 +2333,28 @@
         "title": "DocumentVersionResponse",
         "type": "object"
       },
-      "HTTPValidationError": {
+      "ErrorDetail": {
         "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
           }
         },
-        "title": "HTTPValidationError",
+        "required": [
+          "message"
+        ],
+        "title": "ErrorDetail",
         "type": "object"
       },
       "ImportBatchListResponse": {
@@ -3559,13 +3596,13 @@
           "quantity": {
             "anyOf": [
               {
-                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
                 "type": "string"
               }
             ],
+            "description": "Positive, or negative for a stock adjustment.",
             "title": "Quantity"
           },
           "reference_id": {
@@ -6686,15 +6723,35 @@
         "title": "UserUpdateRequest",
         "type": "object"
       },
-      "ValidationError": {
+      "ValidationErrorResponse": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
+          "detail": {
+            "title": "Detail",
+            "type": "string"
           },
-          "input": {
-            "title": "Input"
+          "error_code": {
+            "const": "VALIDATION_ERROR",
+            "title": "Error Code",
+            "type": "string"
           },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "error_code",
+          "errors"
+        ],
+        "title": "ValidationErrorResponse",
+        "type": "object"
+      },
+      "ValidationIssue": {
+        "properties": {
           "loc": {
             "items": {
               "anyOf": [
@@ -6706,15 +6763,15 @@
                 }
               ]
             },
-            "title": "Location",
+            "title": "Loc",
             "type": "array"
           },
           "msg": {
-            "title": "Message",
+            "title": "Msg",
             "type": "string"
           },
           "type": {
-            "title": "Error Type",
+            "title": "Type",
             "type": "string"
           }
         },
@@ -6723,7 +6780,7 @@
           "msg",
           "type"
         ],
-        "title": "ValidationError",
+        "title": "ValidationIssue",
         "type": "object"
       },
       "VerifyOtpRequest": {
@@ -6778,6 +6835,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Api Root Api V1  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "summary": "Api Root",
@@ -6891,11 +6966,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Analytics Summary Api V1 Analytics Summary Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -6980,11 +7063,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Approvals Api V1 Approvals Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7024,11 +7115,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Approval Api V1 Approvals Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7072,11 +7171,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Approval Api V1 Approvals  Approval Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7130,11 +7237,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Approve Api V1 Approvals  Approval Id  Approve Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7188,11 +7303,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Delegate Api V1 Approvals  Approval Id  Delegate Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7236,11 +7359,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Delegation Candidates Api V1 Approvals  Approval Id  Delegates Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7294,11 +7425,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Override Api V1 Approvals  Approval Id  Override Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7352,11 +7491,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Reject Api V1 Approvals  Approval Id  Reject Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7481,11 +7628,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Audit Logs Api V1 Audit Logs Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7527,11 +7682,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Change Password Api V1 Auth Change Password Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7573,11 +7736,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Login Api V1 Auth Login Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Login",
@@ -7622,11 +7793,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Logout Api V1 Auth Logout Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Logout",
@@ -7648,6 +7827,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Me Api V1 Auth Me Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7689,11 +7886,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Confirm Password Reset Api V1 Auth Password Reset Confirm Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Confirm Password Reset",
@@ -7730,11 +7935,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Request Password Reset Api V1 Auth Password Reset Request Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Request Password Reset",
@@ -7779,11 +7992,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Refresh Api V1 Auth Refresh Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Refresh",
@@ -7820,11 +8041,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Verify Otp Api V1 Auth Verify Otp Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "summary": "Verify Otp",
@@ -7846,6 +8075,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Dashboard Summary Api V1 Dashboard Summary Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7951,11 +8198,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Documents Api V1 Documents Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7995,11 +8250,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Upload Document Api V1 Documents Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8043,11 +8306,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Document Api V1 Documents  Document Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8108,11 +8379,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Document Download Url Api V1 Documents  Document Id  Download Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8160,11 +8439,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Document Versions Api V1 Documents  Document Id  Versions Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8216,11 +8503,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Upload Document Version Api V1 Documents  Document Id  Versions Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8284,11 +8579,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Approve Document Version Api V1 Documents  Document Id  Versions  Version Id  Approve Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8405,11 +8708,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Export Management Summary Api V1 Export Management Summary Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8509,11 +8820,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Export Material Usage Api V1 Export Material Usage Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8630,11 +8949,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Export Project Progress Api V1 Export Project Progress Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8725,11 +9052,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Invoices Api V1 Finance Invoices Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8769,11 +9104,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Invoice Api V1 Finance Invoices Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8817,11 +9160,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Invoice Api V1 Finance Invoices  Invoice Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8873,11 +9224,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Invoice Api V1 Finance Invoices  Invoice Id  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8921,11 +9280,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Invoice Attachment Url Api V1 Finance Invoices  Invoice Id  Attachment Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -8977,11 +9344,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Upload Invoice Attachment Api V1 Finance Invoices  Invoice Id  Attachment Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9035,11 +9410,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Payment Api V1 Finance Invoices  Invoice Id  Payments Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9083,11 +9466,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Budget Summary Api V1 Finance Projects  Project Id  Budget Summary Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9114,6 +9505,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Import Batches Api V1 Imports Batches Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9155,11 +9564,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Batch Status Api V1 Imports Batches  Batch Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9200,11 +9617,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Download Template Api V1 Imports Templates  Template Type  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9257,11 +9682,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Preview Import Api V1 Imports  Template Type  Preview Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9314,11 +9747,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Run Import Api V1 Imports  Template Type  Run Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9369,11 +9810,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Run Import Async Endpoint Api V1 Imports  Template Type  Run Async Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9404,6 +9853,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Assets Api V1 Inventory Assets Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9443,11 +9910,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Asset Api V1 Inventory Assets Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9539,11 +10014,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Items Api V1 Inventory Items Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9583,11 +10066,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Item Api V1 Inventory Items Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9631,11 +10122,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Item Api V1 Inventory Items  Item Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9683,11 +10182,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Item Stock Api V1 Inventory Items  Item Id  Stock Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9718,6 +10225,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Locations Api V1 Inventory Locations Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9757,11 +10282,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Location Api V1 Inventory Locations Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9792,6 +10325,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Low Stock Api V1 Inventory Low Stock Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9917,11 +10468,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Movements Api V1 Inventory Movements Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -9961,11 +10520,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Movement Api V1 Inventory Movements Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10057,11 +10624,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Material Requests Api V1 Inventory Requests Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10101,11 +10676,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Material Request Api V1 Inventory Requests Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10149,11 +10732,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Cancel Material Request Api V1 Inventory Requests  Request Id  Cancel Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10197,11 +10788,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Issue Material Request Api V1 Inventory Requests  Request Id  Issue Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10245,11 +10844,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Reserve Material Request Api V1 Inventory Requests  Request Id  Reserve Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10562,11 +11169,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Log Events Api V1 Log Events Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10785,11 +11400,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Stream Log Events Api V1 Log Events Stream Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10816,6 +11439,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Notifications Api V1 Notifications Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10846,6 +11487,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Mark All Read Api V1 Notifications Mark All Read Post"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10872,6 +11531,24 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Unread Count Api V1 Notifications Unread Count Get"
+                }
+              }
+            },
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10915,11 +11592,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Mute Notification Api V1 Notifications  Notification Id  Mute Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -10963,11 +11648,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Mark Read Api V1 Notifications  Notification Id  Read Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11011,11 +11704,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Unmute Notification Api V1 Notifications  Notification Id  Unmute Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11121,11 +11822,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Files Api V1 Photos Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11189,11 +11898,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Upload Files Api V1 Photos Upload Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11230,11 +11947,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Delete File Api V1 Photos  Photo Id  Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11276,11 +12001,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get File Api V1 Photos  Photo Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11324,11 +12057,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get File Download Url Api V1 Photos  Photo Id  Download Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11372,11 +12113,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Recover File Api V1 Photos  Photo Id  Recover Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11420,11 +12169,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Thumbnail Url Api V1 Photos  Photo Id  Thumbnail Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11514,11 +12271,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Projects Api V1 Projects Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11558,11 +12323,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Project Api V1 Projects Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11606,11 +12379,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Project Api V1 Projects  Project Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11662,11 +12443,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Project Api V1 Projects  Project Id  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11714,11 +12503,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Project Members Api V1 Projects  Project Id  Members Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11770,11 +12567,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Assign Project Member Api V1 Projects  Project Id  Members Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11828,11 +12633,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Project Task Api V1 Projects  Project Id  Tasks Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11876,11 +12689,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Project Timeline Api V1 Projects  Project Id  Timeline Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -11970,11 +12791,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Reports Api V1 Reports Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12032,11 +12861,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Report Api V1 Reports Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12080,11 +12917,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Report Api V1 Reports  Report Id  Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12136,11 +12981,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Report Api V1 Reports  Report Id  Put"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12194,11 +13047,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Approve Report Api V1 Reports  Report Id  Approve Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12252,11 +13113,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Override Report Api V1 Reports  Report Id  Override Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12298,11 +13167,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Download Report Pdf Api V1 Reports  Report Id  Pdf Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12356,11 +13233,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Reject Report Api V1 Reports  Report Id  Reject Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12404,11 +13289,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Report Api V1 Reports  Report Id  Submit Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12498,11 +13391,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Supervisor Updates Api V1 Supervisor Updates Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12542,11 +13443,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Supervisor Update Api V1 Supervisor Updates Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12600,11 +13509,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Supervisor Update Api V1 Supervisor Updates  Update Id  Put"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12648,11 +13565,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Supervisor Update Api V1 Supervisor Updates  Update Id  Submit Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12759,11 +13684,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Suppliers Api V1 Suppliers Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12803,11 +13736,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Supplier Api V1 Suppliers Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12851,11 +13792,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Deactivate Supplier Api V1 Suppliers  Supplier Id  Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12907,11 +13856,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Supplier Api V1 Suppliers  Supplier Id  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -12955,11 +13912,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Tds Document Url Api V1 Suppliers  Supplier Id  Tds Document Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13011,11 +13976,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Upload Tds Document Api V1 Suppliers  Supplier Id  Tds Document Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13121,11 +14094,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Users Api V1 Users Get"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13165,11 +14146,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create User Api V1 Users Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13213,11 +14202,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Deactivate User Api V1 Users  User Id  Delete"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13269,11 +14266,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update User Api V1 Users  User Id  Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -13327,11 +14332,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Admin Reset Password Api V1 Users  User Id  Reset Password Post"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Invalid request"
           }
         },
         "security": [

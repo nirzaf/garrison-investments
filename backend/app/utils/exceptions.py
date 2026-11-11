@@ -1,9 +1,29 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class ErrorDetail(BaseModel):
     field: str | None = None
     message: str
+
+
+class AppErrorResponse(BaseModel):
+    detail: str
+    error_code: str
+    errors: list[ErrorDetail]
+
+
+class ValidationIssue(BaseModel):
+    loc: list[str | int]
+    msg: str
+    type: str
+
+
+class ValidationErrorResponse(BaseModel):
+    detail: str
+    error_code: Literal["VALIDATION_ERROR"]
+    errors: list[ValidationIssue]
 
 
 class AppException(Exception):

@@ -17,6 +17,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.supervisor_updates import router as supervisor_updates_router
 from app.api.v1.suppliers import router as suppliers_router
 from app.api.v1.users import router as users_router
+from app.utils.exceptions import AppErrorResponse, ValidationErrorResponse
 
 router = APIRouter(tags=["Root"])
 
@@ -30,7 +31,11 @@ async def api_root() -> dict[str, str]:
     }
 
 
-api_router = APIRouter()
+api_router = APIRouter(
+    responses={
+        422: {"model": ValidationErrorResponse | AppErrorResponse, "description": "Invalid request"}
+    }
+)
 api_router.include_router(router)
 api_router.include_router(analytics_router)
 api_router.include_router(approvals_router)
