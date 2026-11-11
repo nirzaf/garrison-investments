@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { formatApiError } from '../../api/errors';
 import { uploadEntityFiles, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
@@ -61,16 +62,6 @@ function parseAttachmentNames(value?: string) {
     .map((name) => name.trim())
     .filter(Boolean)
     .map((name) => ({ name, kind: name.match(/\.(jpg|jpeg|png|webp)$/i) ? 'photo' : 'file' }));
-}
-
-function formatApiError(error: unknown) {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const response = (error as { response?: { data?: { detail?: string } } }).response;
-    if (response?.data?.detail) {
-      return response.data.detail.replace(/_/g, ' ').toLowerCase();
-    }
-  }
-  return 'Unable to save the site update.';
 }
 
 export function SupervisorUpdatePage() {
@@ -225,7 +216,7 @@ export function SupervisorUpdatePage() {
       setUploadedFiles((prev) => [...prev, ...uploaded]);
       setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
     } catch (uploadError) {
-      setError(formatApiError(uploadError));
+      setError(formatApiError(uploadError, 'Unable to upload files for the site update.'));
     } finally {
       setIsSaving(false);
     }
@@ -247,7 +238,7 @@ export function SupervisorUpdatePage() {
       await loadUpdates(values.project_id);
       return update.id;
     } catch (saveError) {
-      setError(formatApiError(saveError));
+      setError(formatApiError(saveError, 'Unable to save the site update.'));
       return null;
     } finally {
       setIsSaving(false);
@@ -267,7 +258,7 @@ export function SupervisorUpdatePage() {
       setNotice('Site update submitted.');
       await loadUpdates(values.project_id);
     } catch (submitError) {
-      setError(formatApiError(submitError));
+      setError(formatApiError(submitError, 'Unable to submit the site update.'));
     } finally {
       setIsSaving(false);
     }

@@ -198,6 +198,9 @@ export function InventoryPage() {
                 <option>KG</option>
                 <option>TON</option>
                 <option>SQM</option>
+                <option>bag</option>
+                <option>m</option>
+                <option>m2</option>
               </select>
               <input
                 className="form-field"

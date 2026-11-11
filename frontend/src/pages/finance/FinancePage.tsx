@@ -3,6 +3,7 @@ import { Receipt } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { formatApiError } from '../../api/errors';
 import {
   createInvoice,
   createPayment,
@@ -231,6 +232,15 @@ export function FinancePage() {
                       >
                         Record payment
                       </button>
+                      {createPaymentMutation.isError &&
+                      createPaymentMutation.variables?.invoiceId === invoice.id ? (
+                        <p className="alert-error rounded px-2 py-1 text-xs" role="alert">
+                          {formatApiError(
+                            createPaymentMutation.error,
+                            'Unable to record the payment.'
+                          )}
+                        </p>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

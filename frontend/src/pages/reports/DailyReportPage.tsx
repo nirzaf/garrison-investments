@@ -2,6 +2,7 @@ import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { formatApiError } from '../../api/errors';
 import {
   clearReportDraft,
   flushPhotoQueue,
@@ -20,8 +21,7 @@ import {
   submitDailyReport,
   updateDailyReport,
   type DailyReportPayload,
-  type DailyReportRecord,
-  type ReportManpower
+  type DailyReportRecord
 } from '../../api/reports';
 import { listSupervisorUpdates, type SupervisorUpdateRecord } from '../../api/supervisorUpdates';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -75,14 +75,15 @@ function parseRefs(value: string, kind: string) {
     .map((name) => ({ name, kind }));
 }
 
-function formatApiError(error: unknown) {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const response = (error as { response?: { data?: { detail?: string } } }).response;
-    if (response?.data?.detail) {
-      return response.data.detail.replace(/_/g, ' ').toLowerCase();
-    }
-  }
-  return 'Unable to save the daily report.';
+function withManpowerTotals(form: DailyReportPayload): DailyReportPayload {
+  const totals = form.manpower_entries.reduce(
+    (total, entry) => ({
+      count: total.count + Number(entry.count || 0),
+      hours: total.hours + Number(entry.overtime_hours || 0)
+    }),
+    { count: 0, hours: 0 }
+  );
+  return { ...form, manpower_total: totals.count, overtime_hours: String(totals.hours) };
 }
 
 function formHasDraftContent(payload: DailyReportPayload) {
@@ -319,7 +320,7 @@ export function DailyReportPage() {
       await loadReports(payload.project_id);
       return report.id;
     } catch (saveError) {
-      setError(formatApiError(saveError));
+      setError(formatApiError(saveError, 'Unable to save the daily report.'));
       return null;
     } finally {
       setIsSaving(false);
@@ -346,7 +347,7 @@ export function DailyReportPage() {
       setNotice(`Daily report ${report.report_number} submitted.`);
       await loadReports(report.project_id);
     } catch (submitError) {
-      setError(formatApiError(submitError));
+      setError(formatApiError(submitError, 'Unable to submit the daily report.'));
     } finally {
       setIsSaving(false);
     }
@@ -1083,16 +1084,7 @@ export function DailyReportPage() {
     const rows = [...form[key]];
     rows[index] = value;
     const nextForm = { ...form, [key]: rows };
-    if (key === 'manpower_entries') {
-      nextForm.manpower_total = (rows as ReportManpower[]).reduce(
-        (total, entry) => total + Number(entry.count || 0),
-        0
-      );
-      nextForm.overtime_hours = (rows as ReportManpower[])
-        .reduce((total, entry) => total + Number(entry.overtime_hours || 0), 0)
-        .toString();
-    }
-    setForm(nextForm);
+    setForm(key === 'manpower_entries' ? withManpowerTotals(nextForm) : nextForm);
   }
 
   function removeRow<
@@ -1102,7 +1094,8 @@ export function DailyReportPage() {
     >
   >(key: K, index: number) {
     const rows = form[key].filter((_, rowIndex) => rowIndex !== index);
-    setForm({ ...form, [key]: rows });
+    const nextForm = { ...form, [key]: rows };
+    setForm(key === 'manpower_entries' ? withManpowerTotals(nextForm) : nextForm);
   }
 }
 
