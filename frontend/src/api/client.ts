@@ -4,6 +4,12 @@ import axiosRetry from 'axios-retry';
 let accessToken: string | null = null;
 let refreshPromise: Promise<string> | null = null;
 const SAFE_RETRY_METHODS = new Set(['get', 'head', 'options']);
+const NO_SESSION_REFRESH_PATHS = [
+  '/auth/login',
+  '/auth/verify-otp',
+  '/auth/refresh',
+  '/auth/password-reset/confirm'
+];
 /** Shared with `public/sw.js` so the app and the service worker cannot refresh at once. */
 export const TOKEN_REFRESH_LOCK = 'garrison-token-refresh';
 export const EXPORT_TIMEOUT_MS = 180_000;
@@ -62,7 +68,12 @@ apiClient.interceptors.response.use(undefined, async (error) => {
   const status = error.response?.status;
   const url = original?.url ?? '';
 
-  if (!original || status !== 401 || original._retry || url.endsWith('/auth/refresh')) {
+  if (
+    !original ||
+    status !== 401 ||
+    original._retry ||
+    NO_SESSION_REFRESH_PATHS.some((path) => url.endsWith(path))
+  ) {
     return Promise.reject(error);
   }
 
