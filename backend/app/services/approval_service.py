@@ -218,6 +218,46 @@ class ApprovalService:
         await self.session.commit()
         return approval
 
+    async def resolve_for_entity(
+        self,
+        *,
+        request_type: str,
+        request_id: UUID,
+        decision: str,
+        actor: User,
+        comments: str | None = None,
+    ) -> Approval | None:
+        """Finalise the open approval for an entity its owning service has already decided.
+
+        The owning service authorises the actor itself (finance requires an Operation
+        Manager to approve an invoice), so the inbox's `_can_act` check does not apply here.
+        Without this the approval stays pending after the invoice was approved, and a later
+        inbox decision could silently flip the invoice back.
+        """
+        approval = await self.approvals.get_open_for_request(request_type, request_id)
+        if approval is None:
+            return None
+        approval.status = decision
+        approval.decision_comments = comments
+        approval.decided_at = utc_now()
+        await self._notify_submitter(
+            approval,
+            "Approval completed" if decision == "approved" else "Approval rejected",
+            f"{approval.title} was {decision}.",
+        )
+        await self.audit.record(
+            action=f"approvals.{decision}",
+            user_id=actor.id,
+            entity_type=approval.request_type,
+            entity_id=approval.request_id,
+            new_values={
+                "approval_id": str(approval.id),
+                "comments": comments,
+                "resolved_from": request_type,
+            },
+        )
+        return approval
+
     async def delegate(
         self,
         approval_id: UUID,
@@ -286,9 +326,7 @@ class ApprovalService:
             query = query.where(User.id != approval.submitter_id)
         if approval.project_id is None:
             query = query.where(User.role != ROLE_PROJECT_MANAGER)
-            return list(
-                await self.session.scalars(query.order_by(User.full_name.asc()).limit(200))
-            )
+            return list(await self.session.scalars(query.order_by(User.full_name.asc()).limit(200)))
         membership = (
             select(ProjectMember.id)
             .where(
@@ -388,7 +426,14 @@ class ApprovalService:
         return reminded, escalated
 
     async def _get(self, approval_id: UUID, *, for_update: bool = False) -> Approval:
-        approval = await self.approvals.get_by_id(approval_id, for_update=for_update)
+        approval = await self.approvals.get_by_id(approval_id)
+        if approval and for_update:
+            if approval.request_type == "invoice":
+                # Finance also locks the invoice before the approval.
+                await self.session.scalar(
+                    select(Invoice.id).where(Invoice.id == approval.request_id).with_for_update()
+                )
+            approval = await self.approvals.get_by_id(approval_id, for_update=True)
         if not approval:
             raise NotFoundException("Approval")
         return approval
@@ -556,11 +601,18 @@ class ApprovalService:
                 )
                 .with_for_update()
             )
-            if invoice:
-                invoice.status = "approved" if decision == "approved" else "rejected"
-                if decision == "approved":
-                    invoice.approved_by = actor.id
-                    invoice.approved_at = utc_now()
+            if not invoice:
+                raise NotFoundException("Invoice")
+            if invoice.status != "submitted":
+                raise AppException(
+                    "Only submitted invoices can be decided from the approval inbox.",
+                    status_code=409,
+                    error_code="INVOICE_STATUS_TRANSITION_INVALID",
+                )
+            invoice.status = "approved" if decision == "approved" else "rejected"
+            if decision == "approved":
+                invoice.approved_by = actor.id
+                invoice.approved_at = utc_now()
         elif approval.request_type == "daily_report":
             report = await self.session.scalar(
                 select(DailyReport)

@@ -15,6 +15,7 @@ from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.utils.security import hash_password, utc_now
+from tests.test_finance import add_invoice
 
 pytestmark = pytest.mark.asyncio
 
@@ -110,11 +111,12 @@ async def create_approval(
     approver: User,
     submitter: User | None = None,
     project_id: UUID | None = None,
+    request_id: UUID | None = None,
 ) -> Approval:
     now = utc_now()
     approval = Approval(
         request_type=request_type,
-        request_id=uuid4(),
+        request_id=request_id or uuid4(),
         project_id=project_id,
         submitter_id=submitter.id if submitter else None,
         approver_id=approver.id,
@@ -194,7 +196,11 @@ async def test_invoice_delegation_to_another_operation_manager_succeeds() -> Non
     await skip_if_database_unavailable()
     manager = await create_user("operation_manager")
     peer = await create_user("operation_manager")
-    approval = await create_approval(request_type="invoice", approver=manager)
+    project = await create_project([manager, peer])
+    invoice = await add_invoice(project, Decimal("100"), status="submitted")
+    approval = await create_approval(
+        request_type="invoice", approver=manager, project_id=project.id, request_id=invoice.id
+    )
     token = await login(manager)
 
     response = await delegate(token, approval.id, peer.id)

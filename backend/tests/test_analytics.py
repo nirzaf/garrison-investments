@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 import httpx
@@ -5,10 +7,13 @@ import pytest
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.daily_report import DailyReport
+from app.models.finance import Invoice, Payment
+from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.tasks.report import generate_excel_export
-from app.utils.security import hash_password
+from app.utils.security import hash_password, utc_now
 
 
 @pytest.fixture(autouse=True)
@@ -124,3 +129,200 @@ def test_generate_excel_export_delegates_to_management_export(monkeypatch) -> No
 def test_generate_excel_export_rejects_pdf_exports() -> None:
     with pytest.raises(ValueError, match="only supports XLSX exports"):
         generate_excel_export("management-summary", str(uuid4()), {})
+
+
+async def create_project(admin: User, *, location: str = "Doha") -> Project:
+    async with AsyncSessionLocal() as session:
+        project = Project(
+            name=f"Analytics {uuid4().hex[:6]}",
+            code=f"ANL-{uuid4().hex[:6]}",
+            location=location,
+            description="Analytics aggregation project",
+            scope_of_work="Civil works",
+            status="active",
+            budget_amount=Decimal("10000.00"),
+            start_date=date.today(),
+            target_end_date=date.today() + timedelta(days=30),
+            client_name="Analytics Client",
+            contract_number=f"C-{uuid4().hex[:6]}",
+            progress_percentage=Decimal("25.00"),
+            created_by=admin.id,
+        )
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+        return project
+
+
+async def add_invoice(
+    project: Project,
+    total: Decimal,
+    *,
+    status: str = "submitted",
+    deleted: bool = False,
+) -> Invoice:
+    async with AsyncSessionLocal() as session:
+        invoice = Invoice(
+            invoice_number=f"INV-{uuid4().hex[:8]}",
+            project_id=project.id,
+            invoice_date=date.today(),
+            due_date=date.today() + timedelta(days=30),
+            amount=total,
+            tax_amount=Decimal("0"),
+            total_amount=total,
+            status=status,
+            payment_status="unpaid",
+            deleted_at=utc_now() if deleted else None,
+        )
+        session.add(invoice)
+        await session.commit()
+        await session.refresh(invoice)
+        return invoice
+
+
+async def add_payment(invoice: Invoice, amount: Decimal, *, deleted: bool = False) -> Payment:
+    async with AsyncSessionLocal() as session:
+        payment = Payment(
+            invoice_id=invoice.id,
+            payment_date=date.today(),
+            amount=amount,
+            method="bank_transfer",
+            deleted_at=utc_now() if deleted else None,
+        )
+        session.add(payment)
+        await session.commit()
+        await session.refresh(payment)
+        return payment
+
+
+async def add_report(
+    project: Project,
+    engineer: User,
+    report_date: date,
+    *,
+    deleted: bool = False,
+) -> DailyReport:
+    async with AsyncSessionLocal() as session:
+        report = DailyReport(
+            project_id=project.id,
+            engineer_id=engineer.id,
+            report_date=report_date,
+            work_location="Block A",
+            work_completed="Analytics aggregation fixture",
+            progress_percentage=Decimal("5.00"),
+            wir_status="not_required",
+            inspection_status="not_required",
+            next_day_plan="Continue works",
+            supervisor_update_ids=[],
+            photo_refs=[],
+            attachment_refs=[],
+            extra_fields={},
+            status="submitted",
+            deleted_at=utc_now() if deleted else None,
+        )
+        session.add(report)
+        await session.commit()
+        await session.refresh(report)
+        return report
+
+
+async def summary_row(client: httpx.AsyncClient, token: str, project: Project) -> dict:
+    response = await client.get(
+        "/api/v1/analytics/summary",
+        params={"project_id": str(project.id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()["projects"]
+    return next(row for row in rows if row["project_id"] == str(project.id))
+
+
+@pytest.mark.asyncio
+async def test_project_totals_survive_the_report_invoice_payment_fan_out() -> None:
+    """Two equal-value invoices and three payments must total exactly, not collapse or multiply."""
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    manager, manager_password = await create_user("general_manager")
+    engineer, _ = await create_user("civil_engineer")
+    project = await create_project(admin)
+
+    # Equal values are deliberate: SUM(DISTINCT total_amount) would collapse these into one.
+    first = await add_invoice(project, Decimal("315.00"), status="approved")
+    second = await add_invoice(project, Decimal("315.00"), status="approved")
+    # Three payments against two reports: a joined fan-out would double every payment.
+    await add_payment(first, Decimal("100.00"))
+    await add_payment(first, Decimal("115.00"))
+    await add_payment(second, Decimal("100.00"))
+    await add_report(project, engineer, date.today())
+    await add_report(project, engineer, date.today())
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, manager, manager_password)
+        row = await summary_row(client, token, project)
+
+    assert row["report_count"] == 2
+    assert row["invoice_total"] == "630.00"
+    assert row["paid_total"] == "315.00"
+
+
+@pytest.mark.asyncio
+async def test_project_totals_exclude_draft_rejected_and_soft_deleted_records() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    manager, manager_password = await create_user("general_manager")
+    engineer, _ = await create_user("civil_engineer")
+    project = await create_project(admin)
+
+    counted = await add_invoice(project, Decimal("315.00"), status="approved")
+    await add_invoice(project, Decimal("900.00"), status="draft")
+    await add_invoice(project, Decimal("800.00"), status="rejected")
+    removed = await add_invoice(project, Decimal("700.00"), status="approved", deleted=True)
+    await add_payment(counted, Decimal("100.00"))
+    await add_payment(removed, Decimal("700.00"))
+    await add_payment(counted, Decimal("55.00"), deleted=True)
+    await add_report(project, engineer, date.today())
+    await add_report(project, engineer, date.today(), deleted=True)
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, manager, manager_password)
+        row = await summary_row(client, token, project)
+
+    assert row["report_count"] == 1
+    assert row["invoice_total"] == "315.00"
+    assert row["paid_total"] == "100.00"
+
+
+@pytest.mark.asyncio
+async def test_project_without_reports_in_range_is_still_returned() -> None:
+    """A date filter must narrow the report count, not delete projects from the result."""
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    manager, manager_password = await create_user("general_manager")
+    engineer, _ = await create_user("civil_engineer")
+    location = f"Analytics Range {uuid4().hex[:8]}"
+    busy = await create_project(admin, location=location)
+    quiet = await create_project(admin, location=location)
+    today = date.today()
+    await add_report(busy, engineer, today)
+    await add_report(busy, engineer, today - timedelta(days=10))
+    await add_invoice(quiet, Decimal("250.00"), status="approved")
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, manager, manager_password)
+        response = await client.get(
+            "/api/v1/analytics/summary",
+            params={
+                "location": location,
+                "date_from": today.isoformat(),
+                "date_to": today.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200, response.text
+    rows = {row["project_id"]: row for row in response.json()["projects"]}
+    assert str(busy.id) in rows
+    assert str(quiet.id) in rows, "a project with no reports in range must still be reported"
+    assert rows[str(busy.id)]["report_count"] == 1
+    assert rows[str(quiet.id)]["report_count"] == 0
+    assert rows[str(quiet.id)]["invoice_total"] == "250.00"

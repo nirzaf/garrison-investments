@@ -18,7 +18,7 @@ from app.models.inventory import InventoryItem, InventoryMovement
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.analytics import AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow
-from app.services.finance_service import FINANCE_ROLES
+from app.services.finance_service import FINANCE_ROLES, NON_BILLABLE_INVOICE_STATUSES
 from app.utils.exceptions import AppException
 from app.utils.permissions import ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER
 
@@ -186,33 +186,53 @@ class AnalyticsService:
         location: str | None,
         department: str | None,
     ) -> list[ProjectAnalyticsRow]:
-        query = (
-            select(
-                Project.id,
-                Project.name,
-                Project.progress_percentage,
-                func.count(func.distinct(DailyReport.id)),
-                func.coalesce(func.sum(func.distinct(Invoice.total_amount)), 0),
-                func.coalesce(func.sum(Payment.amount), 0),
-            )
-            .outerjoin(DailyReport, DailyReport.project_id == Project.id)
-            .outerjoin(Invoice, Invoice.project_id == Project.id)
-            .outerjoin(Payment, Payment.invoice_id == Invoice.id)
-            .where(Project.deleted_at.is_(None))
+        # Each total is a correlated scalar subquery. Joining reports, invoices and payments
+        # into one row set multiplies every row by the others' cardinality, which inflated
+        # the sums and forced SUM(DISTINCT) to collapse invoices of equal value into one.
+        report_count = select(func.count(DailyReport.id)).where(
+            DailyReport.project_id == Project.id,
+            DailyReport.deleted_at.is_(None),
         )
+        # The date window narrows the report count only; it must never drop the project.
+        if date_from:
+            report_count = report_count.where(DailyReport.report_date >= date_from)
+        if date_to:
+            report_count = report_count.where(DailyReport.report_date <= date_to)
+        invoice_total = (
+            select(func.coalesce(func.sum(Invoice.total_amount), 0))
+            .where(
+                Invoice.project_id == Project.id,
+                Invoice.deleted_at.is_(None),
+                Invoice.status.notin_(NON_BILLABLE_INVOICE_STATUSES),
+            )
+            .scalar_subquery()
+        )
+        paid_total = (
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .select_from(Payment)
+            .join(Invoice, Invoice.id == Payment.invoice_id)
+            .where(
+                Invoice.project_id == Project.id,
+                Payment.deleted_at.is_(None),
+                Invoice.deleted_at.is_(None),
+            )
+            .scalar_subquery()
+        )
+        query = select(
+            Project.id,
+            Project.name,
+            Project.progress_percentage,
+            report_count.scalar_subquery(),
+            invoice_total,
+            paid_total,
+        ).where(Project.deleted_at.is_(None))
         if project_id:
             query = query.where(Project.id == project_id)
         if location:
             query = query.where(func.lower(Project.location).like(f"%{location.lower()}%"))
-        if date_from:
-            query = query.where(DailyReport.report_date >= date_from)
-        if date_to:
-            query = query.where(DailyReport.report_date <= date_to)
         if department:
             query = query.where(func.lower(Project.scope_of_work).like(f"%{department.lower()}%"))
-        result = await self.session.execute(
-            query.group_by(Project.id).order_by(Project.name.asc())
-        )
+        result = await self.session.execute(query.order_by(Project.name.asc()))
         return [
             ProjectAnalyticsRow(
                 project_id=row[0],

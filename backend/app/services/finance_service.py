@@ -46,6 +46,15 @@ ALLOWED_INVOICE_FILE_MAGIC = {
     "image/png": (b"\x89PNG\r\n\x1a\n",),
 }
 BLOCKED_EXTENSIONS = {".exe", ".sh", ".bat", ".cmd", ".js", ".ps1", ".php", ".py"}
+# Draft and rejected invoices are not commitments against a project budget.
+NON_BILLABLE_INVOICE_STATUSES = ("draft", "rejected")
+# An invoice only moves forward through its workflow; nothing returns to draft, and an
+# approved invoice can be rejected but never silently re-approved or resubmitted.
+INVOICE_STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
+    "submitted": frozenset({"approved", "rejected"}),
+    "approved": frozenset({"rejected"}),
+    "rejected": frozenset({"submitted"}),
+}
 
 
 class FinanceService:
@@ -75,6 +84,18 @@ class FinanceService:
         )
         self.session.add(invoice)
         await self.session.flush()
+        await self._create_invoice_approval(invoice, actor)
+        await self.audit.record(
+            action="finance.invoices.created",
+            user_id=actor.id,
+            entity_type="invoices",
+            entity_id=invoice.id,
+        )
+        invoice_id = invoice.id
+        await self.session.commit()
+        return await self.get_invoice(invoice_id, actor)
+
+    async def _create_invoice_approval(self, invoice: Invoice, actor: User) -> None:
         await ApprovalService(self.session).create_approval(
             ApprovalCreateRequest(
                 request_type="invoice",
@@ -89,15 +110,6 @@ class FinanceService:
             commit=False,
             internal=True,
         )
-        await self.audit.record(
-            action="finance.invoices.created",
-            user_id=actor.id,
-            entity_type="invoices",
-            entity_id=invoice.id,
-        )
-        invoice_id = invoice.id
-        await self.session.commit()
-        return await self.get_invoice(invoice_id, actor)
 
     async def list_invoices(
         self,
@@ -156,6 +168,7 @@ class FinanceService:
         actor: User,
     ) -> Invoice:
         invoice = await self._get_invoice_for_update(invoice_id, actor)
+        new_status = payload.status
         if payload.status == "approved":
             if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER}:
                 raise AppException(
@@ -175,14 +188,37 @@ class FinanceService:
                 status_code=403,
                 error_code="INVOICE_REJECTION_FORBIDDEN",
             )
-        for key, value in payload.model_dump(exclude_unset=True).items():
+        if new_status is not None and new_status not in INVOICE_STATUS_TRANSITIONS.get(
+            invoice.status, frozenset()
+        ):
+            raise AppException(
+                f"An invoice cannot move from {invoice.status} to {new_status}.",
+                status_code=409,
+                error_code="INVOICE_STATUS_TRANSITION_INVALID",
+            )
+        changes = payload.model_dump(exclude_unset=True)
+        if new_status is None:
+            changes.pop("status", None)
+        for key, value in changes.items():
             setattr(invoice, key, value)
+        if new_status == "approved" or new_status == "rejected":
+            # The invoice and its approval must agree: leaving the approval pending would
+            # let a second decision from the inbox overwrite this one.
+            await ApprovalService(self.session).resolve_for_entity(
+                request_type="invoice",
+                request_id=invoice.id,
+                decision=new_status,
+                actor=actor,
+                comments=payload.notes,
+            )
+        elif new_status == "submitted":
+            await self._create_invoice_approval(invoice, actor)
         await self.audit.record(
             action="finance.invoices.updated",
             user_id=actor.id,
             entity_type="invoices",
             entity_id=invoice.id,
-            new_values=payload.model_dump(mode="json", exclude_unset=True),
+            new_values=changes,
         )
         await self.session.commit()
         return invoice
@@ -330,6 +366,7 @@ class FinanceService:
                 select(func.coalesce(func.sum(Invoice.total_amount), 0)).where(
                     Invoice.project_id == project_id,
                     Invoice.deleted_at.is_(None),
+                    Invoice.status.notin_(NON_BILLABLE_INVOICE_STATUSES),
                 )
             )
             or 0
@@ -338,7 +375,11 @@ class FinanceService:
             await self.session.scalar(
                 select(func.coalesce(func.sum(Payment.amount), 0))
                 .join(Invoice, Invoice.id == Payment.invoice_id)
-                .where(Invoice.project_id == project_id, Payment.deleted_at.is_(None))
+                .where(
+                    Invoice.project_id == project_id,
+                    Payment.deleted_at.is_(None),
+                    Invoice.deleted_at.is_(None),
+                )
             )
             or 0
         )

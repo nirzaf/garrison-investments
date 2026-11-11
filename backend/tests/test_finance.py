@@ -1,19 +1,23 @@
+import asyncio
 from datetime import date, timedelta
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.approval import Approval
+from app.models.finance import Invoice, Payment
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
-from app.utils.security import hash_password
+from app.utils.security import hash_password, utc_now
 
 pytestmark = pytest.mark.asyncio
 
@@ -349,3 +353,257 @@ async def test_invoice_attachment_upload_is_compensated_when_commit_fails(
 
     assert len(uploaded_keys) == 1
     assert deleted_keys == uploaded_keys
+
+
+async def add_invoice(
+    project: Project,
+    total: Decimal,
+    *,
+    status: str = "submitted",
+    deleted: bool = False,
+) -> Invoice:
+    async with AsyncSessionLocal() as session:
+        invoice = Invoice(
+            invoice_number=f"INV-{uuid4().hex[:8]}",
+            project_id=project.id,
+            invoice_date=date.today(),
+            due_date=date.today() + timedelta(days=30),
+            amount=total,
+            tax_amount=Decimal("0"),
+            total_amount=total,
+            status=status,
+            payment_status="unpaid",
+            deleted_at=utc_now() if deleted else None,
+        )
+        session.add(invoice)
+        await session.commit()
+        await session.refresh(invoice)
+        return invoice
+
+
+async def add_payment(invoice: Invoice, amount: Decimal) -> Payment:
+    async with AsyncSessionLocal() as session:
+        payment = Payment(
+            invoice_id=invoice.id,
+            payment_date=date.today(),
+            amount=amount,
+            method="bank_transfer",
+        )
+        session.add(payment)
+        await session.commit()
+        await session.refresh(payment)
+        return payment
+
+
+async def create_invoice_via_api(
+    client: httpx.AsyncClient,
+    token: str,
+    project: Project,
+    supplier: Supplier,
+    amount: str = "300.00",
+) -> dict:
+    response = await client.post(
+        "/api/v1/finance/invoices",
+        json={
+            "invoice_number": f"INV-{uuid4().hex[:8]}",
+            "project_id": str(project.id),
+            "supplier_id": str(supplier.id),
+            "invoice_date": date.today().isoformat(),
+            "due_date": (date.today() + timedelta(days=30)).isoformat(),
+            "amount": amount,
+            "tax_amount": "0.00",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def approval_for(invoice_id: str) -> Approval | None:
+    async with AsyncSessionLocal() as session:
+        return await session.scalar(
+            select(Approval).where(
+                Approval.request_type == "invoice",
+                Approval.request_id == UUID(invoice_id),
+                Approval.deleted_at.is_(None),
+            )
+        )
+
+
+async def patch_status(client: httpx.AsyncClient, token: str, invoice_id: str, status: str):
+    return await client.patch(
+        f"/api/v1/finance/invoices/{invoice_id}",
+        json={"status": status},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+async def test_budget_summary_excludes_draft_rejected_and_soft_deleted_invoices() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    project, _ = await create_project_and_supplier(admin)
+
+    await add_invoice(project, Decimal("300.00"), status="submitted")
+    approved = await add_invoice(project, Decimal("200.00"), status="approved")
+    await add_invoice(project, Decimal("900.00"), status="draft")
+    await add_invoice(project, Decimal("800.00"), status="rejected")
+    removed = await add_invoice(project, Decimal("700.00"), status="approved", deleted=True)
+    await add_payment(approved, Decimal("50.00"))
+    await add_payment(approved, Decimal("75.00"))
+    # A payment on a soft-deleted invoice is not money the project has spent.
+    await add_payment(removed, Decimal("700.00"))
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, accounts, accounts_password)
+        response = await client.get(
+            f"/api/v1/finance/projects/{project.id}/budget-summary",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["invoiced_total"] == "500.00"
+    assert body["paid_total"] == "125.00"
+    assert body["remaining_budget"] == "500.00"
+
+
+async def test_invoice_cannot_be_returned_to_draft() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    project, supplier = await create_project_and_supplier(admin)
+
+    async with create_test_client() as client:
+        token = await login_for_token(client, accounts, accounts_password)
+        invoice = await create_invoice_via_api(client, token, project, supplier)
+
+        rejected = await patch_status(client, token, invoice["id"], "draft")
+        assert rejected.status_code == 409
+        assert rejected.json()["error_code"] == "INVOICE_STATUS_TRANSITION_INVALID"
+
+        unchanged = await client.get(
+            f"/api/v1/finance/invoices/{invoice['id']}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert unchanged.json()["status"] == "submitted"
+
+    # A refused transition must not touch the approval workflow either.
+    approval = await approval_for(invoice["id"])
+    assert approval is not None
+    assert approval.status == "pending"
+
+
+async def test_direct_invoice_approval_resolves_the_linked_approval() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+
+        approved = await patch_status(client, manager_token, invoice["id"], "approved")
+        assert approved.status_code == 200, approved.text
+        assert approved.json()["status"] == "approved"
+        assert approved.json()["approved_by"] == str(manager.id)
+
+        # The invoice is now payable, which is the whole point of approving it.
+        paid = await client.post(
+            f"/api/v1/finance/invoices/{invoice['id']}/payments",
+            json={
+                "payment_date": date.today().isoformat(),
+                "amount": "300.00",
+                "method": "bank_transfer",
+            },
+            headers={"Authorization": f"Bearer {accounts_token}"},
+        )
+        assert paid.status_code == 200, paid.text
+        assert paid.json()["payment_status"] == "paid"
+
+    approval = await approval_for(invoice["id"])
+    assert approval is not None
+    assert approval.status == "approved", "the approval inbox must not stay pending"
+    assert approval.decided_at is not None
+
+
+async def test_approved_invoice_cannot_be_resubmitted_or_approved_again() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+        assert (
+            await patch_status(client, manager_token, invoice["id"], "approved")
+        ).status_code == 200
+
+        for illegal in ("submitted", "approved", "draft"):
+            refused = await patch_status(client, manager_token, invoice["id"], illegal)
+            assert refused.status_code == 409, illegal
+            assert refused.json()["error_code"] == "INVOICE_STATUS_TRANSITION_INVALID"
+
+        still_approved = await client.get(
+            f"/api/v1/finance/invoices/{invoice['id']}",
+            headers={"Authorization": f"Bearer {manager_token}"},
+        )
+        assert still_approved.json()["status"] == "approved"
+
+
+async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+
+        rejected = await patch_status(client, manager_token, invoice["id"], "rejected")
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["status"] == "rejected"
+        original = await approval_for(invoice["id"])
+        assert original is not None and original.status == "rejected"
+        assert original.decided_at is not None
+
+        resubmitted = await patch_status(client, accounts_token, invoice["id"], "submitted")
+        assert resubmitted.status_code == 200, resubmitted.text
+        assert resubmitted.json()["status"] == "submitted"
+
+        async with AsyncSessionLocal() as session:
+            pending = await session.scalar(
+                select(Approval).where(
+                    Approval.request_id == UUID(invoice["id"]),
+                    Approval.status == "pending",
+                )
+            )
+            assert pending is not None and pending.id != original.id
+            pending.approver_id = manager.id
+            approval_id = pending.id
+            await session.commit()
+
+        direct, inbox = await asyncio.gather(
+            patch_status(client, manager_token, invoice["id"], "approved"),
+            client.post(
+                f"/api/v1/approvals/{approval_id}/approve",
+                json={"comments": "Reviewed"},
+                headers={"Authorization": f"Bearer {manager_token}"},
+            ),
+        )
+        assert sorted([direct.status_code, inbox.status_code]) == [200, 409]
+
+    async with AsyncSessionLocal() as session:
+        approval = await session.get(Approval, approval_id)
+        updated_invoice = await session.get(Invoice, UUID(invoice["id"]))
+        assert approval is not None and approval.status == "approved"
+        assert updated_invoice is not None and updated_invoice.status == "approved"
