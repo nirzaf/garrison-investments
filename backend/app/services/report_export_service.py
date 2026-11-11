@@ -15,6 +15,7 @@ from app.models.user import User
 from app.repositories.report_export_repository import ReportExportRepository
 from app.services.audit_service import AuditService
 from app.services.report_service import ReportService
+from app.services.storage_service import minio_client
 from app.utils.exceptions import AppException
 from app.utils.security import utc_now
 
@@ -206,12 +207,7 @@ class ReportExportService:
         return table
 
     def _client(self) -> Minio:
-        return Minio(
-            self.settings.minio_endpoint,
-            access_key=self.settings.minio_root_user,
-            secret_key=self.settings.minio_root_password,
-            secure=self.settings.minio_secure,
-        )
+        return minio_client(self.settings)
 
     def _upload_pdf(self, object_key: str, data: bytes) -> None:
         client = self._client()
