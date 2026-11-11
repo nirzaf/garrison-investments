@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import DbSession, require_permission
-from app.models.inventory import InventoryLocationStock
+from app.models.inventory import InventoryItem, InventoryLocationStock
 from app.models.user import User
 from app.schemas.inventory import (
     AssetCreateRequest,
@@ -19,7 +19,7 @@ from app.schemas.inventory import (
     MovementResponse,
     StockResponse,
 )
-from app.services.inventory_service import InventoryService
+from app.services.inventory_service import PRICE_VISIBLE_ROLES, InventoryService
 from app.utils.permissions import PERMISSION_INVENTORY_MANAGE, PERMISSION_INVENTORY_VIEW
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -38,6 +38,14 @@ def stock_response(stock: InventoryLocationStock) -> StockResponse:
         reserved_qty=stock.reserved_qty,
         available_qty=stock.on_hand_qty - stock.reserved_qty,
     )
+
+
+def item_response(item: InventoryItem, actor: User) -> InventoryItemResponse:
+    """Mask unit_cost on the response only — never on the persistent ORM instance."""
+    response = InventoryItemResponse.model_validate(item)
+    if actor.role not in PRICE_VISIBLE_ROLES:
+        response.unit_cost = None
+    return response
 
 
 @router.get("/locations", response_model=list[LocationResponse])
@@ -62,8 +70,8 @@ async def list_items(
     session: DbSession,
     search: Annotated[str | None, Query(max_length=100)] = None,
 ) -> list[InventoryItemResponse]:
-    items = await InventoryService(session).list_items(current_user, search)
-    return [InventoryItemResponse.model_validate(item) for item in items]
+    items = await InventoryService(session).list_items(search)
+    return [item_response(item, current_user) for item in items]
 
 
 @router.post("/items", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
@@ -73,7 +81,7 @@ async def create_item(
     session: DbSession,
 ) -> InventoryItemResponse:
     item = await InventoryService(session).create_item(payload, current_user)
-    return InventoryItemResponse.model_validate(item)
+    return item_response(item, current_user)
 
 
 @router.get("/items/{item_id}", response_model=InventoryItemResponse)
@@ -82,8 +90,8 @@ async def get_item(
     current_user: CanViewInventory,
     session: DbSession,
 ) -> InventoryItemResponse:
-    item = await InventoryService(session).get_item(item_id, current_user)
-    return InventoryItemResponse.model_validate(item)
+    item = await InventoryService(session).get_item(item_id)
+    return item_response(item, current_user)
 
 
 @router.get("/items/{item_id}/stock", response_model=list[StockResponse])

@@ -98,7 +98,12 @@ class InventoryService:
         await self.session.commit()
         return item
 
-    async def list_items(self, actor: User, search: str | None = None) -> list[InventoryItem]:
+    async def list_items(self, search: str | None = None) -> list[InventoryItem]:
+        """Return items with their persisted prices intact.
+
+        Price masking is a presentation concern handled by the API layer; mutating
+        ``unit_cost`` here would write NULL prices on the next commit in this session.
+        """
         query: Select[InventoryItem] = select(InventoryItem).where(
             InventoryItem.deleted_at.is_(None)
         )
@@ -111,13 +116,9 @@ class InventoryService:
                     func.lower(InventoryItem.category).like(pattern),
                 )
             )
-        items = list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
-        if actor.role not in PRICE_VISIBLE_ROLES:
-            for item in items:
-                item.unit_cost = None
-        return items
+        return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
 
-    async def get_item(self, item_id: UUID, actor: User) -> InventoryItem:
+    async def get_item(self, item_id: UUID) -> InventoryItem:
         item = await self.session.scalar(
             select(InventoryItem).where(
                 InventoryItem.id == item_id, InventoryItem.deleted_at.is_(None)
@@ -125,8 +126,6 @@ class InventoryService:
         )
         if not item:
             raise NotFoundException("Inventory item")
-        if actor.role not in PRICE_VISIBLE_ROLES:
-            item.unit_cost = None
         return item
 
     async def list_stock(self, item_id: UUID) -> list[InventoryLocationStock]:
@@ -363,7 +362,9 @@ class InventoryService:
                 error_code="REQUEST_STATUS_INVALID",
             )
         for line in request.lines:
-            remaining = line.quantity - line.reserved_quantity
+            # ``reserved_quantity`` tracks only what is reserved and NOT yet issued, so
+            # re-reserving a partially issued request must not reserve the issued part again.
+            remaining = line.quantity - line.reserved_quantity - line.issued_quantity
             if remaining <= 0:
                 continue
             await self._reserve_stock(line.item_id, request.from_location_id, remaining)
@@ -398,7 +399,7 @@ class InventoryService:
             if remaining <= 0:
                 continue
             stock = await self._get_stock(line.item_id, request.from_location_id, for_update=True)
-            if stock.reserved_qty < remaining:
+            if line.reserved_quantity < remaining or stock.reserved_qty < remaining:
                 fully_issued = False
                 continue
             stock.reserved_qty -= remaining
@@ -409,6 +410,9 @@ class InventoryService:
                 project_id=request.project_id,
             )
             line.issued_quantity += remaining
+            # Issuing consumes the reservation: keep the line invariant
+            # reserved_quantity == quantity - issued_quantity (floored at zero).
+            line.reserved_quantity = max(Decimal("0"), line.reserved_quantity - remaining)
             self.session.add(
                 InventoryMovement(
                     item_id=line.item_id,
@@ -449,7 +453,12 @@ class InventoryService:
                     request.from_location_id,
                     for_update=True,
                 )
-                stock.reserved_qty -= line.reserved_quantity
+                # Legacy lines can still include the portion already issued.
+                # The stock pool also includes reservations for other requests.
+                unissued = max(Decimal("0"), line.quantity - line.issued_quantity)
+                available_reservation = max(Decimal("0"), stock.reserved_qty)
+                release = min(line.reserved_quantity, unissued, available_reservation)
+                stock.reserved_qty -= release
                 line.reserved_quantity = Decimal("0")
         request.status = "cancelled"
         await self.audit.record(
@@ -511,7 +520,14 @@ class InventoryService:
         elif payload.movement_type == "adjustment":
             if not payload.to_location_id:
                 raise AppException("Adjustment requires target location.", status_code=422)
+            # _get_or_create_stock already holds an advisory lock plus FOR UPDATE on the row.
             stock = await self._get_or_create_stock(payload.item_id, payload.to_location_id)
+            if payload.quantity < 0 and stock.on_hand_qty + payload.quantity < stock.reserved_qty:
+                raise AppException(
+                    "Adjustment would consume reserved stock.",
+                    status_code=409,
+                    error_code="INSUFFICIENT_STOCK",
+                )
             stock.on_hand_qty += payload.quantity
         elif payload.movement_type == "reserve":
             if not payload.from_location_id:
