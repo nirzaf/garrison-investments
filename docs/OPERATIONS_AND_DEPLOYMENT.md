@@ -189,6 +189,29 @@ The Grafana database initializer uses PostgreSQL `ON_ERROR_STOP` and idempotent 
 Any non-zero `grafana_db_init` or `loki_minio_init` exit is a deployment failure; inspect the job
 logs instead of manually bypassing the dependency.
 
+### Local production-compose rehearsal
+
+To rehearse the production stack on a workstation without touching a live environment:
+
+1. In a scratch copy of the release, copy `.env.example` to `.env`, set `APP_ENV=production`,
+   and configure test-only passwords and signing keys. Both Compose interpolation and the
+   service-level `env_file` must read this same `.env` file.
+2. Mount the generated RSA pair at the paths in `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`.
+   Put a test certificate in `nginx/ssl/` with the hostname in its SAN.
+3. In a Compose override, bind nginx to loopback, remap its ports, and move `NGINX_BACKEND_PROXY_SUBNET`,
+   `NGINX_BACKEND_PROXY_DYNAMIC_RANGE`, and `NGINX_BACKEND_PROXY_IP` together when the default
+   pool overlaps an existing Docker network.
+4. Use a unique Compose project name. Start PostgreSQL with `up -d --wait postgres`, run
+   `run --rm --no-deps --build backend alembic upgrade head`, then start the stack with
+   `up -d --build --wait`. Pass the same project name and both Compose files to every command.
+5. Verify `/` serves the SPA, `/health` returns ok, and a presigned `/portal-files/` object renders
+   in a same-origin iframe while `/` itself refuses framing.
+
+Presigned object URLs sign the exact `Host` header the browser sends. Both nginx configs forward
+`$http_host` (not `$host`) on `/portal-files/` so a `MINIO_PUBLIC_ENDPOINT` that includes a
+non-default port still validates; `$host` strips the port and MinIO rejects the request with
+`SignatureDoesNotMatch`.
+
 ---
 
 ## 3. Operations, Backup & Restore

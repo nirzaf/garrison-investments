@@ -1011,11 +1011,15 @@ services:
     volumes: [redisdata:/data]
 
   minio:
-    image: minio/minio:latest
+    # Silo (S3-compatible) replaces the withdrawn minio/minio Docker Hub image.
+    # Override with OBJECT_STORAGE_IMAGE for a local build or private mirror.
+    image: ${OBJECT_STORAGE_IMAGE:-pgsty/silo:RELEASE.2026-11-09T00-00-00Z@sha256:08ce1505b5eacefbad1ca07159b242b9ce045a11c2817e3bc257b25f77bbc02d}
     command: server /data --console-address ":9001"
     environment: [MINIO_ROOT_USER, MINIO_ROOT_PASSWORD]
     volumes: [miniodata:/data]
     ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
 
 volumes:
   pgdata:
