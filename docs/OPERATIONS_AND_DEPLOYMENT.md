@@ -185,7 +185,9 @@ The Celery beat container runs these schedules automatically (defined in `backen
 
 ### Backup Procedure
 
-The backend container includes `scripts/backup.py`.
+The backend container includes `scripts/backup.py`. Scheduled backups require
+`BACKUP_ENCRYPTION_PASSWORD`. The CLI also requires it unless the operator explicitly
+passes `--allow-unencrypted`, which records a warning before writing the backup.
 
 * **Daily application and Grafana backup:**
   `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all`

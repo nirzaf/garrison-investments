@@ -7,9 +7,13 @@ import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote, urlsplit, urlunsplit
+from tempfile import TemporaryDirectory
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
+import structlog
 from minio import Minio
+
+logger = structlog.get_logger(__name__)
 
 
 def normalize_pg_url(database_url: str) -> str:
@@ -19,9 +23,15 @@ def normalize_pg_url(database_url: str) -> str:
 
 
 def create_dump(database_url: str, output_path: Path) -> None:
-    command = ["pg_dump", "--format=plain", "--no-owner", normalize_pg_url(database_url)]
+    parts = urlsplit(normalize_pg_url(database_url))
+    environment = os.environ.copy()
+    if parts.password is not None:
+        environment["PGPASSWORD"] = unquote(parts.password)
+        credentials, host = parts.netloc.rsplit("@", 1)
+        parts = parts._replace(netloc=f"{credentials.split(':', 1)[0]}@{host}")
+    command = ["pg_dump", "--format=plain", "--no-owner", parts.geturl()]
     with gzip.open(output_path, "wb") as compressed, subprocess.Popen(
-        command, stdout=subprocess.PIPE
+        command, stdout=subprocess.PIPE, env=environment
     ) as dump:
         assert dump.stdout is not None
         shutil.copyfileobj(dump.stdout, compressed)
@@ -44,9 +54,10 @@ def encrypt_file(input_path: Path, password: str) -> Path:
             "-out",
             str(encrypted_path),
             "-pass",
-            f"pass:{password}",
+            "env:BACKUP_ENCRYPTION_PASSWORD",
         ],
         check=True,
+        env={**os.environ, "BACKUP_ENCRYPTION_PASSWORD": password},
     )
     input_path.unlink()
     return encrypted_path
@@ -97,6 +108,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create encrypted PostgreSQL backups in MinIO.")
     parser.add_argument("--monthly", action="store_true", help="Store backup under monthly prefix.")
     parser.add_argument(
+        "--allow-unencrypted", action="store_true", help="Explicitly allow a plaintext backup."
+    )
+    parser.add_argument(
         "--target",
         choices=("all", "application", "grafana"),
         default="application",
@@ -130,12 +144,12 @@ def backup_database(
     monthly: bool,
     bucket: str,
     local_dir: Path,
+    encryption_password: str | None,
 ) -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_path = local_dir / f"{name}-{timestamp}.sql.gz"
     create_dump(database_url, backup_path)
 
-    encryption_password = os.getenv("BACKUP_ENCRYPTION_PASSWORD")
     if encryption_password:
         backup_path = encrypt_file(backup_path, encryption_password)
 
@@ -157,10 +171,18 @@ def backup_database(
 
 def main() -> None:
     args = parse_args()
+    encryption_password = os.getenv("BACKUP_ENCRYPTION_PASSWORD")
+    if not encryption_password:
+        if not args.allow_unencrypted:
+            raise SystemExit(
+                "BACKUP_ENCRYPTION_PASSWORD is required. "
+                "Use --allow-unencrypted only for an intentional plaintext backup."
+            )
+        logger.warning("backup_unencrypted_allowed", event_type="audit", target=args.target)
     bucket = os.getenv("MINIO_BUCKET", "portal-files")
-    local_dir = Path(os.getenv("BACKUP_LOCAL_DIR", "/tmp/garrison-backups"))
-    local_dir.mkdir(parents=True, exist_ok=True)
-    try:
+    backup_root = Path(os.getenv("BACKUP_LOCAL_DIR", "/tmp/garrison-backups"))
+    backup_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="run-", dir=backup_root) as run_dir:
         for name, database_url in database_targets(args.target):
             print(
                 backup_database(
@@ -168,11 +190,10 @@ def main() -> None:
                     database_url=database_url,
                     monthly=args.monthly,
                     bucket=bucket,
-                    local_dir=local_dir,
+                    local_dir=Path(run_dir),
+                    encryption_password=encryption_password,
                 )
             )
-    finally:
-        shutil.rmtree(local_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
