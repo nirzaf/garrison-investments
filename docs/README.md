@@ -15,9 +15,10 @@ This folder has been aggressively consolidated down to the core living artifacts
 | 1 | [Architecture](ARCHITECTURE.md) | Codebase-derived architecture, layering rules, runtime boundaries, component tree, and API design. |
 | 2 | [User Roles And Permissions](ROLES_AND_PERMISSIONS.md) | Current code-derived RBAC roles, permissions, frontend visibility, and backend enforcement. |
 | 3 | [Operations and Deployment](OPERATIONS_AND_DEPLOYMENT.md) | Unified runbook for staging/prod deployment, CI/CD, backup/restore, alerts, UAT, and launch evidence. |
-| 4 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations. |
-| 5 | [User Stories](user-stories/README.md) | Tracking for the portal's work packages. |
-| 6 | [Import Templates](import_templates/) | CSV templates for importing initial data (Users, BOQ, Projects, etc.). |
+| 4 | [Logging and Remote CLI](LOGGING_AND_REMOTE_CLI.md) | Centralized event logging, remote log search/streaming API, and `log_cli.py` usage. |
+| 5 | [Production Readiness Review](PRODUCTION_READINESS_REVIEW.md) | Final PRR verdict, security/DR review, and pre-release operations checklist. |
+| 6 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations. |
+| 7 | [Import Templates](import_templates/) | CSV templates for importing initial data (Users, BOQ, Projects, etc.). |
 
 ## Quick Start (Development)
 
@@ -25,14 +26,14 @@ This folder has been aggressively consolidated down to the core living artifacts
 # Clone repo
 git clone <repo-url> && cd garrison-investments
 
-# Start all services
-docker-compose up -d
+# Start all development services
+docker compose up -d
 
 # Run migrations
-docker-compose exec backend alembic upgrade head
+docker compose exec backend alembic upgrade head
 
 # Seed sample data
-docker-compose exec backend python scripts/seed.py
+docker compose exec backend python scripts/seed.py
 
 # Frontend dev server (localhost:3000)
 cd frontend && npm install && npm run dev
@@ -40,3 +41,11 @@ cd frontend && npm install && npm run dev
 # API docs (localhost:8000/docs)
 open http://localhost:8000/docs
 ```
+
+The current staging application is `https://erp.garrisons.lk`; Grafana is served at
+`https://erp.garrisons.lk/grafana/`. Environment-specific host, TLS, Compose project, and rollback
+details are maintained in [`STAGING_DEPLOYMENT.md`](../STAGING_DEPLOYMENT.md).
+
+Documentation scope was reconciled with the structured logging and self-hosted observability changes
+in July 2026. Schema and role documents are unchanged because these changes do not alter database
+tables or authorization policy.

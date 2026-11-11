@@ -451,7 +451,9 @@ All operations that should not block the HTTP request/response cycle are handled
 | `tasks/approval.py` | Approval reminders and background approval processing |
 | `tasks/imports.py` | Bulk import execution |
 | `tasks/backup.py` | Database backup creation + retention |
-| `tasks/maintenance.py` | Retention cleanups and periodic housekeeping |
+| `tasks/maintenance.py` | Retention cleanups, log archiving, and periodic housekeeping |
+
+All tasks share `tasks/base.py:LoggedTask` as the task base class, which wires structured logging and request-context propagation into every Celery execution.
 
 ### 2.9 Exception Handling
 
@@ -619,17 +621,25 @@ apiClient.interceptors.response.use(
 Domain-specific API modules:
 
 ```
-api/auth.ts        — login, refresh, logout, me
-api/reports.ts     — create, list, get, update, submit, approve, reject
-api/projects.ts    — list, get, create, update, timeline, members
-api/inventory.ts   — items, locations, stock, assets, movements, requests
-api/documents.ts   — list, upload, download, versions, search
-api/photos.ts      — upload, list, download, thumbnail
-api/approvals.ts   — inbox, outbox, approve, reject
-api/notifications.ts — list, unread-count, mark-read
-api/dashboard.ts   — summary, progress, material-usage, approval-stats
-api/export.ts      — excel, pdf exports
-api/admin.ts       — users, audit-log
+api/auth.ts               — login, OTP, refresh, logout, me
+api/users.ts              — user management CRUD
+api/projects.ts           — list, get, create, update, timeline, members
+api/reports.ts            — create, list, get, update, submit, approve, reject
+api/supervisorUpdates.ts  — supervisor update submissions
+api/approvals.ts          — inbox, approve, reject
+api/documents.ts          — list, upload, download, versions, search
+api/photos.ts             — upload, list, download, thumbnail
+api/inventory.ts          — items, locations, stock, assets, movements, requests
+api/finance.ts            — invoices, payments
+api/analytics.ts          — summaries, Excel export
+api/dashboard.ts          — summary, progress, material-usage, approval-stats
+api/notifications.ts      — list, unread-count, mark-read
+api/imports.ts            — bulk import preview/confirm
+api/audit.ts              — audit log queries
+api/fileUrls.ts           — presigned URL normalization helpers
+api/offlineQueue.ts       — IndexedDB offline queue helpers
+api/client.ts             — shared axios instance + interceptors
+api/schema.d.ts           — OpenAPI-generated types
 ```
 
 ### 3.5 PWA & Offline Strategy (Phase 3)
@@ -686,18 +696,18 @@ conflict_status    — null | "server_newer" | "rejected"
 
 ### 4.1 Schema Overview
 
-Schema documentation in `docs/schema/` currently covers 31 tables organized into domain groups:
+Schema documentation in `docs/schema/` currently covers 32 tables organized into domain groups:
 
 | Group | Tables |
 |-------|--------|
-| Identity & Access | `users` |
-| Projects & Planning | `projects`, `project_members`, `project_milestones`, `boq_items` |
-| Daily Reporting | `daily_reports`, `report_manpower`, `report_equipment`, `report_material_consumption` |
-| Inventory & Stores | `suppliers`, `storage_locations`, `inventory_items`, `inventory_location_stock`, `inventory_assets`, `inventory_movements` |
+| Identity & Access | `users`, `auth_otp_challenges`, `auth_refresh_tokens` |
+| Projects & Planning | `projects`, `project_members`, `project_milestones`, `project_tasks`, `boq_items` |
+| Daily Reporting | `daily_reports`, `report_manpower`, `report_equipment`, `report_material_consumption`, `daily_report_approval_history`, `report_exports`, `supervisor_updates` |
+| Inventory & Stores | `suppliers`, `storage_locations`, `inventory_items`, `inventory_location_stock`, `inventory_assets`, `inventory_movements`, `material_requests`, `material_request_lines` |
 | Documents & Media | `documents`, `document_versions`, `photos` |
 | Workflow & Comms | `approvals`, `notifications` |
 | Accounts & Finance | `invoices`, `payments` |
-| Governance | `activity_log` |
+| Governance | `activity_log`, `import_batches` |
 
 Full per-table details live in [schema/](schema/) and are the source of truth for the current schema.
 
@@ -1027,37 +1037,44 @@ volumes:
 | Rate limiting | Disabled | Enabled |
 | Monitoring | None | Not configured |
 
-### 7.3 CI/CD Pipeline
+### 7.3 CI Pipeline
+
+Defined in `.github/workflows/ci.yml`. Runs on every pull request and on pushes to
+`main`; in-progress runs for the same ref are cancelled when a new commit arrives.
+The four jobs are independent and run in parallel — there is no lint/test/build
+sequencing, because none of the jobs depend on another's output.
 
 ```
-PUSH TO BRANCH
+PULL REQUEST  /  PUSH TO main
     |
-    v
-[LINT]
-  - Backend: ruff + mypy
-  - Frontend: ESLint + Prettier
+    +--> [backend-static]     ruff check .  +  mypy .            (Python 3.12)
     |
-    v
-[TEST]
-  - Backend: pytest (PostgreSQL in Docker service container)
-  - Frontend: Vitest + React Testing Library
+    +--> [frontend]           npm ci -> lint -> api:types:check
+    |                         -> test (Vitest) -> build          (Node 20)
     |
-    v
-[BUILD]
-  - Frontend: vite build -> dist/
-  - Backend: docker build
+    +--> [compose-validate]   docker compose config --quiet for
+    |                         docker-compose.prod.yml and
+    |                         docker-compose.staging.yml
     |
-    v
-[DEPLOY TO STAGING]  (on push to develop)
-  - docker-compose -f docker-compose.prod.yml up -d
-  - alembic upgrade head
-  - Smoke test (curl health check)
-    |
-    v
-[DEPLOY TO PRODUCTION]  (on push to main, manual approval required)
-  - Same as staging
-  - Requires Operation Manager approval in GitHub
+    +--> [backend-tests]      PostgreSQL 16 + Redis 7 service
+                              containers, MinIO started via
+                              docker run, then alembic upgrade
+                              head -> pytest -q -rs
 ```
+
+The jobs mirror the local verification commands documented in `README.md`, so a
+clean local run predicts a clean CI run.
+
+`backend-tests` is deliberately marked `continue-on-error: true`. The database-backed
+tests skip themselves when PostgreSQL is unreachable, so they had never executed
+before this pipeline existed; the job stays advisory until it has been green once,
+then it is promoted to a required check. The other three jobs were verified clean
+before being introduced and are required immediately.
+
+Deployment is **not** automated. There is no deploy job, no environment gate, and no
+smoke-test stage. Staging and production releases are performed manually by the
+launch owner following `STAGING_DEPLOYMENT.md` and `docs/OPERATIONS_AND_DEPLOYMENT.md`,
+which includes running `alembic upgrade head` against the target environment.
 
 ### 7.4 Backup Strategy
 
@@ -1075,10 +1092,23 @@ PUSH TO BRANCH
 
 ### 8.1 Logging
 
-- **Backend**: `structlog` for structured JSON logging
-  - Log levels: DEBUG (dev), INFO (key operations), WARNING (recoverable), ERROR (exceptions)
-  - Log categories: `app.api`, `app.service`, `app.security`, `app.task`
-  - Format: `{"timestamp": "...", "level": "INFO", "logger": "app.service.report", "event": "report_created", "user_id": "...", "report_id": "..."}`
+- **Backend and workers**: one `structlog`/standard-library JSON pipeline configured in
+  `app/observability/`, with request/task correlation, recursive sensitive-value redaction, structured
+  exception traces, and an environment-controlled minimum level.
+  - Production defaults to `INFO`; temporary `DEBUG` is enabled only through `LOG_LEVEL`.
+  - Every record includes timestamp, severity, logger, environment, service, and instance identifiers.
+  - HTTP completion records include normalized route, status, duration, and request correlation.
+- **Operational aggregation**: Grafana Alloy discovers Docker containers and sends stdout to Loki.
+  Loki uses TSDB indexes and a dedicated MinIO bucket with 14-day Compactor retention. Grafana uses a
+  dedicated PostgreSQL database and provisioned dashboards, queries, SMTP alerts, and a Loki data source.
+  Grafana is exposed only through its HTTPS Nginx virtual host; Loki and Alloy remain internal.
+- **Defence in depth for log data**: the application recursively redacts sensitive keys, bearer/JWT
+  patterns, credential-bearing URLs, and credential-like query parameters before JSON serialization;
+  Alloy applies an additional pattern-redaction stage before Loki ingestion. Request IDs, task IDs,
+  users, sessions, and endpoints remain parsed fields rather than Loki labels.
+- **Failure isolation**: Grafana, Loki, and Alloy are not in the application request path. Docker's
+  rotated `json-file` output remains available if collection or storage is unavailable, while
+  PostgreSQL `activity_log` remains the authoritative business/audit record.
 - **Centralized event log**: Stored in `activity_log` with standardized fields such as `event_type`, `severity`, `request_id`, `session_id`, `endpoint`, `source_service`, `storage_tier`, and `context_payload`
 - **Remote access**: Search and real-time streaming are available through the secured log API and `backend/scripts/log_cli.py`
 - **Frontend**: Console logging in dev only; production errors captured via `POST /api/v1/logs/client-error`
@@ -1141,14 +1171,11 @@ garrison-investments/
 │   ├── ARCHITECTURE.md
 │   ├── OPERATIONS_AND_DEPLOYMENT.md
 │   ├── ROLES_AND_PERMISSIONS.md
+│   ├── LOGGING_AND_REMOTE_CLI.md
+│   ├── PRODUCTION_READINESS_REVIEW.md
 │   ├── openapi.json
-│   ├── schema/                        # Per-table schema reference (31 files)
-│   ├── import_templates/
-│   └── user-stories/
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml                     # Lint, test, build, and compose validation
+│   ├── schema/                        # Per-table schema reference (32 tables)
+│   └── import_templates/
 │
 ├── nginx/
 │   ├── nginx.conf                     # Reverse proxy + TLS + security headers
@@ -1232,7 +1259,8 @@ garrison-investments/
 │   │   │       ├── approvals.py
 │   │   │       ├── notifications.py
 │   │   │       ├── photos.py
-│   │   │       └── supervisor_updates.py
+│   │   │       ├── supervisor_updates.py
+│   │   │       └── logs.py            # Centralized log-event queries + streaming
 │   │   │
 │   │   ├── services/                  # Business logic layer
 │   │   │   ├── analytics_service.py
@@ -1273,10 +1301,16 @@ garrison-investments/
 │   │   │   ├── audit.py
 │   │   │   └── rate_limit.py
 │   │   │
+│   │   ├── observability/             # Structured logging + context propagation
+│   │   │   ├── __init__.py
+│   │   │   ├── context.py
+│   │   │   └── logging.py
+│   │   │
 │   │   ├── tasks/                     # Celery tasks
 │   │   │   ├── __init__.py
 │   │   │   ├── approval.py
 │   │   │   ├── async_utils.py
+│   │   │   ├── base.py                # LoggedTask base class
 │   │   │   ├── celery_app.py          # Celery instance config
 │   │   │   ├── email.py
 │   │   │   ├── image.py
@@ -1294,18 +1328,25 @@ garrison-investments/
 │   │       └── security.py
 │   │
 │   ├── tests/
-│   │   ├── conftest.py                # Fixtures: test DB, async client, auth headers
 │   │   ├── test_auth.py
-│   │   ├── test_reports.py
+│   │   ├── test_daily_reports.py
 │   │   ├── test_projects.py
 │   │   ├── test_inventory.py
 │   │   ├── test_approvals.py
 │   │   ├── test_documents.py
-│   │   └── factories/                 # Test data factories (factory_boy)
+│   │   └── ...                        # 25 test modules total
 │   │
 │   └── scripts/
 │       ├── seed.py                    # Development seed data
-│       └── backup.py                  # Manual backup script
+│       ├── backup.py                  # Encrypted database backup
+│       ├── restore_dry_run.py         # Backup restore validation
+│       ├── health_monitor.py          # Health-endpoint alerting
+│       ├── launch_evidence.py         # Launch evidence capture
+│       ├── log_cli.py                 # Remote log search / tail CLI
+│       ├── generate_assets.py
+│       ├── generate_missing_reports.py
+│       ├── push_to_storage.py
+│       └── validate_import_sources.py
 │
 ├── frontend/
 │   ├── Dockerfile
@@ -1317,104 +1358,74 @@ garrison-investments/
 │   ├── public/
 │   │   ├── manifest.json
 │   │   ├── sw.js                      # Service Worker (PWA)
-│   │   └── icons/
+│   │   └── brand/
 │   ├── src/
 │   │   ├── main.tsx
-│   │   ├── App.tsx
-│   │   ├── router.tsx
+│   │   ├── App.tsx                    # Routes + RequirePermission gates
+│   │   ├── i18n.ts
 │   │   │
 │   │   ├── api/                       # API client modules
 │   │   │   ├── client.ts              # Axios instance + interceptors
+│   │   │   ├── schema.d.ts            # OpenAPI-generated types
 │   │   │   ├── auth.ts
-│   │   │   ├── reports.ts
+│   │   │   ├── users.ts
 │   │   │   ├── projects.ts
-│   │   │   ├── inventory.ts
+│   │   │   ├── reports.ts
+│   │   │   ├── supervisorUpdates.ts
+│   │   │   ├── approvals.ts
 │   │   │   ├── documents.ts
 │   │   │   ├── photos.ts
-│   │   │   ├── approvals.ts
-│   │   │   ├── notifications.ts
+│   │   │   ├── inventory.ts
+│   │   │   ├── finance.ts
+│   │   │   ├── analytics.ts
 │   │   │   ├── dashboard.ts
-│   │   │   ├── export.ts
-│   │   │   └── admin.ts
-│   │   │
-│   │   ├── hooks/                     # Custom React hooks
-│   │   │   ├── useAuth.ts
-│   │   │   ├── useDebounce.ts
-│   │   │   ├── useFileUpload.ts
-│   │   │   ├── useOfflineSync.ts
-│   │   │   └── usePagination.ts
+│   │   │   ├── notifications.ts
+│   │   │   ├── imports.ts
+│   │   │   ├── audit.ts
+│   │   │   ├── fileUrls.ts
+│   │   │   └── offlineQueue.ts
 │   │   │
 │   │   ├── context/                   # React Context providers
 │   │   │   ├── AuthContext.tsx
-│   │   │   └── ThemeContext.tsx
+│   │   │   ├── auth-context.ts
+│   │   │   └── useAuth.ts
 │   │   │
 │   │   ├── components/
-│   │   │   ├── ui/                    # Primitive components
-│   │   │   │   ├── Button.tsx
-│   │   │   │   ├── Input.tsx
-│   │   │   │   ├── Select.tsx
-│   │   │   │   ├── Table.tsx
-│   │   │   │   ├── Modal.tsx
-│   │   │   │   ├── Card.tsx
-│   │   │   │   ├── Badge.tsx
-│   │   │   │   └── Tabs.tsx
 │   │   │   ├── layout/
 │   │   │   │   ├── AppLayout.tsx
-│   │   │   │   ├── Sidebar.tsx
-│   │   │   │   ├── Header.tsx
-│   │   │   │   └── MobileNav.tsx
+│   │   │   │   └── RequirePermission.tsx
 │   │   │   └── shared/
-│   │   │       ├── DataTable.tsx
-│   │   │       ├── FileUpload.tsx
-│   │   │       ├── PhotoGrid.tsx
-│   │   │       ├── StatusBadge.tsx
-│   │   │       ├── ProgressBar.tsx
-│   │   │       ├── SignaturePad.tsx
-│   │   │       └── OfflineIndicator.tsx
+│   │   │       ├── EmptyState.tsx
+│   │   │       ├── ErrorBoundary.tsx
+│   │   │       ├── FileDropZone.tsx
+│   │   │       ├── OfflineIndicator.tsx
+│   │   │       └── StatusBadge.tsx
 │   │   │
 │   │   ├── pages/
-│   │   │   ├── auth/
-│   │   │   │   ├── LoginPage.tsx
-│   │   │   │   └── ForgotPasswordPage.tsx
-│   │   │   ├── dashboard/
-│   │   │   │   └── DashboardPage.tsx
-│   │   │   ├── reports/
-│   │   │   │   ├── DailyReportList.tsx
-│   │   │   │   ├── DailyReportForm.tsx
-│   │   │   │   └── DailyReportDetail.tsx
-│   │   │   ├── projects/
-│   │   │   │   ├── ProjectList.tsx
-│   │   │   │   └── ProjectTimeline.tsx
-│   │   │   ├── inventory/
-│   │   │   │   ├── InventoryList.tsx
-│   │   │   │   ├── StockByLocation.tsx
-│   │   │   │   └── MovementHistory.tsx
-│   │   │   ├── documents/
-│   │   │   │   └── DocumentLibrary.tsx
-│   │   │   ├── photos/
-│   │   │   │   └── PhotoGallery.tsx
-│   │   │   ├── approvals/
-│   │   │   │   └── ApprovalInbox.tsx
-│   │   │   └── admin/
-│   │   │       ├── UserManagement.tsx
-│   │   │       └── AuditLog.tsx
+│   │   │   ├── auth/                  # LoginPage, PasswordResetPage, ChangePasswordPage
+│   │   │   ├── dashboard/             # DashboardPage
+│   │   │   ├── reports/               # DailyReportPage, SupervisorUpdatePage
+│   │   │   ├── approvals/             # ApprovalInboxPage
+│   │   │   ├── projects/              # ProjectListPage
+│   │   │   ├── inventory/             # InventoryPage
+│   │   │   ├── suppliers/             # SuppliersPage
+│   │   │   ├── documents/             # DocumentsPage
+│   │   │   ├── photos/                # PhotosPage
+│   │   │   ├── finance/               # FinancePage
+│   │   │   ├── analytics/             # AnalyticsPage
+│   │   │   ├── delivery/              # DeliveryPlanPage
+│   │   │   ├── notifications/         # NotificationsPage
+│   │   │   ├── profile/               # ProfilePage
+│   │   │   ├── security/              # SecurityPage
+│   │   │   ├── roles/                 # RolesPermissionsPage
+│   │   │   ├── manual/                # ManualPage + role manuals
+│   │   │   └── admin/                 # UserManagementPage, AuditLogPage, ImportPage
 │   │   │
-│   │   ├── lib/                       # Utility functions
-│   │   │   ├── constants.ts
-│   │   │   ├── formatters.ts
-│   │   │   ├── validators.ts
-│   │   │   └── offlineStorage.ts
-│   │   │
-│   │   └── types/                     # TypeScript type definitions
-│   │       ├── user.ts
-│   │       ├── project.ts
-│   │       ├── report.ts
-│   │       ├── inventory.ts
-│   │       ├── document.ts
-│   │       └── common.ts
+│   │   └── styles/
+│   │       └── index.css
 │   │
-│   └── tests/
-│       └── components/
+│   └── scripts/
+│       └── check-openapi-types.mjs    # OpenAPI type drift check
 │
 └── storage/                           # MinIO data volume (gitignored)
 ```
@@ -1535,9 +1546,13 @@ garrison-investments/
 | Python | 3.12 | Backend Docker base image (`backend/Dockerfile`) |
 | FastAPI | 0.136.1 | `backend/requirements.txt` |
 | SQLAlchemy | 2.0.41 | `backend/requirements.txt` |
+| asyncpg | 0.30.0 | Async PostgreSQL driver (`backend/requirements.txt`) |
 | Alembic | 1.16.1 | `backend/requirements.txt` |
 | pydantic-settings | 2.9.1 | Settings management (`backend/requirements.txt`) |
 | Celery | 5.5.2 | Background task queue (`backend/requirements.txt`) |
+| structlog | 25.3.0 | Structured JSON logging (`backend/requirements.txt`) |
+| python-jose | 3.5.0 | JWT signing/verification (`backend/requirements.txt`) |
+| bcrypt | 4.0.1 | Password hashing (`backend/requirements.txt`) |
 | PostgreSQL | 16 | Primary database |
 | Redis | 5.2.1 (client) | Cache, broker, rate limiter (`backend/requirements.txt`) |
 | MinIO | 7.2.15 (client) | Object storage (`backend/requirements.txt`) |

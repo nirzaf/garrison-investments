@@ -71,7 +71,11 @@ class AuditService:
                 endpoint=endpoint or context.endpoint,
                 http_method=http_method or context.method,
                 status_code=status_code,
-                source_service=source_service or context.source_service or self.settings.log_source_service,
+                source_service=(
+                    source_service
+                    or context.source_service
+                    or self.settings.log_source_service
+                ),
                 instance_id=instance_id or context.instance_id or self.settings.log_instance_id,
                 storage_tier=storage_tier,
                 archived_at=archived_at,

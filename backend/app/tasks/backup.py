@@ -1,14 +1,15 @@
-import structlog
 import subprocess
 import sys
+
+import structlog
 
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger("celery.task")
 
 
-def backup_command(monthly: bool = False) -> list[str]:
-    command = [sys.executable, "scripts/backup.py"]
+def backup_command(monthly: bool = False, target: str = "all") -> list[str]:
+    command = [sys.executable, "scripts/backup.py", "--target", target]
     if monthly:
         command.append("--monthly")
     return command

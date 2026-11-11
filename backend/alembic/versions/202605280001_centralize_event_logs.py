@@ -45,7 +45,8 @@ def upgrade() -> None:
         "activity_log", sa.Column("retention_until", sa.DateTime(timezone=True), nullable=True)
     )
     op.add_column(
-        "activity_log", sa.Column("context_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True)
+        "activity_log",
+        sa.Column("context_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     )
 
     op.execute(

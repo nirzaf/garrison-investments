@@ -1,7 +1,6 @@
-import os
-from pathlib import Path
 import sys
 from io import BytesIO
+from pathlib import Path
 
 # Add backend directory to sys.path so we can import from app
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -9,6 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from app.config import get_settings
 from app.services.storage_service import minio_client
 from scripts.seed import SEED_PHOTO_OBJECTS
+
 
 def main():
     settings = get_settings()

@@ -138,7 +138,10 @@ async def test_log_event_stream_returns_matching_events() -> None:
         async with client.stream(
             "GET",
             "/api/v1/log-events/stream",
-            params={"action": "maintenance.logs_retention", "created_from": (utc_now() - timedelta(minutes=5)).isoformat()},
+            params={
+                "action": "maintenance.logs_retention",
+                "created_from": (utc_now() - timedelta(minutes=5)).isoformat(),
+            },
             headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"},
         ) as response:
             assert response.status_code == 200
@@ -171,7 +174,10 @@ async def test_log_retention_archives_then_purges_old_logs() -> None:
         assert archived >= 1
         await session.commit()
 
-        logs, _ = await AuditService(session).list_logs(action="system.old_log", storage_tier="archive")
+        logs, _ = await AuditService(session).list_logs(
+            action="system.old_log",
+            storage_tier="archive",
+        )
         assert logs
         logs[0].archived_at = utc_now() - timedelta(days=400)
         await session.commit()

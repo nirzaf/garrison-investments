@@ -1,0 +1,84 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = sys.env("COMPOSE_PROJECT_NAME")
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = sys.env("APP_ENV")
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  labels     = {platform = "docker"}
+  forward_to = [loki.process.container_logs.receiver]
+}
+
+loki.process "container_logs" {
+  stage.replace {
+    expression = "(?i)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token)=([^&\\s\\\"]+)"
+    replace    = "<redacted>"
+  }
+
+  stage.replace {
+    expression = "(?i)\\\"(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token)\\\"\\s*:\\s*\\\"([^\\\"]*)\\\""
+    replace    = "<redacted>"
+  }
+
+  stage.replace {
+    expression = "(?i)Bearer\\s+([A-Za-z0-9._~+/-]+=*)"
+    replace    = "<redacted>"
+  }
+
+  stage.json {
+    expressions = {
+      severity = "severity",
+    }
+  }
+
+  stage.labels {
+    values = {
+      severity = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

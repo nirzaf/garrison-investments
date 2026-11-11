@@ -1,6 +1,5 @@
-import os
 from pathlib import Path
-from io import BytesIO
+
 from PIL import Image, ImageDraw
 
 BRAIN_DIR = Path("/Users/qts/.gemini/antigravity-ide/brain/8db6cf06-1ec3-44ea-9ee7-406361996c4a")
