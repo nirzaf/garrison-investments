@@ -9,6 +9,7 @@ from app.api.v1.documents import router as documents_router
 from app.api.v1.finance import router as finance_router
 from app.api.v1.imports import router as imports_router
 from app.api.v1.inventory import router as inventory_router
+from app.api.v1.logs import router as logs_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.photos import router as photos_router
 from app.api.v1.projects import router as projects_router
@@ -40,6 +41,7 @@ api_router.include_router(documents_router)
 api_router.include_router(finance_router)
 api_router.include_router(imports_router)
 api_router.include_router(inventory_router)
+api_router.include_router(logs_router)
 api_router.include_router(notifications_router)
 api_router.include_router(photos_router)
 api_router.include_router(projects_router)

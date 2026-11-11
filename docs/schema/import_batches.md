@@ -1,29 +1,20 @@
-# `import_batches`
+# import_batches
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/import_batch.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `template_type` | `VARCHAR(40)` | No | `` |  |
-| `file_name` | `VARCHAR(255)` | No | `` |  |
-| `status` | `VARCHAR(30)` | No | `` |  |
-| `created_by` | `UUID` | Yes | `` | users.id |
-| `row_count` | `INTEGER` | No | `0` |  |
-| `error_count` | `INTEGER` | No | `0` |  |
-| `summary` | `JSONB` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `created_by` | UUID | NULL | — | users.id | — |
+| `error_count` | Integer | NOT NULL | 0 | — | — |
+| `file_name` | String(255) | NOT NULL | — | — | — |
+| `row_count` | Integer | NOT NULL | 0 | — | — |
+| `status` | String(30) | NOT NULL | — | — | — |
+| `summary` | JSONB | NULL | — | — | — |
+| `template_type` | String(40) | NOT NULL | — | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `created_by` | `users.id` |

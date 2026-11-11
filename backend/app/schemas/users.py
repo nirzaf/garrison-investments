@@ -39,3 +39,7 @@ class UserUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, min_length=3, max_length=32)
     designation: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
+
+
+class AdminPasswordResetRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=256)

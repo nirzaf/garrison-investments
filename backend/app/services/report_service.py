@@ -16,11 +16,11 @@ from app.repositories.supervisor_update_repository import SupervisorUpdateReposi
 from app.schemas.daily_reports import DailyReportCreateRequest, DailyReportUpdateRequest
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
-from app.utils.links import append_link, approval_inbox_url, daily_report_url
 from app.utils.exceptions import AppException, NotFoundException
+from app.utils.links import append_link, approval_inbox_url, daily_report_url
 from app.utils.permissions import (
-    ROLE_ADMIN,
     ROLE_ACCOUNTS,
+    ROLE_ADMIN,
     ROLE_CIVIL_ENGINEER,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,

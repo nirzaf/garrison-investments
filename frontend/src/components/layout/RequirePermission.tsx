@@ -1,3 +1,5 @@
+import type { ReactElement } from 'react';
+
 import { Navigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
@@ -7,7 +9,7 @@ export function RequirePermission({
   children
 }: {
   permission: string;
-  children: JSX.Element;
+  children: ReactElement;
 }) {
   const { user } = useAuth();
 

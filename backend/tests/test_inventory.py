@@ -95,7 +95,10 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     challenge = login_response.json()
     verify_response = await client.post(
         "/api/v1/auth/verify-otp",
-        json={"challenge_id": challenge["challenge_id"], "otp": challenge.get("dev_otp") or "123456"},
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "otp": challenge.get("dev_otp") or "123456",
+        },
     )
     return str(verify_response.json()["access_token"])
 
