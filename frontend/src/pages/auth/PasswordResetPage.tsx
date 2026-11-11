@@ -50,7 +50,9 @@ export function PasswordResetPage() {
       }
 
       await confirmPasswordReset(challengeId, otp, newPassword);
-      navigate('/login', { state: { notice: 'Password reset complete. You can sign in with your new password.' } });
+      navigate('/login', {
+        state: { notice: 'Password reset complete. You can sign in with your new password.' }
+      });
     } catch {
       setError('Unable to reset password. Check the code and try again.');
     } finally {

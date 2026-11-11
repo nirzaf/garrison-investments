@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
-from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserListResponse, UserResponse, UserUpdateRequest
+from app.schemas.users import (
+    AdminPasswordResetRequest,
+    UserCreateRequest,
+    UserListResponse,
+    UserResponse,
+    UserUpdateRequest,
+)
 from app.services.user_service import UserService
 from app.utils.permissions import PERMISSION_USERS_MANAGE, PERMISSION_USERS_READ
 

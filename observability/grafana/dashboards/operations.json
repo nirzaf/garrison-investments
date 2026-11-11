@@ -1,0 +1,98 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "sum by (service, severity) (count_over_time({environment=\"$environment\", service=~\"$service\"} | json [$__auto]))",
+          "legendFormat": "{{service}} {{severity}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log volume by service and severity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "textMode": "auto"},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "sum(count_over_time({environment=\"$environment\"} | json | severity=\"ERROR\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors in selected range",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}, "overrides": []},
+      "id": 3,
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "sum by (status_code) (count_over_time({environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" [$__auto]))",
+          "legendFormat": "HTTP {{status_code}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP responses by status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 13, "w": 24, "x": 0, "y": 16},
+      "id": 4,
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "editorMode": "code",
+          "expr": "{environment=\"$environment\", service=~\"$service\"} | json | severity=~\"$severity\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Production logs",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["garrison", "operations", "logs"],
+  "templating": {
+    "list": [
+      {"current": {"text": "production", "value": "production"}, "hide": 0, "label": "Environment", "name": "environment", "options": [{"selected": true, "text": "production", "value": "production"}, {"selected": false, "text": "staging", "value": "staging"}], "query": "production,staging", "type": "custom"},
+      {"current": {"text": "All", "value": "$__all"}, "datasource": {"type": "loki", "uid": "loki"}, "definition": "label_values({environment=\"$environment\"}, service)", "includeAll": true, "label": "Service", "name": "service", "query": "label_values({environment=\"$environment\"}, service)", "refresh": 1, "type": "query"},
+      {"current": {"text": "All", "value": "$__all"}, "includeAll": true, "label": "Severity", "name": "severity", "options": [], "query": "DEBUG,INFO,WARNING,ERROR,CRITICAL", "type": "custom"}
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Garrison Production Logs",
+  "uid": "garrison-production-logs",
+  "version": 1
+}

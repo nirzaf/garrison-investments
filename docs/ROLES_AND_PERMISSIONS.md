@@ -65,7 +65,7 @@ Canonical definition:
 
 ## Permission Glossary
 
-The backend currently defines 15 permission keys.
+The backend currently defines 16 permission keys.
 
 | Permission | Meaning In The Current Codebase |
 |---|---|
@@ -82,7 +82,8 @@ The backend currently defines 15 permission keys.
 | `inventory:view` | View inventory and materials pages |
 | `inventory:manage` | Manage inventory operations |
 | `suppliers:manage` | Manage supplier records and supplier TDS document flows |
-| `documents:manage` | Access document management features |
+| `documents:view` | View documents and access the documents page |
+| `documents:manage` | Manage documents (upload, versioning, deletion) |
 | `financial:view` | Access finance features |
 
 Canonical definition:
@@ -130,18 +131,21 @@ Primary gating points:
 | `/profile` | None | Authenticated baseline feature |
 | `/change-password` | None | Authenticated baseline feature |
 | `/notifications` | None | Authenticated baseline feature |
+| `/roles` | None | Read-only roles and permissions reference page |
+| `/manual` | None | User manual page |
 | `/projects` | `projects:read` | Project list and project detail workflows |
 | `/admin/users` | `users:read` | User management screen |
 | `/admin/audit-logs` | `audit:view` | Audit log screen |
 | `/admin/imports` | `users:manage` | Imports administration |
-| `/documents` | `documents:manage` | Documents page |
+| `/documents` | `documents:view` | Documents page |
 | `/photos` | `reports:view` | Photo/report evidence view |
 | `/materials` | `inventory:view` | Inventory and materials page |
+| `/suppliers` | `suppliers:manage` | Supplier management page |
 | `/finance` | `financial:view` | Finance page |
 | `/analytics` | `dashboard:company` | Management analytics |
 | `/security` | `audit:view` | Security page |
 | `/delivery` | `dashboard:company` | Delivery planning page |
-| `/reports/daily` | `reports:submit` | Daily report workflow |
+| `/reports/daily` | `reports:view` | Daily report workflow |
 | `/reports/supervisor-update` | `reports:submit` | Supervisor update workflow |
 | `/approvals` | `reports:approve` | Approval inbox |
 
@@ -172,9 +176,12 @@ Backend authorization is split between explicit route-level permission decorator
 | Users | `require_permission(...)` | `users:read`, `users:manage` |
 | Projects | `require_permission(...)` | `projects:read`, `projects:manage` |
 | Inventory | `require_permission(...)` | `inventory:view`, `inventory:manage` |
-| Documents | `require_permission(...)` | `documents:manage` |
+| Documents | `require_permission(...)` | `documents:view`, `documents:manage` |
 | Finance | `require_permission(...)` | `financial:view` |
+| Photos | `require_permission(...)` | `reports:view`, `reports:submit` |
+| Approvals | `require_permission(...)` | `reports:approve` |
 | Audit | `require_permission(...)` | `audit:view` |
+| Log events | `require_permission(...)` | `audit:view` |
 | Imports | `require_permission(...)` | `users:manage` |
 | Suppliers | `require_permission(...)` | `suppliers:manage` |
 
@@ -185,7 +192,10 @@ Relevant files:
 - [backend/app/api/v1/inventory.py](../backend/app/api/v1/inventory.py)
 - [backend/app/api/v1/documents.py](../backend/app/api/v1/documents.py)
 - [backend/app/api/v1/finance.py](../backend/app/api/v1/finance.py)
+- [backend/app/api/v1/photos.py](../backend/app/api/v1/photos.py)
+- [backend/app/api/v1/approvals.py](../backend/app/api/v1/approvals.py)
 - [backend/app/api/v1/audit.py](../backend/app/api/v1/audit.py)
+- [backend/app/api/v1/logs.py](../backend/app/api/v1/logs.py)
 - [backend/app/api/v1/imports.py](../backend/app/api/v1/imports.py)
 - [backend/app/api/v1/suppliers.py](../backend/app/api/v1/suppliers.py)
 
@@ -208,7 +218,7 @@ This section explains what each role can do in practical terms.
 
 **Permissions**
 
-- All 15 permissions
+- All 16 permissions
 
 **Frontend Features**
 
@@ -432,17 +442,17 @@ This section explains what each role can do in practical terms.
 
 - Baseline authenticated features
 - Materials
+- Suppliers
 
 **Backend And Workflow Capabilities**
 
 - Scoped dashboard visibility
 - View and manage inventory workflows
-- Manage suppliers and supplier TDS document flows in the backend APIs
+- Manage suppliers and supplier TDS document flows
 
-**Frontend Caveat**
+**Frontend Note**
 
-- There is no standalone Suppliers page in the current frontend navigation.
-- Supplier APIs exist and supplier data is used indirectly in parts of the UI, such as finance workflows.
+- The Suppliers page at `/suppliers` is gated by `suppliers:manage`, so this role has direct access to supplier management in the UI.
 
 ### Accounts
 
@@ -541,8 +551,8 @@ This table summarizes which permission drives each major functional area.
 | Approvals | `reports:approve` | Access approval inbox and approval workflows |
 | Report evidence | `reports:view` | Access report-adjacent content such as photos |
 | Inventory and materials | `inventory:view` / `inventory:manage` | View materials page and manage inventory operations |
-| Suppliers | `suppliers:manage` | Use supplier APIs, supplier TDS upload/download flows, and supplier-backed selections in finance |
-| Documents | `documents:manage` | Use documents page and document workflows |
+| Suppliers | `suppliers:manage` | Use the suppliers page, supplier APIs, supplier TDS upload/download flows, and supplier-backed selections in finance |
+| Documents | `documents:view` / `documents:manage` | View the documents page with `documents:view`; manage document workflows with `documents:manage` |
 | Finance | `financial:view` | Use finance page and financial reporting workflows |
 | Imports | `users:manage` | Access import administration |
 | Audit and security | `audit:view` | Access audit logs and security page |
@@ -572,11 +582,10 @@ This section records places where the implemented code differs from the broader 
 - The frontend uses `reports:submit` and `reports:approve` to gate pages.
 - The backend applies more specific checks in [backend/app/services/report_service.py](../backend/app/services/report_service.py), such as engineer-only submission, approver eligibility, project membership checks, and admin-only override behavior.
 
-### 5. Supplier Management Exists In Backend More Than In Frontend Navigation
+### 5. Some Routes Are Intentionally Ungated
 
-- The backend exposes a full supplier API surface in [backend/app/api/v1/suppliers.py](../backend/app/api/v1/suppliers.py).
-- The frontend does not currently expose a dedicated Suppliers page in the main navigation.
-- Supplier data is still consumed by frontend finance flows.
+- `/roles` (roles and permissions reference) and `/manual` (user manual) are available to any authenticated user without a permission wrapper.
+- Supplier data is also consumed by frontend finance flows outside the dedicated `/suppliers` page.
 
 ### 6. Architecture Describes Finer-Grained Capabilities Than The Code Currently Implements
 

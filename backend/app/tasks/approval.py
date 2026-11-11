@@ -71,7 +71,11 @@ def check_low_stock() -> dict[str, int]:
                     )
                     sent += 1
             await session.commit()
-            logger.info("low_stock_check_completed", low_stock_items=len(rows), notifications_sent=sent)
+            logger.info(
+                "low_stock_check_completed",
+                low_stock_items=len(rows),
+                notifications_sent=sent,
+            )
             return {"low_stock_items": len(rows), "notifications_sent": sent}
 
     return run_async_task(run())

@@ -15,7 +15,8 @@
 | Task Queue | Celery | Background jobs for email, image, report, backup, and maintenance workloads |
 | Auth | JWT (RS256) + OTP | Access/refresh tokens, TOTP challenge-response |
 | Logging | structlog | Structured JSON logging |
-| Migrations | Alembic | Schema versioning (18 migrations) |
+| Log aggregation | Grafana + Loki + Alloy | Search, dashboards, retention, and SMTP alerting |
+| Migrations | Alembic | Schema versioning (19 migrations) |
 
 ## Directory Structure
 
@@ -39,7 +40,8 @@ backend/
 │   │   ├── dashboard.py  # Role-based dashboard aggregations
 │   │   ├── notifications.py
 │   │   ├── supervisor_updates.py
-│   │   └── audit.py      # Activity log queries
+│   │   ├── audit.py      # Activity log queries
+│   │   └── logs.py       # Centralized log-event queries + streaming
 │   ├── models/           # SQLAlchemy ORM models (21 files)
 │   │   ├── base.py       # Base, TimestampMixin, SoftDeleteMixin, UUIDPrimaryKeyMixin
 │   │   ├── user.py       # User — central entity (503 edges in graph)
@@ -87,9 +89,10 @@ backend/
 │   │   ├── email_service.py       # SMTP email sending
 │   │   ├── audit_service.py       # Activity log writer
 │   │   └── exception_reporter.py  # Unhandled exception → email alerts
-│   ├── schemas/          # Pydantic request/response models (18 files)
+│   ├── schemas/          # Pydantic request/response models (17 files)
 │   ├── tasks/            # Celery background tasks (10 files)
 │   │   ├── celery_app.py
+│   │   ├── base.py       # Shared task base class
 │   │   ├── report.py     # PDF generation
 │   │   ├── email.py      # Async email dispatch
 │   │   ├── image.py      # Thumbnail generation
@@ -101,6 +104,9 @@ backend/
 │   ├── middleware/        # FastAPI middleware
 │   │   ├── audit.py      # Per-request audit logging
 │   │   └── rate_limit.py # Redis-backed auth rate limiter
+│   ├── observability/    # Structured logging + request context
+│   │   ├── context.py    # Request/task context propagation
+│   │   └── logging.py    # structlog configuration + recursive/pattern redaction
 │   ├── utils/            # Shared utilities
 │   │   ├── exceptions.py # AppException hierarchy
 │   │   ├── permissions.py # RBAC permission checks
@@ -112,11 +118,18 @@ backend/
 │   └── main.py           # FastAPI app factory + middleware wiring
 ├── alembic/              # Database migrations
 │   ├── env.py
-│   └── versions/         # 18 migration files
+│   └── versions/         # 19 migration files
 ├── scripts/              # Operational scripts
+│   ├── backup.py
+│   ├── generate_assets.py
+│   ├── generate_missing_reports.py
 │   ├── health_monitor.py
 │   ├── launch_evidence.py
-│   └── ...
+│   ├── log_cli.py        # Remote log search / tail CLI
+│   ├── push_to_storage.py
+│   ├── restore_dry_run.py
+│   ├── seed.py
+│   └── validate_import_sources.py
 ├── tests/                # Test suite
 └── Dockerfile
 ```
@@ -271,7 +284,7 @@ adapter work unless S3-specific assumptions stay out of application code.
 | `tasks/maintenance.py` | Notification retention cleanup |
 
 ### Migrations
-18 Alembic migrations covering the full schema evolution:
+19 Alembic migrations covering the full schema evolution:
 - `202605160001` — Users
 - `202605160002` — Auth sessions
 - `202605160003` — User management
@@ -290,6 +303,7 @@ adapter work unless S3-specific assumptions stay out of application code.
 - `202605160016` — Import batches
 - `202605170001` — Approval-inventory concurrency hardening
 - `202605170002` — Project tasks
+- `202605280001` — Centralized event logs (event_type, severity, storage tiers)
 
 ## Graph Analysis Summary
 

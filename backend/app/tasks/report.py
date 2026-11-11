@@ -1,6 +1,7 @@
-import structlog
 from datetime import date
 from uuid import UUID
+
+import structlog
 
 from app.database import AsyncSessionLocal
 from app.models.user import User
