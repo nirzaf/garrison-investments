@@ -4561,7 +4561,6 @@ export interface operations {
                 date_to?: string | null;
                 location?: string | null;
                 department?: string | null;
-                async?: boolean;
             };
             header?: never;
             path?: never;
@@ -4596,7 +4595,6 @@ export interface operations {
                 date_from?: string | null;
                 date_to?: string | null;
                 department?: string | null;
-                async?: boolean;
             };
             header?: never;
             path?: never;
@@ -4632,7 +4630,6 @@ export interface operations {
                 date_to?: string | null;
                 location?: string | null;
                 department?: string | null;
-                async?: boolean;
             };
             header?: never;
             path?: never;

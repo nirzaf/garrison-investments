@@ -8367,16 +8367,6 @@
               ],
               "title": "Department"
             }
-          },
-          {
-            "in": "query",
-            "name": "async",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Async",
-              "type": "boolean"
-            }
           }
         ],
         "responses": {
@@ -8480,16 +8470,6 @@
                 }
               ],
               "title": "Department"
-            }
-          },
-          {
-            "in": "query",
-            "name": "async",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Async",
-              "type": "boolean"
             }
           }
         ],
@@ -8611,16 +8591,6 @@
                 }
               ],
               "title": "Department"
-            }
-          },
-          {
-            "in": "query",
-            "name": "async",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Async",
-              "type": "boolean"
             }
           }
         ],
