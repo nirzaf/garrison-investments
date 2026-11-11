@@ -9,8 +9,10 @@ from pathlib import Path
 from uuid import UUID
 from xml.etree import ElementTree
 
-from sqlalchemy import select
+from sqlalchemy import String, any_, literal, select
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.models.boq_item import BoqItem
 from app.models.document import Document
@@ -23,7 +25,7 @@ from app.schemas.imports import ImportErrorItem, ImportPreviewResponse, ImportRu
 from app.schemas.inventory import MovementCreateRequest
 from app.services.audit_service import AuditService
 from app.services.inventory_service import InventoryService
-from app.utils.exceptions import AppException
+from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import validate_role
 from app.utils.security import hash_password, validate_password_policy
 
@@ -112,7 +114,7 @@ class ImportService:
 
     async def preview(self, template_type: str, content: bytes) -> ImportPreviewResponse:
         rows = self._parse(template_type, content)
-        errors = self._validate_rows(template_type, rows)
+        errors = await self._validate_rows(template_type, rows)
         return ImportPreviewResponse(
             template_type=template_type,
             row_count=len(rows),
@@ -129,22 +131,30 @@ class ImportService:
         actor: User,
         batch_id: UUID | None = None,
     ) -> ImportRunResponse:
-        rows = self._parse(template_type, content)
-        errors = self._validate_rows(template_type, rows)
-        batch = await self.session.get(ImportBatch, batch_id) if batch_id else None
-        if not batch:
+        if batch_id is None:
             batch = ImportBatch(
                 template_type=template_type,
                 file_name=file_name,
                 created_by=actor.id,
             )
-            self.session.add(batch)
+        else:
+            # The completed marker and imported rows commit together. A second
+            # delivery waits here until it can see the first delivery's result.
+            existing_batch = await self.session.get(ImportBatch, batch_id, with_for_update=True)
+            if existing_batch is None or existing_batch.deleted_at is not None:
+                raise NotFoundException("Import batch")
+            batch = existing_batch
+            if batch.status == "completed":
+                return self._batch_response(batch)
+        rows = self._parse(template_type, content)
+        errors = await self._validate_rows(template_type, rows)
         batch.status = "failed" if errors else "completed"
         batch.row_count = len(rows)
         batch.error_count = len(errors)
         batch.summary = {"errors": [error.model_dump() for error in errors]}
+        if batch_id is None:
+            self.session.add(batch)
         await self.session.flush()
-        created = 0
         try:
             if not errors:
                 created = await self._import_rows(template_type, rows, actor)
@@ -164,9 +174,13 @@ class ImportService:
         except Exception:
             await self.session.rollback()
             raise
+        return self._batch_response(batch)
+
+    @staticmethod
+    def _batch_response(batch: ImportBatch) -> ImportRunResponse:
         return ImportRunResponse(
             batch_id=batch.id,
-            template_type=template_type,
+            template_type=batch.template_type,
             file_name=batch.file_name,
             status=batch.status,
             row_count=batch.row_count,
@@ -205,7 +219,6 @@ class ImportService:
             )
             if existing:
                 continue
-            validate_password_policy(row["temporary_password"])
             self.session.add(
                 User(
                     email=email,
@@ -559,7 +572,7 @@ class ImportService:
                 return MAX_XLSX_COLUMNS
         return index - 1
 
-    def _validate_rows(
+    async def _validate_rows(
         self, template_type: str, rows: list[dict[str, str]]
     ) -> list[ImportErrorItem]:
         required = TEMPLATE_COLUMNS[template_type]
@@ -577,6 +590,21 @@ class ImportService:
                     errors.append(
                         ImportErrorItem(row=index, field=column, message="Value is required.")
                     )
+            if template_type == "users":
+                for field, validate in (
+                    ("role", validate_role),
+                    ("temporary_password", validate_password_policy),
+                ):
+                    if not row.get(field):
+                        continue
+                    try:
+                        validate(row[field])
+                    except AppException as error:
+                        messages = [item["message"] for item in error.errors] or [error.message]
+                        errors.extend(
+                            ImportErrorItem(row=index, field=field, message=message)
+                            for message in messages
+                        )
             if template_type == "opening_stock" and row.get("quantity"):
                 try:
                     if Decimal(row["quantity"]) <= 0:
@@ -616,6 +644,48 @@ class ImportService:
                                 message="Must be an ISO date in YYYY-MM-DD format.",
                             )
                         )
+        if not errors:
+            errors.extend(await self._validate_references(template_type, rows))
+        return errors
+
+    async def _validate_references(
+        self, template_type: str, rows: list[dict[str, str]]
+    ) -> list[ImportErrorItem]:
+        references: dict[
+            str,
+            list[
+                tuple[
+                    str,
+                    InstrumentedAttribute[str] | InstrumentedAttribute[str | None],
+                    InstrumentedAttribute,
+                ]
+            ],
+        ] = {
+            "materials": [("supplier_name", Supplier.name, Supplier.deleted_at)],
+            "documents": [("project_code", Project.code, Project.deleted_at)],
+            "boq": [("project_code", Project.code, Project.deleted_at)],
+            "opening_stock": [
+                ("item_code", InventoryItem.item_code, InventoryItem.deleted_at),
+                ("location_code", StorageLocation.code, StorageLocation.deleted_at),
+            ],
+        }
+        errors: list[ImportErrorItem] = []
+        for field, column, deleted_at in references.get(template_type, []):
+            # ANY keeps this lookup bounded to one bind parameter per reference.
+            values = sorted({row[field] for row in rows})
+            existing = set(
+                await self.session.scalars(
+                    select(column).where(
+                        column == any_(literal(values, type_=ARRAY(String))),
+                        deleted_at.is_(None),
+                    )
+                )
+            )
+            errors.extend(
+                ImportErrorItem(row=index, field=field, message="Referenced record not found.")
+                for index, row in enumerate(rows, start=2)
+                if row[field] not in existing
+            )
         return errors
 
     def _ensure_template(self, template_type: str) -> None:

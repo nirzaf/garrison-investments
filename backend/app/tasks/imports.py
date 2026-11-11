@@ -1,6 +1,8 @@
 from uuid import UUID
 
 import structlog
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models.import_batch import ImportBatch
@@ -62,12 +64,14 @@ async def _run_import_async(
             await _mark_batch_failed(session, batch_uuid, f"user {actor_id} not found")
             logger.error("import_actor_not_found", actor_id=actor_id)
             return f"import failed: user {actor_id} not found"
-        if batch_uuid:
-            batch = await session.get(ImportBatch, batch_uuid)
-            if batch:
-                batch.status = "processing"
-                await session.commit()
         try:
+            if batch_uuid:
+                await session.execute(
+                    update(ImportBatch)
+                    .where(ImportBatch.id == batch_uuid, ImportBatch.status == "queued")
+                    .values(status="processing")
+                )
+                await session.commit()
             result = await ImportService(session).run_import(
                 template_type=template_type,
                 file_name=file_name,
@@ -84,11 +88,11 @@ async def _run_import_async(
         return f"import {result.batch_id} completed: {result.status}"
 
 
-async def _mark_batch_failed(session, batch_id: UUID | None, error: str) -> None:
+async def _mark_batch_failed(session: AsyncSession, batch_id: UUID | None, error: str) -> None:
     if not batch_id:
         return
-    batch = await session.get(ImportBatch, batch_id)
-    if not batch:
+    batch = await session.get(ImportBatch, batch_id, with_for_update=True)
+    if not batch or batch.status == "completed":
         return
     batch.status = "failed"
     batch.summary = {"error": error}

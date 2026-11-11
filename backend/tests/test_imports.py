@@ -1,3 +1,4 @@
+import asyncio
 from io import BytesIO
 from uuid import uuid4
 from zipfile import ZipFile
@@ -7,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.models.import_batch import ImportBatch
-from app.models.inventory import InventoryItem, StorageLocation
+from app.models.inventory import InventoryItem, InventoryMovement, StorageLocation
 from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -62,8 +63,7 @@ def xlsx_bytes(headers: list[str], row: list[str]) -> bytes:
         + "</sst>"
     )
     header_cells = "".join(
-        f'<c r="{chr(65 + index)}1" t="s"><v>{index}</v></c>'
-        for index, _ in enumerate(headers)
+        f'<c r="{chr(65 + index)}1" t="s"><v>{index}</v></c>' for index, _ in enumerate(headers)
     )
     row_cells = "".join(
         f'<c r="{chr(65 + index)}2" t="s"><v>{len(headers) + index}</v></c>'
@@ -72,7 +72,7 @@ def xlsx_bytes(headers: list[str], row: list[str]) -> bytes:
     sheet_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        f"<sheetData><row r=\"1\">{header_cells}</row><row r=\"2\">{row_cells}</row></sheetData>"
+        f'<sheetData><row r="1">{header_cells}</row><row r="2">{row_cells}</row></sheetData>'
         "</worksheet>"
     )
     buffer = BytesIO()
@@ -82,9 +82,9 @@ def xlsx_bytes(headers: list[str], row: list[str]) -> bytes:
     return buffer.getvalue()
 
 
-async def test_import_preview_accepts_xlsx_files() -> None:
+async def test_import_parser_accepts_xlsx_files() -> None:
     service = ImportService.__new__(ImportService)
-    preview = await service.preview(
+    rows = service._parse(
         "opening_stock",
         xlsx_bytes(
             ["item_code", "location_code", "quantity", "notes"],
@@ -92,8 +92,14 @@ async def test_import_preview_accepts_xlsx_files() -> None:
         ),
     )
 
-    assert preview.valid is True
-    assert preview.row_count == 1
+    assert rows == [
+        {
+            "item_code": "CEM-001",
+            "location_code": "WH-001",
+            "quantity": "5",
+            "notes": "Opening balance",
+        }
+    ]
 
 
 async def test_xlsx_preview_follows_the_workbook_worksheet_relationship() -> None:
@@ -120,10 +126,9 @@ async def test_xlsx_preview_follows_the_workbook_worksheet_relationship() -> Non
             'Target="worksheets/opening.xml"/></Relationships>',
         )
 
-    preview = await ImportService.__new__(ImportService).preview(
-        "opening_stock", renamed.getvalue()
-    )
-    assert preview.valid and preview.row_count == 1
+    rows = ImportService.__new__(ImportService)._parse("opening_stock", renamed.getvalue())
+    assert len(rows) == 1
+    assert rows[0]["item_code"] == "CEM-001"
 
 
 async def test_xlsx_preview_rejects_missing_shared_string() -> None:
@@ -186,8 +191,7 @@ async def test_import_templates_create_records_and_opening_stock_transactionally
             content=csv_bytes(
                 "name,item_code,category,item_type,unit,minimum_stock,reorder_level,"
                 "unit_cost,supplier_name",
-                f"Cement,ITEM-{suffix},Civil,consumable,Nos,5,5,12.5,"
-                f"Import Supplier {suffix}",
+                f"Cement,ITEM-{suffix},Civil,consumable,Nos,5,5,12.5,Import Supplier {suffix}",
             ),
             actor=actor,
         )
@@ -256,6 +260,69 @@ async def test_import_templates_create_records_and_opening_stock_transactionally
         )
         assert failed.status == "failed"
         assert await session.scalar(select(func.count()).select_from(ImportBatch)) is not None
+
+        batch = ImportBatch(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            status="queued",
+            created_by=actor.id,
+        )
+        session.add(batch)
+        await session.commit()
+        batch_id = batch.id
+        item_id = item.id
+
+    async def deliver() -> str:
+        return await _run_import_async(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            content=csv_bytes(
+                "item_code,location_code,quantity,notes",
+                f"ITEM-{suffix},LOC-{suffix},4,Retried opening stock",
+            ),
+            actor_id=str(actor.id),
+            batch_id=str(batch_id),
+        )
+
+    first, second = await asyncio.gather(deliver(), deliver())
+    assert first == second
+    assert "completed: completed" in first
+    async with AsyncSessionLocal() as session:
+        movements = await session.scalars(
+            select(InventoryMovement).where(InventoryMovement.item_id == item_id)
+        )
+        assert sorted(movement.quantity for movement in movements) == [4, 8]
+
+
+async def test_preview_and_run_reject_invalid_user_fields_and_missing_references() -> None:
+    await skip_if_database_unavailable()
+    actor = await create_admin()
+    cases = [
+        (
+            "users",
+            csv_bytes(
+                "email,full_name,role,employee_code,phone,designation,temporary_password",
+                "preview-user@example.com,Preview User,unknown,PREVIEW,+97455550000,Engineer,short",
+            ),
+            {"role", "temporary_password"},
+        ),
+        (
+            "opening_stock",
+            csv_bytes("item_code,location_code,quantity,notes", "MISSING,MISSING,4,Opening stock"),
+            {"item_code", "location_code"},
+        ),
+    ]
+    async with AsyncSessionLocal() as session:
+        service = ImportService(session)
+        for template, content, fields in cases:
+            preview = await service.preview(template, content)
+            assert not preview.valid
+            assert {error.field for error in preview.errors} == fields
+            result = await service.run_import(
+                template_type=template, file_name="invalid.csv", content=content, actor=actor
+            )
+            assert result.status == "failed"
+            assert result.summary["errors"] == [error.model_dump() for error in preview.errors]
 
 
 async def test_async_import_marks_existing_batch_failed_on_unexpected_exception(

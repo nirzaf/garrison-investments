@@ -22,36 +22,46 @@ export function ImportPage() {
   const [result, setResult] = useState<ImportRunResult | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const batches = useQuery({
     queryKey: ['import-batches'],
     queryFn: () => listImportBatches()
   });
 
   async function previewSelected() {
-    if (!file) return;
-    setError(null);
-    setResult(null);
+    if (!file || busy) return;
+    clearImportState();
+    setBusy(true);
     try {
       setPreview(await previewImport(template, file));
     } catch {
       setError('Unable to validate import file.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function runSelected() {
-    if (!file || !preview?.valid) return;
+    if (!file || !preview?.valid || busy) return;
     setError(null);
+    setBatchId(null);
+    setResult(null);
+    setBusy(true);
     try {
       setResult(await runImport(template, file));
     } catch {
       setError('Unable to run import.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function runAsyncSelected() {
-    if (!file || !preview?.valid) return;
+    if (!file || !preview?.valid || busy) return;
     setError(null);
+    setBatchId(null);
     setResult(null);
+    setBusy(true);
     try {
       const queued = await runImportAsync(template, file);
       setBatchId(queued.batch_id);
@@ -65,17 +75,29 @@ export function ImportPage() {
       });
     } catch {
       setError('Unable to queue import.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function refreshBatch() {
-    if (!batchId) return;
+    if (!batchId || busy) return;
     setError(null);
+    setBusy(true);
     try {
       setResult(await getImportBatchStatus(batchId));
     } catch {
       setError('Unable to refresh import status.');
+    } finally {
+      setBusy(false);
     }
+  }
+
+  function clearImportState() {
+    setPreview(null);
+    setResult(null);
+    setBatchId(null);
+    setError(null);
   }
 
   async function downloadSelectedTemplate() {
@@ -103,11 +125,12 @@ export function ImportPage() {
       <div className="rounded-lg border border-theme-border bg-theme-card p-4">
         <div className="grid gap-3 md:grid-cols-[220px_1fr_auto_auto]">
           <select
+            aria-label="Import template"
             className="form-field"
+            disabled={busy}
             onChange={(event) => {
               setTemplate(event.target.value);
-              setPreview(null);
-              setResult(null);
+              clearImportState();
             }}
             value={template}
           >
@@ -119,8 +142,13 @@ export function ImportPage() {
           </select>
           <input
             accept=".csv,.xlsx"
+            aria-label="Import file"
             className="form-field"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            disabled={busy}
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null);
+              clearImportState();
+            }}
             type="file"
           />
           <button
@@ -133,6 +161,7 @@ export function ImportPage() {
           </button>
           <button
             className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
+            disabled={!file || busy}
             onClick={() => void previewSelected()}
             type="button"
           >
@@ -170,6 +199,7 @@ export function ImportPage() {
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+                disabled={busy}
                 onClick={() => void runSelected()}
                 type="button"
               >
@@ -177,6 +207,7 @@ export function ImportPage() {
               </button>
               <button
                 className="rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary"
+                disabled={busy}
                 onClick={() => void runAsyncSelected()}
                 type="button"
               >
@@ -196,6 +227,7 @@ export function ImportPage() {
             {batchId ? (
               <button
                 className="rounded-md border border-[var(--status-success-border)] px-3 py-1.5 text-xs font-semibold"
+                disabled={busy}
                 onClick={() => void refreshBatch()}
                 type="button"
               >
