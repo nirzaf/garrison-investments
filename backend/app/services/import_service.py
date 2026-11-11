@@ -114,7 +114,7 @@ class ImportService:
 
     async def preview(self, template_type: str, content: bytes) -> ImportPreviewResponse:
         rows = self._parse(template_type, content)
-        errors = await self._validate_rows(template_type, rows)
+        errors = await self._validate_for_import(template_type, rows)
         return ImportPreviewResponse(
             template_type=template_type,
             row_count=len(rows),
@@ -147,7 +147,7 @@ class ImportService:
             if batch.status == "completed":
                 return self._batch_response(batch)
         rows = self._parse(template_type, content)
-        errors = await self._validate_rows(template_type, rows)
+        errors = await self._validate_for_import(template_type, rows)
         batch.status = "failed" if errors else "completed"
         batch.row_count = len(rows)
         batch.error_count = len(errors)
@@ -572,7 +572,13 @@ class ImportService:
                 return MAX_XLSX_COLUMNS
         return index - 1
 
-    async def _validate_rows(
+    async def _validate_for_import(
+        self, template_type: str, rows: list[dict[str, str]]
+    ) -> list[ImportErrorItem]:
+        errors = self._validate_rows(template_type, rows)
+        return errors or await self._validate_references(template_type, rows)
+
+    def _validate_rows(
         self, template_type: str, rows: list[dict[str, str]]
     ) -> list[ImportErrorItem]:
         required = TEMPLATE_COLUMNS[template_type]
@@ -644,8 +650,6 @@ class ImportService:
                                 message="Must be an ISO date in YYYY-MM-DD format.",
                             )
                         )
-        if not errors:
-            errors.extend(await self._validate_references(template_type, rows))
         return errors
 
     async def _validate_references(
