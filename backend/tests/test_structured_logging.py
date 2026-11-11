@@ -202,7 +202,7 @@ def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -
     _configure()
     capfd.readouterr()
 
-    response = TestClient(create_app()).get(
+    response = TestClient(create_app(), client=("127.0.0.1", 50000)).get(
         "/api/v1/?token=must-not-leak",
         headers={"X-Request-ID": "req-cleanup", "X-Session-ID": "session-cleanup"},
     )
@@ -220,6 +220,21 @@ def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -
     assert completion["endpoint"] == "/api/v1/"
     assert "must-not-leak" not in output
     assert log_context_dict() == {}
+
+
+def test_http_request_replaces_untrusted_or_malformed_correlation_ids() -> None:
+    headers = {"X-Request-ID": "caller-supplied", "X-Session-ID": "caller-session"}
+    untrusted = TestClient(create_app(), client=("198.51.100.10", 50000)).get(
+        "/api/v1/", headers=headers
+    )
+    assert untrusted.headers["X-Request-ID"] != headers["X-Request-ID"]
+    assert untrusted.headers["X-Session-ID"] == untrusted.headers["X-Request-ID"]
+
+    trusted = TestClient(create_app(), client=("127.0.0.1", 50000)).get(
+        "/api/v1/", headers={"X-Request-ID": "x" * 65, "X-Session-ID": "bad session"}
+    )
+    assert len(trusted.headers["X-Request-ID"]) == 36
+    assert trusted.headers["X-Session-ID"] == trusted.headers["X-Request-ID"]
 
 
 def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:

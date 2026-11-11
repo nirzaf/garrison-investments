@@ -15,7 +15,7 @@ from app.observability import bind_log_context, clear_log_context, configure_log
 from app.services.audit_service import AuditService
 from app.services.exception_reporter import report_unhandled_exception
 from app.utils.exceptions import AppException
-from app.utils.request import get_client_ip
+from app.utils.request import get_client_ip, trusted_correlation_ids
 from app.utils.security import validate_signing_keys
 
 logger = structlog.get_logger("app.api")
@@ -105,8 +105,9 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid4()))
-        session_id = request.headers.get("X-Session-ID", request_id)
+        request_id, session_id = trusted_correlation_ids(request, settings.trusted_proxy_ips_list)
+        request_id = request_id or str(uuid4())
+        session_id = session_id or request_id
         request.state.request_id = request_id
         request.state.session_id = session_id
         bind_log_context(

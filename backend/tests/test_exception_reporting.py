@@ -34,7 +34,7 @@ def test_unhandled_exception_sends_configured_email_with_debug_context(monkeypat
     async def boom() -> None:
         raise RuntimeError("database connection exploded")
 
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
     response = client.get(
         "/boom?project_id=123",
         headers={

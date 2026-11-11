@@ -31,6 +31,10 @@ services:
     environment:
       GRAFANA_DOMAIN: ${GRAFANA_DOMAIN}
       NGINX_ENVSUBST_FILTER: ^GRAFANA_DOMAIN$
+    networks:
+      default:
+      backend_proxy:
+        ipv4_address: ${NGINX_BACKEND_PROXY_IP:-172.29.254.2}
     depends_on:
       backend:
         condition: service_started
@@ -46,6 +50,12 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-access-log
     env_file:
       - .env
+    environment:
+      TRUSTED_PROXY_IPS: 127.0.0.1,::1,${NGINX_BACKEND_PROXY_IP:-172.29.254.2}
+    networks:
+      default:
+      backend_proxy:
+        aliases: [backend-proxy]
     depends_on:
       - postgres
       - redis
@@ -270,6 +280,14 @@ services:
     tmpfs:
       - /tmp
     logging: *default-logging
+
+networks:
+  backend_proxy:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${NGINX_BACKEND_PROXY_SUBNET:-172.29.254.0/29}
+          ip_range: ${NGINX_BACKEND_PROXY_DYNAMIC_RANGE:-172.29.254.4/30}
 
 volumes:
   pgdata:
