@@ -1,34 +1,18 @@
-# `inventory_assets`
+# inventory_assets
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `item_id` | `UUID` | No | `` | inventory_items.id |
-| `asset_tag` | `VARCHAR(80)` | No | `` |  |
-| `current_location_id` | `UUID` | No | `` | storage_locations.id |
-| `condition` | `VARCHAR(40)` | No | `'good'` |  |
-| `status` | `VARCHAR(30)` | No | `'active'` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `asset_tag` | String(80) | NOT NULL | — | — | — |
+| `condition` | String(40) | NOT NULL | good | — | — |
+| `current_location_id` | UUID | NOT NULL | — | storage_locations.id | — |
+| `item_id` | UUID | NOT NULL | — | inventory_items.id | — |
+| `status` | String(30) | NOT NULL | active | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `item_id` | `inventory_items.id` |
-| `current_location_id` | `storage_locations.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `inventory_movements.asset_id` | `inventory_assets.id` |

@@ -92,31 +92,31 @@ function formatApiError(error: unknown) {
 function formHasDraftContent(payload: DailyReportPayload) {
   return Boolean(
     payload.project_id ||
-      payload.work_location.trim() ||
-      payload.work_completed.trim() ||
-      payload.delay_notes?.trim() ||
-      payload.next_day_plan.trim() ||
-      payload.safety_notes?.trim() ||
-      payload.report_date !== today ||
-      payload.progress_percentage !== emptyPayload.progress_percentage ||
-      payload.safety_incidents !== emptyPayload.safety_incidents ||
-      payload.supervisor_update_ids.length > 0 ||
-      payload.photo_refs.length > 0 ||
-      payload.attachment_refs.length > 0 ||
-      payload.equipment_entries.length > 0 ||
-      payload.material_consumption.length > 0 ||
-      payload.manpower_entries.some(
-        (entry) =>
-          entry.trade.trim() ||
-          Number(entry.count || 0) > 0 ||
-          Number(entry.overtime_hours || 0) > 0
-      ) ||
-      Object.entries(payload.extra_fields ?? {}).some(([key, value]) => {
-        if (key === 'day_type') return value !== emptyPayload.extra_fields?.day_type;
-        return typeof value === 'string' ? value.trim() : Boolean(value);
-      })
+    payload.work_location.trim() ||
+    payload.work_completed.trim() ||
+    payload.delay_notes?.trim() ||
+    payload.next_day_plan.trim() ||
+    payload.safety_notes?.trim() ||
+    payload.report_date !== today ||
+    payload.progress_percentage !== emptyPayload.progress_percentage ||
+    payload.safety_incidents !== emptyPayload.safety_incidents ||
+    payload.supervisor_update_ids.length > 0 ||
+    payload.photo_refs.length > 0 ||
+    payload.attachment_refs.length > 0 ||
+    payload.equipment_entries.length > 0 ||
+    payload.material_consumption.length > 0 ||
+    payload.manpower_entries.some(
+      (entry) =>
+        entry.trade.trim() || Number(entry.count || 0) > 0 || Number(entry.overtime_hours || 0) > 0
+    ) ||
+    Object.entries(payload.extra_fields ?? {}).some(([key, value]) => {
+      if (key === 'day_type') return value !== emptyPayload.extra_fields?.day_type;
+      return typeof value === 'string' ? value.trim() : Boolean(value);
+    })
   );
 }
+
+const t = (str: string) => str;
 
 export function DailyReportPage() {
   const { user } = useAuth();
@@ -137,6 +137,7 @@ export function DailyReportPage() {
   const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const persistedDraftSnapshot = useRef(JSON.stringify(emptyPayload));
   const serverSavedSnapshot = useRef(JSON.stringify(emptyPayload));
@@ -208,6 +209,7 @@ export function DailyReportPage() {
 
   useEffect(() => {
     const syncQueued = () => {
+      setIsOnline(true);
       void flushPhotoQueue()
         .then(() => queuedPhotoCount())
         .then(setQueuedUploads);
@@ -215,11 +217,16 @@ export function DailyReportPage() {
     const refreshQueuedCount = () => {
       void queuedPhotoCount().then(setQueuedUploads);
     };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
     window.addEventListener('online', syncQueued);
+    window.addEventListener('offline', handleOffline);
     window.addEventListener('photo-queue-sync-complete', refreshQueuedCount);
     if (navigator.onLine) syncQueued();
     return () => {
       window.removeEventListener('online', syncQueued);
+      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('photo-queue-sync-complete', refreshQueuedCount);
     };
   }, []);
@@ -472,12 +479,8 @@ export function DailyReportPage() {
                     </p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-theme-text-primary">
-                      Next-day plan
-                    </h4>
-                    <p className="mt-1 text-sm text-theme-text-secondary">
-                      {report.next_day_plan}
-                    </p>
+                    <h4 className="text-sm font-semibold text-theme-text-primary">Next-day plan</h4>
+                    <p className="mt-1 text-sm text-theme-text-secondary">{report.next_day_plan}</p>
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-theme-text-primary">Safety</h4>
@@ -525,7 +528,7 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
-        {draftStatus === 'local' || queuedUploads > 0 ? (
+        {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
             Local draft active
             {queuedUploads > 0
@@ -585,9 +588,9 @@ export function DailyReportPage() {
                   onChange={(event) => updateExtraField('day_type', event.target.value)}
                   value={extraValue(form, 'day_type') || 'weekday'}
                 >
-                  <option value="weekday">Weekday</option>
-                  <option value="friday">Friday</option>
-                  <option value="public_holiday">Public holiday</option>
+                  <option value="weekday">{t('Weekday')}</option>
+                  <option value="friday">{t('Friday')}</option>
+                  <option value="public_holiday">{t('Public holiday')}</option>
                 </select>
               </Field>
               <Field label="Weather" error={errors.weather_condition}>
@@ -595,7 +598,7 @@ export function DailyReportPage() {
                   className="form-field"
                   list="weather-options"
                   onChange={(event) => updateExtraField('weather_condition', event.target.value)}
-                  placeholder="Sunny, cloudy, rainy, windy"
+                  placeholder={t('Sunny, cloudy, rainy, windy')}
                   value={extraValue(form, 'weather_condition')}
                 />
                 <datalist id="weather-options">
@@ -613,7 +616,7 @@ export function DailyReportPage() {
             <SectionHeader title="Supervisor Updates" />
             {supervisorUpdates.length === 0 ? (
               <p className="text-sm text-theme-text-muted">
-                No submitted supervisor updates found.
+                {t('No submitted supervisor updates found.')}
               </p>
             ) : (
               <div className="grid gap-2">

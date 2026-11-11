@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
 
 export type InvoiceRecord = components['schemas']['InvoiceResponse'];
@@ -40,5 +41,5 @@ export async function getInvoiceAttachmentUrl(invoiceId: string) {
   const { data } = await apiClient.get<InvoiceAttachmentUrl>(
     `/finance/invoices/${invoiceId}/attachment`
   );
-  return data;
+  return { ...data, url: normalizeProtectedFileUrl(data.url) };
 }

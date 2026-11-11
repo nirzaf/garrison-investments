@@ -19,10 +19,12 @@ import { NotificationsPage } from './pages/notifications/NotificationsPage';
 import { PhotosPage } from './pages/photos/PhotosPage';
 import { ProfilePage } from './pages/profile/ProfilePage';
 import { ProjectListPage } from './pages/projects/ProjectListPage';
+import { RolesPermissionsPage } from './pages/roles/RolesPermissionsPage';
 import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
 import { SecurityPage } from './pages/security/SecurityPage';
 import { SuppliersPage } from './pages/suppliers/SuppliersPage';
+import { ManualPage } from './pages/manual/ManualPage';
 
 export function App() {
   return (
@@ -32,6 +34,7 @@ export function App() {
       <Route element={<AppLayout />}>
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/roles" element={<RolesPermissionsPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
           path="/projects"
@@ -155,6 +158,7 @@ export function App() {
           }
         />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/manual" element={<ManualPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

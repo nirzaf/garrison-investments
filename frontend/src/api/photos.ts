@@ -43,15 +43,11 @@ export async function listPhotos(params?: {
 }
 
 export async function getPhotoDownloadUrl(photoId: string): Promise<string> {
-  const response = await apiClient.get<ProtectedFileUrl>(
-    `/photos/${photoId}/download`
-  );
+  const response = await apiClient.get<ProtectedFileUrl>(`/photos/${photoId}/download`);
   return normalizeProtectedFileUrl(response.data.url);
 }
 
 export async function getPhotoThumbnailUrl(photoId: string): Promise<string> {
-  const response = await apiClient.get<ProtectedFileUrl>(
-    `/photos/${photoId}/thumbnail`
-  );
+  const response = await apiClient.get<ProtectedFileUrl>(`/photos/${photoId}/thumbnail`);
   return normalizeProtectedFileUrl(response.data.url);
 }

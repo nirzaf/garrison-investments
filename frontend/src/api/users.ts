@@ -25,3 +25,10 @@ export async function deactivateUser(userId: string): Promise<UserRecord> {
   const response = await apiClient.delete<UserRecord>(`/users/${userId}`);
   return response.data;
 }
+
+export async function adminResetPassword(userId: string, newPassword: string): Promise<UserRecord> {
+  const response = await apiClient.post<UserRecord>(`/users/${userId}/reset-password`, {
+    new_password: newPassword
+  });
+  return response.data;
+}

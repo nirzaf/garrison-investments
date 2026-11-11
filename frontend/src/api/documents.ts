@@ -53,9 +53,8 @@ export async function getDocumentDownloadUrl(
   documentId: string,
   versionId?: string
 ): Promise<DocumentDownloadUrl> {
-  const response = await apiClient.get<DocumentDownloadUrl>(
-    `/documents/${documentId}/download`,
-    { params: { version_id: versionId } }
-  );
+  const response = await apiClient.get<DocumentDownloadUrl>(`/documents/${documentId}/download`, {
+    params: { version_id: versionId }
+  });
   return { ...response.data, url: normalizeProtectedFileUrl(response.data.url) };
 }

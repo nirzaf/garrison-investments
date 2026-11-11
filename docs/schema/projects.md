@@ -1,52 +1,27 @@
-# `projects`
+# projects
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/project.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `name` | `VARCHAR(200)` | No | `` |  |
-| `code` | `VARCHAR(20)` | No | `` |  |
-| `location` | `TEXT` | Yes | `` |  |
-| `description` | `TEXT` | Yes | `` |  |
-| `scope_of_work` | `TEXT` | No | `` |  |
-| `status` | `VARCHAR(30)` | No | `'planning'` |  |
-| `budget_amount` | `NUMERIC(15, 2)` | Yes | `` |  |
-| `start_date` | `DATE` | Yes | `` |  |
-| `target_end_date` | `DATE` | No | `` |  |
-| `actual_end_date` | `DATE` | Yes | `` |  |
-| `client_name` | `VARCHAR(200)` | Yes | `` |  |
-| `contract_number` | `VARCHAR(50)` | Yes | `` |  |
-| `progress_percentage` | `NUMERIC(5, 2)` | No | `0` |  |
-| `created_by` | `UUID` | Yes | `` | users.id |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `actual_end_date` | Date | NULL | — | — | — |
+| `budget_amount` | Numeric(15, 2) | NULL | — | — | — |
+| `client_name` | String(200) | NULL | — | — | — |
+| `code` | String(20) | NOT NULL | — | — | — |
+| `contract_number` | String(50) | NULL | — | — | — |
+| `created_by` | UUID | NULL | — | users.id | — |
+| `description` | Text | NULL | — | — | — |
+| `location` | Text | NULL | — | — | — |
+| `name` | String(200) | NOT NULL | — | — | — |
+| `progress_percentage` | Numeric(5, 2) | NOT NULL | 0 | — | — |
+| `scope_of_work` | Text | NOT NULL | — | — | — |
+| `start_date` | Date | NULL | — | — | — |
+| `status` | String(30) | NOT NULL | planning | — | — |
+| `target_end_date` | Date | NOT NULL | — | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `created_by` | `users.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `approvals.project_id` | `projects.id` |
-| `boq_items.project_id` | `projects.id` |
-| `daily_reports.project_id` | `projects.id` |
-| `documents.project_id` | `projects.id` |
-| `inventory_movements.project_id` | `projects.id` |
-| `invoices.project_id` | `projects.id` |
-| `material_requests.project_id` | `projects.id` |
-| `project_members.project_id` | `projects.id` |
-| `project_milestones.project_id` | `projects.id` |
-| `storage_locations.project_id` | `projects.id` |
-| `supervisor_updates.project_id` | `projects.id` |

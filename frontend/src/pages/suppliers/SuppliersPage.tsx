@@ -45,8 +45,8 @@ export function SuppliersPage() {
             Suppliers And Compliance
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-theme-text-secondary">
-            Manage supplier records, track compliance status, and maintain TDS supporting
-            documents from one place.
+            Manage supplier records, track compliance status, and maintain TDS supporting documents
+            from one place.
           </p>
         </div>
         <StatusBadge tone={complianceSummary.expired > 0 ? 'warning' : 'success'}>
@@ -206,7 +206,9 @@ export function SuppliersPage() {
                           View TDS
                         </button>
                       ) : (
-                        <p className="text-xs text-theme-text-muted">No TDS document uploaded yet.</p>
+                        <p className="text-xs text-theme-text-muted">
+                          No TDS document uploaded yet.
+                        </p>
                       )}
                     </div>
                   </article>

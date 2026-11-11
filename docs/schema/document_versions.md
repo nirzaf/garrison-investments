@@ -1,35 +1,24 @@
-# `document_versions`
+# document_versions
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/document.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `document_id` | `UUID` | No | `` | documents.id |
-| `version` | `INTEGER` | No | `` |  |
-| `status` | `VARCHAR(20)` | No | `'pending_approval'` |  |
-| `storage_path` | `VARCHAR(500)` | No | `` |  |
-| `original_name` | `VARCHAR(255)` | No | `` |  |
-| `mime_type` | `VARCHAR(80)` | No | `` |  |
-| `size_bytes` | `BIGINT` | No | `` |  |
-| `uploaded_by` | `UUID` | Yes | `` | users.id |
-| `approved_by` | `UUID` | Yes | `` | users.id |
-| `approved_at` | `DATETIME` | Yes | `` |  |
-| `approval_comments` | `TEXT` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `approval_comments` | Text | NULL | — | — | — |
+| `approved_at` | TimestampTZ | NULL | — | — | — |
+| `approved_by` | UUID | NULL | — | users.id | — |
+| `document_id` | UUID | NOT NULL | — | documents.id | — |
+| `mime_type` | String(80) | NOT NULL | — | — | — |
+| `original_name` | String(255) | NOT NULL | — | — | — |
+| `size_bytes` | BigInteger | NOT NULL | — | — | — |
+| `status` | String(20) | NOT NULL | pending_approval | — | — |
+| `storage_path` | String(500) | NOT NULL | — | — | — |
+| `uploaded_by` | UUID | NULL | — | users.id | — |
+| `version` | Integer | NOT NULL | — | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `document_id` | `documents.id` |
-| `uploaded_by` | `users.id` |
-| `approved_by` | `users.id` |

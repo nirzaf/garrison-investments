@@ -1,28 +1,19 @@
-# `auth_otp_challenges`
+# auth_otp_challenges
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/auth.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `user_id` | `UUID` | No | `` | users.id |
-| `purpose` | `VARCHAR(32)` | No | `'login'` |  |
-| `otp_hash` | `VARCHAR(255)` | No | `` |  |
-| `expires_at` | `DATETIME` | No | `` |  |
-| `consumed_at` | `DATETIME` | Yes | `` |  |
-| `attempts` | `INTEGER` | No | `0` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `attempts` | Integer | NOT NULL | 0 | — | — |
+| `consumed_at` | TimestampTZ | NULL | — | — | — |
+| `expires_at` | TimestampTZ | NOT NULL | — | — | — |
+| `otp_hash` | String(255) | NOT NULL | — | — | — |
+| `purpose` | String(32) | NOT NULL | login | — | — |
+| `user_id` | UUID | NOT NULL | — | users.id | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `user_id` | `users.id` |
