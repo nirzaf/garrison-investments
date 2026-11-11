@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import logging
-import re
 import socket
 from collections.abc import MutableMapping
-from functools import lru_cache
 from typing import Any
 
 import structlog
@@ -12,33 +10,10 @@ from structlog.typing import Processor
 
 from app.config import Settings
 from app.observability.context import log_context_dict
+from app.utils.redaction import redact_payload
 
 _configured = False
 _standard_context: dict[str, str] = {}
-
-_SENSITIVE_KEY_PARTS = {
-    "authorization",
-    "cookie",
-    "credential",
-    "jwt",
-    "otp",
-    "passphrase",
-    "password",
-    "private_key",
-    "secret",
-    "set_cookie",
-    "token",
-    "x_api_key",
-}
-_BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
-_URL_CREDENTIAL_PATTERN = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^@\s]+@")
-_KEY_VALUE_CREDENTIAL_PATTERN = re.compile(
-    r"(?i)(?P<prefix>(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|"
-    r"pass(?:word)?|secret|session|token)=)[^&\s\"']+"
-)
-_MAX_REDACTION_DEPTH = 24
-
 
 def _inject_standard_fields(
     _: Any,
@@ -54,45 +29,13 @@ def _inject_standard_fields(
     return event_dict
 
 
-@lru_cache(maxsize=512)
-def _is_sensitive_key(key: str) -> bool:
-    normalized = key.lower().replace("-", "_")
-    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
-
-
-def _redact_string(value: str) -> str:
-    value = _BEARER_PATTERN.sub("Bearer [redacted]", value)
-    value = _JWT_PATTERN.sub("[redacted-jwt]", value)
-    value = _URL_CREDENTIAL_PATTERN.sub(r"\g<scheme>[redacted]@", value)
-    return _KEY_VALUE_CREDENTIAL_PATTERN.sub(r"\g<prefix>[redacted]", value)
-
-
-def _redact_value(value: Any, *, key: object | None = None, depth: int = 0) -> Any:
-    if key is not None and _is_sensitive_key(str(key)):
-        return "[redacted]"
-    if depth >= _MAX_REDACTION_DEPTH:
-        return "[redacted-depth-limit]"
-    if isinstance(value, MutableMapping):
-        return {
-            item_key: _redact_value(item, key=item_key, depth=depth + 1)
-            for item_key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_value(item, depth=depth + 1) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_redact_value(item, depth=depth + 1) for item in value)
-    if isinstance(value, str):
-        return _redact_string(value)
-    return value
-
-
 def _redact_sensitive_fields(
     _: Any,
     __: str,
     event_dict: MutableMapping[str, Any],
 ) -> MutableMapping[str, Any]:
     try:
-        return _redact_value(event_dict)
+        return redact_payload(event_dict)
     except RecursionError:
         # The offending payload is exactly what defeated redaction, so it must not be emitted.
         return {

@@ -11,37 +11,11 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.services.audit_service import AuditService
 from app.services.email_service import EmailService
+from app.utils.redaction import redact_payload, redact_text
 from app.utils.request import get_client_ip
 from app.utils.security import decode_access_token
 
 logger = structlog.get_logger("app.exception_reporter")
-
-SENSITIVE_HEADER_NAMES = {
-    "authorization",
-    "cookie",
-    "password",
-    "proxy-authorization",
-    "secret",
-    "set-cookie",
-    "token",
-    "x-api-key",
-}
-
-
-def _redact_headers(headers: Mapping[str, str]) -> dict[str, str]:
-    return {
-        key: "[redacted]" if key.lower() in SENSITIVE_HEADER_NAMES else value
-        for key, value in headers.items()
-    }
-
-
-def _redact_mapping(values: Mapping[str, Any] | None) -> dict[str, Any]:
-    if not values:
-        return {}
-    return {
-        key: "[redacted]" if key.lower() in SENSITIVE_HEADER_NAMES else value
-        for key, value in values.items()
-    }
 
 
 def _authenticated_subject(request: Request) -> str | None:
@@ -89,9 +63,9 @@ async def report_unhandled_exception(request: Request, exc: Exception) -> None:
             "Request",
             f"  Request ID: {_format_value(request_id)}",
             f"  Method: {request.method}",
-            f"  URL: {request.url}",
+            f"  URL: {redact_text(str(request.url))}",
             f"  Path: {request.url.path}",
-            f"  Query: {_format_value(request.url.query)}",
+            f"  Query: {_format_value(redact_text(request.url.query) or None)}",
             f"  Client IP: {_format_value(get_client_ip(request))}",
             f"  User ID: {_format_value(_authenticated_subject(request))}",
             f"  User-Agent: {_format_value(request.headers.get('User-Agent'))}",
@@ -99,15 +73,15 @@ async def report_unhandled_exception(request: Request, exc: Exception) -> None:
             "Headers",
             *[
                 f"  {key}: {value}"
-                for key, value in sorted(_redact_headers(request.headers).items())
+                for key, value in sorted(redact_payload(request.headers).items())
             ],
             "",
             "Exception",
             f"  Type: {exception_type}",
-            f"  Message: {exc}",
+            f"  Message: {redact_text(str(exc))}",
             "",
             "Traceback",
-            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            redact_text("".join(traceback.format_exception(type(exc), exc, exc.__traceback__))),
         ]
     )
 
@@ -154,8 +128,7 @@ def report_celery_task_failure(
 
     exception_type = type(exc).__name__
     subject = (
-        f"[{settings.app_env}] {settings.app_name} Celery task failed"
-        f" {task_name or 'unknown'}"
+        f"[{settings.app_env}] {settings.app_name} Celery task failed {task_name or 'unknown'}"
     )
     body = "\n".join(
         [
@@ -169,16 +142,18 @@ def report_celery_task_failure(
             "Task",
             f"  Name: {_format_value(task_name)}",
             f"  ID: {_format_value(task_id)}",
-            f"  Args: {_format_value(args)}",
-            f"  Kwargs: {_format_value(_redact_mapping(kwargs))}",
+            f"  Args: {_format_value(redact_payload(args))}",
+            f"  Kwargs: {_format_value(redact_payload(kwargs or {}))}",
             "",
             "Exception",
             f"  Type: {exception_type}",
-            f"  Message: {exc}",
+            f"  Message: {redact_text(str(exc))}",
             "",
             "Traceback",
-            traceback_text
-            or "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            redact_text(
+                traceback_text
+                or "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            ),
         ]
     )
 
@@ -209,13 +184,13 @@ async def _store_celery_failure_event(
                 event_type="error",
                 severity="ERROR",
                 entity_type="task",
-                comments=str(exc),
+                comments=redact_text(str(exc)),
                 context_payload={
                     "task_name": task_name,
                     "task_id": task_id,
-                    "args": list(args or ()),
-                    "kwargs": _redact_mapping(kwargs),
-                    "traceback": traceback_text,
+                    "args": redact_payload(list(args or ())),
+                    "kwargs": redact_payload(kwargs or {}),
+                    "traceback": redact_text(traceback_text) if traceback_text else None,
                     "exception_type": type(exc).__name__,
                 },
             )

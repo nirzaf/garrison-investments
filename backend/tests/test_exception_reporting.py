@@ -118,9 +118,13 @@ def test_celery_task_failure_sends_configured_email(monkeypatch) -> None:
         task_name="run_import_async",
         task_id="task-123",
         exc=RuntimeError("worker exploded"),
-        args=("materials",),
-        kwargs={"token": "secret-token", "batch_id": "batch-1"},
-        traceback_text="Traceback text",
+        args=("materials", {"temporary_password": "example-arg-secret"}),
+        kwargs={
+            "token": "secret-token",
+            "batch_id": "batch-1",
+            "content": b"example-csv-secret",
+        },
+        traceback_text="Traceback text refresh_token=example-trace-secret",
     )
 
     assert sent["recipients"] == ["ops@example.test", "quadrate.lk@gmail.com"]
@@ -132,3 +136,6 @@ def test_celery_task_failure_sends_configured_email(monkeypatch) -> None:
     assert "Traceback text" in body
     assert "'token': '[redacted]'" in body
     assert "secret-token" not in body
+    assert "example-arg-secret" not in body
+    assert "example-csv-secret" not in body
+    assert "example-trace-secret" not in body

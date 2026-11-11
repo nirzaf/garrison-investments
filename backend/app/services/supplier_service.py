@@ -185,7 +185,7 @@ class SupplierService:
 
     def _validate_file(self, filename: str, data: bytes) -> str:
         if len(data) > MAX_TDS_FILE_SIZE:
-            raise AppException("File exceeds the 10 MB limit.", status_code=413)
+            raise AppException("File exceeds the 30 MB limit.", status_code=413)
         if Path(filename).suffix.lower() in BLOCKED_EXTENSIONS:
             raise AppException("File type is blocked.", status_code=422)
         header = data[:32]

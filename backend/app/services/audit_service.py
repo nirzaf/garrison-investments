@@ -10,6 +10,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.config import get_settings
 from app.models.activity_log import ActivityLog
 from app.observability.context import get_log_context
+from app.utils.redaction import redact_payload, redact_text
 from app.utils.security import utc_now
 
 
@@ -83,10 +84,10 @@ class AuditService:
                 archived_at=archived_at,
                 retention_until=resolved_retention,
                 user_agent=user_agent,
-                comments=comments,
-                context_payload=payload or None,
-                old_values=old_values,
-                new_values=new_values,
+                comments=redact_text(comments) if comments else comments,
+                context_payload=redact_payload(payload) or None,
+                old_values=redact_payload(old_values),
+                new_values=redact_payload(new_values),
             )
         )
 
