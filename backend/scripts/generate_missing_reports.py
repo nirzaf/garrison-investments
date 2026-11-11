@@ -8,7 +8,7 @@ Targets 2026-05-28 (the date flagged as missing by check_late_reports).
 
 import asyncio
 import sys
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from random import choice, randint

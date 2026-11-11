@@ -68,6 +68,26 @@ BACKUP_RETENTION_DAYS=30
 MONTHLY_BACKUP_RETENTION_MONTHS=12
 
 MONITOR_ALERT_RECIPIENTS=admin@garrisons.lk
+
+# Optional overrides (defaults shown)
+EXCEPTION_EMAIL_ENABLED=true
+NOTIFICATION_RETENTION_DAYS=90
+LOG_HOT_RETENTION_DAYS=30
+LOG_ARCHIVE_RETENTION_DAYS=365
+LOG_STREAM_POLL_SECONDS=1.0
+LOG_INSTANCE_ID=<host-or-container-identifier>
+LOG_SOURCE_SERVICE=backend-api
+LOG_LEVEL=INFO
+LOG_HEALTHCHECKS=false
+
+GRAFANA_DOMAIN=logs.your-domain.example
+GRAFANA_ADMIN_USER=<grafana-admin-user>
+GRAFANA_ADMIN_PASSWORD=<strong-grafana-admin-password>
+GRAFANA_DB_PASSWORD=<strong-grafana-database-password>
+LOKI_MINIO_ACCESS_KEY=<loki-service-access-key>
+LOKI_MINIO_SECRET_KEY=<strong-loki-service-secret>
+TRUSTED_PROXY_IPS=127.0.0.1,::1
+BUSINESS_TIMEZONE=Asia/Qatar
 ```
 
 ---
@@ -87,26 +107,74 @@ Run these checks from the repository root on the deployment host:
 ```bash
 docker compose -f docker-compose.prod.yml config --quiet
 docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 curl --fail http://localhost/health
+curl --fail http://localhost/health/readiness
+curl --fail "https://${GRAFANA_DOMAIN}/api/health"
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/validate_import_sources.py --check
-docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py
+docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all
 ```
+
+Before starting production, create DNS for `GRAFANA_DOMAIN` and install a certificate whose SAN covers
+that hostname. The `grafana_db_init` and `loki_minio_init` jobs are idempotent and must exit successfully.
+Grafana, Loki, and Alloy must report healthy; none of their internal ports should be published.
+
+Before changing a running environment, run the repository checks:
+
+```bash
+cd backend
+pytest -q tests/test_structured_logging.py tests/test_observability_config.py
+ruff check .
+mypy .
+
+cd ../frontend
+npm run lint
+npm run api:types:check
+npm test
+npm run build
+
+cd ..
+docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+```
+
+The Grafana database initializer uses PostgreSQL `ON_ERROR_STOP` and idempotent role/database checks.
+Any non-zero `grafana_db_init` or `loki_minio_init` exit is a deployment failure; inspect the job
+logs instead of manually bypassing the dependency.
 
 ---
 
 ## 3. Operations, Backup & Restore
 
+### Scheduled Background Jobs (Celery Beat)
+
+The Celery beat container runs these schedules automatically (defined in `backend/app/tasks/celery_app.py`, all times UTC):
+
+| Task | Schedule | Purpose |
+| --- | --- | --- |
+| `run_database_backup` | Daily 01:00 | Encrypted daily database backup to MinIO |
+| `run_database_backup` (monthly) | 1st of month 02:00 | Monthly archive backup |
+| `check_late_reports` | Hourly | Detect and notify late daily reports |
+| `process_approval_reminders` | Hourly | Send approval reminder notifications |
+| `check_low_stock` | Hourly | Low-stock inventory alerts |
+| `cleanup_old_notifications` | Daily 03:00 | Purge notifications older than `NOTIFICATION_RETENTION_DAYS` |
+| `archive_and_purge_logs` | Daily 03:30 | Move hot logs to archive tier and purge expired archives |
+| `check_supplier_tds_expiry` | Daily 04:00 | Alert on expiring supplier TDS documents |
+
 ### Backup Procedure
 
 The backend container includes `scripts/backup.py`.
 
-* **Daily backup:**
-  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py`
+* **Daily application and Grafana backup:**
+  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all`
 * **Monthly archive:**
-  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --monthly`
+  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all --monthly`
 
-Daily backups are retained for 30 days. Monthly archives are retained for 12 months.
+Application backups retain their existing prefixes. Grafana metadata is stored under
+`backups/grafana/daily` and `backups/grafana/monthly`. Daily backups are retained for 30 days and
+monthly archives for 12 months. Loki data is operational, retained for 14 days by the Compactor, and
+is not copied into a second backup.
 
 ### Restore Test Procedure
 1. Download the latest encrypted backup from MinIO.
@@ -114,6 +182,10 @@ Daily backups are retained for 30 days. Monthly archives are retained for 12 mon
 3. Restore into an isolated PostgreSQL database.
 4. Confirm the schema loads, core tables are queryable, and the application passes `/health`.
 5. Record the restore test date, operator, backup object name, and result.
+
+Run the same isolated restore procedure for the latest Grafana dump, restore it into a temporary
+database owned by a temporary restricted user, and verify that its tables are readable. Do not point a
+running Grafana instance at the restore-test database.
 
 Use the validation script to confirm the dump is readable:
 ```bash
@@ -150,6 +222,8 @@ For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_R
 3. Rebuild and restart with `docker compose -f docker-compose.prod.yml up -d --build`.
 4. Apply backward-compatible migrations (or downgrade if safe).
 5. Verify `/health`.
+6. If the observability stack is the failure source, set `EXCEPTION_EMAIL_ENABLED=true`, stop
+   Grafana/Loki/Alloy, and continue incident diagnosis from rotated Docker JSON logs.
 
 ---
 

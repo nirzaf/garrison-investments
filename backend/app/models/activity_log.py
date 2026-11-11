@@ -22,7 +22,9 @@ class ActivityLog(TimestampMixin, SoftDeleteMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    event_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'audit'"))
+    event_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'audit'")
+    )
     severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'INFO'"))
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
