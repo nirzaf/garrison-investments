@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     smtp_from_email: str = "no-reply@garrisons.lk"
     smtp_from_name: str = "Garrisons Investments"
+    usesend_api_url: HttpUrl | None = None
+    usesend_api_key: SecretStr | None = None
     exception_email_recipients: str = "admin@garrisons.lk"
     exception_email_enabled: bool | None = None
     notification_retention_days: int = 90

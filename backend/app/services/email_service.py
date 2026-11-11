@@ -1,6 +1,7 @@
 import smtplib
 from email.message import EmailMessage
 
+import httpx
 import structlog
 
 from app.config import get_settings
@@ -18,6 +19,9 @@ class EmailService:
 
         if self.settings.app_env.lower() == "staging":
             subject = f"[Testing] {subject}"
+
+        if self.settings.usesend_api_url is not None or self.settings.usesend_api_key is not None:
+            return self._send_usesend(recipients=recipients, subject=subject, body=body)
 
         message = EmailMessage()
         message["Subject"] = subject
@@ -43,6 +47,35 @@ class EmailService:
                 subject=subject,
                 error=str(exc),
             )
+            return 0
+
+        return len(recipients)
+
+    def _send_usesend(self, *, recipients: list[str], subject: str, body: str) -> int:
+        url = self.settings.usesend_api_url
+        key = self.settings.usesend_api_key
+        if url is None or url.scheme != "https" or key is None or not key.get_secret_value():
+            logger.warning("usesend_configuration_invalid")
+            return 0
+
+        try:
+            response = httpx.post(
+                str(url),
+                headers={"Authorization": f"Bearer {key.get_secret_value()}"},
+                json={
+                    "from": self.settings.smtp_from_email,
+                    "to": recipients,
+                    "subject": subject,
+                    "text": body,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.warning("usesend_delivery_failed", status_code=exc.response.status_code)
+            return 0
+        except httpx.RequestError as exc:
+            logger.warning("usesend_delivery_failed", error_type=type(exc).__name__)
             return 0
 
         return len(recipients)
