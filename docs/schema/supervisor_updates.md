@@ -1,40 +1,29 @@
-# `supervisor_updates`
+# supervisor_updates
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/supervisor_update.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `project_id` | `UUID` | No | `` | projects.id |
-| `supervisor_id` | `UUID` | No | `` | users.id |
-| `update_date` | `DATE` | No | `` |  |
-| `day_type` | `VARCHAR(20)` | No | `'weekday'` |  |
-| `work_location` | `VARCHAR(255)` | No | `` |  |
-| `attendance_count` | `INTEGER` | No | `` |  |
-| `overtime_hours` | `NUMERIC(5, 2)` | No | `0` |  |
-| `progress_notes` | `TEXT` | No | `` |  |
-| `delay_notes` | `TEXT` | Yes | `` |  |
-| `required_notes` | `TEXT` | No | `` |  |
-| `attachment_refs` | `JSONB` | No | `` |  |
-| `status` | `VARCHAR(20)` | No | `'draft'` |  |
-| `submitted_at` | `DATETIME` | Yes | `` |  |
-| `verified_by` | `UUID` | Yes | `` | users.id |
-| `verified_at` | `DATETIME` | Yes | `` |  |
-| `verification_notes` | `TEXT` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `attachment_refs` | JSONB | NOT NULL | — | — | — |
+| `attendance_count` | Integer | NOT NULL | — | — | — |
+| `day_type` | String(20) | NOT NULL | weekday | — | — |
+| `delay_notes` | Text | NULL | — | — | — |
+| `overtime_hours` | Numeric(5, 2) | NOT NULL | 0 | — | — |
+| `progress_notes` | Text | NOT NULL | — | — | — |
+| `project_id` | UUID | NOT NULL | — | projects.id | — |
+| `required_notes` | Text | NOT NULL | — | — | — |
+| `status` | String(20) | NOT NULL | draft | — | — |
+| `submitted_at` | TimestampTZ | NULL | — | — | — |
+| `supervisor_id` | UUID | NOT NULL | — | users.id | — |
+| `update_date` | Date | NOT NULL | — | — | — |
+| `verification_notes` | Text | NULL | — | — | — |
+| `verified_at` | TimestampTZ | NULL | — | — | — |
+| `verified_by` | UUID | NULL | — | users.id | — |
+| `work_location` | String(255) | NOT NULL | — | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-| `supervisor_id` | `users.id` |
-| `verified_by` | `users.id` |

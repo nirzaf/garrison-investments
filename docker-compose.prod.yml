@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   nginx:
     image: nginx:1.25-alpine
@@ -6,21 +12,30 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/grafana.prod.conf.template:/etc/nginx/templates/grafana.conf.template:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - frontend_dist:/usr/share/nginx/html:ro
+    environment:
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN}
+      NGINX_ENVSUBST_FILTER: ^GRAFANA_DOMAIN$
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+      grafana:
+        condition: service_healthy
+    logging: *default-logging
 
   backend:
     build:
       context: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-access-log
     env_file:
       - .env
     depends_on:
       - postgres
       - redis
       - minio
+    logging: *default-logging
 
   celery_worker:
     build:
@@ -31,6 +46,7 @@ services:
     depends_on:
       - redis
       - postgres
+    logging: *default-logging
 
   celery_beat:
     build:
@@ -40,6 +56,7 @@ services:
       - .env
     depends_on:
       - redis
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine
@@ -49,12 +66,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
     volumes:
       - redisdata:/data
+    logging: *default-logging
 
   minio:
     image: minio/minio:latest
@@ -64,9 +83,184 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - miniodata:/data
+    logging: *default-logging
+
+  grafana_db_init:
+    image: postgres:16-alpine
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
+    volumes:
+      - ./observability/postgres/init-grafana-db.sh:/init/init-grafana-db.sh:ro
+    command: ["/bin/sh", "/init/init-grafana-db.sh"]
+    depends_on:
+      - postgres
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  loki_minio_init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      MC_CONFIG_DIR: /tmp/mc
+    volumes:
+      - ./observability/minio/loki-policy.json:/config/loki-policy.json:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done
+        mc mb --ignore-existing local/loki
+        mc admin user info local "$${LOKI_MINIO_ACCESS_KEY}" >/dev/null 2>&1 ||
+          mc admin user add local "$${LOKI_MINIO_ACCESS_KEY}" "$${LOKI_MINIO_SECRET_KEY}"
+        mc admin policy info local loki-writer >/dev/null 2>&1 ||
+          mc admin policy create local loki-writer /config/loki-policy.json
+        mc admin policy attach local loki-writer --user "$${LOKI_MINIO_ACCESS_KEY}"
+    depends_on:
+      - minio
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  loki:
+    image: grafana/loki:3.7.4@sha256:87f0a067673756a3cede1bcbf0c74875f7df9b09fddb53e399d0c576f756cfcc
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["-config.file=/etc/loki/config.yml", "-config.expand-env=true"]
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/config.yml:ro
+      - lokidata:/loki
+    depends_on:
+      loki_minio_init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-version"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+
+  alloy:
+    image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
+    restart: unless-stopped
+    user: "473:473"
+    group_add:
+      - ${DOCKER_SOCKET_GID:-999}
+    environment:
+      APP_ENV: production
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-garrison}
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloydata:/var/lib/alloy
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/bin/alloy", "--version"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:13.1.1@sha256:7cb8c64c4d57a57e734073f3cc94620adb24a0acb929bd80ba9f14017e3a975b
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN}
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: grafana
+      GF_DATABASE_PASSWORD: ${GRAFANA_DB_PASSWORD}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION: "false"
+      GF_SECURITY_DISABLE_IP_ADDRESS_LOGIN_PROTECTION: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_HOST}:${SMTP_PORT}
+      GF_SMTP_USER: ${SMTP_USERNAME}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_FROM_EMAIL}
+      GF_SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      GRAFANA_ALERT_EMAILS: ${EXCEPTION_EMAIL_RECIPIENTS}
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      grafana_db_init:
+        condition: service_completed_successfully
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging: *default-logging
 
 volumes:
   pgdata:
   redisdata:
   miniodata:
   frontend_dist:
+  grafanadata:
+  lokidata:
+  alloydata:

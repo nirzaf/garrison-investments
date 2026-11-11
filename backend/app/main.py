@@ -9,23 +9,62 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.config import get_settings
-from app.database import check_database
+from app.database import AsyncSessionLocal, check_database
 from app.middleware import AuthRateLimiter, audit_authenticated_request
+from app.observability import bind_log_context, clear_log_context, configure_logging
+from app.services.audit_service import AuditService
 from app.services.exception_reporter import report_unhandled_exception
 from app.utils.exceptions import AppException
+from app.utils.request import get_client_ip
 
 logger = structlog.get_logger("app.api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("application_starting", app_name=app.title)
+    settings = get_settings()
+    logger.info(
+        "application_starting",
+        app_name=app.title,
+        event_type="system_event",
+        source_service=settings.log_source_service,
+        instance_id=settings.log_instance_id,
+    )
+    async with AsyncSessionLocal() as session:
+        await AuditService(session).record(
+            action="system.startup",
+            event_type="system_event",
+            severity="INFO",
+            comments="Application starting",
+            source_service=settings.log_source_service,
+            instance_id=settings.log_instance_id,
+        )
+        await session.commit()
     yield
-    logger.info("application_stopping", app_name=app.title)
+    logger.info(
+        "application_stopping",
+        app_name=app.title,
+        event_type="system_event",
+        source_service=settings.log_source_service,
+        instance_id=settings.log_instance_id,
+    )
+    async with AsyncSessionLocal() as session:
+        await AuditService(session).record(
+            action="system.shutdown",
+            event_type="system_event",
+            severity="INFO",
+            comments="Application stopping",
+            source_service=settings.log_source_service,
+            instance_id=settings.log_instance_id,
+        )
+        await session.commit()
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # API imports can load Celery modules in-process before application creation.
+    # Re-apply the API identity so backend records are never mislabeled as worker records.
+    configure_logging(settings, source_service=settings.log_source_service, force=True)
     auth_rate_limiter = AuthRateLimiter(
         redis_url=settings.redis_url,
         window_seconds=settings.auth_rate_limit_window_seconds,
@@ -49,12 +88,42 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
+        session_id = request.headers.get("X-Session-ID", request_id)
         request.state.request_id = request_id
+        request.state.session_id = session_id
+        bind_log_context(
+            request_id=request_id,
+            session_id=session_id,
+            ip_address=get_client_ip(request),
+            endpoint=request.url.path,
+            method=request.method,
+            source_service=settings.log_source_service,
+            instance_id=settings.log_instance_id,
+            cli_session_id=request.headers.get("X-Log-CLI-Session"),
+        )
         start = perf_counter()
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time"] = f"{perf_counter() - start:.6f}"
-        return response
+        try:
+            response = await call_next(request)
+            duration = perf_counter() - start
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Session-ID"] = session_id
+            response.headers["X-Process-Time"] = f"{duration:.6f}"
+            if settings.log_healthchecks or request.url.path not in {
+                "/health",
+                "/health/readiness",
+            }:
+                route = request.scope.get("route")
+                logger.info(
+                    "http_request_completed",
+                    event_type="api_request",
+                    method=request.method,
+                    route=getattr(route, "path", request.url.path),
+                    status_code=response.status_code,
+                    duration_ms=round(duration * 1000, 2),
+                )
+            return response
+        finally:
+            clear_log_context()
 
     @app.middleware("http")
     async def auth_rate_limit_middleware(request: Request, call_next):
@@ -89,7 +158,42 @@ def create_app() -> FastAPI:
         return response
 
     @app.exception_handler(AppException)
-    async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
+    async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+        logger.warning(
+            "handled_application_exception",
+            event_type="error",
+            severity="WARNING" if exc.status_code < 500 else "ERROR",
+            request_id=getattr(request.state, "request_id", None),
+            session_id=getattr(request.state, "session_id", None),
+            method=request.method,
+            path=request.url.path,
+            error_code=exc.error_code,
+            detail=exc.message,
+        )
+        try:
+            async with AsyncSessionLocal() as session:
+                await AuditService(session).record(
+                    action="http.app_exception",
+                    event_type="error",
+                    severity="WARNING" if exc.status_code < 500 else "ERROR",
+                    entity_type="request",
+                    endpoint=request.url.path,
+                    http_method=request.method,
+                    status_code=exc.status_code,
+                    comments=exc.message,
+                    context_payload={
+                        "error_code": exc.error_code,
+                        "errors": exc.errors,
+                    },
+                )
+                await session.commit()
+        except Exception:
+            logger.warning(
+                "app_exception_log_persist_failed",
+                request_id=getattr(request.state, "request_id", None),
+                path=request.url.path,
+                error_code=exc.error_code,
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -103,12 +207,39 @@ def create_app() -> FastAPI:
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error(
             "unhandled_request_exception",
+            event_type="error",
+            severity="ERROR",
             request_id=getattr(request.state, "request_id", None),
+            session_id=getattr(request.state, "session_id", None),
             method=request.method,
             path=request.url.path,
             exception_type=type(exc).__name__,
             exception_message=str(exc),
+            exc_info=exc,
         )
+        try:
+            async with AsyncSessionLocal() as session:
+                await AuditService(session).record(
+                    action="http.unhandled_exception",
+                    event_type="error",
+                    severity="ERROR",
+                    entity_type="request",
+                    endpoint=request.url.path,
+                    http_method=request.method,
+                    status_code=500,
+                    comments=str(exc),
+                    context_payload={
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+                await session.commit()
+        except Exception:
+            logger.warning(
+                "unhandled_exception_log_persist_failed",
+                request_id=getattr(request.state, "request_id", None),
+                path=request.url.path,
+                exception_type=type(exc).__name__,
+            )
         await report_unhandled_exception(request, exc)
         return JSONResponse(
             status_code=500,

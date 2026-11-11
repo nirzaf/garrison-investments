@@ -1,36 +1,27 @@
-# `suppliers`
+# suppliers
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/supplier.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `name` | `VARCHAR(200)` | No | `` |  |
-| `category` | `VARCHAR(80)` | No | `` |  |
-| `rating` | `VARCHAR(20)` | No | `` |  |
-| `payment_terms` | `VARCHAR(120)` | No | `` |  |
-| `contact_person` | `VARCHAR(150)` | No | `` |  |
-| `phone` | `VARCHAR(32)` | No | `` |  |
-| `email` | `VARCHAR(255)` | No | `` |  |
-| `address` | `TEXT` | No | `` |  |
-| `tax_registration_number` | `VARCHAR(80)` | No | `` |  |
-| `tds_certificate_number` | `VARCHAR(120)` | Yes | `` |  |
-| `tds_expiry_date` | `DATE` | Yes | `` |  |
-| `tds_document_key` | `VARCHAR(500)` | Yes | `` |  |
-| `compliance_status` | `VARCHAR(30)` | No | `` |  |
-| `is_active` | `BOOLEAN` | No | `true` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `address` | Text | NOT NULL | — | — | — |
+| `category` | String(80) | NOT NULL | — | — | — |
+| `compliance_status` | String(30) | NOT NULL | — | — | — |
+| `contact_person` | String(150) | NOT NULL | — | — | — |
+| `email` | String(255) | NOT NULL | — | — | — |
+| `is_active` | Boolean | NOT NULL | true | — | — |
+| `name` | String(200) | NOT NULL | — | — | — |
+| `payment_terms` | String(120) | NOT NULL | — | — | — |
+| `phone` | String(32) | NOT NULL | — | — | — |
+| `rating` | String(20) | NOT NULL | — | — | — |
+| `tax_registration_number` | String(80) | NOT NULL | — | — | — |
+| `tds_certificate_number` | String(120) | NULL | — | — | — |
+| `tds_document_key` | String(500) | NULL | — | — | — |
+| `tds_expiry_date` | Date | NULL | — | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `invoices.supplier_id` | `suppliers.id` |

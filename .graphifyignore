@@ -1,0 +1,16 @@
+# Graphify Ignore Patterns
+# Exclude testing, administrative scripts, migrations, and environments from the knowledge graph
+
+# Virtual environments and system folders
+.venv/
+backend/.venv/
+.git/
+.github/
+.pytest_cache/
+.ruff_cache/
+graphify-out/
+
+# Frontend built/test exclusions
+frontend/node_modules/
+frontend/dist/
+frontend/build/

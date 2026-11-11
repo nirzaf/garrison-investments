@@ -1,11 +1,15 @@
 from uuid import UUID
 
+import structlog
+
 from app.database import AsyncSessionLocal
 from app.models.import_batch import ImportBatch
 from app.models.user import User
 from app.services.import_service import ImportService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
+
+logger = structlog.get_logger("celery.task")
 
 
 @celery_app.task(
@@ -24,6 +28,14 @@ def run_import_async(
     actor_id: str,
     batch_id: str | None = None,
 ) -> str:
+    logger.info(
+        "import_started",
+        template_type=template_type,
+        file_name=file_name,
+        actor_id=actor_id,
+        batch_id=batch_id,
+        content_size=len(content),
+    )
     return run_async_task(
         _run_import_async(
             template_type=template_type,
@@ -48,6 +60,7 @@ async def _run_import_async(
         actor = await session.get(User, UUID(actor_id))
         if not actor:
             await _mark_batch_failed(session, batch_uuid, f"user {actor_id} not found")
+            logger.error("import_actor_not_found", actor_id=actor_id)
             return f"import failed: user {actor_id} not found"
         if batch_uuid:
             batch = await session.get(ImportBatch, batch_uuid)
@@ -65,7 +78,9 @@ async def _run_import_async(
         except Exception as exc:
             await session.rollback()
             await _mark_batch_failed(session, batch_uuid, str(exc))
+            logger.error("import_failed", error=str(exc))
             raise
+        logger.info("import_completed", batch_id=str(result.batch_id), status=result.status)
         return f"import {result.batch_id} completed: {result.status}"
 
 

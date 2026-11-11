@@ -8,8 +8,8 @@ import pytest
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, check_database, engine
-from app.models.notification import Notification
 from app.main import create_app
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -226,6 +226,7 @@ async def test_project_manager_material_request_approval_routes_to_operations() 
 
     async with AsyncSessionLocal() as session:
         actor = await session.get(User, project_manager.id)
+        assert actor is not None
         approval = await ApprovalService(session).create_approval(
             ApprovalCreateRequest(
                 request_type="material_request",

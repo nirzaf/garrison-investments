@@ -1,13 +1,18 @@
 import asyncio
+import base64
+import os
 import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from minio.error import S3Error
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.activity_log import ActivityLog
 from app.models.approval import Approval
@@ -41,11 +46,103 @@ from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.storage_service import minio_client
 from app.utils.security import hash_password
 
-DEFAULT_ADMIN_EMAIL = "fazrin@quadrate.lk"
-DEFAULT_ADMIN_PASSWORD = "Dob280884@"
-DEFAULT_PASSWORD = "Dob280884@"
+DEFAULT_ADMIN_EMAIL = "admin.test@garrisons.lk"
+DEFAULT_PASSWORD = os.getenv("SEED_DEFAULT_PASSWORD") or "ChangeMe123!"
+DEFAULT_ADMIN_PASSWORD = DEFAULT_PASSWORD
+SEED_JPEG_BYTES = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////"
+    "////////////////////////////////////////////2wBDAf//////////////////////////////"
+    "////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB"
+    "/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAA"
+    "AAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA"
+    "/9oACAEDAQE/ASP/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/ASP/xAAUEAEAAAAAAAAA"
+    "AAAAAAAAAAAA/9oACAEBAAY/Al//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gA"
+    "MAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAA"
+    "AAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z"
+)
+SEED_PDF_BYTES = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def get_asset_bytes(filename: str, default_bytes: bytes) -> bytes:
+    filepath = ASSETS_DIR / filename
+    if filepath.exists():
+        try:
+            return filepath.read_bytes()
+        except Exception:
+            pass
+    return default_bytes
+
+
+SEED_PHOTO_OBJECTS = {
+    "seed-photos/site_overview.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/site_overview_compressed.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview_compressed.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/site_overview_thumb.jpg": (
+        "image/jpeg",
+        get_asset_bytes("site_overview_thumb.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5_compressed.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5_compressed.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-photos/blockwork_day5_thumb.jpg": (
+        "image/jpeg",
+        get_asset_bytes("blockwork_day5_thumb.jpg", SEED_JPEG_BYTES),
+    ),
+    "seed-attachments/plaster_check.pdf": ("application/pdf", SEED_PDF_BYTES),
+}
+SEED_DOCUMENT_OBJECTS = {
+    "seed-docs/pep_v1.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/pep_v2.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/mar_cement_mix_design.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/mir_steel_rebar_delivery.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/wir_plaster_zone_a.pdf": ("application/pdf", SEED_PDF_BYTES),
+    "seed-docs/delivery_note_cement_batch001.pdf": ("application/pdf", SEED_PDF_BYTES),
+}
+
+
+def ensure_seed_storage_objects(objects: dict[str, tuple[str, bytes]]) -> None:
+    settings = get_settings()
+    client = minio_client(settings)
+    force = (os.getenv("SEED_FORCE_STORAGE") == "true") or ("--force-storage" in sys.argv)
+    try:
+        if not client.bucket_exists(settings.minio_bucket):
+            client.make_bucket(settings.minio_bucket)
+        uploaded = 0
+        for object_key, (content_type, data) in objects.items():
+            try:
+                stat = client.stat_object(settings.minio_bucket, object_key)
+                is_placeholder = stat.size <= 2000
+                has_real_data = len(data) > 2000
+                if not force and not (is_placeholder and has_real_data):
+                    continue
+            except S3Error as exc:
+                if exc.code not in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                    raise
+            client.put_object(
+                settings.minio_bucket,
+                object_key,
+                BytesIO(data),
+                length=len(data),
+                content_type=content_type,
+            )
+            uploaded += 1
+        print(f"Seeded storage objects: {uploaded} uploaded, {len(objects) - uploaded} existing")
+    except Exception as exc:
+        print(f"Skipped seed storage objects: {exc}")
 
 SEED_USERS = [
     {
@@ -57,7 +154,7 @@ SEED_USERS = [
         "designation": "System Administrator",
     },
     {
-        "email": "gm@garrisons.qa",
+        "email": "gm.test@garrisons.lk",
         "full_name": "General Manager",
         "role": "general_manager",
         "employee_code": "GM-001",
@@ -65,7 +162,7 @@ SEED_USERS = [
         "designation": "General Manager",
     },
     {
-        "email": "operations@garrisons.qa",
+        "email": "operations.test@garrisons.lk",
         "full_name": "Operation Manager",
         "role": "operation_manager",
         "employee_code": "OPS-001",
@@ -73,7 +170,7 @@ SEED_USERS = [
         "designation": "Operation Manager",
     },
     {
-        "email": "pm@garrisons.qa",
+        "email": "pm.test@garrisons.lk",
         "full_name": "Project Manager",
         "role": "project_manager",
         "employee_code": "PM-001",
@@ -81,7 +178,7 @@ SEED_USERS = [
         "designation": "Project Manager",
     },
     {
-        "email": "engineer@garrisons.qa",
+        "email": "engineer.test@garrisons.lk",
         "full_name": "Civil Engineer",
         "role": "civil_engineer",
         "employee_code": "ENG-001",
@@ -89,7 +186,7 @@ SEED_USERS = [
         "designation": "Civil Engineer",
     },
     {
-        "email": "supervisor@garrisons.qa",
+        "email": "supervisor.test@garrisons.lk",
         "full_name": "Civil Supervisor",
         "role": "civil_supervisor",
         "employee_code": "SUP-001",
@@ -97,7 +194,7 @@ SEED_USERS = [
         "designation": "Civil Supervisor",
     },
     {
-        "email": "store@garrisons.qa",
+        "email": "storekeeper.test@garrisons.lk",
         "full_name": "Store Keeper",
         "role": "store_keeper",
         "employee_code": "STORE-001",
@@ -105,7 +202,7 @@ SEED_USERS = [
         "designation": "Store Keeper",
     },
     {
-        "email": "accounts@garrisons.qa",
+        "email": "accounts.test@garrisons.lk",
         "full_name": "Accounts Officer",
         "role": "accounts",
         "employee_code": "ACC-001",
@@ -131,11 +228,11 @@ SEED_PROJECTS = [
         "contract_number": "CNT-LUSAIL-001",
         "progress_percentage": Decimal("35.00"),
         "members": [
-            ("pm@garrisons.qa", "Project Manager"),
-            ("engineer@garrisons.qa", "Civil Engineer"),
-            ("supervisor@garrisons.qa", "Civil Supervisor"),
-            ("store@garrisons.qa", "Store Keeper"),
-            ("accounts@garrisons.qa", "Accounts"),
+            ("pm.test@garrisons.lk", "Project Manager"),
+            ("engineer.test@garrisons.lk", "Civil Engineer"),
+            ("supervisor.test@garrisons.lk", "Civil Supervisor"),
+            ("storekeeper.test@garrisons.lk", "Store Keeper"),
+            ("accounts.test@garrisons.lk", "Accounts"),
         ],
         "milestones": [
             ("Site Mobilization", "Civil", 1, Decimal("100.00"), "completed"),
@@ -191,9 +288,9 @@ SEED_PROJECTS = [
         "contract_number": "CNT-WB-002",
         "progress_percentage": Decimal("5.00"),
         "members": [
-            ("operations@garrisons.qa", "Operation Manager"),
-            ("pm@garrisons.qa", "Project Manager"),
-            ("engineer@garrisons.qa", "Civil Engineer"),
+            ("operations.test@garrisons.lk", "Operation Manager"),
+            ("pm.test@garrisons.lk", "Project Manager"),
+            ("engineer.test@garrisons.lk", "Civil Engineer"),
         ],
         "milestones": [
             ("Pre-start Survey", "Civil", 1, Decimal("25.00"), "in_progress"),
@@ -388,27 +485,54 @@ async def seed_launch_data() -> None:
             legacy_admin.employee_code = "LEGACY-ADMIN-001"
             legacy_admin.is_active = False
 
+        seed_password_hash = hash_password(DEFAULT_PASSWORD)
         created_users = 0
         updated_users = 0
         for seed_user in SEED_USERS:
-            existing = await users.get_by_email(seed_user["email"])
+            email = seed_user["email"].lower()
+            employee_code = seed_user["employee_code"]
+
+            existing_by_email = await users.get_by_email(email)
+            existing_by_employee_code = None
+            if employee_code:
+                existing_by_employee_code = await session.scalar(
+                    select(User).where(
+                        User.employee_code == employee_code,
+                        User.deleted_at.is_(None),
+                    )
+                )
+
+            existing = existing_by_email or existing_by_employee_code
             if existing:
+                if (
+                    existing_by_email
+                    and existing_by_employee_code
+                    and existing_by_email.id != existing_by_employee_code.id
+                ):
+                    existing_by_employee_code.employee_code = None
+
+                existing.email = email
                 existing.full_name = seed_user["full_name"]
                 existing.role = seed_user["role"]
-                existing.employee_code = seed_user["employee_code"]
+                existing.employee_code = employee_code
                 existing.phone = seed_user["phone"]
                 existing.designation = seed_user["designation"]
+                existing.password_hash = seed_password_hash
+                existing.must_change_password = True
+                existing.is_active = True
+                existing.failed_login_attempts = 0
+                existing.locked_until = None
                 updated_users += 1
                 continue
             await users.add(
                 User(
-                    email=seed_user["email"],
+                    email=email,
                     full_name=seed_user["full_name"],
                     role=seed_user["role"],
-                    employee_code=seed_user["employee_code"],
+                    employee_code=employee_code,
                     phone=seed_user["phone"],
                     designation=seed_user["designation"],
-                    password_hash=hash_password(DEFAULT_PASSWORD),
+                    password_hash=seed_password_hash,
                     must_change_password=True,
                 )
             )
@@ -629,8 +753,8 @@ async def seed_project_tasks(
     project = project_objects.get("GIP-001")
     if not project:
         return
-    engineer = user_by_email.get("engineer@garrisons.qa")
-    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
+    supervisor = user_by_email.get("supervisor.test@garrisons.lk")
     milestone = await session.scalar(
         select(ProjectMilestone).where(
             ProjectMilestone.project_id == project.id,
@@ -863,7 +987,7 @@ async def seed_inventory_movements(
     session, user_by_email: dict, project_objects: dict,
     item_map: dict, location_map: dict
 ) -> None:
-    store = user_by_email.get("store@garrisons.qa")
+    store = user_by_email.get("storekeeper.test@garrisons.lk")
     if not store:
         return
     gip001 = project_objects.get("GIP-001")
@@ -971,7 +1095,7 @@ async def seed_material_requests(
     session, user_by_email: dict, project_objects: dict,
     item_map: dict, location_map: dict
 ) -> None:
-    engineer = user_by_email.get("engineer@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     site_store = location_map.get("LOC-GIP001-STORE")
     if not engineer or not gip001 or not site_store:
@@ -1067,7 +1191,7 @@ async def seed_material_requests(
 async def seed_finance(
     session, user_by_email: dict, project_objects: dict, suppliers: dict
 ) -> None:
-    accounts = user_by_email.get("accounts@garrisons.qa")
+    accounts = user_by_email.get("accounts.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     if not accounts or not gip001:
         return
@@ -1097,8 +1221,8 @@ async def seed_finance(
             status="approved",
             payment_status="partial",
             created_by=accounts.id,
-            approved_by=user_by_email.get("pm@garrisons.qa").id
-            if user_by_email.get("pm@garrisons.qa")
+            approved_by=user_by_email.get("pm.test@garrisons.lk").id
+            if user_by_email.get("pm.test@garrisons.lk")
             else None,
             approved_at=now - timedelta(days=13),
             notes="Cement and plaster materials for Blockwork phase",
@@ -1160,7 +1284,7 @@ async def seed_finance(
 async def seed_supervisor_updates(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    supervisor = user_by_email.get("supervisor.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     if not supervisor or not gip001:
         return
@@ -1212,7 +1336,7 @@ async def seed_supervisor_updates(
         },
     ]
     created = 0
-    engineer = user_by_email.get("engineer@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
     for u in update_data:
         existing = await session.scalar(
             select(SupervisorUpdate).where(
@@ -1258,8 +1382,9 @@ async def seed_supervisor_updates(
 async def seed_photos(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    engineer = user_by_email.get("engineer@garrisons.qa")
-    supervisor = user_by_email.get("supervisor@garrisons.qa")
+    ensure_seed_storage_objects(SEED_PHOTO_OBJECTS)
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
+    supervisor = user_by_email.get("supervisor.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     if not gip001:
         return
@@ -1355,9 +1480,10 @@ async def seed_photos(
 async def seed_documents(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    pm = user_by_email.get("pm@garrisons.qa")
-    engineer = user_by_email.get("engineer@garrisons.qa")
-    ops = user_by_email.get("operations@garrisons.qa")
+    ensure_seed_storage_objects(SEED_DOCUMENT_OBJECTS)
+    pm = user_by_email.get("pm.test@garrisons.lk")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
+    ops = user_by_email.get("operations.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     if not pm or not gip001:
         return
@@ -1595,7 +1721,7 @@ async def seed_documents(
 async def seed_daily_reports(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    engineer = user_by_email.get("engineer@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
     project = project_objects.get("GIP-001")
     if not engineer or not project:
         return
@@ -1777,9 +1903,9 @@ async def seed_daily_reports(
 async def seed_approvals(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
-    engineer = user_by_email.get("engineer@garrisons.qa")
-    pm = user_by_email.get("pm@garrisons.qa")
-    ops = user_by_email.get("operations@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
+    pm = user_by_email.get("pm.test@garrisons.lk")
+    ops = user_by_email.get("operations.test@garrisons.lk")
     gip001 = project_objects.get("GIP-001")
     if not gip001:
         return
@@ -1904,7 +2030,7 @@ async def seed_notifications(
             "is_read": False,
         },
         {
-            "user_email": "pm@garrisons.qa",
+            "user_email": "pm.test@garrisons.lk",
             "title": "Daily Report Submitted",
             "body": "Engineer submitted daily report DR-GIP-001-SEED for Lusail Villa Fit-Out.",
             "notification_type": "report_submitted",
@@ -1912,7 +2038,7 @@ async def seed_notifications(
             "is_read": False,
         },
         {
-            "user_email": "pm@garrisons.qa",
+            "user_email": "pm.test@garrisons.lk",
             "title": "Budget Revision Requested",
             "body": "A budget revision of QAR 85,000 has been requested for Lusail Villa Fit-Out.",
             "notification_type": "approval_requested",
@@ -1920,7 +2046,7 @@ async def seed_notifications(
             "is_read": True,
         },
         {
-            "user_email": "engineer@garrisons.qa",
+            "user_email": "engineer.test@garrisons.lk",
             "title": "Report Approved",
             "body": "Your daily report DR-GIP-001-SEED-002 has been approved.",
             "notification_type": "report_approved",
@@ -1928,7 +2054,7 @@ async def seed_notifications(
             "is_read": True,
         },
         {
-            "user_email": "engineer@garrisons.qa",
+            "user_email": "engineer.test@garrisons.lk",
             "title": "Report Rejected",
             "body": (
                 "Your daily report DR-GIP-001-SEED-003 was rejected. "
@@ -1939,7 +2065,7 @@ async def seed_notifications(
             "is_read": False,
         },
         {
-            "user_email": "store@garrisons.qa",
+            "user_email": "storekeeper.test@garrisons.lk",
             "title": "Low Stock Alert",
             "body": (
                 "Safety Helmets at GIP-001 Site Store dropped below reorder level "
@@ -1950,7 +2076,7 @@ async def seed_notifications(
             "is_read": False,
         },
         {
-            "user_email": "supervisor@garrisons.qa",
+            "user_email": "supervisor.test@garrisons.lk",
             "title": "Supervisor Update Verified",
             "body": "Your site update from 3 days ago has been verified by the engineer.",
             "notification_type": "update_verified",
@@ -1958,7 +2084,7 @@ async def seed_notifications(
             "is_read": True,
         },
         {
-            "user_email": "accounts@garrisons.qa",
+            "user_email": "accounts.test@garrisons.lk",
             "title": "Invoice Due Soon",
             "body": "Invoice INV-GIP001-SEED-001 (QAR 23,625) is due in 15 days.",
             "notification_type": "invoice_due",
@@ -2000,9 +2126,9 @@ async def seed_activity_logs(
     session, user_by_email: dict, project_objects: dict
 ) -> None:
     admin = user_by_email.get(DEFAULT_ADMIN_EMAIL)
-    engineer = user_by_email.get("engineer@garrisons.qa")
-    pm = user_by_email.get("pm@garrisons.qa")
-    store = user_by_email.get("store@garrisons.qa")
+    engineer = user_by_email.get("engineer.test@garrisons.lk")
+    pm = user_by_email.get("pm.test@garrisons.lk")
+    store = user_by_email.get("storekeeper.test@garrisons.lk")
     if not admin:
         return
     now = datetime.now(UTC)
@@ -2095,7 +2221,7 @@ async def seed_report_exports(
         print("Seeded report exports: 0 (already exist)")
         return
 
-    pm = user_by_email.get("pm@garrisons.qa")
+    pm = user_by_email.get("pm.test@garrisons.lk")
     now = datetime.now(UTC)
     session.add(
         ReportExport(

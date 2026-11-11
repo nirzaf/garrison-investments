@@ -1664,26 +1664,17 @@ export interface components {
         };
         /** Body_preview_import_api_v1_imports__template_type__preview_post */
         Body_preview_import_api_v1_imports__template_type__preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_run_import_api_v1_imports__template_type__run_post */
         Body_run_import_api_v1_imports__template_type__run_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_run_import_async_endpoint_api_v1_imports__template_type__run_async_post */
         Body_run_import_async_endpoint_api_v1_imports__template_type__run_async_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_document_api_v1_documents_post */
@@ -1692,10 +1683,7 @@ export interface components {
             title: string;
             /** Document Type */
             document_type: string;
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Project Id */
             project_id?: string | null;
@@ -1704,10 +1692,7 @@ export interface components {
         };
         /** Body_upload_document_version_api_v1_documents__document_id__versions_post */
         Body_upload_document_version_api_v1_documents__document_id__versions_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_files_api_v1_photos_upload_post */
@@ -1731,18 +1716,12 @@ export interface components {
         };
         /** Body_upload_invoice_attachment_api_v1_finance_invoices__invoice_id__attachment_post */
         Body_upload_invoice_attachment_api_v1_finance_invoices__invoice_id__attachment_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_upload_tds_document_api_v1_suppliers__supplier_id__tds_document_post */
         Body_upload_tds_document_api_v1_suppliers__supplier_id__tds_document_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** BoqItemCreateRequest */
@@ -3566,6 +3545,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** VerifyOtpRequest */
         VerifyOtpRequest: {

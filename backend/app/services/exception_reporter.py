@@ -8,6 +8,8 @@ import structlog
 from fastapi import Request
 
 from app.config import get_settings
+from app.database import AsyncSessionLocal
+from app.services.audit_service import AuditService
 from app.services.email_service import EmailService
 from app.utils.request import get_client_ip
 from app.utils.security import decode_access_token
@@ -134,6 +136,17 @@ def report_celery_task_failure(
     kwargs: Mapping[str, Any] | None = None,
     traceback_text: str | None = None,
 ) -> None:
+    asyncio.run(
+        _store_celery_failure_event(
+            task_name=task_name,
+            task_id=task_id,
+            exc=exc,
+            args=args,
+            kwargs=kwargs,
+            traceback_text=traceback_text,
+        )
+    )
+
     settings = get_settings()
     recipients = settings.exception_email_recipients_list
     if not settings.should_send_exception_emails or not recipients:
@@ -177,4 +190,40 @@ def report_celery_task_failure(
             task_id=task_id,
             task_name=task_name,
             exception_type=exception_type,
+        )
+
+
+async def _store_celery_failure_event(
+    *,
+    task_name: str | None,
+    task_id: str | None,
+    exc: BaseException,
+    args: tuple[Any, ...] | None,
+    kwargs: Mapping[str, Any] | None,
+    traceback_text: str | None,
+) -> None:
+    try:
+        async with AsyncSessionLocal() as session:
+            await AuditService(session).record(
+                action="celery.task_failed",
+                event_type="error",
+                severity="ERROR",
+                entity_type="task",
+                comments=str(exc),
+                context_payload={
+                    "task_name": task_name,
+                    "task_id": task_id,
+                    "args": list(args or ()),
+                    "kwargs": _redact_mapping(kwargs),
+                    "traceback": traceback_text,
+                    "exception_type": type(exc).__name__,
+                },
+            )
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "celery_failure_log_persist_failed",
+            task_name=task_name,
+            task_id=task_id,
+            exception_type=type(exc).__name__,
         )

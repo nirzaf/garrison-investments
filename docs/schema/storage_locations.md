@@ -1,38 +1,19 @@
-# `storage_locations`
+# storage_locations
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `name` | `VARCHAR(160)` | No | `` |  |
-| `code` | `VARCHAR(40)` | No | `` |  |
-| `location_type` | `VARCHAR(30)` | No | `` |  |
-| `project_id` | `UUID` | Yes | `` | projects.id |
-| `address` | `TEXT` | Yes | `` |  |
-| `is_active` | `BOOLEAN` | No | `true` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `address` | Text | NULL | — | — | — |
+| `code` | String(40) | NOT NULL | — | — | — |
+| `is_active` | Boolean | NOT NULL | true | — | — |
+| `location_type` | String(30) | NOT NULL | — | — | — |
+| `name` | String(160) | NOT NULL | — | — | — |
+| `project_id` | UUID | NULL | — | projects.id | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-
-## Referenced By
-
-| Source | Target |
-|---|---|
-| `inventory_assets.current_location_id` | `storage_locations.id` |
-| `inventory_location_stock.location_id` | `storage_locations.id` |
-| `inventory_movements.from_location_id` | `storage_locations.id` |
-| `inventory_movements.to_location_id` | `storage_locations.id` |
-| `material_requests.from_location_id` | `storage_locations.id` |

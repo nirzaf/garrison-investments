@@ -29,8 +29,12 @@ LOGIN_FAILURE_MESSAGE = "Invalid email, password, or verification code."
 
 @dataclass(frozen=True)
 class RequestMeta:
+    request_id: str | None = None
+    session_id: str | None = None
     ip_address: str | None = None
     user_agent: str | None = None
+    endpoint: str | None = None
+    method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,7 +95,10 @@ class AuthService:
         self.email.send(
             recipients=[user.email],
             subject="Your Verification Code",
-            body=f"Your verification code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+            body=(
+                f"Your verification code is: {otp}\n\n"
+                f"This code expires in {self.settings.otp_expire_minutes} minutes."
+            ),
         )
         return OtpChallengeResult(
             challenge=challenge,
@@ -247,7 +254,10 @@ class AuthService:
         self.email.send(
             recipients=[user.email],
             subject="Password Reset Code",
-            body=f"Your password reset code is: {otp}\n\nThis code expires in {self.settings.otp_expire_minutes} minutes.",
+            body=(
+                f"Your password reset code is: {otp}\n\n"
+                f"This code expires in {self.settings.otp_expire_minutes} minutes."
+            ),
         )
         return OtpChallengeResult(
             challenge=challenge,

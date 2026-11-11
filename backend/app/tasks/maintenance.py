@@ -1,6 +1,7 @@
 from datetime import time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import structlog
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -12,11 +13,45 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
 from app.utils.security import utc_now
+
+logger = structlog.get_logger("celery.task")
+
+
+@celery_app.task(
+    name="archive_and_purge_logs",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def archive_and_purge_logs() -> str:
+    logger.info("logs_retention_starting")
+    return run_async_task(_archive_and_purge_logs())
+
+
+async def _archive_and_purge_logs() -> str:
+    async with AsyncSessionLocal() as session:
+        audit = AuditService(session)
+        archived = await audit.archive_logs()
+        purged = await audit.purge_logs()
+        await audit.record(
+            action="maintenance.logs_retention",
+            event_type="system_event",
+            severity="INFO",
+            entity_type="log_events",
+            comments="Log archive/purge cycle completed",
+            context_payload={"archived": archived, "purged": purged},
+        )
+        await session.commit()
+    logger.info("logs_retention_completed", archived=archived, purged=purged)
+    return f"{archived} logs archived, {purged} logs purged"
 
 
 @celery_app.task(
@@ -28,6 +63,7 @@ from app.utils.security import utc_now
     max_retries=3,
 )
 def cleanup_old_notifications() -> str:
+    logger.info("notifications_cleanup_starting")
     return run_async_task(_cleanup_old_notifications())
 
 
@@ -50,6 +86,7 @@ async def _cleanup_old_notifications() -> str:
             notification.deleted_at = utc_now()
 
         await session.commit()
+    logger.info("notifications_cleanup_completed", cleaned=len(notifications))
     return f"{len(notifications)} notifications cleaned up"
 
 
@@ -62,6 +99,7 @@ async def _cleanup_old_notifications() -> str:
     max_retries=3,
 )
 def check_late_reports() -> str:
+    logger.info("late_reports_check_starting")
     return run_async_task(_check_late_reports())
 
 
@@ -149,6 +187,7 @@ def _business_now(timezone_name: str):
     max_retries=3,
 )
 def check_supplier_tds_expiry() -> str:
+    logger.info("supplier_tds_expiry_check_starting")
     return run_async_task(_check_supplier_tds_expiry())
 
 

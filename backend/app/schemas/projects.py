@@ -139,7 +139,7 @@ class ProjectTaskCreateRequest(BaseModel):
     actual_start_date: date | None = None
     actual_end_date: date | None = None
     status: str = "not_started"
-    progress_percentage: Decimal = Field(default=0, ge=0, le=100)
+    progress_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     delay_reason: str | None = None
     sort_order: int = Field(default=0, ge=0)
 

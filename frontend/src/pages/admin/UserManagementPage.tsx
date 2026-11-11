@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  adminResetPassword,
   createUser,
   deactivateUser,
   listUsers,
@@ -45,6 +46,10 @@ export function UserManagementPage() {
   const [form, setForm] = useState<CreateUserPayload>(initialForm);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const filters = useMemo(
     () => ({
@@ -94,6 +99,28 @@ export function UserManagementPage() {
       await loadUsers();
     } catch {
       setError('Unable to deactivate user.');
+    }
+  }
+
+  function openResetPassword(user: UserRecord) {
+    setResetTarget(user);
+    setResetPassword('');
+    setResetError(null);
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetTarget) return;
+    setResetError(null);
+    setIsResetting(true);
+    try {
+      await adminResetPassword(resetTarget.id, resetPassword);
+      setResetTarget(null);
+      setResetPassword('');
+    } catch {
+      setResetError('Unable to reset password. Ensure it meets the password policy.');
+    } finally {
+      setIsResetting(false);
     }
   }
 
@@ -241,13 +268,22 @@ export function UserManagementPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {user.is_active ? (
-                      <button
-                        className="text-sm font-medium text-[var(--status-error-text)] hover:opacity-80"
-                        onClick={() => void handleDeactivate(user)}
-                        type="button"
-                      >
-                        Deactivate
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          className="text-sm font-medium text-brand-600 hover:text-brand-700"
+                          onClick={() => openResetPassword(user)}
+                          type="button"
+                        >
+                          Reset password
+                        </button>
+                        <button
+                          className="text-sm font-medium text-[var(--status-error-text)] hover:opacity-80"
+                          onClick={() => void handleDeactivate(user)}
+                          type="button"
+                        >
+                          Deactivate
+                        </button>
+                      </div>
                     ) : null}
                   </td>
                 </tr>
@@ -256,6 +292,52 @@ export function UserManagementPage() {
           </table>
         </div>
       </section>
+
+      {resetTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-lg border border-theme-border bg-theme-card p-6 shadow-lg">
+            <h2 className="mb-1 text-base font-semibold text-theme-text-primary">Reset password</h2>
+            <p className="mb-4 text-sm text-theme-text-secondary">
+              Set a new temporary password for <strong>{resetTarget.full_name}</strong>. They will
+              be required to change it on next sign-in.
+            </p>
+            <form onSubmit={(e) => void handleResetPassword(e)}>
+              <input
+                autoComplete="new-password"
+                autoFocus
+                className="mb-3 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm text-theme-text-primary placeholder-theme-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500"
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="New temporary password"
+                required
+                type="password"
+                value={resetPassword}
+              />
+              {resetError ? (
+                <p className="mb-3 rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2 text-sm text-[var(--status-error-text)]">
+                  {resetError}
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button
+                  className="rounded-md px-4 py-2 text-sm font-medium text-theme-text-secondary hover:bg-theme-card-elevated"
+                  disabled={isResetting}
+                  onClick={() => setResetTarget(null)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                  disabled={isResetting}
+                  type="submit"
+                >
+                  {isResetting ? 'Resetting…' : 'Reset password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

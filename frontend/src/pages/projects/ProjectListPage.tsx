@@ -431,7 +431,9 @@ export function ProjectListPage() {
                       </p>
                     </td>
                     <td className="px-4 py-3">{ownerName(users, task.owner_id)}</td>
-                    <td className="px-4 py-3">{dependencyName(timeline, task.dependency_task_id)}</td>
+                    <td className="px-4 py-3">
+                      {dependencyName(timeline, task.dependency_task_id)}
+                    </td>
                     <td className="px-4 py-3">
                       {dateRange(task.baseline_start_date, task.baseline_end_date)}
                     </td>
