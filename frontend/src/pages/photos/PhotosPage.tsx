@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Camera, Download, Image, RotateCcw, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import { getPhotoDownloadUrl, getPhotoThumbnailUrl, listPhotos } from '../../api/photos';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -130,7 +130,7 @@ export function PhotosPage() {
   );
 }
 
-function MediaRule({ icon, label, value }: { icon: JSX.Element; label: string; value: string }) {
+function MediaRule({ icon, label, value }: { icon: ReactElement; label: string; value: string }) {
   return (
     <article className="rounded-lg border border-theme-border bg-theme-card p-4">
       <div className="flex items-center gap-2 text-brand-600">{icon}</div>
