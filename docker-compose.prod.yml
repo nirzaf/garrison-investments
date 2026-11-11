@@ -37,7 +37,7 @@ services:
         ipv4_address: ${NGINX_BACKEND_PROXY_IP:-172.29.254.2}
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       grafana:
         condition: service_healthy
       frontend_dist:
@@ -60,6 +60,12 @@ services:
       - postgres
       - redis
       - minio
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     logging: *default-logging
 
   celery_worker:
