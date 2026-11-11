@@ -29,6 +29,8 @@ storage/
 celerybeat-schedule
 backend/.pytest_cache/
 frontend/.vite/
+/frontend/test-results/
+/frontend/playwright-report/
 
 # TLS and secrets
 nginx/ssl/*

@@ -125,8 +125,22 @@ pytest -q -rs
 No manual bucket creation is needed: the storage services check for and create the `portal-files`
 bucket on first write, as do `scripts/seed.py` and `scripts/push_to_storage.py`.
 
-The `backend-tests` CI job uses PostgreSQL, Redis, and Moto's S3 test server. It is currently
-advisory (`continue-on-error: true`). Check the individual job result for integration test status.
+The `backend-tests` CI job runs Pytest and the Playwright browser suite against PostgreSQL,
+Redis, and Moto's S3 test server. The browser suite starts the API and serves a production
+frontend build. It uses a separate `garrison_browser_test` database and synthetic accounts.
+
+To run the browser suite locally, start the same test services on ports 5432, 6379 and 9000.
+Create the dedicated database and apply the backend migrations to it before running the tests:
+
+```bash
+docker compose exec postgres createdb -U garrison garrison_browser_test
+cd backend
+APP_ENV=test DATABASE_URL=postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/garrison_browser_test .venv/bin/alembic upgrade head
+cd ../frontend
+npm ci
+npx playwright install chromium
+BROWSER_TEST_PYTHON="$PWD/../backend/.venv/bin/python" npm run test:browser
+```
 
 The observability regression suite validates application-side structured fields and redaction
 (including nested-secret classes, free-text credential patterns, and depth-limited truncation of
@@ -150,7 +164,7 @@ pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 | `backend-static` | Python 3.14 | `ruff check .`, `mypy .`, OpenAPI contract check | yes |
 | `frontend` | Node 24 | `npm run lint`, `api:types:check`, `npm test`, `npm run build` | yes |
 | `compose-validate` | — | renders `docker-compose.prod.yml` and `docker-compose.staging.yml` with `.env.example` | yes |
-| `backend-tests` | Python 3.14 + PostgreSQL 18.6, Redis 7, Moto S3 | `alembic upgrade head`, then `pytest -q -rs` | yes |
+| `backend-tests` | Python 3.14, Node 24, PostgreSQL 18.6, Redis 7, Moto S3 | Migrate test databases, run Pytest and Playwright Chromium | yes |
 
 Whether a passing job is a merge requirement is set in branch protection, not in the workflow file.
 

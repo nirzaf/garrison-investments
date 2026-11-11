@@ -152,6 +152,12 @@ export function DailyReportPage() {
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const persistedDraftSnapshot = useRef(JSON.stringify(form));
   const serverSavedSnapshot = useRef(JSON.stringify(form));
+  const draftKey = useRef<string | null>(null);
+
+  function getDraftKey() {
+    draftKey.current ??= `local-${crypto.randomUUID()}`;
+    return draftKey.current;
+  }
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === form.project_id),
@@ -176,7 +182,10 @@ export function DailyReportPage() {
   useEffect(() => {
     void getReportDraft().then((draft) => {
       if (draft?.payload && formHasDraftContent(draft.payload)) {
+        draftKey.current = draft.draftKey ?? null;
         setForm(draft.payload);
+        setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
+        setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
         persistedDraftSnapshot.current = JSON.stringify(draft.payload);
         setDraftStatus('local');
       }
@@ -201,13 +210,13 @@ export function DailyReportPage() {
       return () => window.clearTimeout(timer);
     }
     const timer = window.setTimeout(() => {
-      void saveReportDraft(form).then(() => {
+      void saveReportDraft(form, draftKey.current).then(() => {
         persistedDraftSnapshot.current = snapshot;
         setDraftStatus('local');
       });
     }, 800);
     const interval = window.setInterval(() => {
-      void saveReportDraft(form).then(() => {
+      void saveReportDraft(form, draftKey.current).then(() => {
         persistedDraftSnapshot.current = JSON.stringify(form);
         setDraftStatus('local');
       });
@@ -296,8 +305,6 @@ export function DailyReportPage() {
   function buildPayload(): DailyReportPayload {
     return {
       ...form,
-      photo_refs: parseRefs(photoNames, 'photo'),
-      attachment_refs: parseRefs(attachmentNames, 'file'),
       manpower_entries: form.manpower_entries.filter((entry) => entry.trade.trim()),
       equipment_entries: form.equipment_entries.filter((entry) => entry.equipment_name.trim()),
       material_consumption: form.material_consumption.filter((entry) => entry.material_name.trim())
@@ -321,17 +328,25 @@ export function DailyReportPage() {
     setNotice(null);
     try {
       const payload = buildPayload();
-      const report = savedReportId
-        ? await updateDailyReport(savedReportId, payload)
-        : await createDailyReport(payload);
-      setSavedReportId(report.id);
+      let reportId = savedReportId;
+      if (reportId) {
+        await updateDailyReport(reportId, payload);
+      } else {
+        const mightExist = draftKey.current !== null;
+        const key = getDraftKey();
+        await saveReportDraft(payload, key);
+        reportId = (await createDailyReport(payload, key)).id;
+        // A queued upload or an earlier save may already have created the draft with older fields.
+        if (mightExist) await updateDailyReport(reportId, payload);
+      }
+      setSavedReportId(reportId);
       await clearReportDraft();
       serverSavedSnapshot.current = JSON.stringify(payload);
       persistedDraftSnapshot.current = JSON.stringify(payload);
       setDraftStatus('idle');
       setNotice('Daily report draft saved.');
       await loadReports(payload.project_id);
-      return report.id;
+      return reportId;
     } catch (saveError) {
       setError(formatApiError(saveError, 'Unable to save the daily report.'));
       return null;
@@ -342,7 +357,8 @@ export function DailyReportPage() {
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const reportId = savedReportId ?? (await saveDraft());
+    const unchanged = JSON.stringify(buildPayload()) === serverSavedSnapshot.current;
+    const reportId = savedReportId && unchanged ? savedReportId : await saveDraft();
     if (!reportId) return;
     setIsSaving(true);
     setError(null);
@@ -354,6 +370,7 @@ export function DailyReportPage() {
       setPhotoNames('');
       setAttachmentNames('');
       setSavedReportId(null);
+      draftKey.current = null;
       await clearReportDraft();
       serverSavedSnapshot.current = JSON.stringify(resetForm);
       persistedDraftSnapshot.current = JSON.stringify(resetForm);
@@ -398,10 +415,11 @@ export function DailyReportPage() {
     const payload = buildPayload();
     if (!navigator.onLine) {
       if (!validate()) return;
-      await saveReportDraft(payload);
+      const entityId = savedReportId ?? getDraftKey();
+      await saveReportDraft(payload, draftKey.current);
       await queueFiles({
         entityType: 'daily_report',
-        entityId: savedReportId ?? undefined,
+        entityId,
         draftPayload: savedReportId ? undefined : payload,
         kind,
         files
@@ -982,7 +1000,11 @@ export function DailyReportPage() {
               <Field label="Photo file names">
                 <textarea
                   className="form-field min-h-20"
-                  onChange={(event) => setPhotoNames(event.target.value)}
+                  onChange={(event) => {
+                    const names = event.target.value;
+                    setPhotoNames(names);
+                    setForm((current) => ({ ...current, photo_refs: parseRefs(names, 'photo') }));
+                  }}
                   placeholder="zone-a.jpg"
                   value={photoNames}
                 />
@@ -990,7 +1012,11 @@ export function DailyReportPage() {
               <Field label="Attachment file names">
                 <textarea
                   className="form-field min-h-20"
-                  onChange={(event) => setAttachmentNames(event.target.value)}
+                  onChange={(event) => {
+                    const names = event.target.value;
+                    setAttachmentNames(names);
+                    setForm((current) => ({ ...current, attachment_refs: parseRefs(names, 'file') }));
+                  }}
                   placeholder="inspection.pdf"
                   value={attachmentNames}
                 />

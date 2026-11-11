@@ -103,14 +103,18 @@ async function store<T>(
   });
 }
 
-export async function saveReportDraft(payload: DailyReportPayload) {
+export async function saveReportDraft(payload: DailyReportPayload, draftKey: string | null) {
   await store(REPORT_DRAFTS, 'readwrite', (drafts) =>
-    drafts.put({ payload, savedAt: new Date().toISOString(), syncStatus: 'local' }, 'daily-report')
+    drafts.put(
+      { payload, draftKey, savedAt: new Date().toISOString(), syncStatus: 'local' },
+      'daily-report'
+    )
   );
 }
 
 export async function getReportDraft(): Promise<{
   payload: DailyReportPayload;
+  draftKey?: string | null;
   savedAt: string;
   syncStatus: string;
 } | null> {
@@ -123,19 +127,18 @@ export async function clearReportDraft() {
 
 export async function queueFiles(args: {
   entityType: string;
-  entityId?: string;
+  entityId: string;
   draftPayload?: DailyReportPayload;
   kind: 'photo' | 'attachment';
   files: FileList;
 }) {
-  const entityId = args.entityId ?? `local-${crypto.randomUUID()}`;
   await Promise.all(
     Array.from(args.files).map((file) =>
       store(PHOTO_QUEUE, 'readwrite', (queue) =>
         queue.put({
           id: crypto.randomUUID(),
           entityType: args.entityType,
-          entityId,
+          entityId: args.entityId,
           draftPayload: args.draftPayload,
           kind: args.kind,
           file,
