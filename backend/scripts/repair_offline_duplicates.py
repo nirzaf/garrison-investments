@@ -74,7 +74,15 @@ async def consolidate_pair(session: AsyncSession, keep: UUID, duplicate: UUID) -
     ):
         raise ValueError("Both reports must be unnumbered drafts without approval history.")
     first, second = (
-        DailyReportResponse.model_validate(row).model_dump(exclude={"id"}) for row in rows
+        DailyReportResponse.model_validate(row).model_dump(
+            exclude={
+                "id": True,
+                "manpower_entries": {"__all__": {"id"}},
+                "equipment_entries": {"__all__": {"id"}},
+                "material_consumption": {"__all__": {"id"}},
+            }
+        )
+        for row in rows
     )
     if first != second:
         raise ValueError("Draft contents differ. Review and resolve them manually.")
