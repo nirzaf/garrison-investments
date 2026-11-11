@@ -1,29 +1,19 @@
-# `daily_report_approval_history`
+# daily_report_approval_history
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/daily_report.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `report_id` | `UUID` | No | `` | daily_reports.id |
-| `actor_id` | `UUID` | Yes | `` | users.id |
-| `decision` | `VARCHAR(20)` | No | `` |  |
-| `previous_status` | `VARCHAR(20)` | No | `` |  |
-| `comments` | `TEXT` | Yes | `` |  |
-| `decided_at` | `DATETIME` | No | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `actor_id` | UUID | NULL | — | users.id | — |
+| `comments` | Text | NULL | — | — | — |
+| `decided_at` | TimestampTZ | NOT NULL | — | — | — |
+| `decision` | String(20) | NOT NULL | — | — | — |
+| `previous_status` | String(20) | NOT NULL | — | — | — |
+| `report_id` | UUID | NOT NULL | — | daily_reports.id | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `report_id` | `daily_reports.id` |
-| `actor_id` | `users.id` |

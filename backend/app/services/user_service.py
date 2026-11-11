@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.users import UserCreateRequest, UserUpdateRequest
+from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserUpdateRequest
 from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import validate_role
@@ -125,3 +125,31 @@ class UserService:
 
     async def deactivate_user(self, user_id: UUID, actor: User) -> User:
         return await self.update_user(user_id, UserUpdateRequest(is_active=False), actor)
+
+    async def admin_reset_password(
+        self,
+        user_id: UUID,
+        payload: AdminPasswordResetRequest,
+        actor: User,
+    ) -> User:
+        if user_id == actor.id:
+            raise AppException(
+                "Use the change-password endpoint to update your own password.",
+                status_code=409,
+                error_code="SELF_PASSWORD_RESET_BLOCKED",
+            )
+        user = await self.users.get_by_id(user_id)
+        if not user:
+            raise NotFoundException("User")
+        validate_password_policy(payload.new_password)
+        user.password_hash = hash_password(payload.new_password)
+        user.must_change_password = True
+        await self.audit.record(
+            action="users.password_reset_by_admin",
+            user_id=actor.id,
+            entity_type="users",
+            entity_id=user.id,
+            new_values={"reset_by": str(actor.id)},
+        )
+        await self.session.commit()
+        return user

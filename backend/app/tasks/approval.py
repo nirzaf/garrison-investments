@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
@@ -16,6 +17,8 @@ from app.tasks.celery_app import celery_app
 from app.utils.permissions import ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER, ROLE_STORE_KEEPER
 from app.utils.security import utc_now
 
+logger = structlog.get_logger("celery.task")
+
 
 @celery_app.task(
     name="process_approval_reminders",
@@ -26,6 +29,7 @@ from app.utils.security import utc_now
     max_retries=3,
 )
 def process_approval_reminders() -> dict[str, int]:
+    logger.info("approval_reminders_starting")
     async def run() -> dict[str, int]:
         async with AsyncSessionLocal() as session:
             reminded, escalated = await ApprovalService(session).send_reminders_and_escalations()
@@ -43,6 +47,7 @@ def process_approval_reminders() -> dict[str, int]:
     max_retries=3,
 )
 def check_low_stock() -> dict[str, int]:
+    logger.info("low_stock_check_starting")
     async def run() -> dict[str, int]:
         async with AsyncSessionLocal() as session:
             rows = await InventoryService(session).low_stock()
@@ -66,6 +71,11 @@ def check_low_stock() -> dict[str, int]:
                     )
                     sent += 1
             await session.commit()
+            logger.info(
+                "low_stock_check_completed",
+                low_stock_items=len(rows),
+                notifications_sent=sent,
+            )
             return {"low_stock_items": len(rows), "notifications_sent": sent}
 
     return run_async_task(run())

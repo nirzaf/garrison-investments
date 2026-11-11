@@ -1,27 +1,17 @@
-# `inventory_location_stock`
+# inventory_location_stock
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/inventory.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `item_id` | `UUID` | No | `` | inventory_items.id |
-| `location_id` | `UUID` | No | `` | storage_locations.id |
-| `on_hand_qty` | `NUMERIC(14, 3)` | No | `0` |  |
-| `reserved_qty` | `NUMERIC(14, 3)` | No | `0` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `item_id` | UUID | NOT NULL | — | inventory_items.id | — |
+| `location_id` | UUID | NOT NULL | — | storage_locations.id | — |
+| `on_hand_qty` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `reserved_qty` | Numeric(14, 3) | NOT NULL | 0 | — | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `item_id` | `inventory_items.id` |
-| `location_id` | `storage_locations.id` |

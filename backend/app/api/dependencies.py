@@ -17,8 +17,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def get_request_meta(request: Request) -> RequestMeta:
     return RequestMeta(
+        request_id=getattr(request.state, "request_id", None),
+        session_id=getattr(request.state, "session_id", None),
         ip_address=get_client_ip(request),
         user_agent=request.headers.get("User-Agent"),
+        endpoint=request.url.path,
+        method=request.method,
     )
 
 

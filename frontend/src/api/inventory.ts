@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
 
 export type StorageLocationRecord = components['schemas']['LocationResponse'];
@@ -50,7 +51,7 @@ export async function getSupplierTdsDocumentUrl(supplierId: string) {
   const { data } = await apiClient.get<SupplierDocumentUrl>(
     `/suppliers/${supplierId}/tds-document`
   );
-  return data;
+  return { ...data, url: normalizeProtectedFileUrl(data.url) };
 }
 
 export async function listLocations() {

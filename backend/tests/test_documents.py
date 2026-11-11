@@ -1,5 +1,6 @@
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from app.database import engine
 from tests.test_daily_reports import (

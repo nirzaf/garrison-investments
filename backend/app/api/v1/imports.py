@@ -81,7 +81,7 @@ async def list_import_batches(
                 status=batch.status,
                 row_count=batch.row_count,
                 error_count=batch.error_count,
-                summary=batch.summary,
+                summary=batch.summary or {},
             )
             for batch in batches
         ],

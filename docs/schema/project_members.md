@@ -1,27 +1,17 @@
-# `project_members`
+# project_members
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/project_member.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `project_id` | `UUID` | No | `` | projects.id |
-| `user_id` | `UUID` | No | `` | users.id |
-| `role_in_project` | `VARCHAR(50)` | Yes | `` |  |
-| `assigned_at` | `DATETIME` | No | `now()` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `assigned_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `project_id` | UUID | NOT NULL | — | projects.id | — |
+| `role_in_project` | String(50) | NULL | — | — | — |
+| `user_id` | UUID | NOT NULL | — | users.id | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `project_id` | `projects.id` |
-| `user_id` | `users.id` |

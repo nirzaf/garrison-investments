@@ -1,32 +1,23 @@
-# `notifications`
+# notifications
 
-Generated from the current SQLAlchemy model metadata in `backend/app/models`.
+Defined in `backend/app/models/notification.py`
 
 ## Columns
 
-| Column | Type | Nullable | Default | References |
-|---|---|---:|---|---|
-| `id` | `UUID` | No | `uuid_generate_v4()` |  |
-| `user_id` | `UUID` | No | `` | users.id |
-| `title` | `VARCHAR(200)` | No | `` |  |
-| `body` | `TEXT` | No | `` |  |
-| `notification_type` | `VARCHAR(30)` | No | `` |  |
-| `reference_type` | `VARCHAR(30)` | Yes | `` |  |
-| `reference_id` | `UUID` | Yes | `` |  |
-| `is_read` | `BOOLEAN` | No | `false` |  |
-| `muted` | `BOOLEAN` | No | `false` |  |
-| `email_status` | `VARCHAR(20)` | Yes | `` |  |
-| `read_at` | `DATETIME` | Yes | `` |  |
-| `created_at` | `DATETIME` | No | `now()` |  |
-| `updated_at` | `DATETIME` | No | `now()` |  |
-| `deleted_at` | `DATETIME` | Yes | `` |  |
+| Column | Type | Nullable | Default | Foreign Key | Index/Key |
+|---|---|---|---|---|---|
+| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
+| `body` | Text | NOT NULL | — | — | — |
+| `email_status` | String(20) | NULL | — | — | — |
+| `is_read` | Boolean | NOT NULL | false | — | — |
+| `muted` | Boolean | NOT NULL | false | — | — |
+| `notification_type` | String(30) | NOT NULL | — | — | — |
+| `read_at` | TimestampTZ | NULL | — | — | — |
+| `reference_id` | UUID | NULL | — | — | — |
+| `reference_type` | String(30) | NULL | — | — | — |
+| `title` | String(200) | NOT NULL | — | — | — |
+| `user_id` | UUID | NOT NULL | — | users.id | — |
+| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
+| `deleted_at` | TimestampTZ | NULL | — | — | — |
 
-## Keys
-
-- Primary key: `id`
-
-## Outbound Relationships
-
-| Column | References |
-|---|---|
-| `user_id` | `users.id` |

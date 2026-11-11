@@ -2,7 +2,7 @@
 
 Implementation workspace for the Construction Internal Portal.
 
-All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/00_README.md), then use [architecture](docs/ARCHITECTURE.md), [current database schema](docs/02_Database_Schema.md), [user stories](docs/user-stories/README.md), and the [implementation review](docs/USER_STORY_IMPLEMENTATION_REVIEW.md) as the source of truth.
+All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/README.md), then use the [architecture](docs/ARCHITECTURE.md), [roles and permissions](docs/ROLES_AND_PERMISSIONS.md), and [operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md) as the source of truth.
 
 ## Local Development
 
@@ -31,6 +31,12 @@ docker compose exec backend alembic upgrade head
 - Health check: http://localhost:8000/health
 - MinIO console: http://localhost:9001
 
+Production and staging add Grafana, Loki, and Alloy for container-log aggregation. Applications
+continue writing structured JSON to stdout, Docker retains rotated local logs, and PostgreSQL
+`activity_log` remains the authoritative business and audit record. See the
+[logging guide](docs/LOGGING_AND_REMOTE_CLI.md) and
+[operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md).
+
 ## Local Commands
 
 Backend:
@@ -54,17 +60,7 @@ npm run dev
 
 ## Current Implementation Status
 
-This repository contains production implementation work across the Phase 1 user
-stories in `docs/user-stories/`, including authentication, RBAC, projects/BOQ, daily
-reports, approvals, uploads, documents, notifications, audit logs, operations,
-inventory, suppliers, finance, analytics, PWA/offline primitives, and data
-imports.
-
-Strict completion status is tracked in `docs/USER_STORY_IMPLEMENTATION_REVIEW.md`.
-That report uses a 100% acceptance standard: a story is marked complete only
-when every acceptance criterion, business rule, UI/UX note, technical note, and
-definition-of-done item has implementation evidence plus relevant verification
-evidence.
+This repository contains the completed production implementation of the portal, including authentication, RBAC, projects/BOQ, daily reports, approvals, uploads, documents, notifications, audit logs, operations, inventory, suppliers, finance, analytics, PWA/offline primitives, and data imports. All core implementation packages are fully completed and verified.
 
 Current local verification commands:
 
@@ -79,10 +75,13 @@ npm run lint
 npm run api:types:check
 npm test
 npm run build
+
+cd ..
+docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
 ```
 
-Backend tests that need PostgreSQL, Redis, and MinIO intentionally skip when those
-services are unavailable. Use `pytest -q -rs` to make the skip reasons visible.
+Backend tests that need PostgreSQL, Redis, and MinIO intentionally skip when those services are unavailable. Use `pytest -q -rs` to make the skip reasons visible.
 
 To run the full backend suite locally with the required services available:
 
@@ -119,4 +118,14 @@ while True:
         time.sleep(2)
 PY
 pytest -q -rs
+```
+
+The observability regression suite validates structured fields and redaction, request-context
+cleanup, Celery lifecycle records, immutable Grafana/Loki/Alloy image references, private port
+exposure, Loki retention, Alloy label cardinality, dashboards, alert rules, database initialization,
+and the staging hostname:
+
+```bash
+cd backend
+pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 ```
