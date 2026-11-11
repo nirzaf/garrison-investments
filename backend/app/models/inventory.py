@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,6 +58,12 @@ class InventoryItem(TimestampMixin, SoftDeleteMixin, Base):
 
 class InventoryLocationStock(TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "inventory_location_stock"
+    __table_args__ = (
+        CheckConstraint("on_hand_qty >= 0", name="on_hand_nonnegative", postgresql_not_valid=True),
+        CheckConstraint(
+            "reserved_qty >= 0", name="reserved_nonnegative", postgresql_not_valid=True
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True),
@@ -236,5 +242,8 @@ class InventoryMovement(TimestampMixin, SoftDeleteMixin, Base):
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Import provenance: a redelivered batch must recognise the rows it already applied.
+    import_batch_id: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True), nullable=True)
+    import_row_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     item: Mapped[InventoryItem] = relationship(lazy="selectin")

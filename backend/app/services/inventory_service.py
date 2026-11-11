@@ -192,8 +192,9 @@ class InventoryService:
         actor: User,
         *,
         commit: bool = True,
+        import_row: tuple[UUID, int] | None = None,
     ) -> InventoryMovement:
-        movement = await self._apply_movement(payload, actor)
+        movement = await self._apply_movement(payload, actor, import_row=import_row)
         await self.audit.record(
             action=f"inventory.movements.{payload.movement_type}",
             user_id=actor.id,
@@ -498,6 +499,8 @@ class InventoryService:
         self,
         payload: MovementCreateRequest,
         actor: User,
+        *,
+        import_row: tuple[UUID, int] | None = None,
     ) -> InventoryMovement:
         await self._get_item(payload.item_id)
         if payload.movement_type == "receive":
@@ -557,6 +560,8 @@ class InventoryService:
             await self._reserve_stock(payload.item_id, payload.from_location_id, payload.quantity)
 
         movement = InventoryMovement(**payload.model_dump(), handled_by=actor.id)
+        if import_row:
+            movement.import_batch_id, movement.import_row_index = import_row
         self.session.add(movement)
         await self.session.flush()
         return movement

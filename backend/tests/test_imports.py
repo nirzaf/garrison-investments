@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
 from zipfile import ZipFile
@@ -8,7 +9,12 @@ from sqlalchemy import func, select
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.models.import_batch import ImportBatch
-from app.models.inventory import InventoryItem, InventoryMovement, StorageLocation
+from app.models.inventory import (
+    InventoryItem,
+    InventoryLocationStock,
+    InventoryMovement,
+    StorageLocation,
+)
 from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -365,3 +371,80 @@ async def test_async_import_marks_existing_batch_failed_on_unexpected_exception(
         assert failed_batch is not None
         assert failed_batch.status == "failed"
         assert failed_batch.summary == {"error": "storage temporarily unavailable"}
+
+
+async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
+    """H8: a redelivered batch must skip rows it already applied, not re-receive them."""
+    await skip_if_database_unavailable()
+    actor = await create_admin()
+    suffix = uuid4().hex[:8]
+    async with AsyncSessionLocal() as session:
+        item = InventoryItem(
+            name=f"Replay Item {suffix}",
+            item_code=f"ITEM-{suffix}",
+            category="Civil",
+            item_type="material",
+            unit="Nos",
+        )
+        location = StorageLocation(
+            name=f"Replay Location {suffix}",
+            code=f"LOC-{suffix}",
+            location_type="warehouse",
+        )
+        batch = ImportBatch(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            status="queued",
+            created_by=actor.id,
+        )
+        session.add_all([item, location, batch])
+        await session.commit()
+        item_id = item.id
+        location_id = location.id
+        batch_id = batch.id
+
+    content = csv_bytes(
+        "item_code,location_code,quantity,notes",
+        f"ITEM-{suffix},LOC-{suffix},8,Opening balance",
+    )
+
+    async def deliver() -> dict:
+        async with AsyncSessionLocal() as session:
+            result = await ImportService(session).run_import(
+                template_type="opening_stock",
+                file_name="opening_stock.csv",
+                content=content,
+                actor=actor,
+                batch_id=batch_id,
+            )
+            return result.summary
+
+    assert (await deliver())["created"] == 1
+
+    # The worker was lost after the rows became durable but before the completed marker
+    # was seen by the redelivery, so the batch looks runnable again.
+    async with AsyncSessionLocal() as session:
+        reopened = await session.get(ImportBatch, batch_id)
+        assert reopened is not None
+        reopened.status = "queued"
+        await session.commit()
+
+    assert (await deliver())["created"] == 0
+
+    async with AsyncSessionLocal() as session:
+        stock = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == item_id,
+                InventoryLocationStock.location_id == location_id,
+            )
+        )
+        assert stock is not None
+        assert stock.on_hand_qty == Decimal("8.000")
+        movements = (
+            await session.scalars(
+                select(InventoryMovement).where(InventoryMovement.item_id == item_id)
+            )
+        ).all()
+        assert len(movements) == 1
+        assert movements[0].import_batch_id == batch_id
+        assert movements[0].import_row_index == 0

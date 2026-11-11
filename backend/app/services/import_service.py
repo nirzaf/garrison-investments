@@ -17,7 +17,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.models.boq_item import BoqItem
 from app.models.document import Document
 from app.models.import_batch import ImportBatch
-from app.models.inventory import InventoryItem, StorageLocation
+from app.models.inventory import InventoryItem, InventoryMovement, StorageLocation
 from app.models.project import Project
 from app.models.supplier import Supplier
 from app.models.user import User
@@ -157,7 +157,7 @@ class ImportService:
         await self.session.flush()
         try:
             if not errors:
-                created = await self._import_rows(template_type, rows, actor)
+                created = await self._import_rows(template_type, rows, actor, batch.id)
                 batch.summary = {"created": created, "skipped": len(rows) - created}
             await self.audit.record(
                 action="imports.run",
@@ -193,6 +193,7 @@ class ImportService:
         template_type: str,
         rows: list[dict[str, str]],
         actor: User,
+        batch_id: UUID,
     ) -> int:
         if template_type == "users":
             return await self._import_users(rows)
@@ -207,7 +208,7 @@ class ImportService:
         if template_type == "boq":
             return await self._import_boq(rows)
         if template_type == "opening_stock":
-            return await self._import_opening_stock(rows, actor)
+            return await self._import_opening_stock(rows, actor, batch_id)
         raise AppException("Unknown import template.", status_code=404, error_code="IMPORT_UNKNOWN")
 
     async def _import_users(self, rows: list[dict[str, str]]) -> int:
@@ -409,10 +410,23 @@ class ImportService:
             created += 1
         return created
 
-    async def _import_opening_stock(self, rows: list[dict[str, str]], actor: User) -> int:
+    async def _import_opening_stock(
+        self, rows: list[dict[str, str]], actor: User, batch_id: UUID
+    ) -> int:
         created = 0
         inventory = InventoryService(self.session)
-        for row in rows:
+        # run_import holds the batch lock through commit, so the recorded rows
+        # cannot change between this read and applying the remaining rows.
+        applied_rows = set(
+            await self.session.scalars(
+                select(InventoryMovement.import_row_index).where(
+                    InventoryMovement.import_batch_id == batch_id
+                )
+            )
+        )
+        for row_index, row in enumerate(rows):
+            if row_index in applied_rows:
+                continue
             item = await self.session.scalar(
                 select(InventoryItem).where(
                     InventoryItem.item_code == row["item_code"],
@@ -437,6 +451,7 @@ class ImportService:
                 ),
                 actor,
                 commit=False,
+                import_row=(batch_id, row_index),
             )
             created += 1
         return created

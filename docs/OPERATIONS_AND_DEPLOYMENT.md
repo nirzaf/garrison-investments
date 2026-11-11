@@ -98,7 +98,7 @@ BUSINESS_TIMEZONE=Asia/Qatar
 2. CI runs backend lint, type checks, migrations, tests, frontend lint, formatting, tests, build, and Docker image build.
 3. The deployment owner runs the selected staging deployment process from the approved commit.
 4. The Operation Manager or delegated release approver signs off before production deployment.
-5. The production deployment runs `docker compose -f docker-compose.prod.yml up -d --build`, applies Alembic migrations, and checks `/health`.
+5. The production deployment applies Alembic migrations, starts the updated Compose services, and checks `/health`.
 
 ### Upgrade an existing PostgreSQL 16 database
 
@@ -127,11 +127,14 @@ Run these checks from the repository root on the deployment host:
 
 ```bash
 docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml up -d postgres
+docker compose -f docker-compose.prod.yml exec -T postgres pg_isready
+docker compose -f docker-compose.prod.yml run --rm --no-deps --build backend alembic upgrade head
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
-curl --fail http://localhost/health
-curl --fail http://localhost/health/readiness
+PORTAL_DOMAIN=portal.garrisons.lk
+curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health"
+curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health/readiness"
 curl --fail "https://${GRAFANA_DOMAIN}/api/health"
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/validate_import_sources.py --check
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all
@@ -174,6 +177,7 @@ The Celery beat container runs these schedules automatically (defined in `backen
 
 | Task | Schedule | Purpose |
 | --- | --- | --- |
+| `dispatch_task_outbox` | Every minute | Queue report exports recorded by successful approvals |
 | `run_database_backup` | Daily 01:00 | Encrypted daily database backup to MinIO |
 | `run_database_backup` (monthly) | 1st of month 02:00 | Monthly archive backup |
 | `check_late_reports` | Hourly | Detect and notify late daily reports |
@@ -256,6 +260,13 @@ The default mode reads the database and prints IDs for review. To consolidate a 
 stop portal writes and run the same command with `--apply --keep KEEP_ID --duplicate DUPLICATE_ID`.
 The script rechecks both drafts, moves their photo and retry references, and soft-deletes the
 duplicate in one transaction. Production reads and writes require `--i-understand`.
+
+### Inventory reservation review
+
+Run `python scripts/report_inventory_reservation_drift.py --i-understand` from the production
+backend to list balances for review. Compare the recorded balance with the open request quantities
+and manual reserve movements before reconciling inventory.
+The stock balance checks apply to new writes. Validate the historical rows after reconciliation.
 
 ### Rollback
 1. Identify the last known good Git commit.
