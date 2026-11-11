@@ -38,3 +38,7 @@ nginx/ssl/*
 .DS_Store
 .idea/
 .vscode/
+
+# Downloaded agent skills and generated graph cache
+/.agents/skills/
+/graphify-out/cache/
