@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, EXPORT_TIMEOUT_MS } from './client';
 import type { components } from './schema';
 
 export type AnalyticsSummary = components['schemas']['AnalyticsSummaryResponse'];
@@ -24,7 +24,8 @@ export async function downloadExport(
 ) {
   const { data } = await apiClient.get<Blob>(`/export/${path}`, {
     params: filters,
-    responseType: 'blob'
+    responseType: 'blob',
+    timeout: EXPORT_TIMEOUT_MS
   });
   const url = URL.createObjectURL(data);
   const link = document.createElement('a');

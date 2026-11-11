@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, EXPORT_TIMEOUT_MS } from './client';
 import type { components } from './schema';
 
 export type ReportFileRef = components['schemas']['ReportFileRef'];
@@ -92,7 +92,8 @@ export async function overrideDailyReport(
 
 export async function downloadReportPdf(reportId: string): Promise<Blob> {
   const response = await apiClient.get<Blob>(`/reports/${reportId}/pdf`, {
-    responseType: 'blob'
+    responseType: 'blob',
+    timeout: EXPORT_TIMEOUT_MS
   });
   return response.data;
 }

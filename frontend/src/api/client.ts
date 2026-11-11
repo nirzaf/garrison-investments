@@ -6,6 +6,7 @@ let refreshPromise: Promise<string> | null = null;
 const SAFE_RETRY_METHODS = new Set(['get', 'head', 'options']);
 /** Shared with `public/sw.js` so the app and the service worker cannot refresh at once. */
 export const TOKEN_REFRESH_LOCK = 'garrison-token-refresh';
+export const EXPORT_TIMEOUT_MS = 180_000;
 
 /**
  * M3: the in-tab singleton below only serialises one tab. Refresh tokens rotate, so two
