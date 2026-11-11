@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
@@ -7,7 +7,12 @@ RUN npm ci
 
 COPY . .
 
-EXPOSE 3000
-
+ARG VITE_API_BASE_URL
 RUN npm run build
+
+FROM alpine:3.23 AS dist
+COPY --from=build /app/dist /dist
+
+FROM build AS preview
+EXPOSE 3000
 CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]

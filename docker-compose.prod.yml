@@ -5,6 +5,18 @@ x-logging: &default-logging
     max-file: "3"
 
 services:
+  frontend_dist:
+    build:
+      context: ./frontend
+      target: dist
+      args:
+        VITE_API_BASE_URL: /api/v1
+    command: ["/bin/sh", "-ec", "cp -a /dist/. /usr/share/nginx/html/"]
+    restart: "no"
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
+    logging: *default-logging
+
   nginx:
     image: nginx:1.25-alpine
     ports:
@@ -23,6 +35,8 @@ services:
         condition: service_started
       grafana:
         condition: service_healthy
+      frontend_dist:
+        condition: service_completed_successfully
     logging: *default-logging
 
   backend:
