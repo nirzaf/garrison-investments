@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToString } from 'react-dom/server';
-import { StaticRouter } from 'react-router-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -134,9 +134,9 @@ function renderApp({
   return renderToString(
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={authValue}>
-        <StaticRouter location={route}>
+        <MemoryRouter initialEntries={[route]}>
           <App />
-        </StaticRouter>
+        </MemoryRouter>
       </AuthContext.Provider>
     </QueryClientProvider>
   );
