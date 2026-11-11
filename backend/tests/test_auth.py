@@ -266,6 +266,8 @@ async def test_generic_login_otp_is_ignored_outside_staging(monkeypatch) -> None
         dev_expose_otp=True,
     )
     monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
+    # The real code is never echoed in production, so pin it to complete a valid login.
+    monkeypatch.setattr("app.services.auth_service.generate_otp", lambda: "135790")
 
     async with create_test_client() as client:
         login_response = await client.post(
@@ -275,6 +277,8 @@ async def test_generic_login_otp_is_ignored_outside_staging(monkeypatch) -> None
 
         assert login_response.status_code == 200
         challenge = login_response.json()
+        # H12: DEV_EXPOSE_OTP=true must not leak the code in a hardened environment.
+        assert challenge["dev_otp"] is None
 
         generic_response = await client.post(
             "/api/v1/auth/verify-otp",
@@ -282,11 +286,29 @@ async def test_generic_login_otp_is_ignored_outside_staging(monkeypatch) -> None
         )
         valid_response = await client.post(
             "/api/v1/auth/verify-otp",
-            json={"challenge_id": challenge["challenge_id"], "otp": challenge["dev_otp"]},
+            json={"challenge_id": challenge["challenge_id"], "otp": "135790"},
         )
 
         assert generic_response.status_code == 401
         assert valid_response.status_code == 200
+
+
+async def test_dev_otp_is_never_exposed_in_staging(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    email = f"staging-leak-{uuid4().hex}@example.com"
+    await create_test_user(email=email)
+
+    custom_settings = Settings(app_env="staging", dev_expose_otp=True)
+    monkeypatch.setattr("app.services.auth_service.get_settings", lambda: custom_settings)
+
+    async with create_test_client() as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "Start123!"},
+        )
+
+        assert login_response.status_code == 200
+        assert login_response.json()["dev_otp"] is None
 
 
 async def test_auth_rate_limit_blocks_repeated_login_attempts(monkeypatch) -> None:

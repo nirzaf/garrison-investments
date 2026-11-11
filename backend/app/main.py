@@ -16,6 +16,7 @@ from app.services.audit_service import AuditService
 from app.services.exception_reporter import report_unhandled_exception
 from app.utils.exceptions import AppException
 from app.utils.request import get_client_ip
+from app.utils.security import validate_signing_keys
 
 logger = structlog.get_logger("app.api")
 
@@ -23,6 +24,23 @@ logger = structlog.get_logger("app.api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    # Fail closed before serving: a hardened deployment must never fall back to the
+    # published development key pair.
+    validate_signing_keys()
+    if settings.otp_hardened_env and settings.dev_expose_otp:
+        logger.warning(
+            "dev_otp_flag_ignored",
+            event_type="system_event",
+            app_env=settings.app_env,
+            comments="DEV_EXPOSE_OTP is ignored in production and staging.",
+        )
+    if settings.app_env.lower() == "production" and settings.staging_login_otp:
+        logger.warning(
+            "staging_login_otp_ignored",
+            event_type="system_event",
+            app_env=settings.app_env,
+            comments="STAGING_LOGIN_OTP is ignored outside staging.",
+        )
     logger.info(
         "application_starting",
         app_name=app.title,

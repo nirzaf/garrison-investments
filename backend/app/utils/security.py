@@ -1,14 +1,20 @@
 import re
 import secrets
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
 import bcrypt
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
 from jose import JWTError, jwt
 
 from app.config import get_settings
 from app.utils.exceptions import AppException, ErrorDetail
+
+# Environments where the embedded development key pair must never be used.
+HARDENED_ENVS = frozenset({"production", "staging"})
 
 _dev_private_pem = """-----BEGIN PRIVATE KEY-----
 MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDAthkEzasri5OW
@@ -115,12 +121,55 @@ def _read_key_file(path: str | None) -> str | None:
 
 def _jwt_private_key() -> str:
     settings = get_settings()
-    return _read_key_file(settings.jwt_private_key_path) or _dev_private_pem
+    return _load_jwt_key(settings.jwt_private_key_path, "JWT_PRIVATE_KEY_PATH", _dev_private_pem)
 
 
 def _jwt_public_key() -> str:
     settings = get_settings()
-    return _read_key_file(settings.jwt_public_key_path) or _dev_public_pem
+    return _load_jwt_key(settings.jwt_public_key_path, "JWT_PUBLIC_KEY_PATH", _dev_public_pem)
+
+
+def _load_jwt_key(path: str | None, label: str, fallback: str) -> str:
+    pem = _read_key_file(path)
+    if pem and pem.strip():
+        return pem
+    if get_settings().app_env.lower() in HARDENED_ENVS:
+        raise RuntimeError(f"{label} points to a missing, unreadable, or empty JWT key.")
+    return fallback
+
+
+def validate_signing_keys() -> None:
+    """Refuse to start a hardened deployment without real, parseable JWT signing keys.
+
+    The embedded fallback pair is published in this repository, so anyone can mint valid
+    access tokens with it. A missing or corrupt key file must stop startup rather than
+    silently degrade into a forgeable API.
+    """
+    settings = get_settings()
+    if settings.app_env.lower() not in HARDENED_ENVS:
+        return
+    checks: tuple[tuple[str, str | None, Callable[[bytes], object]], ...] = (
+        (
+            "JWT_PRIVATE_KEY_PATH",
+            settings.jwt_private_key_path,
+            lambda data: serialization.load_pem_private_key(data, password=None),
+        ),
+        (
+            "JWT_PUBLIC_KEY_PATH",
+            settings.jwt_public_key_path,
+            lambda data: serialization.load_pem_public_key(data),
+        ),
+    )
+    for label, path, load in checks:
+        if not path:
+            raise RuntimeError(f"{label} must be set when APP_ENV is production or staging.")
+        pem = _read_key_file(path)
+        if pem is None:
+            raise RuntimeError(f"{label} points to a missing or unreadable file: {path}")
+        try:
+            load(pem.encode("utf-8"))
+        except (ValueError, TypeError, UnsupportedAlgorithm) as exc:
+            raise RuntimeError(f"{label} is not a valid PEM key: {path}") from exc
 
 
 def create_access_token(user_id: UUID, role: str) -> tuple[str, datetime]:

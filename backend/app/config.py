@@ -91,16 +91,27 @@ class Settings(BaseSettings):
         return [ip.strip() for ip in self.trusted_proxy_ips.split(",") if ip.strip()]
 
     @property
+    def otp_hardened_env(self) -> bool:
+        """Environments where OTPs must never be echoed back to the caller."""
+        return self.app_env.lower() in {"production", "staging"}
+
+    @property
     def should_expose_dev_otp(self) -> bool:
+        # Hard gate first: an explicit DEV_EXPOSE_OTP=true must not leak codes in prod/staging.
+        if self.otp_hardened_env:
+            return False
         if self.dev_expose_otp is not None:
             return self.dev_expose_otp
         return self.app_env.lower() in {"development", "test", "local"}
 
     @property
     def staging_login_otp_enabled(self) -> bool:
+        # Same environment-first gate: the fixed UAT code is honoured only in staging,
+        # never in production, regardless of any other flag.
+        if self.app_env.lower() != "staging":
+            return False
         return (
-            self.app_env.lower() == "staging"
-            and self.staging_login_otp is not None
+            self.staging_login_otp is not None
             and len(self.staging_login_otp) == 6
             and self.staging_login_otp.isdigit()
         )
