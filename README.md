@@ -2,7 +2,7 @@
 
 Implementation workspace for the Construction Internal Portal.
 
-All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/README.md), then use the [architecture](docs/ARCHITECTURE.md), [roles and permissions](docs/ROLES_AND_PERMISSIONS.md), and [operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md) as the source of truth.
+All project documentation is maintained under [`docs/`](docs/). Start with the [documentation index](docs/README.md), then use the [architecture](docs/ARCHITECTURE.md), [roles and permissions](docs/ROLES_AND_PERMISSIONS.md), [operations guide](docs/OPERATIONS_AND_DEPLOYMENT.md), and [production readiness review](docs/PRODUCTION_READINESS_REVIEW.md) as the source of truth. Staging-specific hosts, TLS, and rollback steps live in [STAGING_DEPLOYMENT.md](STAGING_DEPLOYMENT.md).
 
 ## Local Development
 
@@ -24,12 +24,26 @@ docker compose up --build
 docker compose exec backend alembic upgrade head
 ```
 
-4. Open the services:
+4. Load sample data (optional; creates the role-based demo users, projects, BOQ, inventory, and
+   finance records used for local walkthroughs). The script prints the seeded admin email and
+   temporary password when it finishes:
+
+```bash
+docker compose exec backend python scripts/seed.py
+```
+
+5. Open the services:
 
 - Frontend: http://localhost:3000
 - Backend API docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 - MinIO console: http://localhost:9001
+- Nginx, the full stack behind the reverse proxy: http://localhost:8080
+
+`docker compose up` also starts the `celery_worker` and `celery_beat` services. The worker runs
+report exports, image variants, email delivery, and import jobs; beat schedules the daily and
+monthly backups, late-report and low-stock checks, approval reminders, and log/notification
+cleanup.
 
 Production and staging add Grafana, Loki, and Alloy for container-log aggregation. Applications
 continue writing structured JSON to stdout, Docker retains rotated local logs, and PostgreSQL
@@ -58,11 +72,20 @@ npm install
 npm run dev
 ```
 
+## API Contract
+
+[`docs/openapi.json`](docs/openapi.json) is the committed contract and
+`frontend/src/api/schema.d.ts` is generated from it. Nothing regenerates the spec automatically:
+after changing backend routes or schemas, export the current spec from the running backend's
+`/openapi.json`, save it to `docs/openapi.json`, then run `npm run api:types` in `frontend/` and
+commit both files. `npm run api:types:check` fails if the checked-in types no longer match the
+checked-in spec.
+
 ## Current Implementation Status
 
-This repository contains the completed production implementation of the portal, including authentication, RBAC, projects/BOQ, daily reports, approvals, uploads, documents, notifications, audit logs, operations, inventory, suppliers, finance, analytics, PWA/offline primitives, and data imports. All core implementation packages are fully completed and verified.
+This repository contains the completed production implementation of the portal, including authentication, RBAC, projects/BOQ, daily reports, approvals, uploads, documents, notifications, audit logs, operations, inventory, suppliers, finance, analytics, PWA/offline primitives, and data imports. The [production readiness review](docs/PRODUCTION_READINESS_REVIEW.md) records the final verdict and the pre-release checklist.
 
-Current local verification commands:
+Local verification is the same gate [CI](.github/workflows/ci.yml) enforces on pull requests and pushes to `main`:
 
 ```bash
 cd backend
@@ -93,39 +116,44 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head
-python - <<'PY'
-import time
-
-from minio import Minio
-
-client = Minio(
-    "localhost:9000",
-    access_key="garrison_minio",
-    secret_key="garrison_minio_password",
-    secure=False,
-)
-bucket_name = "portal-files"
-deadline = time.monotonic() + 60
-
-while True:
-    try:
-        if not client.bucket_exists(bucket_name):
-            client.make_bucket(bucket_name)
-        break
-    except Exception:
-        if time.monotonic() >= deadline:
-            raise
-        time.sleep(2)
-PY
 pytest -q -rs
 ```
 
-The observability regression suite validates structured fields and redaction, request-context
-cleanup, Celery lifecycle records, immutable Grafana/Loki/Alloy image references, private port
-exposure, Loki retention, Alloy label cardinality, dashboards, alert rules, database initialization,
-and the staging hostname:
+No manual bucket creation is needed: the storage services check for and create the `portal-files`
+bucket on first write, as do `scripts/seed.py` and `scripts/push_to_storage.py`.
+
+The `backend-tests` CI job provisions PostgreSQL, Redis, and MinIO but is currently
+`continue-on-error: true`. The integration suite has never run to completion against real
+services, so a green pull request proves the static, type, lint, build, and compose gates passed;
+it does not yet prove the integration tests passed. Run `pytest -q -rs` locally against the live
+services until that job is promoted to a required check.
+
+The observability regression suite validates application-side structured fields and redaction
+(including nested-secret classes, free-text credential patterns, and depth-limited truncation of
+deeply nested payloads), request-context cleanup, health-check suppression, Celery lifecycle
+records, pipeline-side credential redaction in Alloy, immutable and digest-pinned
+Grafana/Loki/Alloy image references, private port exposure, Loki retention, Alloy label
+cardinality, dashboards, alert rules, database initialization, and the staging hostname:
 
 ```bash
 cd backend
 pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 ```
+
+## Continuous Integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and every push to
+`main`, cancelling superseded runs on the same ref:
+
+| Job | Runtime | Steps | Failure blocks? |
+|---|---|---|---|
+| `backend-static` | Python 3.12 | `ruff check .`, `mypy .` | yes |
+| `frontend` | Node 20 | `npm run lint`, `api:types:check`, `npm test`, `npm run build` | yes |
+| `compose-validate` | — | renders `docker-compose.prod.yml` and `docker-compose.staging.yml` with `.env.example` | yes |
+| `backend-tests` | Python 3.12 + PostgreSQL 16, Redis 7, MinIO | `alembic upgrade head`, then `pytest -q -rs` | no (`continue-on-error: true`) |
+
+Whether a passing job is a merge requirement is set in branch protection, not in the workflow file.
+
+The CI jobs mirror the local verification commands above, so a failure can be reproduced with the
+same commands before pushing. Note the `backend-tests` job applies migrations first because the
+suite has no schema-creating fixture.
