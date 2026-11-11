@@ -10,6 +10,7 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
 from app.schemas.supervisor_updates import SupervisorUpdateCreateRequest
 from app.services.audit_service import AuditService
+from app.services.authorization import COMPANY_WIDE_ROLES, accessible_project_ids
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ROLE_ADMIN,
@@ -152,16 +153,33 @@ class ReportingService:
     ) -> tuple[list[SupervisorUpdate], int]:
         self._validate_status(status)
         supervisor_id = current_user.id if current_user.role == ROLE_CIVIL_SUPERVISOR else None
+        project_ids: list[UUID] | None = None
         if current_user.role == ROLE_CIVIL_ENGINEER:
             if project_id is None:
                 return [], 0
             await self._ensure_project_member(project_id, current_user)
+        elif current_user.role == ROLE_PROJECT_MANAGER:
+            if project_id is not None:
+                await self._ensure_project_member(project_id, current_user)
+            else:
+                # Unfiltered list: a manager sees their own projects, never the company.
+                project_ids = await accessible_project_ids(self.session, current_user) or []
+        elif (
+            current_user.role not in COMPANY_WIDE_ROLES
+            and current_user.role != ROLE_CIVIL_SUPERVISOR
+        ):
+            raise AppException(
+                "You do not have access to supervisor updates.",
+                status_code=403,
+                error_code="SUPERVISOR_UPDATE_FORBIDDEN",
+            )
         return await self.updates.list_updates(
             project_id=project_id,
             supervisor_id=supervisor_id,
             status=status,
             limit=min(limit, 200),
             offset=max(offset, 0),
+            project_ids=project_ids,
         )
 
     async def _ensure_project_member(self, project_id: UUID, actor: User) -> None:

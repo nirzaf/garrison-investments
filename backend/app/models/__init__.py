@@ -12,6 +12,7 @@ from app.models.daily_report import (
 )
 from app.models.document import Document, DocumentVersion
 from app.models.finance import Invoice, Payment
+from app.models.idempotency_record import IdempotencyRecord
 from app.models.import_batch import ImportBatch
 from app.models.inventory import (
     InventoryAsset,
@@ -44,6 +45,7 @@ __all__ = [
     "DailyReportApprovalHistory",
     "Document",
     "DocumentVersion",
+    "IdempotencyRecord",
     "InventoryAsset",
     "ImportBatch",
     "InventoryItem",

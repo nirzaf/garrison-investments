@@ -1,11 +1,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
 from app.schemas.photos import PhotoListResponse, PhotoResponse, ProtectedFileUrlResponse
+from app.services.idempotency import validate_key
 from app.services.photo_service import SIGNED_URL_SECONDS, PhotoService
 from app.utils.permissions import PERMISSION_REPORTS_SUBMIT, PERMISSION_REPORTS_VIEW, ROLE_ADMIN
 
@@ -23,8 +24,10 @@ async def upload_files(
     kind: Annotated[str, Form()] = "photo",
     caption: Annotated[str | None, Form()] = None,
     files: Annotated[list[UploadFile] | None, File()] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> list[PhotoResponse]:
     service = PhotoService(session)
+    base_key = validate_key(idempotency_key)
     uploaded = [
         await service.upload(
             file=file,
@@ -33,8 +36,11 @@ async def upload_files(
             kind=kind,
             caption=caption,
             actor=current_user,
+            # One key per queue item: a multi-file request derives a stable key per file
+            # so replaying the batch cannot duplicate any individual upload.
+            idempotency_key=f"{base_key}:{index}" if base_key else None,
         )
-        for file in files or []
+        for index, file in enumerate(files or [])
     ]
     return [PhotoResponse.model_validate(photo) for photo in uploaded]
 
@@ -49,13 +55,13 @@ async def list_files(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PhotoListResponse:
-    del current_user
     service = PhotoService(session)
     if entity_type and entity_id:
         photos, total = await service.list_for_entity(
             entity_type=entity_type,
             entity_id=entity_id,
             kind=kind,
+            actor=current_user,
         )
     else:
         photos, total = await service.list_recent(
@@ -63,6 +69,7 @@ async def list_files(
             kind=kind,
             limit=limit,
             offset=offset,
+            actor=current_user,
         )
     return PhotoListResponse(
         items=[PhotoResponse.model_validate(photo) for photo in photos],
@@ -76,8 +83,7 @@ async def get_file(
     current_user: CanViewReports,
     session: DbSession,
 ) -> PhotoResponse:
-    del current_user
-    photo = await PhotoService(session).get(photo_id)
+    photo = await PhotoService(session).get(photo_id, actor=current_user)
     return PhotoResponse.model_validate(photo)
 
 

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Header, Query, status
 from fastapi.responses import Response
 
 from app.api.dependencies import CurrentUser, DbSession
@@ -13,6 +13,7 @@ from app.schemas.daily_reports import (
     DailyReportResponse,
     DailyReportUpdateRequest,
 )
+from app.services.idempotency import validate_key
 from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
 from app.services.report_service import ReportService
 
@@ -46,8 +47,13 @@ async def create_report(
     payload: DailyReportCreateRequest,
     current_user: CurrentUser,
     session: DbSession,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> DailyReportResponse:
-    report = await ReportService(session).create_report(payload, current_user)
+    report = await ReportService(session).create_report(
+        payload,
+        current_user,
+        idempotency_key=validate_key(idempotency_key),
+    )
     return DailyReportResponse.model_validate(report)
 
 

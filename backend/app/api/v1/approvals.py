@@ -8,6 +8,8 @@ from app.models.user import User
 from app.schemas.approvals import (
     ApprovalCreateRequest,
     ApprovalDecisionRequest,
+    ApprovalDelegateListResponse,
+    ApprovalDelegateResponse,
     ApprovalDelegationRequest,
     ApprovalListResponse,
     ApprovalOverrideRequest,
@@ -90,6 +92,21 @@ async def reject(
 ) -> ApprovalResponse:
     approval = await ApprovalService(session).reject(approval_id, current_user, payload.comments)
     return ApprovalResponse.model_validate(approval)
+
+
+@router.get("/{approval_id}/delegates", response_model=ApprovalDelegateListResponse)
+async def list_delegation_candidates(
+    approval_id: UUID,
+    current_user: CanUseApprovalInbox,
+    session: DbSession,
+) -> ApprovalDelegateListResponse:
+    candidates = await ApprovalService(session).list_delegation_candidates(
+        approval_id, current_user
+    )
+    return ApprovalDelegateListResponse(
+        items=[ApprovalDelegateResponse.model_validate(user) for user in candidates],
+        total=len(candidates),
+    )
 
 
 @router.post("/{approval_id}/delegate", response_model=ApprovalResponse)

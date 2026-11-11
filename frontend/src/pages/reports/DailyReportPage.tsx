@@ -132,6 +132,7 @@ export function DailyReportPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
+  const [syncConflicts, setSyncConflicts] = useState(0);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -210,8 +211,11 @@ export function DailyReportPage() {
         .then(() => queuedPhotoCount())
         .then(setQueuedUploads);
     };
-    const refreshQueuedCount = () => {
+    const refreshQueuedCount = (event?: Event) => {
       void queuedPhotoCount().then(setQueuedUploads);
+      const conflicts = (event as CustomEvent<{ conflicts?: number }> | undefined)?.detail
+        ?.conflicts;
+      if (typeof conflicts === 'number') setSyncConflicts(conflicts);
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -524,6 +528,13 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
+        {syncConflicts > 0 ? (
+          <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
+            {syncConflicts} queued upload{syncConflicts > 1 ? 's were' : ' was'} skipped because the
+            report had already been submitted on the server. Review the report and re-attach the
+            files if they are still needed.
+          </div>
+        ) : null}
         {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
             Local draft active

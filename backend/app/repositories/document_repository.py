@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.document import Document, DocumentVersion
 
@@ -24,6 +25,19 @@ class DocumentRepository:
     async def get_document(self, document_id: UUID) -> Document | None:
         result = await self.session.execute(
             self._with_versions().where(Document.id == document_id, Document.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
+    async def lock_document(self, document_id: UUID) -> Document | None:
+        """Plain parent-row lock; versions are selectinload, so they are not locked.
+
+        Call ``get_document`` afterwards to obtain the same identity-mapped instance
+        with its versions loaded.
+        """
+        result = await self.session.execute(
+            select(Document)
+            .where(Document.id == document_id, Document.deleted_at.is_(None))
+            .with_for_update()
         )
         return result.scalar_one_or_none()
 
@@ -53,8 +67,11 @@ class DocumentRepository:
         search: str | None,
         limit: int,
         offset: int,
+        scope_filter: ColumnElement[bool] | None = None,
     ) -> tuple[list[Document], int]:
         query: Select = self._with_versions().where(Document.deleted_at.is_(None))
+        if scope_filter is not None:
+            query = query.where(scope_filter)
         if project_id:
             query = query.where(Document.project_id == project_id)
         if document_type:

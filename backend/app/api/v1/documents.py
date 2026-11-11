@@ -29,11 +29,11 @@ async def list_documents(
     document_type: Annotated[str | None, Query()] = None,
     search: Annotated[str | None, Query()] = None,
 ) -> DocumentListResponse:
-    del current_user
     documents, total = await DocumentService(session).list_documents(
         project_id=project_id,
         document_type=document_type,
         search=search,
+        actor=current_user,
     )
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(document) for document in documents],
@@ -68,8 +68,7 @@ async def get_document(
     current_user: CanViewDocuments,
     session: DbSession,
 ) -> DocumentResponse:
-    del current_user
-    document = await DocumentService(session)._get_required(document_id)
+    document = await DocumentService(session).get(document_id, current_user)
     return DocumentResponse.model_validate(document)
 
 
@@ -90,9 +89,8 @@ async def list_document_versions(
     current_user: CanManageDocuments,
     session: DbSession,
 ) -> list[DocumentVersionResponse]:
-    del current_user
-    document = await DocumentService(session)._get_required(document_id)
-    return [DocumentVersionResponse.model_validate(version) for version in document.versions]
+    versions = await DocumentService(session).list_document_versions(document_id, current_user)
+    return [DocumentVersionResponse.model_validate(version) for version in versions]
 
 
 @router.post("/{document_id}/versions/{version_id}/approve", response_model=DocumentResponse)

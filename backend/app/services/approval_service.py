@@ -2,7 +2,8 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,11 +28,33 @@ from app.utils.links import (
     finance_invoice_url,
     material_request_url,
 )
-from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
+from app.utils.permissions import (
+    ROLE_ADMIN,
+    ROLE_GENERAL_MANAGER,
+    ROLE_OPERATION_MANAGER,
+    ROLE_PROJECT_MANAGER,
+)
 from app.utils.security import utc_now
 
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
 ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
+
+# Roles that may actually decide each request type. Delegation must not hand decision
+# power to someone the owning workflow would reject: `_apply_entity_decision` writes the
+# decision directly and never re-runs the downstream service guards.
+_GENERIC_DECISION_ROLES = frozenset({ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER})
+DELEGATION_ELIGIBLE_ROLES: dict[str, frozenset[str]] = {
+    # finance_service.update_invoice requires Operation Manager approval.
+    "invoice": frozenset({ROLE_ADMIN, ROLE_OPERATION_MANAGER}),
+    # report_service._ensure_approver also accepts General Manager.
+    "daily_report": frozenset(
+        {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER}
+    ),
+    "document": _GENERIC_DECISION_ROLES,
+    "material_request": _GENERIC_DECISION_ROLES,
+    "payment": _GENERIC_DECISION_ROLES,
+    "project_change": _GENERIC_DECISION_ROLES,
+}
 
 
 class ApprovalService:
@@ -68,48 +91,57 @@ class ApprovalService:
         approver = await self._resolve_approver(payload, actor)
         escalation_user = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
         now = utc_now()
-        approval = await self.approvals.add(
-            Approval(
-                request_type=payload.request_type,
-                request_id=payload.request_id,
-                project_id=payload.project_id,
-                submitter_id=actor.id,
-                approver_id=approver.id,
-                escalation_user_id=escalation_user.id if escalation_user else None,
-                status="pending",
-                amount=payload.amount,
-                currency=payload.currency,
-                title=payload.title,
-                submitter_comments=payload.comments,
-                submitted_at=now,
-                due_at=now + timedelta(hours=24),
+        try:
+            approval = await self.approvals.add(
+                Approval(
+                    request_type=payload.request_type,
+                    request_id=payload.request_id,
+                    project_id=payload.project_id,
+                    submitter_id=actor.id,
+                    approver_id=approver.id,
+                    escalation_user_id=escalation_user.id if escalation_user else None,
+                    status="pending",
+                    amount=payload.amount,
+                    currency=payload.currency,
+                    title=payload.title,
+                    submitter_comments=payload.comments,
+                    submitted_at=now,
+                    due_at=now + timedelta(hours=24),
+                )
             )
-        )
-        await self.notifications.create(
-            user_id=approver.id,
-            title="Approval pending",
-            body=append_link(
-                f"{payload.title} is waiting for your approval.",
-                label="Open approval",
-                url=approval_inbox_url(tab="workflow", approval_id=approval.id),
-            ),
-            notification_type="approval",
-            reference_type="approvals",
-            reference_id=approval.id,
-        )
-        await self.audit.record(
-            action="approvals.created",
-            user_id=actor.id,
-            entity_type=payload.request_type,
-            entity_id=payload.request_id,
-            new_values={
-                "approval_id": str(approval.id),
-                "approver_id": str(approver.id),
-                "amount": str(payload.amount) if payload.amount is not None else None,
-            },
-        )
-        if commit:
-            await self.session.commit()
+            await self.notifications.create(
+                user_id=approver.id,
+                title="Approval pending",
+                body=append_link(
+                    f"{payload.title} is waiting for your approval.",
+                    label="Open approval",
+                    url=approval_inbox_url(tab="workflow", approval_id=approval.id),
+                ),
+                notification_type="approval",
+                reference_type="approvals",
+                reference_id=approval.id,
+            )
+            await self.audit.record(
+                action="approvals.created",
+                user_id=actor.id,
+                entity_type=payload.request_type,
+                entity_id=payload.request_id,
+                new_values={
+                    "approval_id": str(approval.id),
+                    "approver_id": str(approver.id),
+                    "amount": str(payload.amount) if payload.amount is not None else None,
+                },
+            )
+            if commit:
+                await self.session.commit()
+        except IntegrityError as exc:
+            # uq_approvals_open_request rejects a second open workflow for the same request.
+            await self.session.rollback()
+            raise AppException(
+                "An approval workflow is already open for this request.",
+                status_code=409,
+                error_code="APPROVAL_ALREADY_OPEN",
+            ) from exc
         return approval
 
     async def list_for_user(
@@ -197,6 +229,7 @@ class ApprovalService:
         delegated_to = await self.users.get_by_id(delegated_to_id)
         if not delegated_to or not delegated_to.is_active:
             raise NotFoundException("Delegated approver")
+        await self._ensure_delegate_eligible(approval, actor, delegated_to)
         previous_delegate = approval.delegated_to_id
         approval.status = "delegated"
         approval.delegated_to_id = delegated_to.id
@@ -227,6 +260,50 @@ class ApprovalService:
         )
         await self.session.commit()
         return approval
+
+    async def list_delegation_candidates(self, approval_id: UUID, actor: User) -> list[User]:
+        """Active users who may receive this approval, using the same rules as `delegate`.
+
+        Project Managers lack `users:read`, so the picker is served from the approval
+        itself rather than the company-wide user directory. Only the eligible role set is
+        returned, and Project Managers are narrowed to members of the approval's project.
+        """
+        approval = await self._get(approval_id)
+        if not self._can_act(approval, actor):
+            raise AppException(
+                "You cannot act on this approval.",
+                status_code=403,
+                error_code="APPROVAL_FORBIDDEN",
+            )
+        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
+        query = select(User).where(
+            User.role.in_(eligible),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            User.id != actor.id,
+        )
+        if approval.submitter_id:
+            query = query.where(User.id != approval.submitter_id)
+        if approval.project_id is None:
+            query = query.where(User.role != ROLE_PROJECT_MANAGER)
+            return list(
+                await self.session.scalars(query.order_by(User.full_name.asc()).limit(200))
+            )
+        membership = (
+            select(ProjectMember.id)
+            .where(
+                ProjectMember.project_id == approval.project_id,
+                ProjectMember.user_id == User.id,
+                ProjectMember.deleted_at.is_(None),
+            )
+            .exists()
+        )
+        query = query.where(or_(User.role != ROLE_PROJECT_MANAGER, membership))
+        # The project's own people are the natural delegates, and the alphabetical cap
+        # must not crowd them out of a large company directory.
+        query = query.order_by(case((membership, 0), else_=1), User.full_name.asc())
+        candidates = await self.session.scalars(query.limit(200))
+        return list(candidates)
 
     async def override(
         self,
@@ -386,6 +463,60 @@ class ApprovalService:
             .where(User.role == role, User.is_active.is_(True), User.deleted_at.is_(None))
             .order_by(User.created_at.desc(), User.full_name.asc())
         )
+
+    async def _ensure_delegate_eligible(
+        self,
+        approval: Approval,
+        actor: User,
+        delegate: User,
+    ) -> None:
+        """Guard delegation at the point the decision power is handed over.
+
+        `_can_act` deliberately stays permissive (approver or delegate); the checks that
+        stop self-approval, submitter-approval and unqualified delegates belong here.
+        """
+        if delegate.id == actor.id:
+            raise AppException(
+                "You cannot delegate an approval to yourself.",
+                status_code=403,
+                error_code="DELEGATION_TO_SELF_FORBIDDEN",
+            )
+        if approval.submitter_id and delegate.id == approval.submitter_id:
+            raise AppException(
+                "The submitter cannot approve their own request.",
+                status_code=403,
+                error_code="DELEGATION_TO_SUBMITTER_FORBIDDEN",
+            )
+        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
+        if delegate.role not in eligible:
+            raise AppException(
+                "This user cannot approve this request type.",
+                status_code=403,
+                error_code="DELEGATION_ROLE_FORBIDDEN",
+            )
+        if delegate.role != ROLE_PROJECT_MANAGER:
+            # Company-wide approvers are unrestricted, mirroring the owning workflows.
+            return
+        if approval.project_id is None:
+            # document_service._ensure_approver reserves unscoped documents for admin/OM.
+            raise AppException(
+                "A Project Manager cannot approve requests outside a project.",
+                status_code=403,
+                error_code="DELEGATION_PROJECT_FORBIDDEN",
+            )
+        membership = await self.session.scalar(
+            select(ProjectMember.id).where(
+                ProjectMember.project_id == approval.project_id,
+                ProjectMember.user_id == delegate.id,
+                ProjectMember.deleted_at.is_(None),
+            )
+        )
+        if membership is None:
+            raise AppException(
+                "The delegate is not a member of this project.",
+                status_code=403,
+                error_code="DELEGATION_PROJECT_FORBIDDEN",
+            )
 
     def _can_view(self, approval: Approval, actor: User) -> bool:
         return actor.role == ROLE_ADMIN or actor.id in {

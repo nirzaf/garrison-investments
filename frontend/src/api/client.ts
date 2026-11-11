@@ -4,6 +4,20 @@ import axiosRetry from 'axios-retry';
 let accessToken: string | null = null;
 let refreshPromise: Promise<string> | null = null;
 const SAFE_RETRY_METHODS = new Set(['get', 'head', 'options']);
+/** Shared with `public/sw.js` so the app and the service worker cannot refresh at once. */
+export const TOKEN_REFRESH_LOCK = 'garrison-token-refresh';
+
+/**
+ * M3: the in-tab singleton below only serialises one tab. Refresh tokens rotate, so two
+ * tabs refreshing together can invalidate each other's session. The Web Locks API gives
+ * us cross-tab exclusion in secure contexts; elsewhere we fall back to the singleton.
+ */
+async function withTokenRefreshLock<T>(operation: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!locks) return operation();
+  // `await` flattens the LockManager's Promise<Promise<T>> back to T.
+  return await locks.request(TOKEN_REFRESH_LOCK, operation);
+}
 
 type RetriableRequestConfig = AxiosRequestConfig & {
   _retry?: boolean;
@@ -53,12 +67,12 @@ apiClient.interceptors.response.use(undefined, async (error) => {
 
   original._retry = true;
   original.headers ??= {};
-  refreshPromise ??= apiClient
-    .post<{ access_token: string }>('/auth/refresh')
-    .then((response) => {
+  refreshPromise ??= withTokenRefreshLock(() =>
+    apiClient.post<{ access_token: string }>('/auth/refresh').then((response) => {
       setAccessToken(response.data.access_token);
       return response.data.access_token;
     })
+  )
     .catch((error) => {
       setAccessToken(null);
       return Promise.reject(error);

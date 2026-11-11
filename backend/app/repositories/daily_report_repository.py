@@ -31,6 +31,22 @@ class DailyReportRepository:
         )
         return result.scalar_one_or_none()
 
+    async def lock_by_id(self, report_id: UUID) -> DailyReport | None:
+        """Lock the parent row only.
+
+        Children are loaded by ``_with_children()`` via ``selectinload``, so locking here
+        never escalates to child rows; a subsequent ``get_by_id`` returns the same
+        identity-mapped instance with its collections populated.
+        """
+        return await self.session.scalar(
+            select(DailyReport)
+            .where(
+                DailyReport.id == report_id,
+                DailyReport.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+
     async def list_reports(
         self,
         *,

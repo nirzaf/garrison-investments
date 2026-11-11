@@ -14,12 +14,12 @@ from sqlalchemy.orm import selectinload
 from app.config import get_settings
 from app.models.finance import Invoice, Payment
 from app.models.project import Project
-from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.approvals import ApprovalCreateRequest
 from app.schemas.finance import InvoiceCreateRequest, InvoiceUpdateRequest, PaymentCreateRequest
 from app.services.approval_service import ApprovalService
 from app.services.audit_service import AuditService
+from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
@@ -116,12 +116,8 @@ class FinanceService:
         )
         if actor.role == ROLE_PROJECT_MANAGER:
             project_ids = await self._project_ids_for_manager(actor)
-            if project_id and project_id not in project_ids:
-                raise AppException(
-                    "Financial records are restricted to assigned projects.",
-                    status_code=403,
-                    error_code="FINANCE_PROJECT_FORBIDDEN",
-                )
+            if project_id:
+                await ensure_project_access(self.session, project_id, actor)
             query = query.where(Invoice.project_id.in_(project_ids or [UUID(int=0)]))
         if project_id:
             query = query.where(Invoice.project_id == project_id)
@@ -268,6 +264,29 @@ class FinanceService:
             )
         if payload.amount <= 0:
             raise AppException("Payment amount must be positive.", status_code=422)
+        if invoice.payment_status == "paid":
+            raise AppException(
+                "Invoice is already fully paid.",
+                status_code=409,
+                error_code="INVOICE_ALREADY_PAID",
+            )
+        # The invoice row is locked, so this balance cannot change under us mid-request.
+        paid_total_existing = Decimal(
+            await self.session.scalar(
+                select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                    Payment.invoice_id == invoice.id,
+                    Payment.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
+        outstanding = invoice.total_amount - paid_total_existing
+        if payload.amount > outstanding:
+            raise AppException(
+                f"Payment exceeds the outstanding balance of {outstanding}.",
+                status_code=409,
+                error_code="PAYMENT_EXCEEDS_BALANCE",
+            )
         payment = Payment(**payload.model_dump(), invoice_id=invoice.id, recorded_by=actor.id)
         self.session.add(payment)
         await self.session.flush()
@@ -366,28 +385,7 @@ class FinanceService:
             await self._ensure_project_scope(invoice.project_id, actor)
 
     async def _ensure_project_scope(self, project_id: UUID, actor: User) -> None:
-        is_assigned = await self.session.scalar(
-            select(ProjectMember.id).where(
-                ProjectMember.project_id == project_id,
-                ProjectMember.user_id == actor.id,
-                ProjectMember.deleted_at.is_(None),
-            )
-        )
-        if not is_assigned:
-            raise AppException(
-                "Financial records are restricted to assigned projects.",
-                status_code=403,
-                error_code="FINANCE_PROJECT_FORBIDDEN",
-            )
+        await ensure_project_access(self.session, project_id, actor)
 
     async def _project_ids_for_manager(self, actor: User) -> list[UUID]:
-        return list(
-            (
-                await self.session.scalars(
-                    select(ProjectMember.project_id).where(
-                        ProjectMember.user_id == actor.id,
-                        ProjectMember.deleted_at.is_(None),
-                    )
-                )
-            ).all()
-        )
+        return await accessible_project_ids(self.session, actor) or []

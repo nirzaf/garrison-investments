@@ -1,9 +1,19 @@
+// Offline photo queue.
+//
+// The authoritative drain lives in `src/api/offlineQueue.ts`. When a window client is
+// available the `sync` event below delegates to it (see the handler at the bottom), so
+// there is exactly one implementation in the common case. The standalone drain here is
+// the no-client fallback and MUST stay behaviourally identical: same batching, same
+// single-create-per-local-entity rule, same Idempotency-Key headers, same refresh lock.
 const CACHE_NAME = 'garrisons-app-shell-v2';
 const DB_NAME = 'garrisons-offline';
 const DB_VERSION = 1;
 const REPORT_DRAFTS = 'reportDrafts';
 const PHOTO_QUEUE = 'photoQueue';
 const API_BASE = '/api/v1';
+// Keep in step with TOKEN_REFRESH_LOCK in src/api/client.ts.
+const TOKEN_REFRESH_LOCK = 'garrison-token-refresh';
+const STALE_CLAIM_MS = 5 * 60_000;
 const APP_SHELL = [
   '/',
   '/reports/daily',
@@ -105,11 +115,18 @@ async function claimQueuedPhoto(id) {
 
     getRequest.onsuccess = () => {
       const item = getRequest.result;
-      if (!item || item.status === 'syncing') {
+      if (!item) {
         resolve(null);
         return;
       }
-      claimed = { ...item, status: 'syncing' };
+      if (item.status === 'syncing') {
+        const claimedAt = item.claimedAt ? Date.parse(item.claimedAt) : 0;
+        if (Number.isFinite(claimedAt) && Date.now() - claimedAt <= STALE_CLAIM_MS) {
+          resolve(null);
+          return;
+        }
+      }
+      claimed = { ...item, status: 'syncing', claimedAt: new Date().toISOString() };
       queue.put(claimed);
     };
     getRequest.onerror = () => reject(getRequest.error);
@@ -124,14 +141,65 @@ async function claimQueuedPhoto(id) {
   });
 }
 
-async function refreshAccessToken() {
-  const response = await fetch(`${API_BASE}/auth/refresh`, {
-    method: 'POST',
-    credentials: 'include'
+/** Mirror of planSyncBatches in src/api/offlineQueue.ts — keep the two in step. */
+function planSyncBatches(items) {
+  const batches = new Map();
+  for (const item of items) {
+    if (item.status === 'synced' || item.status === 'server_newer') continue;
+    let batch = batches.get(item.entityId);
+    if (!batch) {
+      batch = {
+        entityId: item.entityId,
+        needsReportCreate: item.entityId.startsWith('local-'),
+        draftPayload: item.draftPayload,
+        items: []
+      };
+      batches.set(item.entityId, batch);
+    }
+    batch.draftPayload = batch.draftPayload ?? item.draftPayload;
+    batch.items.push(item);
+  }
+  return [...batches.values()];
+}
+
+/** Patch many queue rows inside ONE readwrite transaction. */
+async function patchQueuedPhotos(ids, patch) {
+  if (!ids.length) return;
+  const db = await openOfflineDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
+    const queue = tx.objectStore(PHOTO_QUEUE);
+    for (const id of ids) {
+      const getRequest = queue.get(id);
+      getRequest.onsuccess = () => {
+        const item = getRequest.result;
+        if (item) queue.put({ ...item, ...patch });
+      };
+    }
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
-  if (!response.ok) throw new Error('Unable to refresh offline sync session');
-  const session = await response.json();
-  return session.access_token;
+}
+
+async function refreshAccessToken() {
+  const perform = async () => {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Unable to refresh offline sync session');
+    const session = await response.json();
+    return session.access_token;
+  };
+  // Same lock name as the app so a foreground refresh and a background sync cannot race.
+  const locks = self.navigator?.locks;
+  return locks ? locks.request(TOKEN_REFRESH_LOCK, perform) : perform();
 }
 
 async function createReportFromQueue(payload, idempotencyKey, accessToken) {
@@ -160,16 +228,17 @@ async function uploadQueuedFile(item, entityId, accessToken) {
     method: 'POST',
     credentials: 'include',
     headers: {
-      Authorization: `Bearer ${accessToken}`
+      Authorization: `Bearer ${accessToken}`,
+      'Idempotency-Key': item.id
     },
     body: formData
   });
   if (!response.ok) throw new Error('Unable to upload queued file');
 }
 
-async function notifyClients(type) {
+async function notifyClients(type, extra) {
   const clients = await self.clients.matchAll();
-  clients.forEach((client) => client.postMessage({ type }));
+  clients.forEach((client) => client.postMessage({ type, ...extra }));
 }
 
 async function drainPhotoQueue() {
@@ -177,31 +246,49 @@ async function drainPhotoQueue() {
   if (!queued.length) return;
 
   const accessToken = await refreshAccessToken();
+  let conflicts = 0;
 
-  for (const item of queued) {
-    const claimed = await claimQueuedPhoto(item.id);
-    if (!claimed) continue;
+  for (const batch of planSyncBatches(queued)) {
+    const claimed = [];
+    for (const item of batch.items) {
+      const entry = await claimQueuedPhoto(item.id);
+      if (entry) claimed.push(entry);
+    }
+    if (!claimed.length) continue;
 
+    const ids = claimed.map((item) => item.id);
+    let entityId = batch.entityId;
     try {
-      let entityId = claimed.entityId;
-      if (claimed.entityId.startsWith('local-')) {
-        if (!claimed.draftPayload) throw new Error('Missing offline draft payload');
-        const report = await createReportFromQueue(
-          claimed.draftPayload,
-          claimed.entityId,
-          accessToken
-        );
+      if (batch.needsReportCreate) {
+        const draftPayload = claimed.find((item) => item.draftPayload)?.draftPayload;
+        if (!draftPayload) throw new Error('Missing offline draft payload');
+        const report = await createReportFromQueue(draftPayload, batch.entityId, accessToken);
         entityId = report.id;
+        // Persist the server id onto every sibling before uploading anything.
+        await patchQueuedPhotos(ids, { entityId });
+        if (report.status !== 'draft') {
+          conflicts += claimed.length;
+          await patchQueuedPhotos(ids, { status: 'server_newer' });
+          continue;
+        }
       }
 
-      await uploadQueuedFile(claimed, entityId, accessToken);
-      await withPhotoQueue('readwrite', (queue) => queue.delete(claimed.id));
+      for (const item of claimed) {
+        try {
+          await uploadQueuedFile(item, entityId, accessToken);
+          await withPhotoQueue('readwrite', (queue) => queue.delete(item.id));
+        } catch {
+          await withPhotoQueue('readwrite', (queue) =>
+            queue.put({ ...item, entityId, status: 'failed' })
+          );
+        }
+      }
     } catch {
-      await withPhotoQueue('readwrite', (queue) => queue.put({ ...claimed, status: 'failed' }));
+      await patchQueuedPhotos(ids, { entityId, status: 'failed' });
     }
   }
 
-  await notifyClients('SYNC_PHOTOS_DONE');
+  await notifyClients('SYNC_PHOTOS_DONE', { conflicts });
 }
 
 function flushPhotoQueueInServiceWorker() {
@@ -212,7 +299,16 @@ function flushPhotoQueueInServiceWorker() {
 }
 
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'flush-photo-queue') {
-    event.waitUntil(flushPhotoQueueInServiceWorker());
-  }
+  if (event.tag !== 'flush-photo-queue') return;
+  event.waitUntil(
+    (async () => {
+      // Prefer the app: it owns the tested drain and its own token-refresh lock.
+      const windows = await self.clients.matchAll({ type: 'window' });
+      if (windows.length) {
+        windows.forEach((client) => client.postMessage({ type: 'SYNC_FLUSH_PHOTOS' }));
+        return;
+      }
+      await flushPhotoQueueInServiceWorker();
+    })()
+  );
 });

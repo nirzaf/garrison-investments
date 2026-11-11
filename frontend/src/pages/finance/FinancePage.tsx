@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Receipt } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import {
@@ -20,6 +20,7 @@ export function FinancePage() {
   const focusedInvoiceId = searchParams.get('invoiceId');
   const queryClient = useQueryClient();
   const invoiceRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
   const invoices = useQuery({ queryKey: ['invoices'], queryFn: listInvoices });
   const projects = useQuery({ queryKey: ['projects'], queryFn: () => listProjects({}) });
   const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
@@ -34,7 +35,15 @@ export function FinancePage() {
         amount,
         method: 'bank_transfer'
       }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    onSuccess: (_data, variables) => {
+      // Drop the typed amount so the input re-defaults to the new outstanding balance.
+      setPaymentAmounts((current) => {
+        const next = { ...current };
+        delete next[variables.invoiceId];
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    }
   });
   const uploadAttachmentMutation = useMutation({
     mutationFn: ({ invoiceId, file }: { invoiceId: string; file: File }) =>
@@ -130,7 +139,16 @@ export function FinancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-theme-border">
-              {invoices.data.items.map((invoice) => (
+              {invoices.data.items.map((invoice) => {
+                const paidTotal = invoice.payments.reduce(
+                  (sum, payment) => sum + Number(payment.amount),
+                  0
+                );
+                const outstanding = Math.max(0, Number(invoice.total_amount) - paidTotal);
+                const amountValue = paymentAmounts[invoice.id] ?? outstanding.toFixed(2);
+                const paymentBlocked =
+                  invoice.status !== 'approved' || invoice.payment_status === 'paid';
+                return (
                 <tr
                   className={invoice.id === focusedInvoiceId ? 'bg-theme-main' : undefined}
                   key={invoice.id}
@@ -179,22 +197,45 @@ export function FinancePage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      className="rounded-md border border-theme-border px-3 py-2 text-xs font-semibold text-theme-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={invoice.status !== 'approved'}
-                      onClick={() =>
-                        createPaymentMutation.mutate({
-                          invoiceId: invoice.id,
-                          amount: invoice.total_amount
-                        })
-                      }
-                      type="button"
-                    >
-                      Record payment
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        aria-label={`Payment amount for ${invoice.invoice_number}`}
+                        className="form-field text-xs"
+                        disabled={paymentBlocked}
+                        min="0"
+                        onChange={(event) =>
+                          setPaymentAmounts((current) => ({
+                            ...current,
+                            [invoice.id]: event.target.value
+                          }))
+                        }
+                        step="0.01"
+                        type="number"
+                        value={amountValue}
+                      />
+                      <button
+                        className="rounded-md border border-theme-border px-3 py-2 text-xs font-semibold text-theme-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={
+                          paymentBlocked ||
+                          createPaymentMutation.isPending ||
+                          amountValue.trim() === '' ||
+                          Number(amountValue) <= 0
+                        }
+                        onClick={() =>
+                          createPaymentMutation.mutate({
+                            invoiceId: invoice.id,
+                            amount: amountValue
+                          })
+                        }
+                        type="button"
+                      >
+                        Record payment
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

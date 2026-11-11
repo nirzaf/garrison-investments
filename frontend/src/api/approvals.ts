@@ -5,6 +5,10 @@ export type ApprovalRecord = components['schemas']['ApprovalResponse'];
 
 export type ApprovalListResponse = components['schemas']['ApprovalListResponse'];
 
+export type ApprovalDelegate = components['schemas']['ApprovalDelegateResponse'];
+
+export type ApprovalDelegateListResponse = components['schemas']['ApprovalDelegateListResponse'];
+
 export async function listApprovals(
   params: {
     box?: 'inbox' | 'outbox';
@@ -33,6 +37,11 @@ export async function rejectGenericApproval(id: string, comments: string) {
   const { data } = await apiClient.post<ApprovalRecord>(`/approvals/${id}/reject`, {
     comments
   });
+  return data;
+}
+
+export async function listDelegationCandidates(id: string) {
+  const { data } = await apiClient.get<ApprovalDelegateListResponse>(`/approvals/${id}/delegates`);
   return data;
 }
 

@@ -7,8 +7,10 @@ import {
   delegateGenericApproval,
   getGenericApproval,
   listApprovals,
+  listDelegationCandidates,
   overrideGenericApproval,
   rejectGenericApproval,
+  type ApprovalDelegate,
   type ApprovalRecord
 } from '../../api/approvals';
 import {
@@ -21,6 +23,13 @@ import {
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+
+function roleLabel(role: string) {
+  return role
+    .split('_')
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+}
 
 export function ApprovalInboxPage() {
   const { user } = useAuth();
@@ -39,6 +48,9 @@ export function ApprovalInboxPage() {
   const [delegateByApproval, setDelegateByApproval] = useState<
     Record<string, { delegated_to_id: string; reason: string }>
   >({});
+  const [delegatesByApproval, setDelegatesByApproval] = useState<
+    Record<string, ApprovalDelegate[]>
+  >({});
   const [overrideByApproval, setOverrideByApproval] = useState<
     Record<string, { decision: 'approved' | 'rejected'; reason: string }>
   >({});
@@ -49,6 +61,44 @@ export function ApprovalInboxPage() {
   const approvalRefs = useRef<Record<string, HTMLElement | null>>({});
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const canOverride = user?.role === 'admin';
+  // Re-entry guard for decision buttons: the ref blocks a second click in the same tick,
+  // the state drives `disabled` so a double approve/reject cannot reach the server.
+  const pendingActionsRef = useRef<Set<string>>(new Set());
+  const [pendingActions, setPendingActions] = useState<Record<string, true>>({});
+  // Eligible delegates are fetched once per approval, on first focus of the picker.
+  const delegateRequestsRef = useRef<Set<string>>(new Set());
+
+  async function loadDelegates(approvalId: string) {
+    if (delegateRequestsRef.current.has(approvalId)) return;
+    delegateRequestsRef.current.add(approvalId);
+    try {
+      const response = await listDelegationCandidates(approvalId);
+      setDelegatesByApproval((current) => ({ ...current, [approvalId]: response.items }));
+    } catch {
+      delegateRequestsRef.current.delete(approvalId);
+      setError('Unable to load eligible delegates.');
+    }
+  }
+
+  function isEntityPending(entityKey: string) {
+    return Object.keys(pendingActions).some((key) => key.startsWith(`${entityKey}:`));
+  }
+
+  async function runAction(actionKey: string, action: () => Promise<void>) {
+    if (pendingActionsRef.current.has(actionKey)) return;
+    pendingActionsRef.current.add(actionKey);
+    setPendingActions((current) => ({ ...current, [actionKey]: true }));
+    try {
+      await action();
+    } finally {
+      pendingActionsRef.current.delete(actionKey);
+      setPendingActions((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
+  }
 
   const loadReports = useCallback(async () => {
     setIsLoading(true);
@@ -190,7 +240,7 @@ export function ApprovalInboxPage() {
     setNotice(null);
     const payload = delegateByApproval[approval.id];
     if (!payload?.delegated_to_id.trim() || !payload.reason.trim()) {
-      setError('Delegate user ID and reason are required.');
+      setError('Select a delegate and provide a reason.');
       return;
     }
     try {
@@ -335,7 +385,7 @@ export function ApprovalInboxPage() {
                   <div>
                     <p className="text-sm font-semibold text-theme-text-primary">Delegate</p>
                     <div className="mt-2 grid gap-2">
-                      <input
+                      <select
                         className="form-field"
                         onChange={(event) =>
                           setDelegateByApproval({
@@ -346,9 +396,16 @@ export function ApprovalInboxPage() {
                             }
                           })
                         }
-                        placeholder="Delegate user UUID"
+                        onFocus={() => void loadDelegates(approval.id)}
                         value={delegateByApproval[approval.id]?.delegated_to_id ?? ''}
-                      />
+                      >
+                        <option value="">Select an eligible approver</option>
+                        {(delegatesByApproval[approval.id] ?? []).map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.full_name} — {roleLabel(candidate.role)}
+                          </option>
+                        ))}
+                      </select>
                       <input
                         className="form-field"
                         onChange={(event) =>
@@ -365,8 +422,13 @@ export function ApprovalInboxPage() {
                         value={delegateByApproval[approval.id]?.reason ?? ''}
                       />
                       <button
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
-                        onClick={() => void delegateWorkflow(approval)}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isEntityPending(`approval:${approval.id}`)}
+                        onClick={() =>
+                          void runAction(`approval:${approval.id}:delegate`, () =>
+                            delegateWorkflow(approval)
+                          )
+                        }
                         type="button"
                       >
                         <Forward className="h-4 w-4" />
@@ -411,8 +473,13 @@ export function ApprovalInboxPage() {
                           value={overrideByApproval[approval.id]?.reason ?? ''}
                         />
                         <button
-                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
-                          onClick={() => void overrideWorkflow(approval)}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isEntityPending(`approval:${approval.id}`)}
+                          onClick={() =>
+                            void runAction(`approval:${approval.id}:override`, () =>
+                              overrideWorkflow(approval)
+                            )
+                          }
                           type="button"
                         >
                           <ShieldCheck className="h-4 w-4" />
@@ -424,16 +491,24 @@ export function ApprovalInboxPage() {
                 </div>
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <button
-                    className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold"
-                    onClick={() => void rejectWorkflow(approval)}
+                    className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isEntityPending(`approval:${approval.id}`)}
+                    onClick={() =>
+                      void runAction(`approval:${approval.id}:reject`, () => rejectWorkflow(approval))
+                    }
                     type="button"
                   >
                     <X className="h-4 w-4" />
                     Reject
                   </button>
                   <button
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-                    onClick={() => void approveWorkflow(approval)}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isEntityPending(`approval:${approval.id}`)}
+                    onClick={() =>
+                      void runAction(`approval:${approval.id}:approve`, () =>
+                        approveWorkflow(approval)
+                      )
+                    }
                     type="button"
                   >
                     <Check className="h-4 w-4" />
@@ -591,8 +666,11 @@ export function ApprovalInboxPage() {
                       <span>Target covered for override approval</span>
                     </label>
                     <button
-                      className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card"
-                      onClick={() => void overrideReport(report)}
+                      className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isEntityPending(`report:${report.id}`)}
+                      onClick={() =>
+                        void runAction(`report:${report.id}:override`, () => overrideReport(report))
+                      }
                       type="button"
                     >
                       <ShieldCheck className="h-4 w-4" />
@@ -604,16 +682,18 @@ export function ApprovalInboxPage() {
 
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
-                  className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold"
-                  onClick={() => void reject(report)}
+                  className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isEntityPending(`report:${report.id}`)}
+                  onClick={() => void runAction(`report:${report.id}:reject`, () => reject(report))}
                   type="button"
                 >
                   <X className="h-4 w-4" />
                   Reject
                 </button>
                 <button
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-                  onClick={() => void approve(report)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isEntityPending(`report:${report.id}`)}
+                  onClick={() => void runAction(`report:${report.id}:approve`, () => approve(report))}
                   type="button"
                 >
                   <Check className="h-4 w-4" />

@@ -12,6 +12,11 @@ from app.models.document import Document, DocumentVersion
 from app.models.user import User
 from app.repositories.document_repository import DocumentRepository
 from app.services.audit_service import AuditService
+from app.services.authorization import (
+    document_scope_filter,
+    ensure_document_access,
+    ensure_project_access,
+)
 from app.services.notification_service import NotificationService
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
@@ -49,6 +54,8 @@ class DocumentService:
     ) -> Document:
         data = await file.read()
         mime_type = self._validate_file(file.filename or "document", data)
+        if project_id is not None:
+            await ensure_project_access(self.session, project_id, actor)
         document = await self.documents.add_document(
             Document(
                 title=title,
@@ -90,6 +97,7 @@ class DocumentService:
 
     async def upload_version(self, document_id: UUID, file: UploadFile, actor: User) -> Document:
         document = await self._get_required(document_id)
+        await ensure_document_access(self.session, document, actor)
         if document.status == "archived":
             raise AppException("Archived documents cannot be versioned.", status_code=409)
         data = await file.read()
@@ -123,11 +131,22 @@ class DocumentService:
         actor: User,
         comments: str | None,
     ) -> Document:
-        self._ensure_approver(actor)
+        # Lock the parent row first so two approvers cannot both activate a version and
+        # leave the document pointing at a superseded one.
+        locked = await self.documents.lock_document(document_id)
+        if not locked:
+            raise NotFoundException("Document")
         document = await self._get_required(document_id)
+        await self._ensure_approver(actor, document)
         version = await self.documents.get_version(version_id)
         if not version or version.document_id != document.id:
             raise NotFoundException("Document version")
+        if version.status != "pending_approval":
+            raise AppException(
+                "Only versions pending approval can be approved.",
+                status_code=409,
+                error_code="DOCUMENT_VERSION_NOT_PENDING",
+            )
         for existing in document.versions:
             if existing.status == "active":
                 existing.status = "superseded"
@@ -163,12 +182,22 @@ class DocumentService:
         self.session.expire_all()
         return await self._get_required(document_id)
 
+    async def get(self, document_id: UUID, actor: User) -> Document:
+        document = await self._get_required(document_id)
+        await ensure_document_access(self.session, document, actor)
+        return document
+
+    async def list_document_versions(self, document_id: UUID, actor: User) -> list[DocumentVersion]:
+        document = await self.get(document_id, actor)
+        return list(document.versions)
+
     async def list_documents(
         self,
         *,
         project_id: UUID | None,
         document_type: str | None,
         search: str | None,
+        actor: User,
     ) -> tuple[list[Document], int]:
         return await self.documents.list_documents(
             project_id=project_id,
@@ -176,6 +205,7 @@ class DocumentService:
             search=search,
             limit=100,
             offset=0,
+            scope_filter=await document_scope_filter(self.session, actor),
         )
 
     async def signed_download_url(
@@ -186,6 +216,7 @@ class DocumentService:
         actor: User,
     ) -> tuple[str, bool]:
         document = await self._get_required(document_id)
+        await ensure_document_access(self.session, document, actor)
         version = self._select_version(document, version_id)
         superseded = version.status == "superseded"
         await self.audit.record(
@@ -245,9 +276,25 @@ class DocumentService:
                 return version
         raise NotFoundException("Document version")
 
-    def _ensure_approver(self, actor: User) -> None:
+    async def _ensure_approver(self, actor: User, document: Document) -> None:
         if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER}:
-            raise AppException("Document approval is not allowed.", status_code=403)
+            raise AppException(
+                "Document approval is not allowed.",
+                status_code=403,
+                error_code="DOCUMENT_APPROVAL_FORBIDDEN",
+            )
+        if document.project_id is None:
+            # Company-wide documents have no project membership to check, so they stay
+            # with the two roles that already own company-wide configuration.
+            if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER}:
+                raise AppException(
+                    "Document approval is not allowed.",
+                    status_code=403,
+                    error_code="DOCUMENT_APPROVAL_FORBIDDEN",
+                )
+            return
+        if actor.role == ROLE_PROJECT_MANAGER:
+            await ensure_project_access(self.session, document.project_id, actor)
 
     def _validate_file(self, filename: str, data: bytes) -> str:
         if len(data) > MAX_DOCUMENT_SIZE:

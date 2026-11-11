@@ -59,3 +59,18 @@ class ApprovalResponse(BaseModel):
 class ApprovalListResponse(BaseModel):
     items: list[ApprovalResponse]
     total: int
+
+
+class ApprovalDelegateResponse(BaseModel):
+    """Minimal identity for the delegation picker — no account or security fields."""
+
+    id: UUID
+    full_name: str
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ApprovalDelegateListResponse(BaseModel):
+    items: list[ApprovalDelegateResponse]
+    total: int

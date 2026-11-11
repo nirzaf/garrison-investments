@@ -11,6 +11,7 @@ export async function uploadEntityFiles(params: {
   entityId: string;
   kind: 'photo' | 'attachment';
   files: FileList | File[];
+  idempotencyKey?: string;
 }): Promise<PhotoRecord[]> {
   const formData = new FormData();
   formData.append('entity_type', params.entityType);
@@ -18,7 +19,10 @@ export async function uploadEntityFiles(params: {
   formData.append('kind', params.kind);
   Array.from(params.files).forEach((file) => formData.append('files', file));
   const response = await apiClient.post<PhotoRecord[]>('/photos/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {})
+    }
   });
   return response.data;
 }

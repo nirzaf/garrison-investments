@@ -32,10 +32,13 @@ class SupervisorUpdateRepository:
         status: str | None,
         limit: int,
         offset: int,
+        project_ids: list[UUID] | None = None,
     ) -> tuple[list[SupervisorUpdate], int]:
         query: Select = select(SupervisorUpdate).where(SupervisorUpdate.deleted_at.is_(None))
         if project_id:
             query = query.where(SupervisorUpdate.project_id == project_id)
+        if project_ids is not None:
+            query = query.where(SupervisorUpdate.project_id.in_(project_ids))
         if supervisor_id:
             query = query.where(SupervisorUpdate.supervisor_id == supervisor_id)
         if status:

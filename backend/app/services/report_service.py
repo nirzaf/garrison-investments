@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.daily_report import (
@@ -15,11 +17,12 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
 from app.schemas.daily_reports import DailyReportCreateRequest, DailyReportUpdateRequest
 from app.services.audit_service import AuditService
+from app.services.authorization import COMPANY_WIDE_ROLES
+from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.links import append_link, approval_inbox_url, daily_report_url
 from app.utils.permissions import (
-    ROLE_ACCOUNTS,
     ROLE_ADMIN,
     ROLE_CIVIL_ENGINEER,
     ROLE_GENERAL_MANAGER,
@@ -29,6 +32,7 @@ from app.utils.permissions import (
 from app.utils.security import utc_now
 
 REPORT_STATUSES = {"draft", "submitted", "approved", "rejected"}
+IDEMPOTENCY_ROUTE = "reports.create"
 
 
 class ReportService:
@@ -40,8 +44,24 @@ class ReportService:
         self.audit = AuditService(session)
         self.notifications = NotificationService(session)
 
-    async def create_report(self, payload: DailyReportCreateRequest, actor: User) -> DailyReport:
+    async def create_report(
+        self,
+        payload: DailyReportCreateRequest,
+        actor: User,
+        *,
+        idempotency_key: str | None = None,
+    ) -> DailyReport:
         self._ensure_engineer(actor)
+        if idempotency_key:
+            # A replayed offline-queue create must return the original report, not a twin.
+            existing_id = await resolve_or_reserve(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=IDEMPOTENCY_ROUTE,
+            )
+            if existing_id is not None:
+                return await self.get_report(existing_id, actor)
         self._validate_report_date(payload.report_date, actor)
         project = await self._ensure_project_member(payload.project_id, actor)
         report = DailyReport(
@@ -59,6 +79,18 @@ class ReportService:
             entity_id=report.id,
             new_values={"project_id": str(project.id), "date": str(report.report_date)},
         )
+        if idempotency_key:
+            winner_id = await bind(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=IDEMPOTENCY_ROUTE,
+                resource_type="daily_report",
+                resource_id=report.id,
+            )
+            if winner_id != report.id:
+                await self.session.rollback()
+                return await self.get_report(winner_id, actor)
         await self.session.commit()
         return await self._get_required(report.id)
 
@@ -102,7 +134,7 @@ class ReportService:
 
     async def submit_report(self, report_id: UUID, actor: User) -> DailyReport:
         self._ensure_engineer(actor)
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         if report.engineer_id != actor.id:
             raise NotFoundException("Daily report")
         if report.status not in {"draft", "rejected"}:
@@ -115,6 +147,15 @@ class ReportService:
         project = await self._ensure_project_member(report.project_id, actor)
         await self._verify_supervisor_updates(report, actor)
         if not report.report_number:
+            # Serialise numbering per project+date so two engineers submitting at the same
+            # instant cannot both read the same COUNT+1. Existing numbers are never changed.
+            await self.session.execute(
+                select(
+                    func.pg_advisory_xact_lock(
+                        func.hashtext(f"{report.project_id}:{report.report_date}")
+                    )
+                )
+            )
             sequence = await self.reports.next_report_sequence(
                 report.project_id,
                 report.report_date,
@@ -122,35 +163,45 @@ class ReportService:
             report.report_number = (
                 f"{project.code}-DR-{report.report_date.strftime('%Y%m%d')}-{sequence:03d}"
             )
-        previous_status = report.status
-        report.status = "submitted"
-        report.submitted_at = utc_now()
-        report.rejection_comments = None
-        await self._record_history(
-            report=report,
-            actor=actor,
-            decision="submitted",
-            previous_status=previous_status,
-            comments=None,
-        )
-        await self.audit.record(
-            action="daily_reports.submitted",
-            user_id=actor.id,
-            entity_type="daily_reports",
-            entity_id=report.id,
-            new_values={"report_number": report.report_number},
-        )
-        await self._notify_project_managers(
-            report,
-            title="Daily report pending approval",
-            body=append_link(
-                f"{report.report_number} is ready for approval.",
-                label="Open approval",
-                url=approval_inbox_url(tab="reports", report_id=report.id),
-            ),
-            notification_type="approval",
-        )
-        await self.session.commit()
+        # The try block starts here, not at commit(): history/audit/notification inserts
+        # autoflush, so a number collision can surface before commit() is ever reached.
+        try:
+            previous_status = report.status
+            report.status = "submitted"
+            report.submitted_at = utc_now()
+            report.rejection_comments = None
+            await self._record_history(
+                report=report,
+                actor=actor,
+                decision="submitted",
+                previous_status=previous_status,
+                comments=None,
+            )
+            await self.audit.record(
+                action="daily_reports.submitted",
+                user_id=actor.id,
+                entity_type="daily_reports",
+                entity_id=report.id,
+                new_values={"report_number": report.report_number},
+            )
+            await self._notify_project_managers(
+                report,
+                title="Daily report pending approval",
+                body=append_link(
+                    f"{report.report_number} is ready for approval.",
+                    label="Open approval",
+                    url=approval_inbox_url(tab="reports", report_id=report.id),
+                ),
+                notification_type="approval",
+            )
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "A report number was already assigned for this project and date.",
+                status_code=409,
+                error_code="DAILY_REPORT_NUMBER_CONFLICT",
+            ) from exc
         return await self._get_required(report.id)
 
     async def approve_report(
@@ -160,7 +211,7 @@ class ReportService:
         comments: str | None = None,
         target_covered: bool = False,
     ) -> DailyReport:
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         await self._ensure_approver(report, actor)
         if not target_covered:
             raise AppException(
@@ -232,7 +283,7 @@ class ReportService:
                 status_code=422,
                 error_code="DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED",
             )
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         if report.status == "approved":
             raise AppException(
                 "Approved reports cannot be overridden.",
@@ -287,7 +338,7 @@ class ReportService:
         actor: User,
         comments: str | None,
     ) -> DailyReport:
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         await self._ensure_approver(report, actor)
         if not comments or not comments.strip():
             raise AppException(
@@ -359,12 +410,7 @@ class ReportService:
                 await self._ensure_project_member(project_id, actor)
         elif actor.role == ROLE_CIVIL_ENGINEER and project_id:
             await self._ensure_project_member(project_id, actor)
-        elif actor.role not in {
-            ROLE_ADMIN,
-            ROLE_ACCOUNTS,
-            ROLE_GENERAL_MANAGER,
-            ROLE_OPERATION_MANAGER,
-        }:
+        elif actor.role not in COMPANY_WIDE_ROLES:
             if actor.role != ROLE_CIVIL_ENGINEER:
                 raise AppException(
                     "You do not have access to daily reports.",
@@ -380,7 +426,13 @@ class ReportService:
             offset=max(offset, 0),
         )
 
-    async def _get_required(self, report_id: UUID) -> DailyReport:
+    async def _get_required(self, report_id: UUID, *, for_update: bool = False) -> DailyReport:
+        if for_update:
+            # Take the parent row lock before reading children so concurrent decisions
+            # serialise and material consumption cannot run twice.
+            locked = await self.reports.lock_by_id(report_id)
+            if not locked:
+                raise NotFoundException("Daily report")
         report = await self.reports.get_by_id(report_id)
         if not report:
             raise NotFoundException("Daily report")

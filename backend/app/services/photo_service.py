@@ -13,6 +13,8 @@ from app.models.photo import Photo
 from app.models.user import User
 from app.repositories.photo_repository import PhotoRepository
 from app.services.audit_service import AuditService
+from app.services.authorization import accessible_project_ids, ensure_entity_access
+from app.services.idempotency import bind, resolve_or_reserve
 from app.services.report_service import ReportService
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
@@ -30,6 +32,7 @@ ALLOWED_MAGIC = {
     "application/pdf": (b"%PDF-",),
 }
 BLOCKED_EXTENSIONS = {".exe", ".sh", ".bat", ".cmd", ".js", ".ps1", ".php", ".py"}
+IDEMPOTENCY_ROUTE = "photos.upload"
 
 
 class PhotoService:
@@ -48,9 +51,21 @@ class PhotoService:
         kind: str,
         caption: str | None,
         actor: User,
+        idempotency_key: str | None = None,
     ) -> Photo:
         self._validate_entity_type(entity_type)
         normalized_kind = self._validate_kind(kind, file.filename or "")
+        if idempotency_key:
+            # Reserve before any storage I/O so a replay never re-uploads the bytes.
+            existing_id = await resolve_or_reserve(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=IDEMPOTENCY_ROUTE,
+            )
+            if existing_id is not None:
+                # A replay is still subject to current access to the original photo.
+                return await self.get(existing_id, actor=actor)
         await self._ensure_upload_allowed(entity_type, entity_id, normalized_kind, actor)
         data = await file.read()
         mime_type = self._validate_file(file.filename or "upload", data, normalized_kind)
@@ -97,6 +112,20 @@ class PhotoService:
             entity_id=entity_id,
             new_values={"photo_id": str(photo.id), "kind": normalized_kind},
         )
+        if idempotency_key:
+            winner_id = await bind(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=IDEMPOTENCY_ROUTE,
+                resource_type="photo",
+                resource_id=photo.id,
+            )
+            if winner_id != photo.id:
+                await self.session.rollback()
+                winner = await self.photos.get_by_id(winner_id)
+                if winner is not None:
+                    return winner
         await self.session.commit()
         return photo
 
@@ -106,8 +135,10 @@ class PhotoService:
         entity_type: str,
         entity_id: UUID,
         kind: str | None,
+        actor: User,
     ) -> tuple[list[Photo], int]:
         self._validate_entity_type(entity_type)
+        await ensure_entity_access(self.session, entity_type, entity_id, actor)
         return await self.photos.list_for_entity(
             entity_type=entity_type,
             entity_id=entity_id,
@@ -121,9 +152,18 @@ class PhotoService:
         kind: str | None,
         limit: int,
         offset: int,
+        actor: User,
     ) -> tuple[list[Photo], int]:
         if entity_type:
             self._validate_entity_type(entity_type)
+            if entity_type != "daily_report":
+                # A cross-project feed of project/document/supervisor-update files would
+                # leak other teams' evidence; those are only reachable by explicit owner.
+                raise AppException(
+                    "Recent files must be requested for a specific owner.",
+                    status_code=422,
+                    error_code="ENTITY_ID_REQUIRED",
+                )
         if kind:
             normalized_kind = kind.strip().lower()
             if normalized_kind not in {"photo", "attachment"}:
@@ -138,16 +178,18 @@ class PhotoService:
             kind=kind,
             limit=limit,
             offset=offset,
+            project_ids=await accessible_project_ids(self.session, actor),
         )
 
-    async def get(self, photo_id: UUID) -> Photo:
+    async def get(self, photo_id: UUID, *, actor: User) -> Photo:
         photo = await self.photos.get_by_id(photo_id)
         if not photo:
             raise NotFoundException("Photo")
+        await ensure_entity_access(self.session, photo.entity_type, photo.entity_id, actor)
         return photo
 
     async def signed_url(self, photo_id: UUID, *, variant: str, actor: User) -> str:
-        photo = await self.get(photo_id)
+        photo = await self.get(photo_id, actor=actor)
         object_key = self._object_key_for_variant(photo, variant)
         await self.audit.record(
             action=f"photos.{variant}.downloaded",
@@ -164,7 +206,7 @@ class PhotoService:
         )
 
     async def delete(self, photo_id: UUID, actor: User) -> None:
-        photo = await self.get(photo_id)
+        photo = await self.get(photo_id, actor=actor)
         if photo.entity_type == "daily_report":
             report = await ReportService(self.session).get_report_for_export(photo.entity_id)
             if report.status != "draft" and actor.role != ROLE_ADMIN:
@@ -238,6 +280,10 @@ class PhotoService:
                         status_code=409,
                         error_code="REPORT_PHOTO_LIMIT_REACHED",
                     )
+        else:
+            # get_report above already scopes daily reports; every other owner needs the
+            # same check before bytes are written to storage.
+            await ensure_entity_access(self.session, entity_type, entity_id, actor)
 
     def _validate_entity_type(self, entity_type: str) -> None:
         if entity_type not in {"daily_report", "project", "supervisor_update", "document"}:
