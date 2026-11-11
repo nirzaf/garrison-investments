@@ -259,6 +259,26 @@ async def test_concurrent_issue_cannot_over_issue() -> None:
     assert line.reserved_quantity == ZERO
 
 
+async def test_issue_cannot_consume_more_than_physically_on_hand() -> None:
+    await skip_if_database_unavailable()
+    fx = await seed(
+        on_hand=Decimal("2"),
+        quantity=Decimal("5"),
+        status="reserved",
+        line_reserved=Decimal("5"),
+        stock_reserved=Decimal("5"),
+    )
+
+    async with AsyncSessionLocal() as session:
+        request = await InventoryService(session).issue_request(fx.request.id, fx.store)
+        assert request.status == "partially_issued"
+
+    stock = await read_stock(fx.item.id, fx.location.id)
+    line = await read_line(fx.request.id)
+    assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("2"), Decimal("5"))
+    assert (line.issued_quantity, line.reserved_quantity) == (ZERO, Decimal("5"))
+
+
 async def test_reserve_only_covers_the_outstanding_quantity() -> None:
     """C4: quantity - reserved - issued, so an already-issued part is never re-reserved."""
     await skip_if_database_unavailable()
@@ -319,6 +339,36 @@ async def test_cancel_preserves_other_reservations_when_legacy_line_is_overstate
 
     stock = await read_stock(fx.item.id, fx.location.id)
     assert stock.reserved_qty == Decimal("3"), "the other request's reservation must remain"
+
+
+async def test_concurrent_cancel_releases_the_remainder_exactly_once() -> None:
+    """C4: a real gather race — one cancel wins and the issued part is never returned."""
+    await skip_if_database_unavailable()
+    fx = await seed(
+        on_hand=Decimal("2"),
+        quantity=Decimal("5"),
+        status="partially_issued",
+        issued=Decimal("3"),
+        line_reserved=Decimal("2"),
+        stock_reserved=Decimal("2"),
+    )
+
+    async def cancel(session: AsyncSession) -> int:
+        try:
+            await InventoryService(session).cancel_request(fx.request.id, fx.store)
+            return 200
+        except AppException as exc:
+            return exc.status_code
+
+    results = await race_sessions(*([cancel] * 5))
+    assert status_counts(results) == {200: 1, 409: 4}, results
+
+    stock = await read_stock(fx.item.id, fx.location.id)
+    line = await read_line(fx.request.id)
+    assert stock.reserved_qty == ZERO, "the remainder must be released exactly once"
+    assert stock.on_hand_qty == Decimal("2"), "already-issued stock must not be returned"
+    assert line.reserved_quantity == ZERO
+    assert line.issued_quantity == Decimal("3")
 
 
 async def test_negative_adjustment_cannot_consume_reserved_stock() -> None:

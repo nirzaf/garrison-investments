@@ -44,7 +44,7 @@ async def report_drift() -> None:
     recorded = func.coalesce(open_requests.c.recorded, 0)
     remaining = func.coalesce(open_requests.c.remaining, 0)
     manual_reserves = (
-        select(func.count())
+        select(func.coalesce(func.sum(movement.quantity), 0))
         .where(
             movement.item_id == stock.item_id,
             movement.from_location_id == stock.location_id,
@@ -55,6 +55,7 @@ async def report_drift() -> None:
         .correlate(stock)
         .scalar_subquery()
     )
+    expected = func.greatest(0, remaining + manual_reserves)
     query = (
         select(
             stock.item_id,
@@ -63,7 +64,8 @@ async def report_drift() -> None:
             stock.reserved_qty,
             recorded.label("recorded_request_reservations"),
             remaining.label("remaining_request_quantity"),
-            manual_reserves.label("manual_reserve_movements"),
+            manual_reserves.label("manual_reserve_quantity"),
+            expected.label("expected_reserved_quantity"),
         )
         .outerjoin(
             open_requests,
@@ -76,7 +78,7 @@ async def report_drift() -> None:
                 stock.on_hand_qty < 0,
                 stock.reserved_qty < 0,
                 stock.reserved_qty > stock.on_hand_qty,
-                stock.reserved_qty != remaining,
+                stock.reserved_qty != expected,
                 recorded != remaining,
             ),
         )

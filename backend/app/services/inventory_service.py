@@ -424,7 +424,11 @@ class InventoryService:
             if remaining <= 0:
                 continue
             stock = await self._get_stock(line.item_id, request.from_location_id, for_update=True)
-            if line.reserved_quantity < remaining or stock.reserved_qty < remaining:
+            if (
+                line.reserved_quantity < remaining
+                or stock.reserved_qty < remaining
+                or stock.on_hand_qty < remaining
+            ):
                 fully_issued = False
                 continue
             stock.reserved_qty -= remaining
