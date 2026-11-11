@@ -1,4 +1,5 @@
 import csv
+import posixpath
 import re
 import zipfile
 from datetime import date
@@ -25,6 +26,13 @@ from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
 from app.utils.permissions import validate_role
 from app.utils.security import hash_password, validate_password_policy
+
+XLSX_NAMESPACE = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+XLSX_RELATIONSHIP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+MAX_XLSX_ENTRIES = 1_000
+MAX_XLSX_EXPANDED_BYTES = 200 * 1024 * 1024
+MAX_XLSX_COLUMNS = 16_384
+MAX_XLSX_CELLS = 1_000_000
 
 TEMPLATE_COLUMNS = {
     "users": [
@@ -428,31 +436,49 @@ class ImportService:
         return list(csv.DictReader(StringIO(text)))
 
     def _parse_xlsx(self, content: bytes) -> list[dict[str, str]]:
-        namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-        with zipfile.ZipFile(BytesIO(content)) as archive:
-            shared_strings: list[str] = []
-            if "xl/sharedStrings.xml" in archive.namelist():
-                root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
-                for item in root.findall("x:si", namespace):
-                    shared_strings.append(
-                        "".join(text.text or "" for text in item.findall(".//x:t", namespace))
-                    )
+        try:
+            with zipfile.ZipFile(BytesIO(content)) as archive:
+                entries = archive.infolist()
+                if (
+                    len(entries) > MAX_XLSX_ENTRIES
+                    or sum(entry.file_size for entry in entries) > MAX_XLSX_EXPANDED_BYTES
+                ):
+                    raise self._xlsx_too_large()
+                shared_strings: list[str] = []
+                if "xl/sharedStrings.xml" in archive.namelist():
+                    root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                    shared_strings = [
+                        "".join(text.text or "" for text in item.iterfind(".//x:t", XLSX_NAMESPACE))
+                        for item in root.iterfind("x:si", XLSX_NAMESPACE)
+                    ]
 
-            sheet_name = "xl/worksheets/sheet1.xml"
-            root = ElementTree.fromstring(archive.read(sheet_name))
-            table: list[list[str]] = []
-            for row in root.findall(".//x:sheetData/x:row", namespace):
-                values: list[str] = []
-                for cell in row.findall("x:c", namespace):
-                    column_index = self._xlsx_column_index(cell.attrib.get("r", ""))
-                    while len(values) < column_index:
-                        values.append("")
-                    value = cell.find("x:v", namespace)
-                    raw = value.text if value is not None and value.text is not None else ""
-                    if cell.attrib.get("t") == "s" and raw:
-                        raw = shared_strings[int(raw)]
-                    values.append(raw)
-                table.append(values)
+                sheet_name = self._xlsx_sheet_path(archive)
+                root = ElementTree.fromstring(archive.read(sheet_name))
+                table: list[list[str]] = []
+                cells_read = 0
+                for row in root.iterfind(".//x:sheetData/x:row", XLSX_NAMESPACE):
+                    values: list[str] = []
+                    for cell in row.iterfind("x:c", XLSX_NAMESPACE):
+                        column_index = self._xlsx_column_index(cell.attrib.get("r", ""))
+                        if column_index >= MAX_XLSX_COLUMNS:
+                            raise self._xlsx_too_large()
+                        values.extend([""] * max(0, column_index - len(values)))
+                        values.append(self._xlsx_cell_value(cell, shared_strings))
+                    cells_read += max(1, len(values))
+                    if cells_read > MAX_XLSX_CELLS:
+                        raise self._xlsx_too_large()
+                    table.append(values)
+        except (
+            zipfile.BadZipFile,
+            ElementTree.ParseError,
+            NotImplementedError,
+            RuntimeError,
+        ) as exc:
+            raise AppException(
+                "The spreadsheet could not be read.",
+                status_code=422,
+                error_code="IMPORT_INVALID_XLSX",
+            ) from exc
         if not table:
             return []
         headers = table[0]
@@ -461,6 +487,67 @@ class ImportService:
             for row in table[1:]
         ]
 
+    @staticmethod
+    def _xlsx_too_large() -> AppException:
+        return AppException(
+            "The spreadsheet exceeds the import size limit.",
+            status_code=413,
+            error_code="IMPORT_FILE_TOO_LARGE",
+        )
+
+    @staticmethod
+    def _xlsx_sheet_path(archive: zipfile.ZipFile) -> str:
+        names = set(archive.namelist())
+        workbook_path = "xl/workbook.xml"
+        relationships_path = "xl/_rels/workbook.xml.rels"
+        if workbook_path not in names and relationships_path not in names:
+            # Preserve support for older template archives with only a worksheet.
+            if "xl/worksheets/sheet1.xml" in names:
+                return "xl/worksheets/sheet1.xml"
+        elif workbook_path in names and relationships_path in names:
+            workbook = ElementTree.fromstring(archive.read(workbook_path))
+            relationships = ElementTree.fromstring(archive.read(relationships_path))
+            targets = {
+                relationship.get("Id"): relationship.get("Target", "")
+                for relationship in relationships
+                if relationship.get("TargetMode") != "External"
+                and relationship.get("Type", "").endswith("/worksheet")
+            }
+            for sheet in workbook.iterfind("x:sheets/x:sheet", XLSX_NAMESPACE):
+                target = targets.get(sheet.get(f"{{{XLSX_RELATIONSHIP_NS}}}id"))
+                if not target:
+                    continue
+                path = posixpath.normpath(
+                    target.lstrip("/") if target.startswith("/") else posixpath.join("xl", target)
+                )
+                if path.startswith("xl/") and path in names:
+                    return path
+                break
+        raise AppException(
+            "The spreadsheet has no readable worksheet.",
+            status_code=422,
+            error_code="IMPORT_SHEET_NOT_FOUND",
+        )
+
+    @staticmethod
+    def _xlsx_cell_value(cell: ElementTree.Element, shared_strings: list[str]) -> str:
+        if cell.get("t") == "inlineStr":
+            return "".join(text.text or "" for text in cell.iterfind(".//x:t", XLSX_NAMESPACE))
+        value = cell.findtext("x:v", default="", namespaces=XLSX_NAMESPACE)
+        if cell.get("t") != "s" or not value:
+            return value
+        try:
+            index = int(value)
+            if 0 <= index < len(shared_strings):
+                return shared_strings[index]
+        except ValueError:
+            pass
+        raise AppException(
+            "The spreadsheet contains an invalid shared string reference.",
+            status_code=422,
+            error_code="IMPORT_SHARED_STRING_INVALID",
+        )
+
     def _xlsx_column_index(self, cell_reference: str) -> int:
         match = re.match(r"([A-Z]+)", cell_reference)
         if not match:
@@ -468,6 +555,8 @@ class ImportService:
         index = 0
         for character in match.group(1):
             index = index * 26 + ord(character) - ord("A") + 1
+            if index > MAX_XLSX_COLUMNS:
+                return MAX_XLSX_COLUMNS
         return index - 1
 
     def _validate_rows(

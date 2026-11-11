@@ -13,6 +13,7 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.import_service import ImportService
 from app.tasks.imports import _run_import_async
+from app.utils.exceptions import AppException
 from app.utils.security import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -93,6 +94,59 @@ async def test_import_preview_accepts_xlsx_files() -> None:
 
     assert preview.valid is True
     assert preview.row_count == 1
+
+
+async def test_xlsx_preview_follows_the_workbook_worksheet_relationship() -> None:
+    workbook_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    document_rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    package_rel_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    original = xlsx_bytes(
+        ["item_code", "location_code", "quantity", "notes"],
+        ["CEM-001", "WH-001", "5", "Opening balance"],
+    )
+    renamed = BytesIO()
+    with ZipFile(BytesIO(original)) as source, ZipFile(renamed, "w") as target:
+        target.writestr("xl/sharedStrings.xml", source.read("xl/sharedStrings.xml"))
+        target.writestr("xl/worksheets/opening.xml", source.read("xl/worksheets/sheet1.xml"))
+        target.writestr(
+            "xl/workbook.xml",
+            f'<workbook xmlns="{workbook_ns}" xmlns:r="{document_rel_ns}">'
+            '<sheets><sheet name="Opening stock" sheetId="1" r:id="rId7"/></sheets></workbook>',
+        )
+        target.writestr(
+            "xl/_rels/workbook.xml.rels",
+            f'<Relationships xmlns="{package_rel_ns}">'
+            f'<Relationship Id="rId7" Type="{document_rel_ns}/worksheet" '
+            'Target="worksheets/opening.xml"/></Relationships>',
+        )
+
+    preview = await ImportService.__new__(ImportService).preview(
+        "opening_stock", renamed.getvalue()
+    )
+    assert preview.valid and preview.row_count == 1
+
+
+async def test_xlsx_preview_rejects_missing_shared_string() -> None:
+    original = xlsx_bytes(["quantity"], ["5"])
+    malformed = BytesIO()
+    with ZipFile(BytesIO(original)) as source, ZipFile(malformed, "w") as target:
+        target.writestr("xl/sharedStrings.xml", source.read("xl/sharedStrings.xml"))
+        sheet = source.read("xl/worksheets/sheet1.xml").replace(b"<v>1</v>", b"<v>9</v>")
+        target.writestr("xl/worksheets/sheet1.xml", sheet)
+
+    with pytest.raises(AppException) as error:
+        await ImportService.__new__(ImportService).preview("opening_stock", malformed.getvalue())
+    assert error.value.status_code == 422
+    assert error.value.error_code == "IMPORT_SHARED_STRING_INVALID"
+
+
+async def test_xlsx_preview_enforces_expanded_size_limit(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.import_service.MAX_XLSX_EXPANDED_BYTES", 1)
+    with pytest.raises(AppException) as error:
+        await ImportService.__new__(ImportService).preview(
+            "opening_stock", xlsx_bytes(["quantity"], ["5"])
+        )
+    assert error.value.status_code == 413
 
 
 async def test_import_templates_create_records_and_opening_stock_transactionally() -> None:
