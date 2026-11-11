@@ -71,6 +71,17 @@ export async function listInventoryItems(search?: string) {
   return data;
 }
 
+type InventoryPageParams = { limit: number; offset: number };
+
+async function getInventoryPage<T>(path: string, params: InventoryPageParams, signal?: AbortSignal) {
+  const { data, headers } = await apiClient.get<T[]>(path, { params, signal });
+  return { items: data, total: Number(headers['x-total-count'] ?? data.length) };
+}
+
+export function listInventoryItemPage(params: InventoryPageParams & { search?: string }, signal?: AbortSignal) {
+  return getInventoryPage<InventoryItemRecord>('/inventory/items', params, signal);
+}
+
 export async function createInventoryItem(payload: InventoryItemCreatePayload) {
   const { data } = await apiClient.post<InventoryItemRecord>('/inventory/items', payload);
   return data;
@@ -109,13 +120,12 @@ export async function createAsset(payload: AssetCreatePayload) {
   return data;
 }
 
-export async function listMovements(params?: {
+export function listMovements(params: InventoryPageParams & {
   item_id?: string;
   location_id?: string;
   project_id?: string;
-}) {
-  const { data } = await apiClient.get<MovementRecord[]>('/inventory/movements', { params });
-  return data;
+}, signal?: AbortSignal) {
+  return getInventoryPage<MovementRecord>('/inventory/movements', params, signal);
 }
 
 export async function createMovement(payload: MovementCreatePayload) {
@@ -123,9 +133,8 @@ export async function createMovement(payload: MovementCreatePayload) {
   return data;
 }
 
-export async function listMaterialRequests() {
-  const { data } = await apiClient.get<MaterialRequestRecord[]>('/inventory/requests');
-  return data;
+export function listMaterialRequests(params: InventoryPageParams & { request_id?: string }, signal?: AbortSignal) {
+  return getInventoryPage<MaterialRequestRecord>('/inventory/requests', params, signal);
 }
 
 export async function createMaterialRequest(payload: MaterialRequestCreatePayload) {

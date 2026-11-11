@@ -1,9 +1,11 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Download, Eye, FileUp, Search, X } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import {
   approveDocumentVersion,
+  getDocument,
   getDocumentDownloadUrl,
   listDocuments,
   uploadDocument,
@@ -14,14 +16,18 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
+const documentPageSize = 25;
+
 export function DocumentsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const focusedDocumentId = searchParams.get('documentId');
   const focusedVersionId = searchParams.get('versionId');
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [search, setSearch] = useState('');
+  const [committedSearch, setCommittedSearch] = useState('');
+  const [page, setPage] = useState(0);
   const [projectId, setProjectId] = useState('');
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('wir');
@@ -29,35 +35,48 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
 
-  const loadDocuments = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listDocuments({
-        search: search || undefined,
-        project_id: projectId || undefined
-      });
-      setDocuments(response.items);
-    } catch {
-      setError('Unable to load documents.');
-    } finally {
-      setIsLoading(false);
+  const documentList = useQuery({
+    queryKey: ['documents', 'page', projectId, committedSearch, page],
+    queryFn: ({ signal }) => listDocuments({
+      search: committedSearch || undefined,
+      project_id: projectId || undefined,
+      limit: documentPageSize,
+      offset: page * documentPageSize
+    }, signal)
+  });
+  const focusedDocument = useQuery({
+    queryKey: ['documents', 'detail', focusedDocumentId],
+    queryFn: ({ signal }) => getDocument(focusedDocumentId!, signal),
+    enabled: Boolean(focusedDocumentId) && !projectId && !committedSearch && page === 0
+  });
+  const documents = useMemo(() => {
+    const items = documentList.data?.items ?? [];
+    const focused = focusedDocument.data;
+    if (focused && page === 0 && !projectId && !committedSearch &&
+      !items.some((item) => item.id === focused.id)) {
+      return [focused, ...items];
     }
-  }, [projectId, search]);
+    return items;
+  }, [documentList.data, focusedDocument.data, page, projectId, committedSearch]);
+  const totalPages = Math.max(1, Math.ceil((documentList.data?.total ?? 0) / documentPageSize));
+  const pagingDisabled = documentList.isPending || search.trim() !== committedSearch;
 
   useEffect(() => {
     void listProjects({ status: 'active' }).then((response) => setProjects(response.items));
   }, []);
 
   useEffect(() => {
-    void loadDocuments();
-  }, [loadDocuments]);
+    const timer = window.setTimeout(() => {
+      setCommittedSearch(search.trim());
+      setPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (!focusedDocumentId) return;
@@ -89,7 +108,8 @@ export function DocumentsPage() {
       setExpiryDate('');
       setFile(null);
       setNotice('Document uploaded for approval.');
-      await loadDocuments();
+      setPage(0);
+      await queryClient.invalidateQueries({ queryKey: ['documents'] });
     } catch {
       setError('Unable to upload document.');
     }
@@ -105,7 +125,7 @@ export function DocumentsPage() {
         comments: 'Approved from document library.'
       });
       setNotice('Document version approved.');
-      await loadDocuments();
+      await queryClient.invalidateQueries({ queryKey: ['documents'] });
     } catch {
       setError('Unable to approve document.');
     }
@@ -143,7 +163,10 @@ export function DocumentsPage() {
         <div className="grid gap-3 sm:grid-cols-[220px_260px]">
           <select
             className="form-field"
-            onChange={(event) => setProjectId(event.target.value)}
+            onChange={(event) => {
+              setProjectId(event.target.value);
+              setPage(0);
+            }}
             value={projectId}
           >
             <option value="">All projects</option>
@@ -167,6 +190,7 @@ export function DocumentsPage() {
 
       {notice ? <Alert tone="success" message={notice} /> : null}
       {error ? <Alert tone="error" message={error} /> : null}
+      {documentList.isError ? <Alert tone="error" message="Unable to load documents." /> : null}
 
       {canManageDocuments ? (
         <form
@@ -218,8 +242,8 @@ export function DocumentsPage() {
 
       {documents.length === 0 ? (
         <EmptyState
-          description={isLoading ? 'Loading documents.' : 'Uploaded documents will appear here.'}
-          title="No documents found"
+          description={documentList.isPending ? 'Fetching document records.' : 'Uploaded documents will appear here.'}
+          title={documentList.isPending ? 'Loading documents' : 'No documents found'}
         />
       ) : (
         <div className="grid gap-4">
@@ -315,6 +339,30 @@ export function DocumentsPage() {
           })}
         </div>
       )}
+
+      {page > 0 || totalPages > 1 ? (
+        <nav aria-label="Document pages" className="flex items-center justify-end gap-3">
+          <button
+            className="form-field disabled:opacity-50"
+            disabled={page === 0 || pagingDisabled}
+            onClick={() => setPage(page - 1)}
+            type="button"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-theme-text-secondary" aria-live="polite">
+            Page {page + 1}{documentList.data ? ` of ${totalPages}` : ''}
+          </span>
+          <button
+            className="form-field disabled:opacity-50"
+            disabled={page + 1 >= totalPages || pagingDisabled}
+            onClick={() => setPage(page + 1)}
+            type="button"
+          >
+            Next
+          </button>
+        </nav>
+      ) : null}
 
       {previewUrl ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">

@@ -4327,6 +4327,8 @@ export interface operations {
                 project_id?: string | null;
                 document_type?: string | null;
                 search?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -5166,6 +5168,8 @@ export interface operations {
         parameters: {
             query?: {
                 search?: string | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -5176,6 +5180,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5367,6 +5372,8 @@ export interface operations {
                 item_id?: string | null;
                 location_id?: string | null;
                 project_id?: string | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -5377,6 +5384,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -5429,7 +5437,11 @@ export interface operations {
     };
     list_material_requests_api_v1_inventory_requests_get: {
         parameters: {
-            query?: never;
+            query?: {
+                request_id?: string | null;
+                limit?: number | null;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5439,10 +5451,20 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    "X-Total-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialRequestResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

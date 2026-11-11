@@ -198,13 +198,15 @@ class DocumentService:
         document_type: str | None,
         search: str | None,
         actor: User,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[Document], int]:
         return await self.documents.list_documents(
             project_id=project_id,
             document_type=document_type,
             search=search,
-            limit=100,
-            offset=0,
+            limit=limit,
+            offset=offset,
             scope_filter=await document_scope_filter(self.session, actor),
         )
 

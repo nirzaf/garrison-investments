@@ -7,7 +7,9 @@ import { App } from './App';
 import { AuthProvider } from './context/AuthContext';
 import './styles/index.css';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } }
+});
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

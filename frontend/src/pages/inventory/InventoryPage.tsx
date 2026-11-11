@@ -12,6 +12,7 @@ import {
   createMaterialRequest,
   issueMaterialRequest,
   listAssets,
+  listInventoryItemPage,
   listInventoryItems,
   listLocations,
   listLowStock,
@@ -26,12 +27,20 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
+const inventoryPageSize = 20;
+const movementPageSize = 8;
+
 export function InventoryPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const focusedRequestId = searchParams.get('materialRequestId');
   const queryClient = useQueryClient();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemSearch, setItemSearch] = useState('');
+  const [committedSearch, setCommittedSearch] = useState('');
+  const [itemOffset, setItemOffset] = useState(0);
+  const [requestOffset, setRequestOffset] = useState(0);
+  const [movementOffset, setMovementOffset] = useState(0);
   const materialRequestRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
   const canCreateMaterialRequest =
@@ -46,13 +55,35 @@ export function InventoryPage() {
     enabled: canManageInventory
   });
   const items = useQuery({ queryKey: ['inventory-items'], queryFn: () => listInventoryItems() });
+  const visibleItems = useQuery({
+    queryKey: ['inventory-items', committedSearch, itemOffset],
+    queryFn: ({ signal }) => listInventoryItemPage({
+      search: committedSearch || undefined, limit: inventoryPageSize, offset: itemOffset
+    }, signal)
+  });
   const lowStock = useQuery({ queryKey: ['inventory-low-stock'], queryFn: listLowStock });
   const assets = useQuery({ queryKey: ['inventory-assets'], queryFn: listAssets });
-  const movements = useQuery({ queryKey: ['inventory-movements'], queryFn: () => listMovements() });
-  const materialRequests = useQuery({
-    queryKey: ['material-requests'],
-    queryFn: listMaterialRequests
+  const movements = useQuery({
+    queryKey: ['inventory-movements', movementOffset],
+    queryFn: ({ signal }) => listMovements({ limit: movementPageSize, offset: movementOffset }, signal)
   });
+  const materialRequests = useQuery({
+    queryKey: ['material-requests', requestOffset],
+    queryFn: ({ signal }) => listMaterialRequests({ limit: inventoryPageSize, offset: requestOffset }, signal)
+  });
+  const focusedRequest = useQuery({
+    queryKey: ['material-requests', 'detail', focusedRequestId],
+    queryFn: ({ signal }) => listMaterialRequests({
+      limit: 1, offset: 0, request_id: focusedRequestId ?? undefined
+    }, signal),
+    enabled: Boolean(focusedRequestId) && requestOffset === 0
+  });
+  const pageRequests = materialRequests.data?.items ?? [];
+  const linkedRequest = focusedRequest.data?.items[0];
+  const visibleRequests =
+    requestOffset === 0 && linkedRequest && !pageRequests.some((row) => row.id === linkedRequest.id)
+      ? [linkedRequest, ...pageRequests]
+      : pageRequests;
   const projects = useQuery({
     queryKey: ['projects', 'active'],
     queryFn: () => listProjects({ status: 'active' })
@@ -110,7 +141,15 @@ export function InventoryPage() {
     if (!focusedRequestId) return;
     const element = materialRequestRefs.current[focusedRequestId];
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [focusedRequestId, materialRequests.data]);
+  }, [focusedRequestId, materialRequests.data, focusedRequest.data]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setCommittedSearch(itemSearch.trim());
+      setItemOffset(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [itemSearch]);
 
   const selectedItem = items.data?.find((item) => item.id === selectedItemId) ?? items.data?.[0];
   const firstLocation = locations.data?.[0];
@@ -230,10 +269,17 @@ export function InventoryPage() {
         <div className="rounded-lg border border-theme-border bg-theme-card">
           <div className="border-b border-theme-border px-4 py-3">
             <h3 className="text-base font-semibold text-theme-text-primary">Stock matrix</h3>
+            <input
+              aria-label="Search inventory"
+              className="form-field mt-2"
+              onChange={(event) => setItemSearch(event.target.value)}
+              placeholder="Search inventory"
+              value={itemSearch}
+            />
           </div>
-          {items.data && items.data.length > 0 ? (
+          {visibleItems.data?.items.length ? (
             <div className="divide-y divide-theme-border">
-              {items.data.map((item) => (
+              {visibleItems.data.items.map((item) => (
                 <button
                   className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-theme-main"
                   key={item.id}
@@ -251,8 +297,14 @@ export function InventoryPage() {
               ))}
             </div>
           ) : (
-            <EmptyState title="No inventory items" description="Create an item to start stock." />
+            <EmptyState
+              title={visibleItems.isPending ? 'Loading inventory' : 'No inventory items found'}
+              description={visibleItems.isError ? 'Unable to load inventory items.' : ''}
+            />
           )}
+          <InventoryPager label="Inventory item pages" offset={itemOffset} setOffset={setItemOffset}
+            size={inventoryPageSize} total={visibleItems.data?.total ?? 0}
+            disabled={visibleItems.isPending || itemSearch.trim() !== committedSearch} />
         </div>
 
         {canManageInventory ? (
@@ -472,9 +524,9 @@ export function InventoryPage() {
           <div className="border-b border-theme-border px-4 py-3">
             <h3 className="text-base font-semibold text-theme-text-primary">Request lifecycle</h3>
           </div>
-          {materialRequests.data?.length ? (
+          {visibleRequests.length ? (
             <div className="divide-y divide-theme-border">
-              {materialRequests.data.map((request) => (
+              {visibleRequests.map((request) => (
                 <article
                   className={`px-4 py-3 text-sm ${
                     request.id === focusedRequestId ? 'bg-theme-main' : ''
@@ -542,6 +594,8 @@ export function InventoryPage() {
               description="Create a request to reserve and issue stock."
             />
           )}
+          <InventoryPager label="Material request pages" offset={requestOffset} setOffset={setRequestOffset}
+            size={inventoryPageSize} total={materialRequests.data?.total ?? 0} disabled={materialRequests.isPending} />
         </div>
       </div>
 
@@ -582,9 +636,9 @@ export function InventoryPage() {
           <div className="border-b border-theme-border px-4 py-3">
             <h3 className="text-base font-semibold text-theme-text-primary">Recent movements</h3>
           </div>
-          {movements.data?.length ? (
+          {movements.data?.items.length ? (
             <div className="divide-y divide-theme-border">
-              {movements.data.slice(0, 8).map((movement) => (
+              {movements.data.items.map((movement) => (
                 <div
                   className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_auto]"
                   key={movement.id}
@@ -608,9 +662,33 @@ export function InventoryPage() {
           ) : (
             <EmptyState title="No movements" description="Stock movements will appear here." />
           )}
+          <InventoryPager label="Stock movement pages" offset={movementOffset} setOffset={setMovementOffset}
+            size={movementPageSize} total={movements.data?.total ?? 0} disabled={movements.isPending} />
         </div>
       </div>
     </section>
+  );
+}
+
+function InventoryPager({ label, offset, setOffset, size, total, disabled }: {
+  label: string;
+  offset: number;
+  setOffset: (offset: number) => void;
+  size: number;
+  total: number;
+  disabled: boolean;
+}) {
+  if (offset === 0 && total <= size) return null;
+  return (
+    <nav aria-label={label} className="flex items-center justify-end gap-3 border-t border-theme-border px-4 py-3">
+      <button className="form-field disabled:opacity-50" disabled={disabled || offset === 0}
+        onClick={() => setOffset(offset - size)} type="button">Previous</button>
+      <span aria-live="polite" className="text-sm text-theme-text-secondary">
+        Page {offset / size + 1}
+      </span>
+      <button className="form-field disabled:opacity-50" disabled={disabled || offset + size >= total}
+        onClick={() => setOffset(offset + size)} type="button">Next</button>
+    </nav>
   );
 }
 

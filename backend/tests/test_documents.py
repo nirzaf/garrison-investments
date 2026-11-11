@@ -52,6 +52,24 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         assert document["status"] == "pending_approval"
         first_version = document["versions"][0]
 
+        for title in ("WIR Zone B", "WIR Zone C"):
+            uploaded = await client.post(
+                "/api/v1/documents",
+                data={"title": title, "document_type": "wir", "project_id": setup["project_id"]},
+                files={"file": ("wir.pdf", pdf_bytes(title), "application/pdf")},
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+            assert uploaded.status_code == 201
+        for offset, expected_title in enumerate(("WIR Zone C", "WIR Zone B", "WIR Zone A")):
+            page = await client.get(
+                "/api/v1/documents",
+                params={"project_id": setup["project_id"], "limit": 1, "offset": offset},
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+            assert page.status_code == 200
+            assert page.json()["total"] == 3
+            assert [item["title"] for item in page.json()["items"]] == [expected_title]
+
         engineer_notifications = await client.get(
             "/api/v1/notifications",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},

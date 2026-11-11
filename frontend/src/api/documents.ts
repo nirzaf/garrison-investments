@@ -13,8 +13,15 @@ export async function listDocuments(params: {
   project_id?: string;
   document_type?: string;
   search?: string;
-}): Promise<DocumentListResponse> {
-  const response = await apiClient.get<DocumentListResponse>('/documents', { params });
+  limit?: number;
+  offset?: number;
+}, signal?: AbortSignal): Promise<DocumentListResponse> {
+  const response = await apiClient.get<DocumentListResponse>('/documents', { params, signal });
+  return response.data;
+}
+
+export async function getDocument(documentId: string, signal?: AbortSignal) {
+  const response = await apiClient.get<DocumentRecord>(`/documents/${documentId}`, { signal });
   return response.data;
 }
 

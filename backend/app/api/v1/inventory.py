@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.inventory import InventoryItem, InventoryLocationStock
@@ -26,6 +26,10 @@ router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 CanViewInventory = Annotated[User, Depends(require_permission(PERMISSION_INVENTORY_VIEW))]
 CanManageInventory = Annotated[User, Depends(require_permission(PERMISSION_INVENTORY_MANAGE))]
+
+PAGINATION_HEADERS: dict[int | str, dict[str, Any]] = {
+    200: {"headers": {"X-Total-Count": {"schema": {"type": "integer", "minimum": 0}}}}
+}
 
 
 def stock_response(stock: InventoryLocationStock) -> StockResponse:
@@ -64,13 +68,19 @@ async def create_location(
     return LocationResponse.model_validate(location)
 
 
-@router.get("/items", response_model=list[InventoryItemResponse])
+@router.get("/items", response_model=list[InventoryItemResponse], responses=PAGINATION_HEADERS)
 async def list_items(
     current_user: CanViewInventory,
     session: DbSession,
+    response: Response,
     search: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[InventoryItemResponse]:
-    items = await InventoryService(session).list_items(search)
+    items, total = await InventoryService(session).list_item_page(
+        search, limit=limit, offset=offset
+    )
+    response.headers["X-Total-Count"] = str(total)
     return [item_response(item, current_user) for item in items]
 
 
@@ -120,19 +130,25 @@ async def create_asset(
     return AssetResponse.model_validate(asset)
 
 
-@router.get("/movements", response_model=list[MovementResponse])
+@router.get("/movements", response_model=list[MovementResponse], responses=PAGINATION_HEADERS)
 async def list_movements(
     _: CanViewInventory,
     session: DbSession,
+    response: Response,
     item_id: Annotated[UUID | None, Query()] = None,
     location_id: Annotated[UUID | None, Query()] = None,
     project_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[MovementResponse]:
-    movements = await InventoryService(session).list_movements(
+    movements, total = await InventoryService(session).list_movements(
         item_id=item_id,
         location_id=location_id,
         project_id=project_id,
+        limit=limit,
+        offset=offset,
     )
+    response.headers["X-Total-Count"] = str(total)
     return [MovementResponse.model_validate(movement) for movement in movements]
 
 
@@ -152,12 +168,19 @@ async def low_stock(_: CanViewInventory, session: DbSession) -> list[StockRespon
     return [stock_response(stock) for stock in stock_rows]
 
 
-@router.get("/requests", response_model=list[MaterialRequestResponse])
+@router.get("/requests", response_model=list[MaterialRequestResponse], responses=PAGINATION_HEADERS)
 async def list_material_requests(
     _: CanViewInventory,
     session: DbSession,
+    response: Response,
+    request_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[MaterialRequestResponse]:
-    requests = await InventoryService(session).list_material_requests()
+    requests, total = await InventoryService(session).list_material_requests(
+        request_id=request_id, limit=limit, offset=offset
+    )
+    response.headers["X-Total-Count"] = str(total)
     return [MaterialRequestResponse.model_validate(request) for request in requests]
 
 

@@ -99,6 +99,12 @@ class InventoryService:
         return item
 
     async def list_items(self, search: str | None = None) -> list[InventoryItem]:
+        items, _ = await self.list_item_page(search)
+        return items
+
+    async def list_item_page(
+        self, search: str | None = None, *, limit: int | None = None, offset: int = 0
+    ) -> tuple[list[InventoryItem], int]:
         """Return items with their persisted prices intact.
 
         Price masking is a presentation concern handled by the API layer; mutating
@@ -116,7 +122,9 @@ class InventoryService:
                     func.lower(InventoryItem.category).like(pattern),
                 )
             )
-        return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
+        return await self._list_page(
+            query.order_by(InventoryItem.name.asc(), InventoryItem.id.asc()), limit, offset
+        )
 
     async def get_item(self, item_id: UUID) -> InventoryItem:
         item = await self.session.scalar(
@@ -252,7 +260,9 @@ class InventoryService:
         item_id: UUID | None = None,
         location_id: UUID | None = None,
         project_id: UUID | None = None,
-    ) -> list[InventoryMovement]:
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[InventoryMovement], int]:
         query: Select[InventoryMovement] = select(InventoryMovement).where(
             InventoryMovement.deleted_at.is_(None)
         )
@@ -267,8 +277,10 @@ class InventoryService:
                     InventoryMovement.to_location_id == location_id,
                 )
             )
-        return list(
-            (await self.session.scalars(query.order_by(InventoryMovement.created_at.desc()))).all()
+        return await self._list_page(
+            query.order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc()),
+            limit,
+            offset,
         )
 
     async def low_stock(self) -> list[InventoryLocationStock]:
@@ -341,17 +353,29 @@ class InventoryService:
         self.session.expire_all()
         return await self._get_material_request(request_id)
 
-    async def list_material_requests(self) -> list[MaterialRequest]:
-        return list(
-            (
-                await self.session.scalars(
-                    select(MaterialRequest)
-                    .where(MaterialRequest.deleted_at.is_(None))
-                    .options(selectinload(MaterialRequest.lines))
-                    .order_by(MaterialRequest.created_at.desc())
-                )
-            ).all()
+    async def list_material_requests(
+        self, *, request_id: UUID | None = None, limit: int | None = None, offset: int = 0
+    ) -> tuple[list[MaterialRequest], int]:
+        query = (
+            select(MaterialRequest)
+            .where(MaterialRequest.deleted_at.is_(None))
+            .options(selectinload(MaterialRequest.lines))
+            .order_by(MaterialRequest.created_at.desc(), MaterialRequest.id.desc())
         )
+        if request_id:
+            query = query.where(MaterialRequest.id == request_id)
+        return await self._list_page(query, limit, offset)
+
+    async def _list_page[T](
+        self, query: Select[T], limit: int | None, offset: int
+    ) -> tuple[list[T], int]:
+        if limit is None and not offset:
+            rows = list(await self.session.scalars(query))
+            return rows, len(rows)
+        count = select(func.count()).select_from(query.order_by(None).subquery())
+        total = await self.session.scalar(count)
+        page_rows = await self.session.scalars(query.limit(limit or 100).offset(offset))
+        return list(page_rows), int(total or 0)
 
     async def reserve_request(self, request_id: UUID, actor: User) -> MaterialRequest:
         request = await self._get_material_request(request_id, for_update=True)
@@ -485,9 +509,7 @@ class InventoryService:
             if not payload.from_location_id or not payload.to_location_id:
                 raise AppException("Transfer requires source and destination.", status_code=422)
 
-            first_loc = sorted(
-                [str(payload.from_location_id), str(payload.to_location_id)]
-            )[0]
+            first_loc = sorted([str(payload.from_location_id), str(payload.to_location_id)])[0]
 
             if first_loc == str(payload.from_location_id):
                 await self._decrease_available(

@@ -88,7 +88,9 @@ class DocumentRepository:
             select(func.count()).select_from(query.with_only_columns(Document.id).subquery())
         )
         result = await self.session.execute(
-            query.order_by(Document.created_at.desc()).limit(limit).offset(offset)
+            query.order_by(Document.created_at.desc(), Document.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
         return list(result.scalars().unique().all()), int(total or 0)
 

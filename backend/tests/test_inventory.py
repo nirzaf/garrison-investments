@@ -240,6 +240,27 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         assert issued.status_code == 200
         assert issued.json()["status"] == "issued"
 
+        for path, filters, total in (
+            ("items", {"search": item["item_code"]}, 1),
+            ("movements", {"item_id": item["id"]}, 3),
+            ("requests", {"request_id": material_request["id"]}, 1),
+        ):
+            headers = {"Authorization": f"Bearer {store_token}"}
+            page = await client.get(
+                f"/api/v1/inventory/{path}", params={**filters, "limit": 1}, headers=headers
+            )
+            assert page.status_code == 200
+            assert page.headers["X-Total-Count"] == str(total)
+            assert len(page.json()) == 1
+            empty = await client.get(
+                f"/api/v1/inventory/{path}",
+                params={**filters, "limit": 1, "offset": total},
+                headers=headers,
+            )
+            assert empty.status_code == 200
+            assert empty.json() == []
+            assert empty.headers["X-Total-Count"] == str(total)
+
         negative = await client.post(
             "/api/v1/inventory/movements",
             json={

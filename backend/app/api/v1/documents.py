@@ -28,11 +28,15 @@ async def list_documents(
     project_id: Annotated[UUID | None, Query()] = None,
     document_type: Annotated[str | None, Query()] = None,
     search: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentListResponse:
     documents, total = await DocumentService(session).list_documents(
         project_id=project_id,
         document_type=document_type,
         search=search,
+        limit=limit,
+        offset=offset,
         actor=current_user,
     )
     return DocumentListResponse(
