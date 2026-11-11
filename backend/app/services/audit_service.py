@@ -3,7 +3,7 @@ from typing import Any
 from typing import cast as type_cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, Select, Text, cast, delete, func, or_, select
+from sqlalchemy import CursorResult, Select, Text, cast, delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -75,9 +75,7 @@ class AuditService:
                 http_method=http_method or context.method,
                 status_code=status_code,
                 source_service=(
-                    source_service
-                    or context.source_service
-                    or self.settings.log_source_service
+                    source_service or context.source_service or self.settings.log_source_service
                 ),
                 instance_id=instance_id or context.instance_id or self.settings.log_instance_id,
                 storage_tier=storage_tier,
@@ -112,6 +110,8 @@ class AuditService:
         limit: int = 100,
         offset: int = 0,
         ascending: bool = False,
+        after: tuple[datetime, UUID] | None = None,
+        include_total: bool = True,
     ) -> tuple[list[ActivityLog], int]:
         filters: list[ColumnElement[bool]] = [ActivityLog.deleted_at.is_(None)]
         if event_type:
@@ -142,6 +142,9 @@ class AuditService:
             filters.append(ActivityLog.created_at >= created_from)
         if created_to:
             filters.append(ActivityLog.created_at <= created_to)
+        if after is not None:
+            cursor = tuple_(ActivityLog.created_at, ActivityLog.id)
+            filters.append(cursor > tuple_(*after) if ascending else cursor < tuple_(*after))
         if search:
             normalized_search = search.strip()
             pattern = f"%{normalized_search}%"
@@ -176,8 +179,10 @@ class AuditService:
             .limit(limit)
             .offset(offset)
         )
-        total_query = select(func.count()).select_from(ActivityLog).where(*filters)
         logs = list((await self.session.scalars(query)).all())
+        if not include_total:
+            return logs, 0
+        total_query = select(func.count()).select_from(ActivityLog).where(*filters)
         total = int(await self.session.scalar(total_query) or 0)
         return logs, total
 
@@ -186,21 +191,17 @@ class AuditService:
         hot_cutoff = cutoff_at - self._retention_delta(
             hot_retention_days or self.settings.log_hot_retention_days
         )
-        records = list(
-            (
-                await self.session.scalars(
-                    select(ActivityLog).where(
-                        ActivityLog.deleted_at.is_(None),
-                        ActivityLog.storage_tier == "hot",
-                        ActivityLog.created_at < hot_cutoff,
-                    )
-                )
-            ).all()
+        result = await self.session.execute(
+            update(ActivityLog)
+            .where(
+                ActivityLog.deleted_at.is_(None),
+                ActivityLog.storage_tier == "hot",
+                ActivityLog.created_at < hot_cutoff,
+            )
+            .values(storage_tier="archive", archived_at=cutoff_at)
+            .execution_options(synchronize_session=False)
         )
-        for record in records:
-            record.storage_tier = "archive"
-            record.archived_at = cutoff_at
-        return len(records)
+        return int(type_cast(CursorResult[Any], result).rowcount or 0)
 
     async def purge_logs(self, *, archive_retention_days: int | None = None) -> int:
         purge_cutoff = utc_now() - self._retention_delta(
@@ -227,8 +228,10 @@ class AuditService:
             return "security_event"
         if action.startswith("logs."):
             return "log_access"
-        if action.startswith("system.") or action.startswith("celery.") or action.startswith(
-            "maintenance."
+        if (
+            action.startswith("system.")
+            or action.startswith("celery.")
+            or action.startswith("maintenance.")
         ):
             return "system_event"
         if old_values is not None or new_values is not None:

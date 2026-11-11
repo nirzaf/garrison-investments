@@ -14,6 +14,7 @@ import uvicorn
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
@@ -123,39 +124,41 @@ async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
 async def test_log_event_stream_returns_matching_events() -> None:
     await skip_if_database_unavailable()
     admin_email, admin_password = await create_user("admin")
+    action = f"test.stream.{uuid4().hex}"
+    timestamp = utc_now()
+    event_count = 205
 
     async with AsyncSessionLocal() as session:
-        admin = await UserRepository(session).get_by_email(admin_email)
-        assert admin is not None
-        await AuditService(session).record(
-            action="maintenance.logs_retention",
-            event_type="system_event",
-            severity="INFO",
-            user_id=admin.id,
-            comments="Retention completed",
-            source_service="backend-api",
+        session.add_all(
+            ActivityLog(action=action, created_at=timestamp) for _ in range(event_count)
         )
         await session.commit()
 
     async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
         admin_token = await login_for_token(client, admin_email, admin_password)
-        async with asyncio.timeout(10), client.stream(
-            "GET",
-            "/api/v1/log-events/stream",
-            params={
-                "action": "maintenance.logs_retention",
-                "created_from": (utc_now() - timedelta(minutes=5)).isoformat(),
-            },
-            headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"},
-        ) as response:
+        async with (
+            asyncio.timeout(10),
+            client.stream(
+                "GET",
+                "/api/v1/log-events/stream",
+                params={
+                    "action": action,
+                    "created_from": (utc_now() - timedelta(minutes=5)).isoformat(),
+                },
+                headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"},
+            ) as response,
+        ):
             assert response.status_code == 200
+            ids: list[str] = []
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     payload = json.loads(line.removeprefix("data: "))
-                    assert payload["action"] == "maintenance.logs_retention"
+                    assert payload["action"] == action
+                    ids.append(payload["id"])
+                if len(ids) == event_count:
                     break
-            else:
-                pytest.fail("stream did not yield a log event")
+            assert len(ids) == event_count
+            assert ids == sorted(set(ids))
 
 
 async def test_log_retention_archives_then_purges_old_logs() -> None:

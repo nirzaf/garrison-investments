@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -135,10 +136,10 @@ async def stream_log_events(
             },
         )
 
-    async def event_stream():
+    async def event_stream() -> AsyncIterator[str]:
         poll_seconds = get_settings().log_stream_poll_seconds
-        last_seen = created_from
-        seen_ids: set[str] = set()
+        page_size = 100
+        after: tuple[datetime, UUID] | None = None
         while True:
             if await request.is_disconnected():
                 break
@@ -154,18 +155,18 @@ async def stream_log_events(
                     source_service=source_service,
                     storage_tier=storage_tier,
                     search=search,
-                    created_from=last_seen,
-                    limit=100,
+                    created_from=created_from,
+                    limit=page_size,
                     ascending=True,
+                    after=after,
+                    include_total=False,
                 )
-                for log in logs:
-                    cursor = f"{log.created_at.isoformat()}:{log.id}"
-                    if cursor in seen_ids:
-                        continue
-                    seen_ids.add(cursor)
-                    last_seen = log.created_at
-                    payload = AuditLogResponse.model_validate(log).model_dump(mode="json")
-                    yield f"data: {json.dumps(payload)}\n\n"
+            for log in logs:
+                after = (log.created_at, log.id)
+                payload = AuditLogResponse.model_validate(log).model_dump(mode="json")
+                yield f"data: {json.dumps(payload)}\n\n"
+            if len(logs) == page_size:
+                continue
             yield ": keep-alive\n\n"
             await asyncio.sleep(poll_seconds)
 
