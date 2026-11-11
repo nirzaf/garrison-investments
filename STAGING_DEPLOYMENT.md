@@ -57,7 +57,7 @@ For UAT speed, staging can accept a shared login OTP by setting `APP_ENV=staging
 From the local repo:
 
 ```sh
-rsync -az --delete \
+rsync -az \
   --exclude '.git/' \
   --exclude '.env' \
   --exclude '.env.staging' \
@@ -80,16 +80,14 @@ On the VPS:
 ```sh
 cd /opt/garrison-investments-staging
 docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml config --quiet
+docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml up -d --wait postgres
+docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml run --rm --no-deps --build backend alembic upgrade head
 docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml up -d --build
-docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml exec -T backend alembic upgrade head
-docker compose -p garrisonstg --env-file .env.staging -f docker-compose.staging.yml exec -T backend python scripts/seed.py
 ```
 
 ## Staging Test Credentials
 
-Shared staging login verification OTP:
-
-- OTP: `123456`
+Obtain the temporary staging login code from the staging operator if the shared OTP is enabled.
 
 Role-specific staging users:
 
@@ -106,7 +104,7 @@ Role-specific staging users:
 
 Staging password:
 
-- Set `SEED_DEFAULT_PASSWORD` in `/opt/garrison-investments-staging/.env.staging` before running `python scripts/seed.py`.
+- Set `SEED_DEFAULT_PASSWORD` in `/opt/garrison-investments-staging/.env.staging` before running `python scripts/seed.py` to initialize a new UAT environment.
 
 ### What Each Test User Can Do
 

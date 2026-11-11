@@ -57,9 +57,12 @@ services:
       backend_proxy:
         aliases: [backend-proxy]
     depends_on:
-      - postgres
-      - redis
-      - minio
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health/readiness"]
       interval: 5s
@@ -97,6 +100,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     logging: *default-logging
 
   redis:
@@ -107,13 +115,18 @@ services:
     logging: *default-logging
 
   minio:
-    image: minio/minio:latest
+    image: ${OBJECT_STORAGE_IMAGE:-pgsty/silo:RELEASE.2026-11-09T00-00-00Z@sha256:08ce1505b5eacefbad1ca07159b242b9ce045a11c2817e3bc257b25f77bbc02d}
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     logging: *default-logging
 
   grafana_db_init:
@@ -142,7 +155,7 @@ services:
       - /tmp
 
   loki_minio_init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: ${OBJECT_STORAGE_CLIENT_IMAGE:-pgsty/mc:RELEASE.2026-11-09T00-00-00Z@sha256:82b1c51de77aa7687d4d2c1a2b388dc7752528a64377c48a3e1271dcac39dbcf}
     restart: "no"
     env_file:
       - .env
@@ -161,7 +174,8 @@ services:
           mc admin policy create local loki-writer /config/loki-policy.json
         mc admin policy attach local loki-writer --user "$${LOKI_MINIO_ACCESS_KEY}"
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     cap_drop:

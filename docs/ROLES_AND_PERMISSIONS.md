@@ -493,9 +493,7 @@ These accounts are environment-specific and do not change the RBAC model describ
 
 ### Staging Login Details
 
-Shared staging login OTP:
-
-- `123456`
+Obtain the temporary staging login code from the staging operator if the shared OTP is enabled.
 
 Role-specific staging accounts:
 
@@ -526,7 +524,7 @@ The staging deployment notes confirm the following:
 
 - one active staging user exists for each implemented role
 - login was verified successfully for `stg-civil-engineer@garrisons.qa`
-- the verified staging login used the shared OTP `123456`
+- the verified staging login used the shared staging OTP
 - `must_change_password=false` was confirmed for the tested account so UAT users are not blocked by forced password reset
 - the updated staging deployment document was synced back to the staging server path
 

@@ -69,6 +69,8 @@ jobs:
         run: docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
       - name: Validate staging compose file
         run: docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
+      - name: Start object storage and initialize the Loki bucket
+        run: docker compose --env-file .env.example -f docker-compose.prod.yml run --rm loki_minio_init
 
   backend-tests:
     name: Backend tests

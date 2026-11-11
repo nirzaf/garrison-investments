@@ -1,13 +1,13 @@
 # Production Readiness Review (PRR)
 **Project**: Construction Internal Portal (Garrison Investments)  
 **Date**: July 27, 2026
-**Status**: **APPROVED FOR PRODUCTION RELEASE (With Recommended Operations Checklist)**
+**Status**: **Historical review from July 2026**
 
 ---
 
 ## 1. Executive Summary & Production Verdict
 
-This document represents the final **Production Readiness Review (PRR)** for the Construction Internal Portal. Following a deep-dive codebase audit, static code verification, Nginx configuration analysis, and full test suite execution, the software stack has achieved **Level 3 (Enterprise Ready)** stability.
+This review describes the state of the Construction Internal Portal in July 2026. Follow the current [deployment runbook](OPERATIONS_AND_DEPLOYMENT.md) for release evidence and approval.
 
 All core functional workflows are backed by strict automated testing, database migrations are structured and backward-compatible, security controls follow strict industry best practices, and the recently resolved staging preview path ensures robust storage delivery.
 
@@ -121,18 +121,4 @@ Prior to initiating the production release, the release owner must complete and 
 ```
 
 ### Production Release Commands
-Run the standard deployment sequence from the remote host:
-
-```bash
-# 1. Start services with production configurations
-docker compose -f docker-compose.prod.yml up -d --build
-
-# 2. Run Database Migrations
-docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
-
-# 3. Dry-Run Restore Check
-docker compose -f docker-compose.prod.yml exec -T backend python scripts/restore_dry_run.py
-
-# 4. Verify Health Status
-curl -fsS http://localhost/health
-```
+Use the [current deployment and verification sequence](OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification).

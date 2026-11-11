@@ -12,16 +12,17 @@ All project documentation is maintained under [`docs/`](docs/). Start with the [
 cp .env.example .env
 ```
 
-2. Start the full local stack:
+2. Start the database, then wait until it accepts connections:
 
 ```bash
-docker compose up --build
+docker compose up -d --wait postgres
 ```
 
 3. Apply database migrations:
 
 ```bash
-docker compose exec backend alembic upgrade head
+docker compose run --rm --no-deps --build backend alembic upgrade head
+docker compose up -d --build
 ```
 
 4. Load sample data (optional; creates the role-based demo users, projects, BOQ, inventory, and

@@ -13,6 +13,17 @@ This document serves as the unified runbook for environments, deployments, confi
 - TLS certificate files under `nginx/ssl/` if HTTPS is enabled.
 - Production environment file copied to the repository root as `.env`.
 - Runtime access to Nginx, backend, Celery worker, Celery beat, PostgreSQL, Redis, and MinIO containers.
+- Compose defaults to digest-pinned Silo and mcli because the original MinIO Docker Hub images
+  are no longer available. The `minio` service name, S3 settings, and volume path stay the same.
+  Hosts using a local image or private mirror can set `OBJECT_STORAGE_IMAGE` and
+  `OBJECT_STORAGE_CLIENT_IMAGE`. Before switching an existing host, back up its storage volume
+  and verify application objects, backups, and Loki reads on an isolated copy. Keep the original
+  volume and image for rollback. See the [Silo migration guide](https://silo.pigsty.io/compatibility/migration/).
+- A Docker address pool that does not overlap the `backend_proxy` subnet
+  (`NGINX_BACKEND_PROXY_SUBNET`, default `172.29.254.0/29`). If it overlaps an existing network,
+  Compose fails with `invalid pool request: Pool overlaps with other one on this address space`;
+  change `NGINX_BACKEND_PROXY_SUBNET`, `NGINX_BACKEND_PROXY_DYNAMIC_RANGE` **and**
+  `NGINX_BACKEND_PROXY_IP` together so the trusted-proxy list still matches the proxy.
 
 **WARNING**: Do not commit production `.env` files, JWT private keys, SMTP credentials, database passwords, MinIO passwords, or backup encryption passwords.
 
@@ -127,8 +138,7 @@ Run these checks from the repository root on the deployment host:
 
 ```bash
 docker compose -f docker-compose.prod.yml config --quiet
-docker compose -f docker-compose.prod.yml up -d postgres
-docker compose -f docker-compose.prod.yml exec -T postgres pg_isready
+docker compose -f docker-compose.prod.yml up -d --wait postgres
 docker compose -f docker-compose.prod.yml run --rm --no-deps --build backend alembic upgrade head
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps
@@ -210,9 +220,10 @@ is not copied into a second backup.
 4. Confirm the schema loads, core tables are queryable, and the application passes `/health`.
 5. Record the restore test date, operator, backup object name, and result.
 
-Run the same isolated restore procedure for the latest Grafana dump, restore it into a temporary
-database owned by a temporary restricted user, and verify that its tables are readable. Do not point a
-running Grafana instance at the restore-test database.
+Run the same isolated restore procedure for the latest Grafana dump, then verify that its tables are
+readable. The dump preserves grants. Before restoring it, create the roles referenced by those grants
+in the isolated PostgreSQL instance as `NOLOGIN` roles. Keep the running Grafana instance connected
+to its normal database.
 
 Use the validation script to confirm the dump is readable:
 ```bash
@@ -266,7 +277,16 @@ duplicate in one transaction. Production reads and writes require `--i-understan
 Run `python scripts/report_inventory_reservation_drift.py --i-understand` from the production
 backend to list balances for review. Compare the recorded balance with the open request quantities
 and manual reserve movements before reconciling inventory.
-The stock balance checks apply to new writes. Validate the historical rows after reconciliation.
+
+Migration `202605300003_repair_inventory_reservations` recomputes the two derived columns —
+`material_request_lines.reserved_quantity` and `inventory_location_stock.reserved_qty` — from the
+open request quantities and the manual reserve movements, then validates the stock balance checks
+so they cover historical rows too. It prints `rows_recomputed=` per table and is safe to re-run
+(a second pass reports `0`).
+
+A negative `on_hand_qty` cannot be derived from any record, so `VALIDATE CONSTRAINT` aborts and the
+migration rolls back rather than inventing stock. Reconcile those balances with the drift report
+above, then re-run `alembic upgrade head`.
 
 ### Rollback
 1. Identify the last known good Git commit.
@@ -282,12 +302,11 @@ The stock balance checks apply to new writes. Validate the historical rows after
 ## 4. UAT Scenarios & Launch Readiness
 
 ### Seed Data
-For testing/staging only, run:
+For a new staging environment, configure a temporary `SEED_DEFAULT_PASSWORD` in its private
+environment file, then run:
 ```bash
 docker compose exec backend python scripts/seed.py
 ```
-Seeded accounts use the password `ChangeMe123!`.
-
 ### UAT Scenarios
 1. **Admin** logs in, creates a user, updates the role, and verifies audit entries.
 2. **Operation Manager** opens dashboard, confirms active projects, reports, documents, and notifications.
