@@ -239,6 +239,16 @@ python scripts/log_cli.py --base-url https://portal.example.com --token-file .lo
 
 For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_REMOTE_CLI.md](./LOGGING_AND_REMOTE_CLI.md).
 
+### Payment overage report
+
+Run this read-only command to list active invoices whose active payments exceed the invoice total.
+It emits one JSON line per invoice for finance review.
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T backend \
+  python scripts/report_payment_overages.py --i-understand
+```
+
 ### Rollback
 1. Identify the last known good Git commit.
 2. Check out the known good commit on the host.
