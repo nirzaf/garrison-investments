@@ -1908,7 +1908,10 @@ export interface components {
             entity_id: string;
             /** Entity Type */
             entity_type: string;
-            /** Expected Report Revision */
+            /**
+             * Expected Report Revision
+             * @description Required for keyed single-file daily-report uploads.
+             */
             expected_report_revision?: number | null;
             /** Files */
             files?: string[] | null;
@@ -6836,6 +6839,8 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                /** @description Required for local-* Idempotency-Key values. */
+                "X-Offline-Owner"?: string | null;
             };
             path?: never;
             cookie?: never;

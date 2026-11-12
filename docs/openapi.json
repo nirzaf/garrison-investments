@@ -1101,6 +1101,7 @@
                 "type": "null"
               }
             ],
+            "description": "Required for keyed single-file daily-report uploads.",
             "title": "Expected Report Revision"
           },
           "files": {
@@ -13928,6 +13929,25 @@
                 }
               ],
               "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required for local-* Idempotency-Key values.",
+            "in": "header",
+            "name": "X-Offline-Owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required for local-* Idempotency-Key values.",
+              "title": "X-Offline-Owner"
             }
           }
         ],

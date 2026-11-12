@@ -39,7 +39,10 @@ async def upload_files(
     kind: Annotated[str, Form()] = "photo",
     caption: Annotated[str | None, Form()] = None,
     files: Annotated[list[UploadFile] | None, File()] = None,
-    expected_report_revision: Annotated[int | None, Form(ge=1)] = None,
+    expected_report_revision: Annotated[
+        int | None,
+        Form(ge=1, description="Required for keyed single-file daily-report uploads."),
+    ] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> list[PhotoResponse]:
     if not files:
@@ -53,8 +56,18 @@ async def upload_files(
             status_code=413,
             error_code="UPLOAD_BATCH_TOO_LARGE",
         )
-    service = PhotoService(session)
     base_key = validate_key(idempotency_key)
+    if (
+        entity_type == "daily_report"
+        and len(files) == 1
+        and base_key
+        and expected_report_revision is None
+    ):
+        raise AppException(
+            "Reload the portal and reopen the report before uploading this file.",
+            status_code=409,
+            error_code="DAILY_REPORT_REVISION_REQUIRED",
+        )
     if expected_report_revision is not None and (
         not base_key or len(files) != 1 or entity_type != "daily_report"
     ):
@@ -63,6 +76,7 @@ async def upload_files(
             status_code=422,
             error_code="INVALID_VERSIONED_UPLOAD",
         )
+    service = PhotoService(session)
     uploaded = [
         await service.upload(
             file=file,

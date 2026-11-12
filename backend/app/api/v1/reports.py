@@ -19,6 +19,7 @@ from app.services.idempotency import validate_key
 from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
 from app.services.report_service import ReportService
 from app.services.reporting_service import ReportingService
+from app.utils.exceptions import AppException
 from app.utils.permissions import PERMISSION_REPORTS_VIEW
 
 router = APIRouter(prefix="/reports", tags=["Daily Reports"])
@@ -53,11 +54,28 @@ async def create_report(
     current_user: CurrentUser,
     session: DbSession,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    offline_owner: Annotated[
+        UUID | None,
+        Header(alias="X-Offline-Owner", description="Required for local-* Idempotency-Key values."),
+    ] = None,
 ) -> DailyReportResponse:
+    key = validate_key(idempotency_key)
+    if key and key.startswith("local-") and offline_owner is None:
+        raise AppException(
+            "Reload the portal before saving this offline draft.",
+            status_code=409,
+            error_code="OFFLINE_REPORT_CLIENT_UPGRADE_REQUIRED",
+        )
+    if offline_owner is not None and offline_owner != current_user.id:
+        raise AppException(
+            "The offline draft belongs to another account.",
+            status_code=403,
+            error_code="OFFLINE_REPORT_OWNER_MISMATCH",
+        )
     report = await ReportService(session).create_report(
         payload,
         current_user,
-        idempotency_key=validate_key(idempotency_key),
+        idempotency_key=key,
     )
     return DailyReportResponse.model_validate(report)
 

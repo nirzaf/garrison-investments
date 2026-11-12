@@ -426,13 +426,15 @@ test('an invalid legacy queued file stays local with a removable reason', async 
   expect(await ownedRecordCount(page, 'ownedPhotoQueue')).toBe(0);
 });
 
-test('a lost upload receipt is replayed before a newer local text edit', async ({
+test('foreground sync recovers a lost upload receipt with Background Sync unavailable', async ({
   page,
   context,
   request
 }) => {
+  await page.addInitScript(() => Reflect.deleteProperty(window, 'SyncManager'));
   const account = seed();
   const token = await signIn(page, account);
+  expect(await page.evaluate(() => 'SyncManager' in window)).toBe(false);
   await queueReport(page, context, account.projectId, 'Original report text', 'receipt.jpg');
 
   let afterUpload!: () => void;

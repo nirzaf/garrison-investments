@@ -404,7 +404,7 @@ async function persistReportDraft(scope, localDraftId, accessToken, signal, hasL
         create: (payload, key) =>
           writeReport('/reports', payload, accessToken, signal, {
             method: 'POST',
-            headers: { 'Idempotency-Key': key }
+            headers: { 'Idempotency-Key': key, 'X-Offline-Owner': scope.ownerUserId }
           }),
         rememberCreate: async (pendingCreate) =>
           Boolean(await patch((draft) => ({ ...draft, pendingCreate }))),

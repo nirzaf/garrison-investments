@@ -41,7 +41,10 @@ export async function createDailyReport(
 ): Promise<DailyReportRecord> {
   const response = await apiClient.post<DailyReportRecord>('/reports', payload, {
     ...sessionRequestConfig(scope),
-    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+    headers: {
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      ...(scope ? { 'X-Offline-Owner': scope.ownerUserId } : {})
+    }
   });
   return response.data;
 }
