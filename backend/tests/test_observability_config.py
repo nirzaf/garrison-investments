@@ -110,9 +110,18 @@ def test_alloy_applies_second_stage_credential_redaction() -> None:
         "secret",
         "session",
         "token",
+        "x[_-]amz[_-](?:credential|signature|security[_-]token)",
     ):
         assert token in alloy
     assert "Bearer" in alloy
+
+    for filename in ("nginx.conf", "nginx.prod.conf"):
+        nginx = (ROOT / "nginx" / filename).read_text()
+        access_format = next(
+            line for line in nginx.splitlines() if line.startswith("log_format portal_access")
+        )
+        assert "$request_method $uri $server_protocol" in access_format
+        assert "$request_uri" not in access_format and "$args" not in access_format
 
 
 def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> None:

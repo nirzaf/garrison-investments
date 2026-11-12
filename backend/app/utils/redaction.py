@@ -16,13 +16,15 @@ _SENSITIVE_KEY_PARTS = {
     "secret",
     "set_cookie",
     "token",
+    "x_amz_signature",
 }
 _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _URL_CREDENTIAL_PATTERN = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s:]+:[^@\s]+@")
 _KEY_VALUE_CREDENTIAL_PATTERN = re.compile(
     r"(?i)\b(?P<prefix>(?:[a-z0-9]+[_-])*(?:api[_-]?key|auth(?:orization)?|cookie|"
-    r"jwt|otp(?:[_-]code)?|pass(?:word)?|passphrase|secret|session|token)=)[^&\s\"']+"
+    r"jwt|otp(?:[_-]code)?|pass(?:word)?|passphrase|secret|session|token|"
+    r"x[_-]amz[_-](?:credential|signature|security[_-]token))=)[^&\s\"']+"
 )
 _MAX_REDACTION_DEPTH = 24
 

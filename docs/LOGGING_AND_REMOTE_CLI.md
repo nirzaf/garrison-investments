@@ -80,6 +80,8 @@ Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostn
 
 Use **Garrison Production Logs** for error counts, HTTP status distribution, and log search. Use **Garrison Incident Explorer** for latency and request or task correlation. The dashboard definitions live in [observability/grafana/dashboards](../observability/grafana/dashboards/).
 
+The dashboard IDs are `garrison-production-logs` and `garrison-incident-explorer`. Record the dashboard ID and the relevant time range when escalating an incident.
+
 ```logql
 {environment="production"} | json | message=~"unhandled_request_exception|task_failed"
 {environment="production"} | json | request_id="req-123"
@@ -87,7 +89,7 @@ Use **Garrison Production Logs** for error counts, HTTP status distribution, and
 {environment="production", service=~"celery_worker|celery_beat"} | json | message="task_retried"
 ```
 
-Request, session, user, and task IDs are JSON fields queried after `| json`. Keep high-cardinality identifiers out of Loki labels. Keep request bodies, authorization headers, cookies, OTPs, credentials, and raw task arguments or results out of logging call sites. The backend's redaction processor and Alloy's filters protect emitted records as a second layer.
+Request, session, user, and task IDs are JSON fields queried after `| json`. Keep high-cardinality identifiers out of Loki labels. Keep request bodies, authorization headers, cookies, OTPs, credentials, and raw task arguments or results out of logging call sites. Nginx access logs omit query strings. The backend's redaction processor and Alloy's filters remove credential values, including S3 signing parameters, from supported structured and query-string formats.
 
 ### Alert delivery
 
@@ -125,3 +127,11 @@ pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 ```
 
 These checks cover structured context and redaction, dashboard and alert configuration, retention, ports, pinned images, and database initialization. Check deployed service health and alert delivery when the change affects a live environment.
+
+### Observability acceptance drill
+
+1. Record the source SHA, deployed configuration identity, operator, reviewer, and isolated test environment. Verify authenticated Grafana access and confirm that Loki, Alloy, PostgreSQL, and the backend are reachable only through their intended network paths.
+2. Generate a controlled HTTP failure and Celery retry with a shared synthetic correlation marker. Find both in **Garrison Incident Explorer** and record their request and task IDs. Include harmless credential-shaped markers to test application and Alloy redaction. Check the collected records for those markers without copying secrets into the evidence.
+3. Exercise each provisioned rule with representative signals. Confirm the query result and configured evaluation window without changing the rule thresholds. Use the approved test contact point. Record firing and resolved mailbox receipts, rule ID, timestamps, and grouping behavior.
+4. Interrupt collection briefly in the isolated environment. Keep the source container running, emit a unique marker, and check whether it arrives after recovery. Record the outage duration and the events observed or missing. Use the incident fallback when a collection gap is suspected.
+5. Record the effective Loki operational retention and the separate database audit retention. Check an authorized archived-audit query and link the evidence to the release record. Keep any named operator and mailbox evidence in the approved restricted location.

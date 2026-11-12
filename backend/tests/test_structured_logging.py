@@ -66,6 +66,10 @@ def test_structured_logging_redacts_nested_secrets_and_credentials(capfd) -> Non
         payload={"api_token": "nested-secret", "safe": "visible"},
         endpoint="postgresql://user:password@postgres/garrison",
         authorization_text="Bearer abc.def.ghi",
+        file_url=(
+            "https://store.example.invalid/portal-files/item?"
+            "X-Amz-Credential=fixture-credential&X-Amz-Signature=fixture-signature"
+        ),
     )
 
     output = capfd.readouterr().err
@@ -77,6 +81,8 @@ def test_structured_logging_redacts_nested_secrets_and_credentials(capfd) -> Non
     assert record["authorization_text"] == "[redacted]"
     assert "plain-secret" not in output
     assert "nested-secret" not in output
+    assert "fixture-credential" not in output
+    assert "fixture-signature" not in output
 
 
 @pytest.mark.parametrize(
@@ -186,9 +192,7 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
 
     assert response.status_code == 200
     records = [
-        json.loads(line)
-        for line in capfd.readouterr().err.splitlines()
-        if line.startswith("{")
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
     ]
     completion = next(
         record for record in records if record.get("message") == "http_request_completed"
@@ -245,9 +249,7 @@ def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:
 
     assert response.status_code == 200
     records = [
-        json.loads(line)
-        for line in capfd.readouterr().err.splitlines()
-        if line.startswith("{")
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
     ]
     assert not any(record.get("message") == "http_request_completed" for record in records)
     assert log_context_dict() == {}
