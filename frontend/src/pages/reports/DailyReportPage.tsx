@@ -419,6 +419,48 @@ export function DailyReportPage() {
   }, [scope]);
 
   useEffect(() => {
+    if (!scope || !savedReportId) return;
+    let controller: AbortController | undefined;
+    const loadFiles = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      const files: PhotoRecord[] = [];
+      try {
+        do {
+          const page = await listPhotos(
+            { entityType: 'daily_report', entityId: savedReportId, offset: files.length },
+            request.signal
+          );
+          files.push(...page.items);
+          if (!page.items.length || files.length >= page.total) break;
+        } while (!request.signal.aborted);
+        if (!request.signal.aborted && sameScope(getBrowserSession()?.scope, scope)) {
+          setUploadedFiles(files);
+        }
+      } catch (error) {
+        if (
+          !request.signal.aborted &&
+          navigator.onLine &&
+          sameScope(getBrowserSession()?.scope, scope)
+        ) {
+          setError(formatApiError(error, 'Unable to load the saved report attachments.'));
+        }
+      }
+    };
+    const refreshFiles = (event: Event) => {
+      const { scope: source } = (event as CustomEvent<{ scope: OfflineScope }>).detail;
+      if (sameScope(source, scope)) void loadFiles();
+    };
+    void loadFiles();
+    window.addEventListener('photo-queue-sync-complete', refreshFiles);
+    return () => {
+      controller?.abort();
+      window.removeEventListener('photo-queue-sync-complete', refreshFiles);
+    };
+  }, [savedReportId, scope]);
+
+  useEffect(() => {
     if (!form.project_id) {
       setSupervisorUpdates([]);
       return;
@@ -544,10 +586,8 @@ export function DailyReportPage() {
         },
         true
       );
-      const files = await listPhotos({ entityType: 'daily_report', entityId: report.id });
-      setUploadedFiles(files.items);
     } catch (loadError) {
-      setError(formatApiError(loadError, 'Unable to load the saved report or its attachments.'));
+      setError(formatApiError(loadError, 'Unable to save the reopened report on this device.'));
     } finally {
       setIsSaving(false);
     }
@@ -1536,7 +1576,7 @@ export function DailyReportPage() {
                     onClick={() => void resumeReport(report)}
                     type="button"
                   >
-                    Resume report
+                    {savedReportId === report.id ? 'Editing this report' : 'Resume report'}
                   </button>
                 ) : null}
                 {report.status === 'approved' ? (

@@ -5,19 +5,25 @@ import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
 import { listSupervisorUpdates } from '../../api/supervisorUpdates';
 import { useAuth } from '../../context/useAuth';
+import { useDebouncedSearch } from '../../useDebouncedSearch';
 import { SupervisorUpdateDetails } from './SupervisorEvidence';
 
 const pageSize = 20;
 
 export function SupervisorReviewPage() {
   const { user } = useAuth();
-  const [projectId, setProjectId] = useState('');
+  const [project, setProject] = useState<{ id: string; name: string }>();
+  const [search, setSearch] = useState('');
+  const projectId = project?.id ?? '';
+  const term = useDebouncedSearch(search);
   const [status, setStatus] = useState('');
   const [offset, setOffset] = useState(0);
   const projects = useQuery({
-    queryKey: ['supervisor-review-projects'],
-    queryFn: () => listProjects({})
+    queryKey: ['supervisor-review-projects', term],
+    queryFn: () => listProjects({ search: term || undefined, limit: 30 })
   });
+  const options = projects.data?.items ?? [];
+  const selectedOutsideResults = project && !options.some((option) => option.id === project.id);
   const needsProject = user?.role === 'civil_engineer' && !projectId;
   const updates = useQuery({
     queryKey: ['supervisor-review', projectId, status, offset],
@@ -36,19 +42,31 @@ export function SupervisorReviewPage() {
       <h2 className="text-2xl font-semibold text-theme-text-primary">Supervisor site updates</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
+          Search projects
+          <input
+            className="form-field"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label className="block text-sm">
           Project
           <select
             className="form-field"
             value={projectId}
             onChange={(event) => {
-              setProjectId(event.target.value);
+              setProject(
+                options.find((option) => option.id === event.target.value) ??
+                  (event.target.value === projectId ? project : undefined)
+              );
               setOffset(0);
             }}
           >
             <option value="">
               {user?.role === 'civil_engineer' ? 'Select a project' : 'All accessible projects'}
             </option>
-            {projects.data?.items.map((project) => (
+            {selectedOutsideResults && <option value={project.id}>{project.name}</option>}
+            {options.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>
@@ -71,6 +89,8 @@ export function SupervisorReviewPage() {
           </select>
         </label>
       </div>
+      {projects.isPending && <p role="status">Loading projects…</p>}
+      {projects.isSuccess && !options.length && <p>No matching projects.</p>}
       {projects.isError && <p role="alert">Unable to load projects.</p>}
       {needsProject ? (
         <p>Select a project to see its site updates.</p>

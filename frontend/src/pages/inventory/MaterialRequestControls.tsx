@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useRef, useState } from 'react';
 
 import { formatApiError } from '../../api/errors';
@@ -227,10 +228,15 @@ export function MaterialFulfillment({
   canManage: boolean;
   onSuccess: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<'reserve' | 'issue' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const attempt = useRef<{ signature: string; key: string } | null>(null);
+  const attempt = useRef<{
+    signature: string;
+    command: MaterialQuantityCommand;
+    key: string;
+  } | null>(null);
   const inFlight = useRef(false);
   const eligible =
     canManage &&
@@ -248,19 +254,31 @@ export function MaterialFulfillment({
       setError('Enter a quantity for at least one line.');
       return;
     }
-    const signature = JSON.stringify([action, command]);
-    if (attempt.current?.signature !== signature)
-      attempt.current = { signature, key: crypto.randomUUID() };
+    const signature = JSON.stringify([action, command.lines]);
+    if (attempt.current?.signature !== signature) {
+      attempt.current = { signature, command, key: crypto.randomUUID() };
+    }
+    const intent = attempt.current;
     inFlight.current = true;
     setPending(action);
     setError(null);
     try {
-      await fulfillMaterialRequest(request.id, action, command, attempt.current.key);
+      await fulfillMaterialRequest(request.id, action, intent.command, intent.key);
       setQuantities({});
       attempt.current = null;
       onSuccess();
     } catch (cause) {
-      setError(formatApiError(cause, 'Unable to apply the selected quantities.'));
+      const status = isAxiosError(cause) ? cause.response?.status : undefined;
+      if (status && status >= 400 && status < 500) {
+        attempt.current = null;
+        if (status === 409) onSuccess();
+      }
+      setError(
+        formatApiError(
+          cause,
+          'Unable to confirm the change. Retry the same quantities to check the result.'
+        )
+      );
     } finally {
       inFlight.current = false;
       setPending(null);
@@ -268,7 +286,10 @@ export function MaterialFulfillment({
   }
 
   return (
-    <details className="mt-2 rounded-md border border-theme-border p-2">
+    <details
+      className="mt-2 rounded-md border border-theme-border p-2"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       <summary className="cursor-pointer font-medium">Request lines</summary>
       {request.lines.map((line) => {
         const item = items.find((candidate) => candidate.id === line.item_id);
@@ -296,7 +317,7 @@ export function MaterialFulfillment({
                     setQuantities({ ...quantities, [line.id]: event.target.value })
                   }
                 />
-                {request.from_location_id && (
+                {expanded && request.from_location_id && (
                   <RequestLineAvailability
                     itemId={line.item_id}
                     locationId={request.from_location_id}

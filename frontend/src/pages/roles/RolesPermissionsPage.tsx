@@ -495,7 +495,11 @@ function RolesDocumentation() {
               'reports:view',
               'Site update review and supervisor authoring'
             ],
-            ['/approvals', 'reports:approve', 'Approval inbox']
+            [
+              '/approvals',
+              'Signed in',
+              'Own outbox. Inbox and daily-report approvals require reports:approve.'
+            ]
           ]}
         />
       </DocSection>
@@ -537,7 +541,11 @@ function RolesDocumentation() {
               'Company-wide or scoped visibility. The company permission also opens Analytics and Launch readiness.'
             ],
             ['Daily reports', 'reports:submit', 'Submit daily reports or supervisor updates'],
-            ['Approvals', 'reports:approve', 'Approval inbox and workflows'],
+            [
+              'Approvals',
+              'Signed in / reports:approve',
+              'Own submitted requests and permitted approval inboxes'
+            ],
             ['Report evidence', 'reports:view', 'Photos and report-adjacent content'],
             [
               'Inventory and materials',

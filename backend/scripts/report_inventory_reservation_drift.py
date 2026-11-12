@@ -5,13 +5,16 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Select, func, or_, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal, engine
+from app.models.approval import Approval
 from app.models.inventory import (
     InventoryLocationStock,
     InventoryMovement,
@@ -23,6 +26,7 @@ from app.models.inventory import (
 async def report_drift() -> None:
     stock = InventoryLocationStock
     request = MaterialRequest
+    approval = Approval
     line = MaterialRequestLine
     movement = InventoryMovement
     open_requests = (
@@ -36,7 +40,7 @@ async def report_drift() -> None:
         .where(
             line.deleted_at.is_(None),
             request.deleted_at.is_(None),
-            request.status.in_(["reserved", "partially_issued"]),
+            request.status.in_(["approved", "partially_reserved", "reserved", "partially_issued"]),
         )
         .group_by(line.item_id, request.from_location_id)
         .subquery()
@@ -55,7 +59,7 @@ async def report_drift() -> None:
         .correlate(stock)
         .scalar_subquery()
     )
-    expected = func.greatest(0, remaining + manual_reserves)
+    expected = recorded + manual_reserves
     query = (
         select(
             stock.item_id,
@@ -79,15 +83,47 @@ async def report_drift() -> None:
                 stock.reserved_qty < 0,
                 stock.reserved_qty > stock.on_hand_qty,
                 stock.reserved_qty != expected,
-                recorded != remaining,
+                recorded > remaining,
             ),
         )
         .order_by(stock.location_id, stock.item_id)
     )
+    cancelled_approvals = (
+        select(request.id.label("request_id"), approval.id.label("approval_id"), approval.status)
+        .join(approval, approval.request_id == request.id)
+        .where(
+            request.status == "cancelled",
+            request.deleted_at.is_(None),
+            approval.request_type == "material_request",
+            approval.status.in_(["pending", "delegated", "escalated"]),
+            approval.deleted_at.is_(None),
+        )
+        .order_by(request.id, approval.id)
+    )
+    cancelled_reservations = (
+        select(request.id.label("request_id"), line.id.label("line_id"), line.reserved_quantity)
+        .join(line, line.request_id == request.id)
+        .where(
+            request.status == "cancelled",
+            request.deleted_at.is_(None),
+            line.deleted_at.is_(None),
+            line.reserved_quantity != 0,
+        )
+        .order_by(request.id, line.id)
+    )
+
+    async def print_rows(session: AsyncSession, finding: str, statement: Select[Any]) -> None:
+        async for row in await session.stream(statement):
+            print(json.dumps({"finding": finding, **row._mapping}, default=str))
+
     try:
         async with AsyncSessionLocal() as session:
-            async for row in await session.stream(query):
-                print(json.dumps(dict(row._mapping), default=str))
+            await session.execute(text("SET TRANSACTION READ ONLY"))
+            await print_rows(session, "stock_reservation_drift", query)
+            await print_rows(session, "cancelled_request_with_open_approval", cancelled_approvals)
+            await print_rows(
+                session, "cancelled_request_with_reserved_line", cancelled_reservations
+            )
     finally:
         await engine.dispose()
 

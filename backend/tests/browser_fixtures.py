@@ -7,7 +7,7 @@ import os
 import secrets
 from datetime import timedelta
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import uvicorn
 from sqlalchemy.engine import make_url
@@ -26,10 +26,9 @@ def configure() -> None:
         raise ValueError("Browser tests require a dedicated local garrison_browser_test database.")
     redis_url = os.environ.get("BROWSER_TEST_REDIS_URL", "redis://127.0.0.1:6379/8")
     s3_endpoint = os.environ.get("BROWSER_TEST_MINIO_ENDPOINT", "127.0.0.1:9000")
-    if (
-        urlsplit(redis_url).hostname not in {"localhost", "127.0.0.1"}
-        or urlsplit(f"http://{s3_endpoint}").hostname not in {"localhost", "127.0.0.1"}
-    ):
+    if urlsplit(redis_url).hostname not in {"localhost", "127.0.0.1"} or urlsplit(
+        f"http://{s3_endpoint}"
+    ).hostname not in {"localhost", "127.0.0.1"}:
         raise ValueError("Browser tests require local Redis and object storage.")
     os.environ.update(
         APP_ENV="test",
@@ -49,7 +48,7 @@ def configure() -> None:
     )
 
 
-async def seed(role: str) -> None:
+async def seed(role: str, existing_project_id: UUID | None) -> None:
     from app.database import AsyncSessionLocal, engine
     from app.models.project import Project
     from app.models.project_member import ProjectMember
@@ -72,16 +71,21 @@ async def seed(role: str) -> None:
             )
             session.add(user)
             await session.flush()
-            project = Project(
-                name=f"Browser Test {identifier}",
-                code=f"E2E-{identifier}",
-                status="active",
-                scope_of_work="Browser regression tests",
-                target_end_date=business_today() + timedelta(days=60),
-                created_by=user.id,
-            )
-            session.add(project)
-            await session.flush()
+            if existing_project_id is not None:
+                project = await session.get(Project, existing_project_id)
+                if project is None:
+                    raise ValueError("The browser-test project does not exist.")
+            else:
+                project = Project(
+                    name=f"Browser Test {identifier}",
+                    code=f"E2E-{identifier}",
+                    status="active",
+                    scope_of_work="Browser regression tests",
+                    target_end_date=business_today() + timedelta(days=60),
+                    created_by=user.id,
+                )
+                session.add(project)
+                await session.flush()
             if role == "civil_supervisor":
                 session.add(ProjectMember(project_id=project.id, user_id=user.id))
             project_id = str(project.id)
@@ -94,10 +98,18 @@ async def seed(role: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["seed", "seed-supervisor", "serve"])
-    parser.add_argument("--role", choices=["admin", "store_keeper"], default="admin")
+    parser.add_argument(
+        "--role", choices=["admin", "store_keeper", "operation_manager"], default="admin"
+    )
+    parser.add_argument("--project-id", type=UUID)
     args = parser.parse_args()
     configure()
     if args.command == "serve":
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
     else:
-        asyncio.run(seed("civil_supervisor" if args.command == "seed-supervisor" else args.role))
+        asyncio.run(
+            seed(
+                "civil_supervisor" if args.command == "seed-supervisor" else args.role,
+                args.project_id,
+            )
+        )
