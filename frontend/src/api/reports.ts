@@ -1,4 +1,5 @@
-import { apiClient, EXPORT_TIMEOUT_MS } from './client';
+import { apiClient, EXPORT_TIMEOUT_MS, sessionRequestConfig } from './client';
+import type { OfflineScope } from './offlineDb';
 import type { components } from './schema';
 
 export type ReportFileRef = components['schemas']['ReportFileRef'];
@@ -35,9 +36,11 @@ export async function listDailyReports(params: {
 
 export async function createDailyReport(
   payload: DailyReportPayload,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  scope?: OfflineScope
 ): Promise<DailyReportRecord> {
   const response = await apiClient.post<DailyReportRecord>('/reports', payload, {
+    ...sessionRequestConfig(scope),
     headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
   });
   return response.data;
@@ -45,14 +48,26 @@ export async function createDailyReport(
 
 export async function updateDailyReport(
   reportId: string,
-  payload: DailyReportPayload
+  payload: DailyReportPayload,
+  scope?: OfflineScope
 ): Promise<DailyReportRecord> {
-  const response = await apiClient.put<DailyReportRecord>(`/reports/${reportId}`, payload);
+  const response = await apiClient.put<DailyReportRecord>(
+    `/reports/${reportId}`,
+    payload,
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 
-export async function submitDailyReport(reportId: string): Promise<DailyReportRecord> {
-  const response = await apiClient.post<DailyReportRecord>(`/reports/${reportId}/submit`);
+export async function submitDailyReport(
+  reportId: string,
+  scope?: OfflineScope
+): Promise<DailyReportRecord> {
+  const response = await apiClient.post<DailyReportRecord>(
+    `/reports/${reportId}/submit`,
+    undefined,
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 

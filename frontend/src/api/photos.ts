@@ -1,4 +1,5 @@
-import { apiClient } from './client';
+import { apiClient, sessionRequestConfig } from './client';
+import type { OfflineScope } from './offlineDb';
 import { normalizeProtectedFileUrl } from './fileUrls';
 import type { components } from './schema';
 
@@ -12,6 +13,7 @@ export async function uploadEntityFiles(params: {
   kind: 'photo' | 'attachment';
   files: FileList | File[];
   idempotencyKey?: string;
+  scope?: OfflineScope;
 }): Promise<PhotoRecord[]> {
   const formData = new FormData();
   formData.append('entity_type', params.entityType);
@@ -19,6 +21,7 @@ export async function uploadEntityFiles(params: {
   formData.append('kind', params.kind);
   Array.from(params.files).forEach((file) => formData.append('files', file));
   const response = await apiClient.post<PhotoRecord[]>('/photos/upload', formData, {
+    ...sessionRequestConfig(params.scope),
     headers: {
       'Content-Type': 'multipart/form-data',
       ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {})

@@ -21,7 +21,7 @@ export function OfflineIndicator() {
         if (nextReason) setReason(nextReason);
         return;
       }
-      void flushPhotoQueue();
+      void flushPhotoQueue().catch(() => {});
     };
 
     const probeHealth = async () => {

@@ -1,10 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { getBrowserSession } from '../../api/browserSession';
+import { sameScope, type OfflineScope } from '../../api/offlineDb';
+import {
+  clearSupervisorDraft,
+  getSupervisorDraft,
+  saveSupervisorDraft
+} from '../../api/offlineQueue';
 import { formatApiError } from '../../api/errors';
 import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
@@ -24,8 +31,6 @@ import { useAuth } from '../../context/useAuth';
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE = 60 * 1024 * 1024;
 const MAX_PHOTOS = 5;
-
-const draftKey = 'garrisons.supervisor-update-draft';
 
 const updateSchema = z.object({
   project_id: z.string().min(1, 'Select a project.'),
@@ -87,13 +92,21 @@ function buildPayload(values: UpdateFormValues, draft: SupervisorUpdateRecord | 
   };
 }
 
-function persistDraft(values: UpdateFormValues, draft: SupervisorUpdateRecord | null) {
+function persistDraft(
+  values: UpdateFormValues,
+  draft: SupervisorUpdateRecord | null,
+  scope: OfflineScope
+) {
   const payload = buildPayload(values, draft);
-  return draft ? updateSupervisorUpdate(draft.id, payload) : createSupervisorUpdate(payload);
+  return draft
+    ? updateSupervisorUpdate(draft.id, payload, scope)
+    : createSupervisorUpdate(payload, scope);
 }
 
 export function SupervisorUpdatePage() {
   const { user } = useAuth();
+  const browserScope = getBrowserSession()?.scope;
+  const scope = browserScope?.ownerUserId === user?.id ? browserScope : undefined;
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [updates, setUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,15 +117,7 @@ export function SupervisorUpdatePage() {
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
 
-  const storedDraft = useMemo(() => {
-    const defaultValues = createDefaultValues();
-    try {
-      const raw = window.localStorage.getItem(draftKey);
-      return raw ? { ...defaultValues, ...JSON.parse(raw) } : defaultValues;
-    } catch {
-      return defaultValues;
-    }
-  }, []);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
   const {
     formState: { errors, isDirty },
@@ -122,7 +127,7 @@ export function SupervisorUpdatePage() {
     reset,
     watch
   } = useForm<UpdateFormInput, unknown, UpdateFormValues>({
-    defaultValues: storedDraft,
+    defaultValues: createDefaultValues(),
     resolver: zodResolver(updateSchema)
   });
 
@@ -163,37 +168,64 @@ export function SupervisorUpdatePage() {
   }, []);
 
   useEffect(() => {
+    if (!scope) return;
+    let active = true;
+    void getSupervisorDraft<UpdateFormInput>(scope)
+      .then((stored) => {
+        if (!active || !sameScope(getBrowserSession()?.scope, scope)) return;
+        if (stored) reset({ ...createDefaultValues(), ...stored });
+        setDraftHydrated(true);
+      })
+      .catch(() => {
+        if (active) setError('Unable to open the local site update draft.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [reset, scope]);
+
+  useEffect(() => {
+    if (!scope || !draftHydrated) return;
     let timer: ReturnType<typeof setTimeout>;
     const subscription = watch((value, { name }) => {
       window.clearTimeout(timer);
       if (!name && !value.project_id) return;
       timer = window.setTimeout(() => {
-        window.localStorage.setItem(draftKey, JSON.stringify(value));
+        void saveSupervisorDraft(scope, value).catch(() => {
+          if (sameScope(getBrowserSession()?.scope, scope))
+            setError('Unable to save the local site update draft.');
+        });
       }, 800);
     });
     return () => {
       subscription.unsubscribe();
       window.clearTimeout(timer);
     };
-  }, [watch]);
+  }, [draftHydrated, scope, watch]);
 
   useEffect(() => {
+    if (!scope || !draftHydrated) return;
     const interval = window.setInterval(() => {
+      if (!sameScope(getBrowserSession()?.scope, scope)) return;
       const parsed = updateSchema.safeParse(getValues());
       if (!parsed.success || isSaving || (savedDraft && !isDirty)) return;
       setIsSaving(true);
-      void persistDraft(parsed.data, savedDraft)
+      void persistDraft(parsed.data, savedDraft, scope)
         .then((update) => {
+          if (!sameScope(getBrowserSession()?.scope, scope)) return;
           setSavedDraft(update);
           setLastAutosavedAt(new Date().toLocaleTimeString());
         })
-        .catch(() => {
-          window.localStorage.setItem(draftKey, JSON.stringify(getValues()));
-        })
+        .catch(() =>
+          saveSupervisorDraft(scope, getValues()).catch(() => {
+            if (sameScope(getBrowserSession()?.scope, scope))
+              setError('Unable to save the local site update draft.');
+          })
+        )
         .finally(() => setIsSaving(false));
     }, 30000);
     return () => window.clearInterval(interval);
-  }, [getValues, isDirty, isSaving, savedDraft]);
+  }, [draftHydrated, getValues, isDirty, isSaving, savedDraft, scope]);
 
   useEffect(() => {
     void loadUpdates(selectedProjectId);
@@ -234,13 +266,13 @@ export function SupervisorUpdatePage() {
   }
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!files?.length) return;
+    if (!scope || !files?.length) return;
     setIsSaving(true);
     setError(null);
     setNotice(null);
     try {
       const values = watch();
-      const update = savedDraft ?? (await persistDraft(values as UpdateFormValues, null));
+      const update = savedDraft ?? (await persistDraft(values as UpdateFormValues, null, scope));
       setSavedDraft(update);
       const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
       const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
@@ -258,7 +290,8 @@ export function SupervisorUpdatePage() {
         entityType: 'supervisor_update',
         entityId: update.id,
         kind,
-        files
+        files,
+        scope
       });
       setUploadedFiles((prev) => [...prev, ...uploaded]);
       setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
@@ -270,11 +303,13 @@ export function SupervisorUpdatePage() {
   }
 
   async function saveDraft(values: UpdateFormValues) {
+    if (!scope) return null;
     setError(null);
     setNotice(null);
     setIsSaving(true);
     try {
-      const update = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      const update =
+        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(update);
       setNotice('Draft saved.');
       await loadUpdates(values.project_id);
@@ -288,18 +323,20 @@ export function SupervisorUpdatePage() {
   }
 
   async function submitUpdate(values: UpdateFormValues) {
+    if (!scope) return;
     setError(null);
     setNotice(null);
     setIsSaving(true);
     try {
-      const draft = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      const draft =
+        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(draft);
-      await submitSupervisorUpdate(draft.id);
+      await submitSupervisorUpdate(draft.id, scope);
       setSavedDraft(null);
       setUploadedFiles([]);
       setLastAutosavedAt(null);
       reset(createDefaultValues());
-      window.localStorage.removeItem(draftKey);
+      await clearSupervisorDraft(scope);
       setNotice('Site update submitted.');
       await loadUpdates(values.project_id);
     } catch (submitError) {

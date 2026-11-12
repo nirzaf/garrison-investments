@@ -2,6 +2,8 @@ import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { getBrowserSession } from '../../api/browserSession';
+import { sameScope, type OfflineScope } from '../../api/offlineDb';
 import { formatApiError } from '../../api/errors';
 import {
   clearReportDraft,
@@ -175,6 +177,8 @@ const t = (str: string) => str;
 export function DailyReportPage() {
   const { user } = useAuth();
   const currentUserId = user?.id;
+  const browserScope = getBrowserSession()?.scope;
+  const scope = browserScope?.ownerUserId === currentUserId ? browserScope : undefined;
   const [searchParams] = useSearchParams();
   const focusedReportId = searchParams.get('reportId');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -199,10 +203,10 @@ export function DailyReportPage() {
   const serverSavedSnapshot = useRef(JSON.stringify(form));
   const draftKey = useRef<string | null>(null);
 
-  function getDraftKey() {
+  const getDraftKey = useCallback(() => {
     draftKey.current ??= `local-${crypto.randomUUID()}`;
     return draftKey.current;
-  }
+  }, []);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === form.project_id),
@@ -211,14 +215,15 @@ export function DailyReportPage() {
   const canSubmitReports = user?.permissions?.includes('reports:submit') ?? false;
   const saveLocalDraft = useCallback(
     (payload: DailyReportPayload) =>
-      saveReportDraft(
-        payload,
-        draftKey.current,
-        savedReportId && currentUserId
-          ? { id: savedReportId, engineerId: currentUserId }
-          : undefined
-      ),
-    [currentUserId, savedReportId]
+      scope
+        ? saveReportDraft(
+            scope,
+            payload,
+            getDraftKey(),
+            savedReportId ? { id: savedReportId, engineerId: scope.ownerUserId } : undefined
+          )
+        : Promise.resolve(false),
+    [getDraftKey, savedReportId, scope]
   );
 
   const loadReports = useCallback(async (projectId?: string) => {
@@ -236,84 +241,121 @@ export function DailyReportPage() {
   }, []);
 
   useEffect(() => {
-    void getReportDraft().then((draft) => {
-      if (
-        draft?.payload &&
-        (!draft.serverReport || draft.serverReport.engineerId === currentUserId) &&
-        formHasDraftContent(draft.payload)
-      ) {
-        draftKey.current = draft.draftKey ?? null;
-        setSavedReportId(draft.serverReport?.id ?? null);
-        setForm(draft.payload);
-        setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
-        setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
-        persistedDraftSnapshot.current = JSON.stringify(draft.payload);
-        setDraftStatus('local');
-      }
-      setDraftHydrated(true);
-    });
-    void queuedPhotoCount().then(setQueuedUploads);
-  }, [currentUserId]);
+    if (!scope) return;
+    let mounted = true;
+    const active = () => mounted && sameScope(getBrowserSession()?.scope, scope);
+    void getReportDraft(scope)
+      .then((draft) => {
+        if (!active()) return;
+        if (
+          draft?.payload &&
+          (!draft.serverReport || draft.serverReport.engineerId === scope.ownerUserId) &&
+          formHasDraftContent(draft.payload)
+        ) {
+          draftKey.current = draft.localDraftId;
+          setSavedReportId(draft.serverReport?.id ?? null);
+          setForm(draft.payload);
+          setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
+          setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
+          persistedDraftSnapshot.current = JSON.stringify(draft.payload);
+          setDraftStatus('local');
+        }
+        setDraftHydrated(true);
+      })
+      .catch(() => {
+        if (active())
+          setError('Unable to open offline drafts. Close older portal tabs and try again.');
+      });
+    void queuedPhotoCount(scope)
+      .then((count) => {
+        if (active()) setQueuedUploads(count);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [scope]);
 
   useEffect(() => {
-    if (!draftHydrated) return;
+    if (!draftHydrated || !scope) return;
     const snapshot = JSON.stringify(form);
     if (snapshot === persistedDraftSnapshot.current || snapshot === serverSavedSnapshot.current) {
       return;
     }
+    const active = () => sameScope(getBrowserSession()?.scope, scope);
+    const onError = () => {
+      if (active()) setError('Unable to save the local draft.');
+    };
     if (!formHasDraftContent(form)) {
+      const localDraftId = draftKey.current;
+      if (!localDraftId) return;
       const timer = window.setTimeout(() => {
-        void clearReportDraft().then(() => {
-          persistedDraftSnapshot.current = snapshot;
-          setDraftStatus('idle');
-        });
+        void clearReportDraft(scope, localDraftId)
+          .then(() => {
+            if (!active()) return;
+            persistedDraftSnapshot.current = snapshot;
+            setDraftStatus('idle');
+          })
+          .catch(onError);
       }, 800);
       return () => window.clearTimeout(timer);
     }
-    const timer = window.setTimeout(() => {
-      void saveLocalDraft(form).then(() => {
-        persistedDraftSnapshot.current = snapshot;
-        setDraftStatus('local');
-      });
-    }, 800);
-    const interval = window.setInterval(() => {
-      void saveLocalDraft(form).then(() => {
-        persistedDraftSnapshot.current = JSON.stringify(form);
-        setDraftStatus('local');
-      });
-    }, 30_000);
+    const save = () => {
+      void saveLocalDraft(form)
+        .then((saved) => {
+          if (!saved || !active()) return;
+          persistedDraftSnapshot.current = snapshot;
+          setDraftStatus('local');
+        })
+        .catch(onError);
+    };
+    const timer = window.setTimeout(save, 800);
+    const interval = window.setInterval(save, 30_000);
     return () => {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
-  }, [draftHydrated, form, saveLocalDraft]);
+  }, [draftHydrated, form, saveLocalDraft, scope]);
 
   useEffect(() => {
+    if (!scope) return;
+    let mounted = true;
+    const refreshQueuedCount = () => {
+      void queuedPhotoCount(scope)
+        .then((count) => {
+          if (mounted && sameScope(getBrowserSession()?.scope, scope)) setQueuedUploads(count);
+        })
+        .catch(() => {});
+    };
     const syncQueued = () => {
       setIsOnline(true);
       void flushPhotoQueue()
-        .then(() => queuedPhotoCount())
-        .then(setQueuedUploads);
+        .then(refreshQueuedCount)
+        .catch(() => {});
     };
-    const refreshQueuedCount = (event?: Event) => {
-      void queuedPhotoCount().then(setQueuedUploads);
-      const conflicts = (event as CustomEvent<{ conflicts?: number }> | undefined)?.detail
-        ?.conflicts;
-      if (typeof conflicts === 'number') setSyncConflicts(conflicts);
+    const handleSync = (event: Event) => {
+      const { scope: source, conflicts } = (
+        event as CustomEvent<{
+          scope: OfflineScope;
+          conflicts: number;
+        }>
+      ).detail;
+      if (!sameScope(source, scope)) return;
+      refreshQueuedCount();
+      setSyncConflicts(conflicts);
     };
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', syncQueued);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('photo-queue-sync-complete', refreshQueuedCount);
+    window.addEventListener('photo-queue-sync-complete', handleSync);
     if (navigator.onLine) syncQueued();
     return () => {
+      mounted = false;
       window.removeEventListener('online', syncQueued);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('photo-queue-sync-complete', refreshQueuedCount);
+      window.removeEventListener('photo-queue-sync-complete', handleSync);
     };
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     if (!form.project_id) {
@@ -408,6 +450,7 @@ export function DailyReportPage() {
     setErrors({});
     setIsSaving(true);
     setSavedReportId(report.id);
+    const previousDraftId = draftKey.current;
     draftKey.current = null;
     setForm(payload);
     setPhotoNames(payload.photo_refs.map(({ name }) => name).join('\n'));
@@ -422,7 +465,12 @@ export function DailyReportPage() {
         : 'Report reopened.'
     );
     try {
-      await saveReportDraft(payload, null, { id: report.id, engineerId: report.engineer_id });
+      if (!scope) return;
+      if (previousDraftId) await clearReportDraft(scope, previousDraftId);
+      await saveReportDraft(scope, payload, getDraftKey(), {
+        id: report.id,
+        engineerId: report.engineer_id
+      });
       const files = await listPhotos({ entityType: 'daily_report', entityId: report.id });
       setUploadedFiles(files.items);
     } catch (loadError) {
@@ -433,7 +481,7 @@ export function DailyReportPage() {
   }
 
   async function saveDraft() {
-    if (!validate()) return null;
+    if (!scope || !validate()) return null;
     setIsSaving(true);
     setError(null);
     setNotice(null);
@@ -441,17 +489,17 @@ export function DailyReportPage() {
       const payload = buildPayload();
       let reportId = savedReportId;
       if (reportId) {
-        await updateDailyReport(reportId, payload);
+        await updateDailyReport(reportId, payload, scope);
       } else {
         const mightExist = draftKey.current !== null;
         const key = getDraftKey();
-        await saveReportDraft(payload, key);
-        reportId = (await createDailyReport(payload, key)).id;
+        await saveReportDraft(scope, payload, key);
+        reportId = (await createDailyReport(payload, key, scope)).id;
         // A queued upload or an earlier save may already have created the draft with older fields.
-        if (mightExist) await updateDailyReport(reportId, payload);
+        if (mightExist) await updateDailyReport(reportId, payload, scope);
       }
       setSavedReportId(reportId);
-      await clearReportDraft();
+      if (draftKey.current) await clearReportDraft(scope, draftKey.current);
       serverSavedSnapshot.current = JSON.stringify(payload);
       persistedDraftSnapshot.current = JSON.stringify(payload);
       setDraftStatus('idle');
@@ -468,7 +516,7 @@ export function DailyReportPage() {
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!validate()) return;
+    if (!scope || !validate()) return;
     const unchanged = JSON.stringify(buildPayload()) === serverSavedSnapshot.current;
     const reportId = savedReportId && unchanged ? savedReportId : await saveDraft();
     if (!reportId) return;
@@ -476,14 +524,14 @@ export function DailyReportPage() {
     setError(null);
     setNotice(null);
     try {
-      const report = await submitDailyReport(reportId);
+      const report = await submitDailyReport(reportId, scope);
       const resetForm = createEmptyPayload();
       setForm(resetForm);
       setPhotoNames('');
       setAttachmentNames('');
       setSavedReportId(null);
+      if (draftKey.current) await clearReportDraft(scope, draftKey.current);
       draftKey.current = null;
-      await clearReportDraft();
       serverSavedSnapshot.current = JSON.stringify(resetForm);
       persistedDraftSnapshot.current = JSON.stringify(resetForm);
       setDraftStatus('idle');
@@ -512,7 +560,7 @@ export function DailyReportPage() {
   }
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!files?.length) return;
+    if (!scope || !files?.length) return;
     const fileList = Array.from(files);
     if (kind === 'photo' && fileList.length > 5) {
       setError('Maximum 5 photos allowed per report.');
@@ -527,20 +575,29 @@ export function DailyReportPage() {
     const payload = buildPayload();
     if (!navigator.onLine) {
       if (!validate()) return;
-      const entityId = savedReportId ?? getDraftKey();
-      await saveLocalDraft(payload);
-      await queueFiles({
-        entityType: 'daily_report',
-        entityId,
-        draftPayload: savedReportId ? undefined : payload,
-        kind,
-        files
-      });
-      await registerBackgroundSync();
-      const count = await queuedPhotoCount();
-      setQueuedUploads(count);
-      setDraftStatus('local');
-      setNotice(`${files.length} file${files.length > 1 ? 's' : ''} queued for upload.`);
+      const localDraftId = getDraftKey();
+      const entityId = savedReportId ?? localDraftId;
+      try {
+        const saved = await saveLocalDraft(payload);
+        if (!saved) return;
+        const queued = await queueFiles(scope, {
+          entityType: 'daily_report',
+          entityId,
+          localDraftId,
+          draftPayload: savedReportId ? undefined : payload,
+          kind,
+          files
+        });
+        if (!queued) return;
+        void registerBackgroundSync();
+        const count = await queuedPhotoCount(scope);
+        if (!sameScope(getBrowserSession()?.scope, scope)) return;
+        setQueuedUploads(count);
+        setDraftStatus('local');
+        setNotice(`${files.length} file${files.length > 1 ? 's' : ''} queued for upload.`);
+      } catch {
+        setError('Unable to save these uploads offline.');
+      }
       return;
     }
     const reportId = savedReportId ?? (await saveDraft());
@@ -552,7 +609,8 @@ export function DailyReportPage() {
         entityType: 'daily_report',
         entityId: reportId,
         kind,
-        files
+        files,
+        scope
       });
       setUploadedFiles([...uploadedFiles, ...uploaded]);
       setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);

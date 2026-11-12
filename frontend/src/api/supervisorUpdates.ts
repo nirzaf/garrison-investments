@@ -1,4 +1,5 @@
-import { apiClient } from './client';
+import { apiClient, sessionRequestConfig } from './client';
+import type { OfflineScope } from './offlineDb';
 import type { components } from './schema';
 
 export type AttachmentRef = components['schemas']['AttachmentRef'];
@@ -31,26 +32,38 @@ export async function listReportSupervisorUpdates(
 }
 
 export async function createSupervisorUpdate(
-  payload: SupervisorUpdatePayload
+  payload: SupervisorUpdatePayload,
+  scope?: OfflineScope
 ): Promise<SupervisorUpdateRecord> {
-  const response = await apiClient.post<SupervisorUpdateRecord>('/supervisor-updates', payload);
+  const response = await apiClient.post<SupervisorUpdateRecord>(
+    '/supervisor-updates',
+    payload,
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 
 export async function updateSupervisorUpdate(
   updateId: string,
-  payload: SupervisorUpdatePayload
+  payload: SupervisorUpdatePayload,
+  scope?: OfflineScope
 ): Promise<SupervisorUpdateRecord> {
   const response = await apiClient.put<SupervisorUpdateRecord>(
     `/supervisor-updates/${updateId}`,
-    payload
+    payload,
+    sessionRequestConfig(scope)
   );
   return response.data;
 }
 
-export async function submitSupervisorUpdate(updateId: string): Promise<SupervisorUpdateRecord> {
+export async function submitSupervisorUpdate(
+  updateId: string,
+  scope?: OfflineScope
+): Promise<SupervisorUpdateRecord> {
   const response = await apiClient.post<SupervisorUpdateRecord>(
-    `/supervisor-updates/${updateId}/submit`
+    `/supervisor-updates/${updateId}/submit`,
+    undefined,
+    sessionRequestConfig(scope)
   );
   return response.data;
 }

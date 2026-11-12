@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 from datetime import timedelta
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import uvicorn
@@ -23,10 +24,17 @@ def configure() -> None:
         name == "garrison_browser_test" or name.startswith("garrison_browser_test_")
     ):
         raise ValueError("Browser tests require a dedicated local garrison_browser_test database.")
+    redis_url = os.environ.get("BROWSER_TEST_REDIS_URL", "redis://127.0.0.1:6379/8")
+    s3_endpoint = os.environ.get("BROWSER_TEST_MINIO_ENDPOINT", "127.0.0.1:9000")
+    if (
+        urlsplit(redis_url).hostname not in {"localhost", "127.0.0.1"}
+        or urlsplit(f"http://{s3_endpoint}").hostname not in {"localhost", "127.0.0.1"}
+    ):
+        raise ValueError("Browser tests require local Redis and object storage.")
     os.environ.update(
         APP_ENV="test",
         DATABASE_URL=database_url,
-        REDIS_URL="redis://127.0.0.1:6379/8",
+        REDIS_URL=redis_url,
         DEV_EXPOSE_OTP="true",
         AUTH_RATE_LIMIT_MAX_REQUESTS="60",
         EXCEPTION_EMAIL_ENABLED="false",
@@ -35,7 +43,7 @@ def configure() -> None:
         SMTP_PORT="1",
         USESEND_API_URL="http://127.0.0.1:1",
         USESEND_API_KEY="",
-        MINIO_ENDPOINT="127.0.0.1:9000",
+        MINIO_ENDPOINT=s3_endpoint,
         MINIO_BUCKET="garrison-browser-test",
         MINIO_SECURE="false",
     )

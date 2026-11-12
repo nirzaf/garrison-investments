@@ -1,22 +1,23 @@
-// Offline photo queue.
-//
-// The authoritative drain lives in `src/api/offlineQueue.ts`. When a window client is
-// available the `sync` event below delegates to it (see the handler at the bottom), so
-// there is exactly one implementation in the common case. The standalone drain here is
-// the no-client fallback and MUST stay behaviourally identical: same batching, same
-// single-create-per-local-entity rule, same Idempotency-Key headers, same refresh lock.
-const CACHE_NAME = 'garrisons-app-shell-v2';
+// The standalone drain uses the same owner, generation and claim checks as offlineQueue.ts.
+const CACHE_NAME = 'garrisons-app-shell-v3';
+const LEGACY_CACHES = new Set(['garrisons-app-shell-v1', 'garrisons-app-shell-v2']);
 const DB_NAME = 'garrisons-offline';
-const DB_VERSION = 1;
-const REPORT_DRAFTS = 'reportDrafts';
-const PHOTO_QUEUE = 'photoQueue';
+const DB_VERSION = 2;
+const REPORT_DRAFTS = 'ownedReportDrafts';
+const PHOTO_QUEUE = 'ownedPhotoQueue';
+const SUPERVISOR_DRAFTS = 'ownedSupervisorDrafts';
+const SESSION_STORE = 'offlineSessions';
+const OWNER_INDEX = 'byOwner';
 const API_BASE = '/api/v1';
-// Keep in step with TOKEN_REFRESH_LOCK in src/api/client.ts.
+const NAMESPACE = JSON.stringify([
+  self.location.origin,
+  new URL(API_BASE, self.location.origin).href
+]);
 const TOKEN_REFRESH_LOCK = 'garrison-token-refresh';
+const SESSION_EVENT = 'garrisons-offline-session';
 const STALE_CLAIM_MS = 5 * 60_000;
 const APP_SHELL = [
   '/',
-  '/reports/daily',
   '/manifest.json',
   '/brand/apple-touch-icon.png',
   '/brand/icon-192.png',
@@ -26,289 +27,385 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(
+        APP_SHELL.map((path) => new Request(path, { credentials: 'omit', cache: 'reload' }))
+      );
+      await self.skipWaiting();
+    })()
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-      )
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((key) => LEGACY_CACHES.has(key)).map((key) => caches.delete(key))
+      );
+      try {
+        // Close the v1 write path before accepting sync. Ownerless rows remain quarantined.
+        const db = await openOfflineDb();
+        db.close();
+      } catch {
+        // If an older tab blocks the upgrade, all new offline transactions fail closed.
+      }
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (
+    request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    request.headers.has('Authorization') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/portal-files/')
+  )
+    return;
+
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/')));
+    event.respondWith(fetch(request).catch(async () => (await caches.open(CACHE_NAME)).match('/')));
     return;
   }
-  if (request.destination === 'script' || request.destination === 'style') {
+
+  if (
+    !url.search &&
+    url.pathname.startsWith('/assets/') &&
+    (request.destination === 'script' || request.destination === 'style')
+  ) {
     event.respondWith(
-      caches.open(CACHE_NAME).then((cache) =>
-        cache.match(request).then(
-          (cached) =>
-            cached ||
-            fetch(request).then((response) => {
-              cache.put(request, response.clone());
-              return response;
-            })
-        )
-      )
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(new Request(request, { credentials: 'omit' }));
+        if (
+          response.ok &&
+          !response.redirected &&
+          !/\b(private|no-store)\b/i.test(response.headers.get('cache-control') ?? '')
+        ) {
+          await cache.put(request, response.clone());
+        }
+        return response;
+      })()
     );
     return;
   }
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
-});
 
-let photoQueueFlush = null;
+  if (!url.search && APP_SHELL.includes(url.pathname)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return (await cache.match(request)) ?? fetch(request);
+      })()
+    );
+  }
+});
 
 function openOfflineDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(REPORT_DRAFTS)) db.createObjectStore(REPORT_DRAFTS);
-      if (!db.objectStoreNames.contains(PHOTO_QUEUE))
-        db.createObjectStore(PHOTO_QUEUE, { keyPath: 'id' });
+      db.createObjectStore(REPORT_DRAFTS, {
+        keyPath: ['namespace', 'ownerUserId', 'localDraftId']
+      }).createIndex(OWNER_INDEX, ['namespace', 'ownerUserId']);
+      const queue = db.createObjectStore(PHOTO_QUEUE, { keyPath: 'id' });
+      queue.createIndex(OWNER_INDEX, ['namespace', 'ownerUserId']);
+      queue.createIndex('byOwnerDraft', ['namespace', 'ownerUserId', 'localDraftId']);
+      db.createObjectStore(SUPERVISOR_DRAFTS, {
+        keyPath: ['namespace', 'ownerUserId', 'localDraftId']
+      });
+      db.createObjectStore(SESSION_STORE, { keyPath: 'namespace' });
     };
-    request.onsuccess = () => resolve(request.result);
+    let blocked = false;
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error('Offline storage upgrade is blocked.'));
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      if (blocked) db.close();
+      else resolve(db);
+    };
     request.onerror = () => reject(request.error);
   });
 }
 
-async function withPhotoQueue(mode, run) {
+function sameScope(left, right) {
+  return (
+    left?.state === 'active' &&
+    left.namespace === right.namespace &&
+    left.ownerUserId === right.ownerUserId &&
+    left.generation === right.generation
+  );
+}
+
+async function transaction(stores, mode, operation) {
   const db = await openOfflineDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(PHOTO_QUEUE, mode);
-    const queue = tx.objectStore(PHOTO_QUEUE);
-    const request = run(queue);
-
-    if (request) {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    }
-
+    const tx = db.transaction(stores, mode);
+    let result;
     tx.oncomplete = () => {
       db.close();
-      if (!request) resolve(undefined);
+      resolve(result);
     };
-    tx.onerror = () => {
+    tx.onabort = () => {
       db.close();
-      reject(tx.error);
+      reject(tx.error ?? new Error('Offline storage transaction aborted.'));
+    };
+    operation(tx, (value) => {
+      result = value;
+    });
+  });
+}
+
+function readSession() {
+  return transaction([SESSION_STORE], 'readonly', (tx, result) => {
+    const request = tx.objectStore(SESSION_STORE).get(NAMESPACE);
+    request.onsuccess = () => result(request.result);
+  });
+}
+
+function withOwnedQueue(scope, mode, operation) {
+  return transaction([SESSION_STORE, PHOTO_QUEUE], mode, (tx, result) => {
+    const request = tx.objectStore(SESSION_STORE).get(scope.namespace);
+    request.onsuccess = () => {
+      if (sameScope(request.result, scope)) operation(tx.objectStore(PHOTO_QUEUE), result);
     };
   });
 }
 
-async function claimQueuedPhoto(id) {
-  const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
-    const queue = tx.objectStore(PHOTO_QUEUE);
-    const getRequest = queue.get(id);
-    let claimed = null;
-
-    getRequest.onsuccess = () => {
-      const item = getRequest.result;
-      if (!item) {
-        resolve(null);
+function claimQueuedPhoto(scope, id) {
+  return withOwnedQueue(scope, 'readwrite', (queue, result) => {
+    const request = queue.get(id);
+    request.onsuccess = () => {
+      const item = request.result;
+      if (
+        !item ||
+        item.ownerUserId !== scope.ownerUserId ||
+        item.namespace !== scope.namespace ||
+        item.status === 'synced' ||
+        item.status === 'server_newer'
+      )
         return;
-      }
-      if (item.status === 'syncing') {
-        const claimedAt = item.claimedAt ? Date.parse(item.claimedAt) : 0;
-        if (Number.isFinite(claimedAt) && Date.now() - claimedAt <= STALE_CLAIM_MS) {
-          resolve(null);
-          return;
-        }
-      }
-      claimed = { ...item, status: 'syncing', claimedAt: new Date().toISOString() };
+      if (
+        item.status === 'syncing' &&
+        item.claimGeneration === scope.generation &&
+        Date.now() - Date.parse(item.claimedAt) < STALE_CLAIM_MS
+      )
+        return;
+      const claimed = {
+        ...item,
+        status: 'syncing',
+        claimedAt: new Date().toISOString(),
+        claimId: crypto.randomUUID(),
+        claimGeneration: scope.generation
+      };
       queue.put(claimed);
-    };
-    getRequest.onerror = () => reject(getRequest.error);
-    tx.oncomplete = () => {
-      db.close();
-      resolve(claimed);
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
+      result(claimed);
     };
   });
 }
 
-/** Mirror of planSyncBatches in src/api/offlineQueue.ts — keep the two in step. */
 function planSyncBatches(items) {
   const batches = new Map();
   for (const item of items) {
     if (item.status === 'synced' || item.status === 'server_newer') continue;
-    let batch = batches.get(item.entityId);
+    const key = JSON.stringify([
+      item.namespace,
+      item.ownerUserId,
+      item.localDraftId,
+      item.entityId
+    ]);
+    let batch = batches.get(key);
     if (!batch) {
-      batch = {
-        entityId: item.entityId,
-        needsReportCreate: item.entityId.startsWith('local-'),
-        draftPayload: item.draftPayload,
-        items: []
-      };
-      batches.set(item.entityId, batch);
+      batch = { entityId: item.entityId, items: [] };
+      batches.set(key, batch);
     }
-    batch.draftPayload = batch.draftPayload ?? item.draftPayload;
     batch.items.push(item);
   }
   return [...batches.values()];
 }
 
-/** Patch many queue rows inside ONE readwrite transaction. */
-async function patchQueuedPhotos(ids, patch) {
-  if (!ids.length) return;
-  const db = await openOfflineDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
-    const queue = tx.objectStore(PHOTO_QUEUE);
-    for (const id of ids) {
-      const getRequest = queue.get(id);
-      getRequest.onsuccess = () => {
-        const item = getRequest.result;
-        if (item) queue.put({ ...item, ...patch });
+function updateClaims(scope, claims, patch) {
+  return withOwnedQueue(scope, 'readwrite', (queue) => {
+    for (const claim of claims) {
+      const request = queue.get(claim.id);
+      request.onsuccess = () => {
+        const item = request.result;
+        if (
+          item?.claimId !== claim.claimId ||
+          item?.ownerUserId !== scope.ownerUserId ||
+          item.namespace !== scope.namespace
+        )
+          return;
+        if (patch) queue.put({ ...item, ...patch });
+        else queue.delete(claim.id);
       };
     }
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
   });
 }
 
-async function refreshAccessToken() {
+async function refreshAccessToken(scope, signal) {
   const perform = async () => {
+    if (signal.aborted || !sameScope(await readSession(), scope)) return;
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
-      credentials: 'include'
+      credentials: 'include',
+      cache: 'no-store',
+      signal
     });
-    if (!response.ok) throw new Error('Unable to refresh offline sync session');
+    if (!response.ok) return;
     const session = await response.json();
-    return session.access_token;
+    if (session.user?.id === scope.ownerUserId && sameScope(await readSession(), scope)) {
+      return session.access_token;
+    }
   };
-  // Same lock name as the app so a foreground refresh and a background sync cannot race.
   const locks = self.navigator?.locks;
   return locks ? locks.request(TOKEN_REFRESH_LOCK, perform) : perform();
 }
 
-async function createReportFromQueue(payload, idempotencyKey, accessToken) {
-  const response = await fetch(`${API_BASE}/reports`, {
+function signedRequest(path, accessToken, signal, options = {}) {
+  return fetch(`${API_BASE}${path}`, {
+    ...options,
+    credentials: 'omit',
+    cache: 'no-store',
+    signal,
+    headers: { ...options.headers, Authorization: `Bearer ${accessToken}` }
+  });
+}
+
+async function isVerifiedOwner(scope, accessToken, signal) {
+  if (signal.aborted || !sameScope(await readSession(), scope)) return false;
+  const response = await signedRequest('/auth/me', accessToken, signal);
+  return (
+    response.ok &&
+    (await response.json()).id === scope.ownerUserId &&
+    sameScope(await readSession(), scope)
+  );
+}
+
+async function createReportFromQueue(payload, idempotencyKey, accessToken, signal) {
+  const response = await signedRequest('/reports', accessToken, signal, {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey
-    },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error('Unable to create queued daily report');
   return await response.json();
 }
 
-async function uploadQueuedFile(item, entityId, accessToken) {
+async function uploadQueuedFile(item, entityId, accessToken, signal) {
   const formData = new FormData();
   formData.append('entity_type', item.entityType);
   formData.append('entity_id', entityId);
   formData.append('kind', item.kind);
   formData.append('files', item.file);
-
-  const response = await fetch(`${API_BASE}/photos/upload`, {
+  const response = await signedRequest('/photos/upload', accessToken, signal, {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Idempotency-Key': item.id
-    },
+    headers: { 'Idempotency-Key': item.id },
     body: formData
   });
   if (!response.ok) throw new Error('Unable to upload queued file');
 }
 
-async function notifyClients(type, extra) {
-  const clients = await self.clients.matchAll();
-  clients.forEach((client) => client.postMessage({ type, ...extra }));
-}
+async function drainPhotoQueue(scope, signal) {
+  const queued = await withOwnedQueue(scope, 'readonly', (queue, result) => {
+    const request = queue.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
+    request.onsuccess = () => result(request.result);
+  });
+  const batches = planSyncBatches(queued ?? []);
+  if (!batches.length) return;
 
-async function drainPhotoQueue() {
-  const queued = await withPhotoQueue('readonly', (queue) => queue.getAll());
-  if (!queued.length) return;
-
-  const accessToken = await refreshAccessToken();
+  const accessToken = await refreshAccessToken(scope, signal);
+  if (!accessToken) return;
   let conflicts = 0;
 
-  for (const batch of planSyncBatches(queued)) {
+  for (const batch of batches) {
+    if (!(await isVerifiedOwner(scope, accessToken, signal))) return;
     const claimed = [];
     for (const item of batch.items) {
-      const entry = await claimQueuedPhoto(item.id);
+      const entry = await claimQueuedPhoto(scope, item.id);
       if (entry) claimed.push(entry);
     }
     if (!claimed.length) continue;
 
-    const ids = claimed.map((item) => item.id);
     let entityId = batch.entityId;
     try {
-      if (batch.needsReportCreate) {
+      if (entityId.startsWith('local-')) {
         const draftPayload = claimed.find((item) => item.draftPayload)?.draftPayload;
         if (!draftPayload) throw new Error('Missing offline draft payload');
-        const report = await createReportFromQueue(draftPayload, batch.entityId, accessToken);
+        if (signal.aborted || !sameScope(await readSession(), scope)) return;
+        const report = await createReportFromQueue(draftPayload, entityId, accessToken, signal);
         entityId = report.id;
-        // Persist the server id onto every sibling before uploading anything.
-        await patchQueuedPhotos(ids, { entityId });
+        await updateClaims(scope, claimed, { entityId });
         if (report.status !== 'draft') {
           conflicts += claimed.length;
-          await patchQueuedPhotos(ids, { status: 'server_newer' });
+          await updateClaims(scope, claimed, { status: 'server_newer' });
           continue;
         }
       }
 
       for (const item of claimed) {
+        if (signal.aborted || !sameScope(await readSession(), scope)) return;
         try {
-          await uploadQueuedFile(item, entityId, accessToken);
-          await withPhotoQueue('readwrite', (queue) => queue.delete(item.id));
+          await uploadQueuedFile(item, entityId, accessToken, signal);
+          await updateClaims(scope, [item]);
         } catch {
-          await withPhotoQueue('readwrite', (queue) =>
-            queue.put({ ...item, entityId, status: 'failed' })
-          );
+          await updateClaims(scope, [item], { entityId, status: 'failed' });
         }
       }
     } catch {
-      await patchQueuedPhotos(ids, { entityId, status: 'failed' });
+      await updateClaims(scope, claimed, { entityId, status: 'failed' });
     }
   }
 
-  await notifyClients('SYNC_PHOTOS_DONE', { conflicts });
+  if (signal.aborted || !sameScope(await readSession(), scope)) return;
+  const clients = await self.clients.matchAll({ type: 'window' });
+  clients.forEach((client) => client.postMessage({ type: 'SYNC_PHOTOS_DONE', scope, conflicts }));
 }
 
-function flushPhotoQueueInServiceWorker() {
-  photoQueueFlush ??= drainPhotoQueue().finally(() => {
-    photoQueueFlush = null;
-  });
-  return photoQueueFlush;
-}
+let currentDrain;
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== SESSION_EVENT) return;
+  const drain = currentDrain;
+  event.waitUntil(
+    (async () => {
+      if (drain && !sameScope(await readSession(), drain.scope)) drain.controller.abort();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((client) => client.postMessage({ type: SESSION_EVENT }));
+    })()
+  );
+});
 
 self.addEventListener('sync', (event) => {
   if (event.tag !== 'flush-photo-queue') return;
   event.waitUntil(
     (async () => {
-      // Prefer the app: it owns the tested drain and its own token-refresh lock.
+      const scope = await readSession();
+      if (scope?.state !== 'active') return;
       const windows = await self.clients.matchAll({ type: 'window' });
       if (windows.length) {
-        windows.forEach((client) => client.postMessage({ type: 'SYNC_FLUSH_PHOTOS' }));
+        windows.forEach((client) => client.postMessage({ type: 'SYNC_FLUSH_PHOTOS', scope }));
         return;
       }
-      await flushPhotoQueueInServiceWorker();
+      if (currentDrain && sameScope(scope, currentDrain.scope)) return currentDrain.result;
+      currentDrain?.controller.abort();
+      const controller = new AbortController();
+      const result = drainPhotoQueue(scope, controller.signal).finally(() => {
+        if (currentDrain?.result === result) currentDrain = undefined;
+      });
+      currentDrain = { scope, controller, result };
+      await result;
     })()
   );
 });

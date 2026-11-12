@@ -8,6 +8,9 @@ const draftPayload = { project_id: 'project-1' } as unknown as DailyReportPayloa
 function photo(overrides: Partial<QueuedPhoto> = {}): QueuedPhoto {
   return {
     id: `item-${Math.random().toString(36).slice(2)}`,
+    namespace: 'app-and-api-a',
+    ownerUserId: 'owner-a',
+    localDraftId: 'draft-a',
     entityType: 'daily_report',
     entityId: 'local-abc',
     draftPayload,
@@ -59,11 +62,19 @@ describe('planSyncBatches', () => {
     expect(batches.find((batch) => batch.entityId === 'local-a')?.items).toHaveLength(2);
   });
 
-  it('takes the draft payload from any sibling that carries one', () => {
+  it('keeps matching entity IDs separate across owners, API environments, and drafts', () => {
     const batches = planSyncBatches([
-      photo({ draftPayload: undefined }),
-      photo({ draftPayload })
+      photo(),
+      photo({ ownerUserId: 'owner-b' }),
+      photo({ namespace: 'app-and-api-b' }),
+      photo({ localDraftId: 'draft-b' })
     ]);
+    expect(batches).toHaveLength(4);
+    expect(batches.every((batch) => batch.items.length === 1)).toBe(true);
+  });
+
+  it('takes the draft payload from any sibling that carries one', () => {
+    const batches = planSyncBatches([photo({ draftPayload: undefined }), photo({ draftPayload })]);
 
     expect(batches[0].draftPayload).toBe(draftPayload);
   });

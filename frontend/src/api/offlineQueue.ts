@@ -3,18 +3,29 @@
 // `public/sw.js` keeps a standalone fallback for the no-window-client case and delegates
 // here whenever a window is open. Any change to the batching, claim, or idempotency rules
 // must be mirrored there — `planSyncBatches` is the shared, unit-tested seam.
+import { getMe } from './auth';
+import { getBrowserSession, isActiveOfflineScope } from './browserSession';
+import {
+  ownerKey,
+  OWNER_INDEX,
+  PHOTO_QUEUE,
+  REPORT_DRAFTS,
+  SUPERVISOR_DRAFTS,
+  sameScope,
+  withOwnedOfflineData,
+  type OfflineScope
+} from './offlineDb';
 import { uploadEntityFiles } from './photos';
 import { createDailyReport, type DailyReportPayload } from './reports';
 
-const DB_NAME = 'garrisons-offline';
-const DB_VERSION = 1;
-const REPORT_DRAFTS = 'reportDrafts';
-const PHOTO_QUEUE = 'photoQueue';
 /** A claim older than this is assumed dead (tab closed mid-upload) and may be reclaimed. */
 const STALE_CLAIM_MS = 5 * 60_000;
 
 export type QueuedPhoto = {
   id: string;
+  namespace: string;
+  ownerUserId: string;
+  localDraftId: string;
   entityType: string;
   entityId: string;
   draftPayload?: DailyReportPayload;
@@ -22,6 +33,8 @@ export type QueuedPhoto = {
   file: File;
   createdAt: string;
   claimedAt: string;
+  claimId?: string;
+  claimGeneration?: string;
   status: 'queued' | 'syncing' | 'failed' | 'synced' | 'server_newer';
 };
 
@@ -43,7 +56,13 @@ export function planSyncBatches(items: QueuedPhoto[]): SyncBatch[] {
   const batches = new Map<string, SyncBatch>();
   for (const item of items) {
     if (item.status === 'synced' || item.status === 'server_newer') continue;
-    let batch = batches.get(item.entityId);
+    const key = JSON.stringify([
+      item.namespace,
+      item.ownerUserId,
+      item.localDraftId,
+      item.entityId
+    ]);
+    let batch = batches.get(key);
     if (!batch) {
       batch = {
         entityId: item.entityId,
@@ -51,7 +70,7 @@ export function planSyncBatches(items: QueuedPhoto[]): SyncBatch[] {
         draftPayload: item.draftPayload,
         items: []
       };
-      batches.set(item.entityId, batch);
+      batches.set(key, batch);
     }
     batch.draftPayload ??= item.draftPayload;
     batch.items.push(item);
@@ -68,82 +87,113 @@ export function retryPatch(item: QueuedPhoto, resolvedEntityId: string): QueuedP
   return { ...item, entityId: resolvedEntityId, status: 'failed' };
 }
 
-let flushPromise: Promise<void> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(REPORT_DRAFTS)) db.createObjectStore(REPORT_DRAFTS);
-      if (!db.objectStoreNames.contains(PHOTO_QUEUE))
-        db.createObjectStore(PHOTO_QUEUE, { keyPath: 'id' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function store<T>(
-  name: string,
-  mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>
-) {
-  const db = await openDb();
-  return new Promise<T>((resolve, reject) => {
-    const tx = db.transaction(name, mode);
-    const request = run(tx.objectStore(name));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
-  });
-}
-
 type SavedReportReference = { id: string; engineerId: string };
 
+type LocalReportDraft = {
+  namespace: string;
+  ownerUserId: string;
+  localDraftId: string;
+  payload: DailyReportPayload;
+  serverReport?: SavedReportReference;
+  savedAt: string;
+};
+
 export async function saveReportDraft(
+  scope: OfflineScope,
   payload: DailyReportPayload,
-  draftKey: string | null,
+  localDraftId: string,
   serverReport?: SavedReportReference
-) {
-  await store(REPORT_DRAFTS, 'readwrite', (drafts) =>
-    drafts.put(
-      { payload, draftKey, serverReport, savedAt: new Date().toISOString(), syncStatus: 'local' },
-      'daily-report'
-    )
+): Promise<boolean> {
+  const saved = await withOwnedOfflineData<boolean>(
+    scope,
+    REPORT_DRAFTS,
+    'readwrite',
+    (drafts, result) => {
+      drafts.put({
+        namespace: scope.namespace,
+        ownerUserId: scope.ownerUserId,
+        localDraftId,
+        payload,
+        serverReport,
+        savedAt: new Date().toISOString()
+      } satisfies LocalReportDraft);
+      result(true);
+    }
+  );
+  return saved === true;
+}
+
+export async function getReportDraft(scope: OfflineScope): Promise<LocalReportDraft | undefined> {
+  return withOwnedOfflineData<LocalReportDraft>(
+    scope,
+    REPORT_DRAFTS,
+    'readonly',
+    (drafts, result) => {
+      const request = drafts.index(OWNER_INDEX).getAll(ownerKey(scope));
+      request.onsuccess = () => {
+        const owned = request.result as LocalReportDraft[];
+        const latest = owned.sort((left, right) => right.savedAt.localeCompare(left.savedAt))[0];
+        if (latest) result(latest);
+      };
+    }
   );
 }
 
-export async function getReportDraft(): Promise<{
-  payload: DailyReportPayload;
-  draftKey?: string | null;
-  serverReport?: SavedReportReference;
-  savedAt: string;
-  syncStatus: string;
-} | null> {
-  return await store(REPORT_DRAFTS, 'readonly', (drafts) => drafts.get('daily-report'));
+export async function clearReportDraft(scope: OfflineScope, localDraftId: string): Promise<void> {
+  await withOwnedOfflineData(scope, REPORT_DRAFTS, 'readwrite', (drafts) => {
+    drafts.delete([...ownerKey(scope), localDraftId]);
+  });
 }
 
-export async function clearReportDraft() {
-  await store(REPORT_DRAFTS, 'readwrite', (drafts) => drafts.delete('daily-report'));
+export async function getSupervisorDraft<T>(scope: OfflineScope): Promise<T | undefined> {
+  return withOwnedOfflineData<T>(scope, SUPERVISOR_DRAFTS, 'readonly', (drafts, result) => {
+    const request = drafts.get([...ownerKey(scope), 'supervisor-update']);
+    request.onsuccess = () => {
+      const row = request.result as { values: T } | undefined;
+      if (row) result(row.values);
+    };
+  });
 }
 
-export async function queueFiles(args: {
-  entityType: string;
-  entityId: string;
-  draftPayload?: DailyReportPayload;
-  kind: 'photo' | 'attachment';
-  files: FileList;
-}) {
-  await Promise.all(
-    Array.from(args.files).map((file) =>
-      store(PHOTO_QUEUE, 'readwrite', (queue) =>
-        queue.put({
+export async function saveSupervisorDraft<T>(scope: OfflineScope, values: T): Promise<void> {
+  await withOwnedOfflineData(scope, SUPERVISOR_DRAFTS, 'readwrite', (drafts) => {
+    drafts.put({
+      namespace: scope.namespace,
+      ownerUserId: scope.ownerUserId,
+      localDraftId: 'supervisor-update',
+      values
+    });
+  });
+}
+
+export async function clearSupervisorDraft(scope: OfflineScope): Promise<void> {
+  await withOwnedOfflineData(scope, SUPERVISOR_DRAFTS, 'readwrite', (drafts) => {
+    drafts.delete([...ownerKey(scope), 'supervisor-update']);
+  });
+}
+
+export async function queueFiles(
+  scope: OfflineScope,
+  args: {
+    entityType: string;
+    entityId: string;
+    localDraftId: string;
+    draftPayload?: DailyReportPayload;
+    kind: 'photo' | 'attachment';
+    files: FileList;
+  }
+): Promise<boolean> {
+  const queued = await withOwnedOfflineData<boolean>(
+    scope,
+    PHOTO_QUEUE,
+    'readwrite',
+    (queue, result) => {
+      for (const file of args.files) {
+        queue.add({
           id: crypto.randomUUID(),
+          namespace: scope.namespace,
+          ownerUserId: scope.ownerUserId,
+          localDraftId: args.localDraftId,
           entityType: args.entityType,
           entityId: args.entityId,
           draftPayload: args.draftPayload,
@@ -152,14 +202,25 @@ export async function queueFiles(args: {
           createdAt: new Date().toISOString(),
           claimedAt: '',
           status: 'queued'
-        } satisfies QueuedPhoto)
-      )
-    )
+        } satisfies QueuedPhoto);
+      }
+      result(true);
+    }
   );
+  return queued === true;
 }
 
-export async function queuedPhotoCount(): Promise<number> {
-  return await store(PHOTO_QUEUE, 'readonly', (queue) => queue.count());
+export async function queuedPhotoCount(scope: OfflineScope): Promise<number> {
+  const count = await withOwnedOfflineData<number>(
+    scope,
+    PHOTO_QUEUE,
+    'readonly',
+    (queue, result) => {
+      const request = queue.index(OWNER_INDEX).count(ownerKey(scope));
+      request.onsuccess = () => result(request.result);
+    }
+  );
+  return count ?? 0;
 }
 
 export async function registerBackgroundSync() {
@@ -176,122 +237,138 @@ export function listenForSyncMessages() {
   if (!('serviceWorker' in navigator)) return () => {};
 
   const handler = (event: MessageEvent) => {
-    if (event.data?.type === 'SYNC_FLUSH_PHOTOS') {
-      void flushPhotoQueue();
-    } else if (event.data?.type === 'SYNC_PHOTOS_DONE') {
-      window.dispatchEvent(
-        new CustomEvent('photo-queue-sync-complete', {
-          detail: { conflicts: Number(event.data.conflicts ?? 0) }
-        })
-      );
+    const scope = getBrowserSession()?.scope;
+    if (!scope || !sameScope(event.data?.scope, scope)) return;
+    if (event.data.type === 'SYNC_FLUSH_PHOTOS') {
+      void flushPhotoQueue().catch(() => {});
+    } else if (event.data.type === 'SYNC_PHOTOS_DONE') {
+      publishSyncResult(scope, Number(event.data.conflicts ?? 0));
     }
   };
   navigator.serviceWorker.addEventListener('message', handler);
   return () => navigator.serviceWorker.removeEventListener('message', handler);
 }
 
-export async function flushPhotoQueue() {
-  flushPromise ??= drainPhotoQueue().finally(() => {
-    flushPromise = null;
+let currentFlush: { scope: OfflineScope; result: Promise<void> } | undefined;
+
+export async function flushPhotoQueue(): Promise<void> {
+  const scope = getBrowserSession()?.scope;
+  if (!scope) return;
+  if (currentFlush && sameScope(currentFlush.scope, scope)) return currentFlush.result;
+
+  const result = drainPhotoQueue(scope).finally(() => {
+    if (currentFlush?.result === result) currentFlush = undefined;
   });
-  return flushPromise;
+  currentFlush = { scope, result };
+  return result;
 }
 
-async function claimQueuedPhoto(id: string): Promise<QueuedPhoto | null> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
-    const queue = tx.objectStore(PHOTO_QUEUE);
-    const getRequest = queue.get(id);
-    let claimed: QueuedPhoto | null = null;
-
-    getRequest.onsuccess = () => {
-      const item = getRequest.result as QueuedPhoto | undefined;
-      if (!item) {
-        resolve(null);
+function claimQueuedPhoto(scope: OfflineScope, id: string): Promise<QueuedPhoto | undefined> {
+  return withOwnedOfflineData<QueuedPhoto>(scope, PHOTO_QUEUE, 'readwrite', (queue, result) => {
+    const request = queue.get(id);
+    request.onsuccess = () => {
+      const item = request.result as QueuedPhoto | undefined;
+      if (
+        !item ||
+        item.ownerUserId !== scope.ownerUserId ||
+        item.namespace !== scope.namespace ||
+        item.status === 'synced' ||
+        item.status === 'server_newer'
+      )
         return;
-      }
-      if (item.status === 'syncing') {
-        // M2: a claim left behind by a closed tab must not wedge the queue forever.
-        const claimedAt = item.claimedAt ? Date.parse(item.claimedAt) : 0;
-        if (Number.isFinite(claimedAt) && Date.now() - claimedAt <= STALE_CLAIM_MS) {
-          resolve(null);
-          return;
-        }
-      }
-      claimed = { ...item, status: 'syncing', claimedAt: new Date().toISOString() };
+      if (
+        item.status === 'syncing' &&
+        item.claimGeneration === scope.generation &&
+        Date.now() - Date.parse(item.claimedAt) < STALE_CLAIM_MS
+      )
+        return;
+      const claimed: QueuedPhoto = {
+        ...item,
+        status: 'syncing',
+        claimedAt: new Date().toISOString(),
+        claimId: crypto.randomUUID(),
+        claimGeneration: scope.generation
+      };
       queue.put(claimed);
-    };
-    getRequest.onerror = () => reject(getRequest.error);
-    tx.oncomplete = () => {
-      db.close();
-      resolve(claimed);
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
+      result(claimed);
     };
   });
 }
 
-/** Patch many queue rows inside ONE readwrite transaction (atomic sibling updates). */
-async function patchQueuedPhotos(ids: string[], patch: Partial<QueuedPhoto>): Promise<void> {
-  if (!ids.length) return;
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(PHOTO_QUEUE, 'readwrite');
-    const queue = tx.objectStore(PHOTO_QUEUE);
-    for (const id of ids) {
-      const getRequest = queue.get(id);
-      getRequest.onsuccess = () => {
-        const item = getRequest.result as QueuedPhoto | undefined;
-        if (item) queue.put({ ...item, ...patch });
+async function updateClaims(
+  scope: OfflineScope,
+  claims: QueuedPhoto[],
+  patch?: Partial<Pick<QueuedPhoto, 'entityId' | 'status' | 'claimedAt'>>
+): Promise<void> {
+  await withOwnedOfflineData(scope, PHOTO_QUEUE, 'readwrite', (queue) => {
+    for (const claim of claims) {
+      const request = queue.get(claim.id);
+      request.onsuccess = () => {
+        const item = request.result as QueuedPhoto | undefined;
+        if (
+          item?.claimId !== claim.claimId ||
+          item?.ownerUserId !== scope.ownerUserId ||
+          item.namespace !== scope.namespace
+        )
+          return;
+        if (patch) queue.put({ ...item, ...patch });
+        else queue.delete(claim.id);
       };
     }
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error);
-    };
   });
 }
 
-async function drainPhotoQueue() {
-  const queued = await store<QueuedPhoto[]>(PHOTO_QUEUE, 'readonly', (queue) => queue.getAll());
-  let conflicts = 0;
+function publishSyncResult(scope: OfflineScope, conflicts: number): void {
+  if (!sameScope(getBrowserSession()?.scope, scope)) return;
+  window.dispatchEvent(
+    new CustomEvent('photo-queue-sync-complete', { detail: { scope, conflicts } })
+  );
+}
 
-  for (const batch of planSyncBatches(queued)) {
+async function canSync(scope: OfflineScope): Promise<boolean> {
+  return (await isActiveOfflineScope(scope)) && sameScope(getBrowserSession()?.scope, scope);
+}
+
+async function drainPhotoQueue(scope: OfflineScope): Promise<void> {
+  const queued = await withOwnedOfflineData<QueuedPhoto[]>(
+    scope,
+    PHOTO_QUEUE,
+    'readonly',
+    (queue, result) => {
+      const request = queue.index(OWNER_INDEX).getAll(ownerKey(scope));
+      request.onsuccess = () => result(request.result as QueuedPhoto[]);
+    }
+  );
+  let conflicts = 0;
+  for (const batch of planSyncBatches(queued ?? [])) {
+    if (!(await canSync(scope))) return;
+    const actor = await getMe(scope).catch(() => null);
+    if (actor?.id !== scope.ownerUserId || !(await canSync(scope))) return;
     const claimed: QueuedPhoto[] = [];
     for (const item of batch.items) {
-      const entry = await claimQueuedPhoto(item.id);
+      const entry = await claimQueuedPhoto(scope, item.id);
       if (entry) claimed.push(entry);
     }
     if (!claimed.length) continue;
 
-    const ids = claimed.map((item) => item.id);
     let entityId = batch.entityId;
     try {
       if (batch.needsReportCreate) {
         const draftPayload = claimed.find((item) => item.draftPayload)?.draftPayload;
         if (!draftPayload) throw new Error('Missing offline draft payload');
-        // C1: exactly one create per local batch, keyed by the local id so a replay is a no-op.
-        const report = await createDailyReport(draftPayload, batch.entityId);
+        if (!(await canSync(scope))) return;
+        const report = await createDailyReport(draftPayload, batch.entityId, scope);
         entityId = report.id;
-        // Persist the server id onto EVERY sibling before any upload starts, so a crash
-        // mid-batch can never re-create the report on the next drain.
-        await patchQueuedPhotos(ids, { entityId });
+        await updateClaims(scope, claimed, { entityId });
         if (report.status !== 'draft') {
-          // M2: the server already moved this report on — stop retrying the leftovers.
           conflicts += claimed.length;
-          await patchQueuedPhotos(ids, { status: 'server_newer' });
+          await updateClaims(scope, claimed, { status: 'server_newer' });
           continue;
         }
       }
 
       for (const item of claimed) {
+        if (!(await canSync(scope))) return;
         try {
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(item.file);
@@ -300,18 +377,17 @@ async function drainPhotoQueue() {
             entityId,
             kind: item.kind,
             files: dataTransfer.files,
-            idempotencyKey: item.id
+            idempotencyKey: item.id,
+            scope
           });
-          await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.delete(item.id));
+          await updateClaims(scope, [item]);
         } catch {
-          await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put(retryPatch(item, entityId)));
+          await updateClaims(scope, [item], { entityId, status: 'failed' });
         }
       }
     } catch {
-      // Keep the resolved server id (when we have one) so a retry never re-creates the report.
-      await patchQueuedPhotos(ids, { entityId, status: 'failed' });
+      await updateClaims(scope, claimed, { entityId, status: 'failed' });
     }
   }
-
-  window.dispatchEvent(new CustomEvent('photo-queue-sync-complete', { detail: { conflicts } }));
+  if (await canSync(scope)) publishSyncResult(scope, conflicts);
 }

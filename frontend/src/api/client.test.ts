@@ -1,7 +1,22 @@
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { apiClient, setAccessToken } from './client';
+import { clearBrowserSession, getBrowserSession, startBrowserSession } from './browserSession';
+import { apiClient, sessionRequestConfig } from './client';
+
+vi.mock('./offlineDb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./offlineDb')>();
+  return {
+    ...actual,
+    readOfflineSession: vi.fn(async () => {
+      const current = getBrowserSession();
+      return current ? { ...current.scope, state: 'active' } : undefined;
+    }),
+    writeOfflineSession: vi.fn(async () => false)
+  };
+});
+
+const scope = { namespace: 'app-and-api-a', ownerUserId: 'owner-a', generation: 'session-a' };
 
 const originalAdapter = apiClient.defaults.adapter;
 
@@ -25,7 +40,7 @@ function unauthorized(config: InternalAxiosRequestConfig, errorCode: string): ne
 
 afterEach(() => {
   apiClient.defaults.adapter = originalAdapter;
-  setAccessToken(null);
+  clearBrowserSession();
 });
 
 describe('API client authentication and retries', () => {
@@ -46,10 +61,10 @@ describe('API client authentication and retries', () => {
   });
 
   it('refreshes once for simultaneous expired protected requests and retries with the new token', async () => {
-    setAccessToken('expired');
+    startBrowserSession(scope, 'expired');
     const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => {
       if (config.url === '/auth/refresh') {
-        return response(config, 200, { access_token: 'renewed' });
+        return response(config, 200, { access_token: 'renewed', user: { id: scope.ownerUserId } });
       }
       if (config.headers.Authorization !== 'Bearer renewed') unauthorized(config, 'EXPIRED');
       return response(config, 200, config.url);
@@ -62,6 +77,38 @@ describe('API client authentication and retries', () => {
     expect(paths.filter((path) => path === '/auth/refresh')).toHaveLength(1);
     expect(paths.filter((path) => path === '/reports')).toHaveLength(2);
     expect(paths.filter((path) => path === '/projects')).toHaveLength(2);
+  });
+
+  it('discards a refresh response for a different account and does not replay the write', async () => {
+    startBrowserSession(scope, 'expired');
+    const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => {
+      if (config.url === '/auth/refresh') {
+        return response(config, 200, { access_token: 'other-token', user: { id: 'owner-b' } });
+      }
+      unauthorized(config, 'EXPIRED');
+    });
+    apiClient.defaults.adapter = adapter;
+
+    await expect(apiClient.post('/reports', {}, sessionRequestConfig(scope))).rejects.toMatchObject(
+      {
+        code: AxiosError.ERR_CANCELED
+      }
+    );
+    expect(adapter.mock.calls.map(([config]) => config.url)).toEqual(['/reports', '/auth/refresh']);
+    expect(getBrowserSession()).toBeNull();
+  });
+
+  it('rejects a deferred write from an earlier session before sending it', async () => {
+    startBrowserSession({ ...scope, generation: 'session-b' }, 'current');
+    const adapter = vi.fn();
+    apiClient.defaults.adapter = adapter;
+
+    await expect(apiClient.post('/reports', {}, sessionRequestConfig(scope))).rejects.toMatchObject(
+      {
+        code: AxiosError.ERR_CANCELED
+      }
+    );
+    expect(adapter).not.toHaveBeenCalled();
   });
 
   it('does not retry a payment write when the server response is lost', async () => {

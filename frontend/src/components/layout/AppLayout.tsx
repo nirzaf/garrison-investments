@@ -104,6 +104,8 @@ export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [signOutError, setSignOutError] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const location = useLocation();
 
   const visibleNavItems = useMemo(
@@ -272,11 +274,23 @@ export function AppLayout() {
                     </Link>
                     <button
                       className="mt-2 w-full rounded-md border-t border-theme-border px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
-                      onClick={() => void logout()}
+                      disabled={isSigningOut}
+                      onClick={() => {
+                        setSignOutError(false);
+                        setIsSigningOut(true);
+                        void logout()
+                          .catch(() => setSignOutError(true))
+                          .finally(() => setIsSigningOut(false));
+                      }}
                       type="button"
                     >
                       Sign out
                     </button>
+                    {signOutError ? (
+                      <p className="px-3 py-2 text-sm text-[var(--status-error-text)]" role="alert">
+                        Unable to clear local drafts. Try signing out again.
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
