@@ -1,8 +1,11 @@
+import httpx
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.exception_reporter import report_celery_task_failure
+from tests.concurrency_helpers import isolated_engine_pool as isolated_engine_pool
 
 
 class FakeExceptionSettings:
@@ -12,7 +15,8 @@ class FakeExceptionSettings:
     exception_email_recipients_list = ["ops@example.test", "quadrate.lk@gmail.com"]
 
 
-def test_unhandled_exception_sends_configured_email_with_debug_context(monkeypatch) -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_unhandled_exception_sends_configured_email_with_debug_context(monkeypatch) -> None:
     sent: dict[str, object] = {}
 
     class FakeEmailService:
@@ -34,15 +38,18 @@ def test_unhandled_exception_sends_configured_email_with_debug_context(monkeypat
     async def boom() -> None:
         raise RuntimeError("database connection exploded")
 
-    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
-    response = client.get(
-        "/boom?project_id=123",
-        headers={
-            "Authorization": "Bearer secret-token",
-            "User-Agent": "pytest-client",
-            "X-Request-ID": "req-test-123",
-        },
+    transport = httpx.ASGITransport(
+        app=app, raise_app_exceptions=False, client=("127.0.0.1", 50000)
     )
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(
+            "/boom?project_id=123",
+            headers={
+                "Authorization": "Bearer secret-token",
+                "User-Agent": "pytest-client",
+                "X-Request-ID": "req-test-123",
+            },
+        )
 
     assert response.status_code == 500
     assert response.json()["error_code"] == "INTERNAL_SERVER_ERROR"

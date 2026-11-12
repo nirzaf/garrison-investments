@@ -6,15 +6,16 @@ from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import Mock
 
+import httpx
 import pytest
 import structlog
-from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
 from app.observability.context import bind_log_context, clear_log_context, log_context_dict
 from app.observability.logging import configure_logging
 from app.tasks.base import LoggedTask
+from tests.concurrency_helpers import isolated_engine_pool as isolated_engine_pool
 
 
 def _configure(
@@ -186,11 +187,14 @@ def test_exception_traceback_is_structured_and_redacted(capfd) -> None:
     assert "secret-access-token" not in output
 
 
-def test_http_request_completion_contains_route_status_and_duration(capfd) -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_http_request_completion_contains_route_status_and_duration(capfd) -> None:
     _configure()
     capfd.readouterr()
 
-    response = TestClient(create_app()).get("/api/v1/")
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/v1/")
 
     assert response.status_code == 200
     records = [
@@ -204,7 +208,8 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
     assert completion["duration_ms"] >= 0
 
 
-def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> None:
     app = create_app()
 
     @app.get("/fixture-failure")
@@ -212,7 +217,9 @@ def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> Non
         raise RuntimeError("Synthetic request failure.")
 
     capfd.readouterr()
-    response = TestClient(app, raise_server_exceptions=False).get("/fixture-failure")
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/fixture-failure")
     assert response.status_code == 500
     records = [
         json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
@@ -227,14 +234,17 @@ def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> Non
     assert completion[0]["request_id"] == failure["request_id"] == response.headers["X-Request-ID"]
 
 
-def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -> None:
     _configure()
     capfd.readouterr()
 
-    response = TestClient(create_app(), client=("127.0.0.1", 50000)).get(
-        "/api/v1/?token=must-not-leak",
-        headers={"X-Request-ID": "req-cleanup", "X-Session-ID": "session-cleanup"},
-    )
+    transport = httpx.ASGITransport(app=create_app(), client=("127.0.0.1", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(
+            "/api/v1/?token=must-not-leak",
+            headers={"X-Request-ID": "req-cleanup", "X-Session-ID": "session-cleanup"},
+        )
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "req-cleanup"
@@ -251,26 +261,32 @@ def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -
     assert log_context_dict() == {}
 
 
-def test_http_request_replaces_untrusted_or_malformed_correlation_ids() -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_http_request_replaces_untrusted_or_malformed_correlation_ids() -> None:
     headers = {"X-Request-ID": "caller-supplied", "X-Session-ID": "caller-session"}
-    untrusted = TestClient(create_app(), client=("198.51.100.10", 50000)).get(
-        "/api/v1/", headers=headers
-    )
+    transport = httpx.ASGITransport(app=create_app(), client=("198.51.100.10", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        untrusted = await client.get("/api/v1/", headers=headers)
     assert untrusted.headers["X-Request-ID"] != headers["X-Request-ID"]
     assert untrusted.headers["X-Session-ID"] == untrusted.headers["X-Request-ID"]
 
-    trusted = TestClient(create_app(), client=("127.0.0.1", 50000)).get(
-        "/api/v1/", headers={"X-Request-ID": "x" * 65, "X-Session-ID": "bad session"}
-    )
+    transport = httpx.ASGITransport(app=create_app(), client=("127.0.0.1", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        trusted = await client.get(
+            "/api/v1/", headers={"X-Request-ID": "x" * 65, "X-Session-ID": "bad session"}
+        )
     assert len(trusted.headers["X-Request-ID"]) == 36
     assert trusted.headers["X-Session-ID"] == trusted.headers["X-Request-ID"]
 
 
-def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:
+@pytest.mark.usefixtures("isolated_engine_pool")
+async def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:
     _configure()
     capfd.readouterr()
 
-    response = TestClient(create_app()).get("/health")
+    transport = httpx.ASGITransport(app=create_app())
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/health")
 
     assert response.status_code == 200
     records = [

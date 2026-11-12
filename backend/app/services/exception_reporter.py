@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.services.audit_service import AuditService
 from app.services.email_service import EmailService
+from app.tasks.async_utils import run_async_task
 from app.utils.redaction import redact_payload, redact_text
 from app.utils.request import get_client_ip
 from app.utils.security import decode_access_token
@@ -110,7 +111,7 @@ def report_celery_task_failure(
     kwargs: Mapping[str, Any] | None = None,
     traceback_text: str | None = None,
 ) -> None:
-    asyncio.run(
+    run_async_task(
         _store_celery_failure_event(
             task_name=task_name,
             task_id=task_id,
