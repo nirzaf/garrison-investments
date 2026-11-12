@@ -53,6 +53,32 @@ ROLE_IDS = {
     "store_keeper",
     "accounts",
 }
+PROJECT_MANAGING_ROLES = {"admin", "general_manager", "operation_manager"}
+REPORT_APPROVER_ROLES = PROJECT_MANAGING_ROLES | {"project_manager"}
+SITE_REPORT_ROLES = {"civil_supervisor", "civil_engineer"}
+UAT_REQUIRED_ROLES = {
+    "UAT-02": ({"admin"}, {"project_manager", "civil_engineer", "civil_supervisor"}),
+    "UAT-03": ({"admin", "operation_manager"},),
+    "UAT-04": (PROJECT_MANAGING_ROLES,),
+    "UAT-05": (PROJECT_MANAGING_ROLES,),
+    "UAT-06": (PROJECT_MANAGING_ROLES,),
+    "UAT-07": ({"civil_supervisor"},),
+    "UAT-08": ({"civil_engineer"}, REPORT_APPROVER_ROLES),
+    "UAT-09": (REPORT_APPROVER_ROLES,),
+    "UAT-10": ({"store_keeper"},),
+    "UAT-12": ({"store_keeper"},),
+    "UAT-13": ({"store_keeper"},),
+    "UAT-15": ({"accounts"}, {"project_manager"}),
+    "UAT-16": ({"operation_manager"},),
+    "UAT-20": ({"admin"},),
+    "UAT-21": (SITE_REPORT_ROLES,),
+    "UAT-22": (SITE_REPORT_ROLES,),
+    "UAT-23": ({"civil_engineer"},),
+    "UAT-24": ({"civil_engineer"},),
+    "UAT-27": ({"civil_engineer"},),
+    "UAT-28": ({"civil_engineer"},),
+    "UAT-33": ({"admin"},),
+}
 MOBILE_SCENARIOS = {7, 8, 18, 20, *range(21, 30), 34, 35}
 OPERATOR_SCENARIOS = {33, 36, 37, 38, 40}
 FINAL_SCENARIOS = {36, 37, 38, 40}
@@ -126,6 +152,10 @@ def control_registry() -> dict[str, Any]:
         "uat_platforms": {
             f"UAT-{number:02}": sorted(required_platforms(f"UAT-{number:02}"))
             for number in range(1, 41)
+        },
+        "uat_role_groups": {
+            scenario: [sorted(roles) for roles in groups]
+            for scenario, groups in UAT_REQUIRED_ROLES.items()
         },
     }
 
@@ -347,12 +377,18 @@ def github_record(path: str, token: str | None) -> dict[str, Any]:
 
 
 def checked_run(
-    run_id: int, sha: str, token: str | None, *, ci: bool, active: bool = False
+    run_id: int, sha: str, token: str | None, *, ci: bool, active: bool = False,
+    attempt: int | None = None,
 ) -> dict[str, Any]:
-    run = github_record(f"actions/runs/{run_id}", token)
+    path = f"actions/runs/{run_id}"
+    if attempt is not None:
+        count(attempt, "workflow run attempt", minimum=1)
+        path += f"/attempts/{attempt}"
+    run = github_record(path, token)
     repository = run.get("head_repository") or {}
     require(
         run.get("id") == run_id
+        and (attempt is None or run.get("run_attempt") == attempt)
         and run.get("head_sha") == sha
         and repository.get("full_name") == REPOSITORY
         and run.get("head_branch") == "main"
@@ -370,8 +406,14 @@ def checked_run(
     return run
 
 
-def deployment_operator(run_id: int, sha: str, token: str | None) -> str:
-    run = checked_run(run_id, sha, token, ci=False, active=True)
+def deployment_operator(
+    run_id: int, sha: str, token: str | None, *, attempt: int | None = None
+) -> str:
+    run = checked_run(run_id, sha, token, ci=False, active=True, attempt=attempt)
+    return workflow_operator(run)
+
+
+def workflow_operator(run: dict[str, Any]) -> str:
     actor = run.get("triggering_actor") or run.get("actor")
     if not isinstance(actor, dict):
         raise ContractError(3, "The deployment operator could not be verified from GitHub.")
@@ -670,6 +712,20 @@ def decision_operations(record: dict[str, Any], target: str, evidence: Evidence)
         "Installed monitor profile differs from the approved operations decision.",
         3,
     )
+    monitor_check_ids(profile)
+
+
+def monitor_check_ids(profile: dict[str, Any]) -> tuple[set[str], str]:
+    backup = profile.get("backup")
+    if not isinstance(backup, dict):
+        raise ContractError(3, "The approved monitor requires a backup freshness check.")
+    backup_id = meaningful(backup.get("check_id"), "backup freshness check ID")
+    targets = items(profile.get("targets"), "installed monitor targets")
+    require(all(isinstance(row, dict) for row in targets), "Invalid monitor targets.")
+    checks = {meaningful(row.get("check_id"), "monitor check ID") for row in targets}
+    checks.add(backup_id)
+    require(len(checks) == len(targets) + 1, "Monitor check IDs must be distinct.")
+    return checks, backup_id
 
 
 def device_key(target: Any) -> tuple[str, str, str, str, str]:
@@ -713,6 +769,13 @@ def scenario_matrix(record: Any) -> dict[str, set[tuple[str, str]]]:
             "Mandatory UAT platform omitted.",
             3,
         )
+        for platform in set(expected[scenario]) - {"operations"}:
+            roles = {role for observed_platform, role in pairs if observed_platform == platform}
+            require(
+                all(roles & group for group in UAT_REQUIRED_ROLES.get(scenario, ())),
+                f"Mandatory UAT role omitted for {scenario} on {platform}.",
+                3,
+            )
         matrix[scenario] = pairs
     require(
         {("desktop", role) for role in ROLE_IDS} <= matrix["UAT-01"],
@@ -1286,7 +1349,55 @@ def receipt_uat(
     return defect_ids
 
 
-def receipt_reconciliation(payload: Any, approved: dict[str, Any]) -> None:
+def verify_repair(
+    value: Any, identity: dict[str, str], population: str, exception_id: str, approvals: Approvals
+) -> None:
+    repair = fields(
+        value, "plan_ref backup_ref authorization_ref execution_ref", label="legacy repair evidence"
+    )
+    scope = {
+        **identity,
+        "population": population,
+        "exception_id": exception_id,
+        "plan_sha256": approvals.evidence.load(repair["plan_ref"]),
+        "backup_sha256": approvals.evidence.load(repair["backup_ref"]),
+    }
+    authorization = approvals.check(
+        repair["authorization_ref"], "data_repair", canonical_digest(scope)
+    )
+    meaningful(authorization.get("authorization_reference"), "data repair authorization reference")
+    execution = fields(
+        approvals.evidence.load(repair["execution_ref"], parse=True),
+        "source_sha environment configuration_sha256 population exception_id plan_sha256 "
+        "backup_sha256 authorization_sha256 started_at completed_at outcome",
+        label="legacy repair execution",
+    )
+    started, completed = check_execution(
+        execution["started_at"], execution["completed_at"], approvals.now, "data repair"
+    )
+    require(
+        all(execution[key] == expected for key, expected in scope.items())
+        and authorization.get("source_sha") == identity["source_sha"]
+        and authorization.get("environment") == identity["environment"]
+        and execution["authorization_sha256"] == repair["authorization_ref"]["sha256"]
+        and execution["outcome"] == "pass"
+        and utc(authorization["approved_at"], "repair approval")
+        <= utc(authorization.get("valid_from"), "repair authorization start")
+        <= started <= completed
+        < utc(authorization.get("valid_until"), "repair authorization expiry"),
+        "Legacy repair does not match its approved plan, backup, or execution window.",
+        3,
+    )
+
+
+def receipt_reconciliation(
+    payload: Any,
+    approved: dict[str, Any],
+    records_owner: str,
+    approvals: Approvals,
+    identity: dict[str, str],
+    artifact_hashes: set[str],
+) -> None:
     data = fields(
         payload,
         "assignment_sha256 sample_sha256 imports exceptions assertions",
@@ -1337,11 +1448,63 @@ def receipt_reconciliation(payload: Any, approved: dict[str, Any]) -> None:
         "Legacy exception inventory is incomplete.",
         3,
     )
-    for population in populations.values():
-        row = fields(population, "observed_ids resolved_ids", label="legacy exception inventory")
+    for name, population in populations.items():
+        row = fields(
+            population, "inventory_ref observed_ids dispositions", label="legacy exception list"
+        )
+        inventory_hash = approvals.evidence.load(row["inventory_ref"])
         require(
-            strings(row["observed_ids"], "observed exception IDs", minimum=0)
-            == strings(row["resolved_ids"], "resolved exception IDs", minimum=0),
+            inventory_hash in artifact_hashes,
+            "Legacy inventory must be attached to the reviewed reconciliation receipt.",
+            3,
+        )
+        remaining = strings(row["observed_ids"], "observed exception IDs", minimum=0)
+        role = "records_owner" if name == "retention" else "finance_data_owner"
+        owner = records_owner if name == "retention" else approved["signatories"][role]
+        for value in items(row["dispositions"], "legacy exception dispositions", minimum=0):
+            disposition = fields(
+                value, "exception_id status reason evidence_ref approval_ref",
+                optional="repair", label="legacy exception disposition",
+            )
+            exception_id = meaningful(disposition["exception_id"], "legacy exception ID")
+            require(exception_id in remaining, "Unexpected or repeated exception disposition.", 3)
+            remaining.remove(exception_id)
+            status = exact(
+                disposition["status"],
+                {"resolved", "protected_exception", "repaired"},
+                "legacy exception status",
+            )
+            meaningful(disposition["reason"], "legacy exception reason")
+            approvals.evidence.load(disposition["evidence_ref"])
+            approval = approvals.check(
+                disposition["approval_ref"],
+                "legacy_exception_disposition",
+                canonical_digest(
+                    {
+                        **identity,
+                        "population": name,
+                        "inventory_sha256": inventory_hash,
+                        "disposition": {
+                            key: item for key, item in disposition.items() if key != "approval_ref"
+                        },
+                    }
+                ),
+                role=role,
+            )
+            require(
+                approval["approver_identity"] == owner,
+                "Legacy exception disposition lacks its named owner approval.",
+                3,
+            )
+            require(
+                ("repair" in disposition) == (status == "repaired"),
+                "A repaired legacy exception requires separate repair evidence.",
+                3,
+            )
+            if status == "repaired":
+                verify_repair(disposition["repair"], identity, name, exception_id, approvals)
+        require(
+            not remaining,
             "Legacy exception inventory contains an unresolved case.",
             4,
         )
@@ -1388,25 +1551,123 @@ def readback(payload: Any, identity: dict[str, Any]) -> None:
     )
 
 
-def observation(payload: Any, start: datetime, end: datetime) -> None:
+def observation(
+    payload: Any,
+    start: datetime,
+    end: datetime,
+    decisions: dict[str, Any],
+    evidence: Evidence,
+    identity: dict[str, str],
+    artifact_hashes: set[str],
+) -> None:
     data = fields(
         payload,
         "approved_window_seconds window_approval incidents scheduled_backup scheduled_monitoring",
         label="observation result",
     )
-    limit = count(data["approved_window_seconds"], "approved observation window", minimum=1)
+    recovery = decisions["D-29-RECOVERY"]
+    operations = decisions["D-30-OPERATIONS"]
+    cycle = max(recovery["backup_interval_minutes"] * 60, operations["probe_interval_seconds"])
+    limit = count(data["approved_window_seconds"], "approved observation window", minimum=cycle)
     require(
         (end - start).total_seconds() >= limit, "Approved observation window has not elapsed.", 3
     )
-    for key in ("scheduled_backup", "scheduled_monitoring"):
-        event = fields(data[key], "event_id at outcome", label="scheduled activity")
-        meaningful(event["event_id"], "scheduled activity ID")
+    backup = fields(
+        data["scheduled_backup"], "attempt_ref publication_ref", label="scheduled backup evidence"
+    )
+    monitor_ref = data["scheduled_monitoring"]
+    for ref in (*backup.values(), monitor_ref):
         require(
-            start <= utc(event["at"], "scheduled activity time") <= end
-            and event["outcome"] == "pass",
-            "Mandatory scheduled activity failed or is outside the observation window.",
+            evidence.load(ref) in artifact_hashes,
+            "Scheduled activity must be attached to the reviewed observation receipt.",
+            3,
+        )
+    attempt = fields(
+        evidence.load(backup["attempt_ref"], parse=True),
+        "source_sha started_at_utc completed_at_utc phase outcome",
+        label="scheduled backup attempt",
+    )
+    publication = fields(
+        evidence.load(backup["publication_ref"], parse=True),
+        "receipt key_id algorithm signature",
+        label="scheduled backup publication",
+    )
+    meaningful(publication["key_id"], "scheduled backup key ID")
+    digest(publication["signature"], "scheduled publication authentication tag")
+    published = fields(
+        publication["receipt"],
+        "backup_set_id manifest_sha256 snapshot_at_utc remote_verified_at_utc source_sha "
+        "source_environment policy_revision policy_sha256 configuration_sha256 "
+        "destination_identity object_count outcome",
+        label="published scheduled backup",
+    )
+    meaningful(published["backup_set_id"], "scheduled backup set ID")
+    manifest_hash = digest(published["manifest_sha256"], "scheduled backup manifest")
+    count(published["object_count"], "scheduled backup object count")
+    snapshot = utc(published["snapshot_at_utc"], "scheduled backup snapshot")
+    verified = utc(published["remote_verified_at_utc"], "scheduled backup publication")
+    require(
+        attempt["source_sha"] == published["source_sha"] == identity["source_sha"]
+        and attempt["phase"] == "complete"
+        and attempt["outcome"] == published["outcome"] == "pass"
+        and publication["algorithm"] == "HMAC-SHA256"
+        and published["source_environment"] == identity["environment"]
+        and published["configuration_sha256"] == identity["configuration_sha256"]
+        and published["policy_sha256"] == recovery["policy_ref"]["sha256"]
+        and published["policy_revision"] == recovery["revision"]
+        and published["destination_identity"] == recovery["destination_identity"]
+        and start <= utc(attempt["started_at_utc"], "scheduled backup start")
+        <= snapshot <= verified <= utc(attempt["completed_at_utc"], "scheduled backup completion")
+        <= end,
+        "Scheduled backup failed or differs from the approved release and observation window.",
+        4,
+    )
+    monitor = fields(
+        evidence.load(monitor_ref, parse=True),
+        "profile_id profile_revision source_sha environment profile_sha256 checked_at completed_at "
+        "executed_by observations",
+        label="scheduled monitor receipt",
+    )
+    meaningful(monitor["executed_by"], "scheduled monitor executor")
+    check_start = utc(monitor["checked_at"], "scheduled check time")
+    check_end = utc(monitor["completed_at"], "scheduled monitor completion")
+    require(
+        monitor["source_sha"] == identity["source_sha"]
+        and monitor["environment"] == identity["environment"]
+        and monitor["profile_sha256"] == operations["profile_ref"]["sha256"]
+        and monitor["profile_id"] == operations["profile_id"]
+        and monitor["profile_revision"] == operations["revision"]
+        and start <= check_start <= check_end <= end
+        and verified <= check_end,
+        "Scheduled monitor receipt differs from the approved release, profile or window.",
+        4,
+    )
+    profile = evidence.load(operations["profile_ref"], parse=True)
+    checks, backup_check = monitor_check_ids(profile)
+    for event in items(monitor["observations"], "scheduled monitor observations"):
+        row = fields(
+            event, "check_id result event suppressed delivery message_id acknowledgement",
+            label="scheduled monitor check",
+        )
+        check_id = meaningful(row["check_id"], "scheduled monitor check ID")
+        result = fields(
+            row["result"], "ok category status digest snapshot_at", label="scheduled check result"
+        )
+        require(
+            check_id in checks and result["ok"] is True
+            and row["suppressed"] is False and row["delivery"] in {"none", "accepted"},
+            "An approved scheduled check failed, was repeated, or was suppressed.",
             4,
         )
+        if check_id == backup_check:
+            require(
+                result["digest"] == manifest_hash
+                and utc(result["snapshot_at"], "monitored backup snapshot") == snapshot,
+                "Backup freshness did not verify the observed scheduled backup.",
+                4,
+            )
+        checks.remove(check_id)
+    require(not checks, "An approved scheduled check was not observed.", 3)
     for event in items(data["incidents"], "observation incident record", minimum=0):
         row = fields(event, "id status resolution_ref", label="observed incident")
         meaningful(row["id"], "incident ID")
@@ -1581,11 +1842,14 @@ class Validation:
         self.identity: dict[str, Any] = {}
         self.subject_hash = ""
         self.decision_hashes: dict[str, str] = {}
+        self.decision_owners: dict[str, str] = {}
         self.decisions: dict[str, Any] = {}
         self.stage_config: str | None = None
         self.stage_profile: str | None = None
         self.stage_recovery: dict[str, Any] | None = None
         self.deploy_window: tuple[datetime, datetime] | None = None
+        self.deployment_authorizer = ""
+        self.activation_operator: str | None = None
         self.deployed_at: datetime | None = None
         self.observed_window: tuple[datetime, datetime] | None = None
         self.uat_defects: set[str] = set()
@@ -1610,6 +1874,7 @@ class Validation:
                 canonical_digest(reviewed),
                 role=DECISION_ROLES[decision],
             )
+            self.decision_owners[decision] = approval["approver_identity"]
             require(
                 approval["approved_at"] == row["approved_at"], "Decision approval time differs.", 3
             )
@@ -1700,6 +1965,7 @@ class Validation:
             "Staging monitoring changed approved operation or escalation thresholds.",
             3,
         )
+        monitor_check_ids(stage)
         self.stage_profile = profile_ref["sha256"]
         recovery = self.decisions["D-29-RECOVERY"]
         stage_policy_ref = value["staging_recovery_policy"]
@@ -1799,7 +2065,10 @@ class Validation:
             and approval.get("environment") == self.target
             and approval["approver_identity"]
             == self.decisions["D-33-BUSINESS"]["release_authorizer"]
-            and approval["approver_identity"] != self.actor,
+            and (
+                self.actor is None
+                or approval["approver_identity"].casefold() != self.actor.casefold()
+            ),
             "Deployment authorization does not match its source, environment or named authority.",
             3,
         )
@@ -1811,6 +2080,7 @@ class Validation:
         if self.phase == "predeploy":
             require(start <= self.now < end, "Deployment authorization is not currently valid.", 3)
         self.deploy_window = (start, end)
+        self.deployment_authorizer = approval["approver_identity"]
 
     def validate_receipt(self, ref: Any) -> None:
         raw = fields(
@@ -1871,6 +2141,11 @@ class Validation:
             3,
         )
         result = raw["results"]
+        receipt_identity = {
+            "source_sha": self.sha,
+            "environment": environment,
+            "configuration_sha256": configuration,
+        }
         if kind == "ci":
             receipt_ci(result, self.evidence, self.sha, self.token, self.expected_ci_run)
         elif kind == "retention":
@@ -1923,18 +2198,35 @@ class Validation:
                 )
             )
         elif kind == "data_reconciliation":
-            receipt_reconciliation(result, self.decisions["D-33-BUSINESS"])
+            receipt_reconciliation(
+                result,
+                self.decisions["D-33-BUSINESS"],
+                self.decision_owners["D-28-POLICY"],
+                self.approvals,
+                receipt_identity,
+                artifact_hashes,
+            )
         elif kind == "deployment":
             deployed = fields(
-                result, "run_id run_url ci_run_id deployed_at readback", label="deployment result"
+                result, "run_id run_url run_attempt ci_run_id deployed_at readback",
+                label="deployment result",
             )
             run_id = count(deployed["run_id"], "deployment run ID", minimum=1)
             require(deployed["run_url"] == run_url(run_id), "Invalid deployment run URL.")
-            checked_run(run_id, self.sha, self.token, ci=False)
+            attempt = count(deployed["run_attempt"], "deployment run attempt", minimum=1)
+            run = checked_run(run_id, self.sha, self.token, ci=False, attempt=attempt)
+            self.activation_operator = workflow_operator(run)
+            require(
+                self.activation_operator.casefold() != self.deployment_authorizer.casefold(),
+                "The actual deployment operator cannot authorize their own deployment.",
+                3,
+            )
             self.deployed_at = utc(deployed["deployed_at"], "deployment activation")
             assert self.deploy_window is not None
             require(
                 start <= self.deployed_at <= end
+                and utc(run.get("run_started_at"), "GitHub deployment start")
+                <= self.deployed_at <= utc(run.get("updated_at"), "GitHub deployment completion")
                 and self.deploy_window[0] <= self.deployed_at < self.deploy_window[1],
                 "Deployment occurred outside its approval or recorded execution window.",
                 3,
@@ -1943,7 +2235,15 @@ class Validation:
         elif kind == "runtime_readback":
             readback(result, self.identity)
         elif kind == "observation":
-            observation(result, start, end)
+            observation(
+                result,
+                start,
+                end,
+                self.decisions,
+                self.evidence,
+                receipt_identity,
+                artifact_hashes,
+            )
             window = self.approvals.check(
                 result["window_approval"],
                 "approve_observation_window",
@@ -2111,6 +2411,7 @@ class Validation:
         )
         roles = set()
         assert self.observed_window is not None
+        assert self.activation_operator is not None
         for approval_ref in items(approvals.get("final_acceptance"), "final sign-offs"):
             approval = self.approvals.check(approval_ref, "final_acceptance", ref["sha256"])
             role = exact(approval["authority_role"], FINAL_ROLES, "final authority role")
@@ -2119,6 +2420,7 @@ class Validation:
                 and approval["approver_identity"]
                 == self.decisions["D-33-BUSINESS"]["signatories"][role]
                 and approval["approver_identity"] != self.actor
+                and approval["approver_identity"].casefold() != self.activation_operator.casefold()
                 and utc(approval["approved_at"], "final approval") >= self.observed_window[1],
                 "A final approval is duplicated, unauthorized, or predates observation.",
                 3,
@@ -2127,6 +2429,53 @@ class Validation:
         require(
             roles == FINAL_ROLES,
             "Final business, finance/data, QA and operations sign-offs are required.",
+            3,
+        )
+
+    def validate_operations(self, refs: Any) -> None:
+        policy = self.decisions["D-28-POLICY"]
+        expiry_subject = canonical_digest(
+            {
+                "source_sha": self.sha,
+                "environment": self.target,
+                "configuration_sha256": self.configuration,
+                "policy_sha256": policy["policy_ref"]["sha256"],
+            }
+        )
+        require_expiry = self.target == "production" and policy["mode"] == "scheduled_expiry"
+        matching_expiry = 0
+        for ref in items(refs, "operation approvals", minimum=0):
+            operation = self.evidence.load(ref, parse=True)
+            require(isinstance(operation, dict), "Invalid operation authorization.")
+            purpose = exact(
+                operation.get("purpose"),
+                {"data_repair", "legacy_disposal", "purge"},
+                "operation purpose",
+            )
+            subject = digest(operation.get("subject_sha256"), "operation subject")
+            approval = self.approvals.check(ref, purpose, subject)
+            if not require_expiry or purpose != "purge" or subject != expiry_subject:
+                continue
+            activation = self.now if self.phase == "predeploy" else self.deployed_at
+            assert activation is not None
+            meaningful(approval.get("authorization_reference"), "purge authorization reference")
+            require(
+                approval["authority_role"] == "release_authorizer"
+                and approval["approver_identity"]
+                == self.decisions["D-33-BUSINESS"]["release_authorizer"]
+                and approval.get("source_sha") == self.sha
+                and approval.get("environment") == self.target
+                and utc(approval["approved_at"], "purge approval")
+                <= utc(approval.get("valid_from"), "purge authorization start")
+                <= activation
+                < utc(approval.get("valid_until"), "purge authorization expiry"),
+                "Scheduled expiry authorization differs from its approved authority or window.",
+                3,
+            )
+            matching_expiry += 1
+        require(
+            not require_expiry or matching_expiry == 1,
+            "Production scheduled expiry requires a separate exact-policy purge authorization.",
             3,
         )
 
@@ -2175,18 +2524,7 @@ class Validation:
                 "acceptance_bundle" not in manifest and "final_acceptance" not in approvals,
                 "A predeploy manifest may not claim final acceptance.",
             )
-        if "operations" in approvals:
-            for ref in items(approvals["operations"], "operation approvals", minimum=0):
-                operation = self.evidence.load(ref, parse=True)
-                require(isinstance(operation, dict), "Invalid operation authorization.")
-                purpose = exact(
-                    operation.get("purpose"),
-                    {"data_repair", "legacy_disposal", "purge"},
-                    "operation purpose",
-                )
-                self.approvals.check(
-                    ref, purpose, digest(operation.get("subject_sha256"), "operation subject")
-                )
+        self.validate_operations(approvals.get("operations", []))
         accepted = self.phase == "final" and self.target == "production"
         ready = self.phase == "predeploy" and self.target != "test"
         return {
@@ -2247,6 +2585,7 @@ def host_main() -> None:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--ci-run", type=int, required=True)
     parser.add_argument("--deploy-run", type=int, required=True)
+    parser.add_argument("--deploy-attempt", type=int, required=True)
     parser.add_argument("--schema-head", action="append")
     parser.add_argument("--backend-image")
     parser.add_argument("--frontend-image")
@@ -2296,7 +2635,7 @@ def host_main() -> None:
             expected_ci_run=args.ci_run,
             expected_config=host_configuration(state),
             expected_runtime=runtime,
-            actor=deployment_operator(args.deploy_run, source, token),
+            actor=deployment_operator(args.deploy_run, source, token, attempt=args.deploy_attempt),
         )
         verdict = verifier.run(root / "release_manifest.json")
         print(json.dumps(verdict, sort_keys=True))

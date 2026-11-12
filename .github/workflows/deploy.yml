@@ -43,5 +43,5 @@ jobs:
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
-          printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" |
+          printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" |
             sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 release-contract-v1

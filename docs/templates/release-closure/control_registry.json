@@ -591,5 +591,138 @@
       "desktop",
       "operations"
     ]
+  },
+  "uat_role_groups": {
+    "UAT-02": [
+      [
+        "admin"
+      ],
+      [
+        "civil_engineer",
+        "civil_supervisor",
+        "project_manager"
+      ]
+    ],
+    "UAT-03": [
+      [
+        "admin",
+        "operation_manager"
+      ]
+    ],
+    "UAT-04": [
+      [
+        "admin",
+        "general_manager",
+        "operation_manager"
+      ]
+    ],
+    "UAT-05": [
+      [
+        "admin",
+        "general_manager",
+        "operation_manager"
+      ]
+    ],
+    "UAT-06": [
+      [
+        "admin",
+        "general_manager",
+        "operation_manager"
+      ]
+    ],
+    "UAT-07": [
+      [
+        "civil_supervisor"
+      ]
+    ],
+    "UAT-08": [
+      [
+        "civil_engineer"
+      ],
+      [
+        "admin",
+        "general_manager",
+        "operation_manager",
+        "project_manager"
+      ]
+    ],
+    "UAT-09": [
+      [
+        "admin",
+        "general_manager",
+        "operation_manager",
+        "project_manager"
+      ]
+    ],
+    "UAT-10": [
+      [
+        "store_keeper"
+      ]
+    ],
+    "UAT-12": [
+      [
+        "store_keeper"
+      ]
+    ],
+    "UAT-13": [
+      [
+        "store_keeper"
+      ]
+    ],
+    "UAT-15": [
+      [
+        "accounts"
+      ],
+      [
+        "project_manager"
+      ]
+    ],
+    "UAT-16": [
+      [
+        "operation_manager"
+      ]
+    ],
+    "UAT-20": [
+      [
+        "admin"
+      ]
+    ],
+    "UAT-21": [
+      [
+        "civil_engineer",
+        "civil_supervisor"
+      ]
+    ],
+    "UAT-22": [
+      [
+        "civil_engineer",
+        "civil_supervisor"
+      ]
+    ],
+    "UAT-23": [
+      [
+        "civil_engineer"
+      ]
+    ],
+    "UAT-24": [
+      [
+        "civil_engineer"
+      ]
+    ],
+    "UAT-27": [
+      [
+        "civil_engineer"
+      ]
+    ],
+    "UAT-28": [
+      [
+        "civil_engineer"
+      ]
+    ],
+    "UAT-33": [
+      [
+        "admin"
+      ]
+    ]
   }
 }

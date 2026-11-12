@@ -30,6 +30,7 @@ class Bundle:
         self.trust = self.root.parent / "trusted.json"
         self.approvals: dict[str, Any] = {}
         self.recovery_artifacts: dict[str, list[dict[str, Any]]] = {}
+        self.observation_artifacts: list[dict[str, Any]] = []
         self.sequence = 0
         self.artifact = self.write("artifacts/report.json", {"actual": "Synthetic fixture"})
         self.artifact["sensitivity"] = "sanitized"
@@ -108,6 +109,7 @@ class Bundle:
             "artifacts": [
                 self.artifact,
                 *(self.recovery_artifacts[phase] if kind == "recovery" else []),
+                *(self.observation_artifacts if kind == "observation" else []),
             ],
         }
         row["review"] = self.approval(
@@ -201,8 +203,16 @@ def decision_values(bundle: Bundle) -> dict[str, dict[str, Any]]:
     ref = bundle.artifact
     matrix = {
         f"UAT-{index:02}": [
-            {"platform": platform, "role": "operator"}
+            {"platform": platform, "role": role}
             for platform in sorted(contract.required_platforms(f"UAT-{index:02}"))
+            for role in (
+                ["operator"]
+                if platform == "operations"
+                else [
+                    sorted(group)[0]
+                    for group in contract.UAT_REQUIRED_ROLES.get(f"UAT-{index:02}", ({"operator"},))
+                ]
+            )
         ]
         for index in range(2, 41)
     }
@@ -233,7 +243,7 @@ def decision_values(bundle: Bundle) -> dict[str, dict[str, Any]]:
             "policy_id": "fixture-recovery",
             "rpo_minutes": 60,
             "rto_minutes": 60,
-            "backup_interval_minutes": 30,
+            "backup_interval_minutes": 5,
             "maximum_capture_pause_seconds": 60,
             "maximum_publication_delay_minutes": 5,
             "minimum_spool_free_bytes": 1000,
@@ -330,7 +340,8 @@ def github_stub(path: str, token: str | None) -> dict[str, Any]:
     ]
     if "/jobs?" in path:
         return {"jobs": jobs, "total_count": len(jobs)}
-    run_id = int(path.rsplit("/", 1)[1])
+    parts = path.split("/")
+    run_id = int(parts[2])
     ci = run_id == 11
     return {
         "id": run_id,
@@ -341,6 +352,10 @@ def github_stub(path: str, token: str | None) -> dict[str, Any]:
         "event": "push" if ci else "workflow_run",
         "status": "completed",
         "conclusion": "success",
+        "triggering_actor": {"login": "fixture-deployer"},
+        "run_attempt": int(parts[4]) if len(parts) > 3 else 1,
+        "run_started_at": (DEPLOYED - timedelta(minutes=1)).isoformat(),
+        "updated_at": FINAL_START.isoformat(),
     }
 
 
@@ -559,6 +574,74 @@ def phase_results(
     }
 
 
+def scheduled_observation(
+    bundle: Bundle, subject: dict[str, Any], decisions: dict[str, Any]
+) -> dict[str, Any]:
+    manifest_ref, _, publication_ref = bundle.recovery_artifacts["final"]
+    attempt_ref = bundle.write(
+        "artifacts/scheduled-backup-attempt.json",
+        {
+            "source_sha": SHA,
+            "started_at_utc": FINAL_START.isoformat(),
+            "completed_at_utc": (FINAL_START + timedelta(seconds=2)).isoformat(),
+            "phase": "complete",
+            "outcome": "pass",
+        },
+    )
+    checks = []
+    for check_id, backup_digest in (("portal", None), ("backup", manifest_ref["sha256"])):
+        checks.append(
+            {
+                "check_id": check_id,
+                "result": {
+                    "ok": True,
+                    "category": "ready",
+                    "status": None,
+                    "digest": backup_digest,
+                    "snapshot_at": FINAL_START.isoformat() if backup_digest else None,
+                },
+                "event": None,
+                "suppressed": False,
+                "delivery": "none",
+                "message_id": None,
+                "acknowledgement": None,
+            }
+        )
+    operations = decisions["D-30-OPERATIONS"]
+    monitor_ref = bundle.write(
+        "artifacts/scheduled-monitor.json",
+        {
+            "source_sha": SHA,
+            "environment": "test",
+            "profile_id": operations["profile_id"],
+            "profile_revision": operations["revision"],
+            "profile_sha256": operations["profile_ref"]["sha256"],
+            "checked_at": (FINAL_START + timedelta(seconds=3)).isoformat(),
+            "completed_at": (FINAL_START + timedelta(seconds=4)).isoformat(),
+            "executed_by": "Fixture Monitor",
+            "observations": checks,
+        },
+    )
+    bundle.observation_artifacts = [
+        {**ref, "sensitivity": "sanitized"} for ref in (attempt_ref, publication_ref, monitor_ref)
+    ]
+    return {
+        "approved_window_seconds": 300,
+        "window_approval": bundle.approval(
+            "approve_observation_window",
+            contract.canonical_digest(
+                {"release_subject_sha256": subject["sha256"], "approved_window_seconds": 300}
+            ),
+            "operations_owner",
+            decisions["D-33-BUSINESS"]["signatories"]["operations_owner"],
+            at=STAGE_END,
+        ),
+        "incidents": [],
+        "scheduled_backup": {"attempt_ref": attempt_ref, "publication_ref": publication_ref},
+        "scheduled_monitoring": monitor_ref,
+    }
+
+
 def ledger(phase: str) -> list[dict[str, Any]]:
     result = []
     for workstream in sorted(contract.WORKSTREAMS):
@@ -605,7 +688,11 @@ def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
             }
             payload["policy_ref"] = bundle.write("artifacts/recovery-policy.json", policy)
         if key == "D-30-OPERATIONS":
-            profile = {**payload, "targets": [{"url": url} for url in payload["targets"]]}
+            profile = {
+                **payload,
+                "targets": [{"url": url, "check_id": "portal"} for url in payload["targets"]],
+                "backup": {"check_id": "backup"},
+            }
             payload["profile_ref"] = bundle.write("artifacts/monitor-profile.json", profile)
         payload["approval_ref"] = bundle.approval(
             key,
@@ -670,7 +757,7 @@ def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
                     "media_quota",
                     "retention",
                 ),
-                {"observed_ids": [], "resolved_ids": []},
+                {"inventory_ref": bundle.artifact, "observed_ids": [], "dispositions": []},
             ),
             "assertions": true("least_privilege", "launch_data", "legacy_owner_review"),
         },
@@ -716,32 +803,18 @@ def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
             "readiness": {"status": "ready", "database": "connected"},
             "services": true("backend", "frontend", "worker", "database", "storage"),
         }
-        event = {"event_id": "fixture-schedule", "at": FINAL_START.isoformat(), "outcome": "pass"}
         final = phase_results(bundle, "final", decisions)
         final.update(
             deployment={
                 "run_id": 22,
                 "run_url": contract.run_url(22),
+                "run_attempt": 1,
                 "ci_run_id": 11,
                 "deployed_at": DEPLOYED.isoformat(),
                 "readback": readback,
             },
             runtime_readback=readback,
-            observation={
-                "approved_window_seconds": 60,
-                "window_approval": bundle.approval(
-                    "approve_observation_window",
-                    contract.canonical_digest(
-                        {"release_subject_sha256": subject["sha256"], "approved_window_seconds": 60}
-                    ),
-                    "operations_owner",
-                    business["signatories"]["operations_owner"],
-                    at=STAGE_END,
-                ),
-                "incidents": [],
-                "scheduled_backup": event,
-                "scheduled_monitoring": event,
-            },
+            observation=scheduled_observation(bundle, subject, decisions),
             handover={
                 "primary": "Fixture Primary",
                 "substitute": "Fixture Substitute",
@@ -794,6 +867,243 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
     assert verdict["status"] == "validated_test_evidence"
     assert verdict["accepted_scope_complete"] is False
     assert verdict["ready_for_authorized_deployment"] is False
+
+
+@pytest.mark.parametrize(
+    ("operator", "reason"),
+    [
+        ("fixture release authorizer", "cannot authorize their own deployment"),
+        ("fixture FINANCE_DATA_OWNER", "A final approval is duplicated, unauthorized"),
+    ],
+)
+def test_final_uses_actual_deployment_operator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operator: str, reason: str
+) -> None:
+    def deployment_run(path: str, token: str | None) -> dict[str, Any]:
+        run = github_stub(path, token)
+        if path == "actions/runs/22/attempts/1":
+            run["triggering_actor"] = {"login": operator}
+        return run
+
+    monkeypatch.setattr(contract, "github_record", deployment_run)
+    bundle = Bundle(tmp_path)
+    bundle.write("release_manifest.json", manifest(bundle, "final"))
+    with pytest.raises(contract.ContractError, match=reason):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+def test_final_rejects_activation_before_the_verified_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def deployment_run(path: str, token: str | None) -> dict[str, Any]:
+        run = github_stub(path, token)
+        if path == "actions/runs/22/attempts/1":
+            run["run_started_at"] = (DEPLOYED + timedelta(seconds=1)).isoformat()
+        return run
+
+    monkeypatch.setattr(contract, "github_record", deployment_run)
+    bundle = Bundle(tmp_path)
+    bundle.write("release_manifest.json", manifest(bundle, "final"))
+    with pytest.raises(contract.ContractError, match="Deployment occurred outside"):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("short window", "Invalid approved observation window"),
+        ("missing evidence", "Scheduled activity must be attached"),
+        ("different backup", "Backup freshness did not verify the observed scheduled backup"),
+    ],
+)
+def test_final_requires_scheduled_activity_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str, reason: str
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    data = manifest(bundle, "final")
+    index, ref = next(
+        (index, ref)
+        for index, ref in enumerate(data["receipts"])
+        if ref["path"].endswith("/final-observation.json")
+    )
+    result = json.loads((bundle.root / ref["path"]).read_text())["results"]
+    if change == "short window":
+        result["approved_window_seconds"] = 60
+    elif change == "missing evidence":
+        bundle.observation_artifacts.pop()
+    else:
+        monitor_ref = result["scheduled_monitoring"]
+        monitor = json.loads((bundle.root / monitor_ref["path"]).read_text())
+        monitor["observations"][1]["result"]["digest"] = "0" * 64
+        result["scheduled_monitoring"] = bundle.write(monitor_ref["path"], monitor)
+        bundle.observation_artifacts[-1] = {
+            **result["scheduled_monitoring"],
+            "sensitivity": "sanitized",
+        }
+    data["receipts"][index] = bundle.receipt("observation", result, "final")
+    bundle.write("release_manifest.json", data)
+    with pytest.raises(contract.ContractError, match=reason):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+@pytest.mark.parametrize(
+    ("status", "problem", "reason"),
+    [
+        ("protected_exception", "", ""),
+        ("protected_exception", "missing", "unresolved case"),
+        ("protected_exception", "wrong owner", "named owner approval"),
+        ("repaired", "", ""),
+        ("repaired", "different plan", "approved plan, backup, or execution window"),
+    ],
+)
+def test_reconciliation_checks_owner_disposition_and_repair(
+    tmp_path: Path, status: str, problem: str, reason: str
+) -> None:
+    bundle = Bundle(tmp_path)
+    data = manifest(bundle)
+    business = json.loads((bundle.root / "decisions/D-33-BUSINESS.json").read_text())
+    reference = next(
+        ref
+        for ref in data["receipts"]
+        if ref["path"].endswith("/predeploy-data_reconciliation.json")
+    )
+    result = json.loads((bundle.root / reference["path"]).read_text())["results"]
+    identity = {"source_sha": SHA, "environment": "test", "configuration_sha256": CONFIG}
+    population = result["exceptions"]["payments"]
+    population["observed_ids"] = ["fixture-invoice"]
+    disposition = {
+        "exception_id": "fixture-invoice",
+        "status": status,
+        "reason": "Fixture owner disposition with reviewed evidence",
+        "evidence_ref": bundle.artifact,
+    }
+    if status == "repaired":
+        scope = {
+            **identity,
+            "population": "payments",
+            "exception_id": "fixture-invoice",
+            "plan_sha256": bundle.artifact["sha256"],
+            "backup_sha256": bundle.artifact["sha256"],
+        }
+        authorization = bundle.approval(
+            "data_repair",
+            contract.canonical_digest(scope),
+            "finance_data_owner",
+            business["signatories"]["finance_data_owner"],
+            at=STAGE_START - timedelta(minutes=1),
+            source_sha=SHA,
+            environment="test",
+            valid_from=STAGE_START.isoformat(),
+            valid_until=STAGE_END.isoformat(),
+            authorization_reference="fixture-repair-approval",
+        )
+        execution = {
+            **scope,
+            "authorization_sha256": authorization["sha256"],
+            "outcome": "pass",
+            "started_at": STAGE_START.isoformat(),
+            "completed_at": (STAGE_START + timedelta(minutes=1)).isoformat(),
+        }
+        if problem == "different plan":
+            execution["plan_sha256"] = "0" * 64
+        disposition["repair"] = {
+            "plan_ref": bundle.artifact,
+            "backup_ref": bundle.artifact,
+            "authorization_ref": authorization,
+            "execution_ref": bundle.write("artifacts/repair.json", execution),
+        }
+    if problem != "missing":
+        disposition["approval_ref"] = bundle.approval(
+            "legacy_exception_disposition",
+            contract.canonical_digest(
+                {
+                    **identity,
+                    "population": "payments",
+                    "inventory_sha256": bundle.artifact["sha256"],
+                    "disposition": disposition,
+                }
+            ),
+            "finance_data_owner",
+            "Other Fixture Owner"
+            if problem == "wrong owner"
+            else business["signatories"]["finance_data_owner"],
+        )
+        population["dispositions"] = [disposition]
+
+    def validate() -> None:
+        contract.receipt_reconciliation(
+            result,
+            business,
+            "Fixture Records Owner",
+            bundle.validator("predeploy").approvals,
+            identity,
+            {bundle.artifact["sha256"]},
+        )
+
+    if reason:
+        with pytest.raises(contract.ContractError, match=reason):
+            validate()
+    else:
+        validate()
+
+
+def test_uat_matrix_requires_the_specified_role_on_each_device(tmp_path: Path) -> None:
+    bundle = Bundle(tmp_path)
+    matrix = decision_values(bundle)["D-32-SUPPORT"]["scenario_platform_map"]
+    android = next(row for row in matrix["UAT-07"] if row["platform"] == "android")
+    assert android["role"] == "civil_supervisor"
+    android["role"] = "operator"
+    with pytest.raises(contract.ContractError, match="Mandatory UAT role omitted for UAT-07"):
+        contract.scenario_matrix(matrix)
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("valid", ""),
+        ("missing", "separate exact-policy purge authorization"),
+        ("different policy", "separate exact-policy purge authorization"),
+        ("expired", "Scheduled expiry authorization differs"),
+    ],
+)
+def test_scheduled_expiry_requires_separate_bound_authorization(
+    tmp_path: Path, change: str, reason: str
+) -> None:
+    bundle = Bundle(tmp_path)
+    policy_hash = "e" * 64
+    approval = bundle.approval(
+        "purge",
+        contract.canonical_digest(
+            {
+                "source_sha": SHA,
+                "environment": "production",
+                "configuration_sha256": CONFIG,
+                "policy_sha256": "f" * 64 if change == "different policy" else policy_hash,
+            }
+        ),
+        "release_authorizer",
+        "Fixture Release Authorizer",
+        at=NOW - timedelta(minutes=5),
+        source_sha=SHA,
+        environment="production",
+        valid_from=(NOW - timedelta(minutes=4)).isoformat(),
+        valid_until=(NOW + timedelta(minutes=-1 if change == "expired" else 5)).isoformat(),
+        authorization_reference="fixture-separate-purge-approval",
+    )
+    verifier = bundle.validator("predeploy")
+    verifier.target = "production"
+    verifier.configuration = CONFIG
+    verifier.decisions = {
+        "D-28-POLICY": {"policy_ref": {"sha256": policy_hash}, "mode": "scheduled_expiry"},
+        "D-33-BUSINESS": {"release_authorizer": "Fixture Release Authorizer"},
+    }
+    refs = [] if change == "missing" else [approval]
+    if reason:
+        with pytest.raises(contract.ContractError, match=reason):
+            verifier.validate_operations(refs)
+    else:
+        verifier.validate_operations(refs)
 
 
 @pytest.mark.parametrize("change_threshold", [False, True])
@@ -910,7 +1220,7 @@ def test_strict_gate_fails_closed(
             authorization_reference="fixture-ticket-18",
         )
     elif mutation == "actor is authorizer":
-        expected["actor"] = "Fixture Release Authorizer"
+        expected["actor"] = "fixture RELEASE authorizer"
     elif mutation == "predeploy only":
         phase = "final"
     elif mutation == "unsafe path":
