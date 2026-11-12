@@ -1,0 +1,11 @@
+[Unit]
+Description=Capture and verify an independent Garrisons recovery set
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/garrison-recovery/scheduler.env
+ExecStart=/usr/local/sbin/garrison-capture-recovery-set
+UMask=0077
