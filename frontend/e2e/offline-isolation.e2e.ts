@@ -509,3 +509,107 @@ test('a lost upload receipt is replayed before a newer local text edit', async (
   ).toEqual(['receipt.jpg']);
   expect(await ownedRecordCount(page, 'ownedPhotoQueue')).toBe(0);
 });
+
+test('a browser storage failure preserves the server draft and lets the user retry the retained text', async ({
+  page,
+  context,
+  request,
+  browserName
+}) => {
+  test.skip(browserName !== 'chromium', 'The recovery check uses Chromium network throttling.');
+  const account = seed();
+  const token = await signIn(page, account);
+  const confirmedText = 'Confirmed report before browser storage pressure';
+  await fillReport(page, account.projectId, confirmedText);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Daily report draft saved.')).toBeVisible();
+  const [confirmed] = await getReports(request, token, account.projectId);
+  expect(confirmed).toMatchObject({ revision: 1, work_completed: confirmedText });
+
+  const cdp = await context.newCDPSession(page);
+  const work = page.getByLabel('Work completed');
+  const retainedText = 'Edit retained in the form after the browser refused to save it locally';
+  const restoreDraftStorage = () =>
+    page.evaluate(() => window.dispatchEvent(new Event('test-restore-draft-storage')));
+  try {
+    await context.setOffline(true);
+    // Chromium may keep a previously reserved IndexedDB quota after an origin override.
+    // Abort only this page's owned-draft writes to exercise the real transaction failure.
+    await page.evaluate(() => {
+      const originalPut = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value: unknown, key?: IDBValidKey) {
+        const request = originalPut.call(this, value, key);
+        if (this.name === 'ownedReportDrafts') {
+          Object.defineProperty(this.transaction, 'error', {
+            value: new DOMException('The storage quota was exceeded.', 'QuotaExceededError')
+          });
+          this.transaction.abort();
+        }
+        return request;
+      };
+      window.addEventListener(
+        'test-restore-draft-storage',
+        () => {
+          IDBObjectStore.prototype.put = originalPut;
+        },
+        { once: true }
+      );
+    });
+
+    await work.fill(retainedText);
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.getByText(/Browser storage is full/)).toBeVisible();
+    await expect(page.getByText('Draft saved to server.', { exact: true })).toHaveCount(0);
+    await expect(work).toHaveValue(retainedText);
+    expect(await getReports(request, token, account.projectId)).toEqual([confirmed]);
+    const durableText = await page.evaluate(
+      async () =>
+        new Promise<string>((resolve, reject) => {
+          const open = indexedDB.open('garrisons-offline');
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            const tx = db.transaction('ownedReportDrafts', 'readonly');
+            const drafts = tx.objectStore('ownedReportDrafts').getAll();
+            tx.oncomplete = () => {
+              db.close();
+              resolve(drafts.result[0]?.payload.work_completed);
+            };
+            tx.onabort = () => {
+              db.close();
+              reject(tx.error);
+            };
+          };
+        })
+    );
+    expect(durableText).toBe(confirmedText);
+
+    await restoreDraftStorage();
+    await context.setOffline(false);
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 350,
+      downloadThroughput: 128 * 1024,
+      uploadThroughput: 64 * 1024
+    });
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.getByText('Daily report draft saved.')).toBeVisible();
+    const recovered = await getReports(request, token, account.projectId);
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      id: confirmed.id,
+      revision: 2,
+      work_completed: retainedText
+    });
+  } finally {
+    await restoreDraftStorage();
+    await context.setOffline(false);
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 0,
+      downloadThroughput: -1,
+      uploadThroughput: -1
+    });
+    await cdp.detach();
+  }
+});

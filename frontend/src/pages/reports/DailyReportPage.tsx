@@ -48,6 +48,9 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
+const storageFullMessage =
+  'Browser storage is full. Your changes are still in this form. Free space and retry before closing this page.';
+
 const emptyPayload: DailyReportPayload = {
   project_id: '',
   report_date: '',
@@ -214,7 +217,7 @@ export function DailyReportPage() {
   const [savedReportId, setSavedReportId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [draftStatus, setDraftStatus] = useState<
-    LocalReportDraft['syncState'] | 'idle' | 'syncing'
+    LocalReportDraft['syncState'] | 'idle' | 'syncing' | 'storage-full'
   >('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [syncConflicts, setSyncConflicts] = useState(0);
@@ -252,6 +255,15 @@ export function DailyReportPage() {
         : Promise.resolve(false),
     [getDraftKey, savedReportId, scope]
   );
+
+  const showDraftSaveError = useCallback((error: unknown, fallback: string) => {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      setDraftStatus((status) => (status === 'conflict' ? status : 'storage-full'));
+      setError(storageFullMessage);
+    } else {
+      setError(formatApiError(error, fallback));
+    }
+  }, []);
 
   const loadReports = useCallback(async (projectId?: string) => {
     const response = await listDailyReports({ project_id: projectId || undefined });
@@ -311,8 +323,8 @@ export function DailyReportPage() {
       return;
     }
     const active = () => sameScope(getBrowserSession()?.scope, scope);
-    const onError = () => {
-      if (active()) setError('Unable to save the local draft.');
+    const onError = (error: unknown) => {
+      if (active()) showDraftSaveError(error, 'Unable to save the local draft.');
     };
     if (!formHasDraftContent(form)) {
       const localDraftId = draftKey.current;
@@ -335,6 +347,7 @@ export function DailyReportPage() {
           if (!saved || !active()) return;
           persistedDraftSnapshot.current = snapshot;
           setDraftStatus((current) => (current === 'conflict' ? current : 'local'));
+          setError((current) => (current === storageFullMessage ? null : current));
           if (continueSync && navigator.onLine) void flushPhotoQueue(true).catch(() => {});
         })
         .catch(onError);
@@ -345,7 +358,7 @@ export function DailyReportPage() {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
-  }, [draftHydrated, form, saveLocalDraft, scope]);
+  }, [draftHydrated, form, saveLocalDraft, scope, showDraftSaveError]);
 
   useEffect(() => {
     if (!scope) return;
@@ -376,7 +389,7 @@ export function DailyReportPage() {
             draftKey.current !== localDraftId
           )
             return;
-          setDraftStatus(draft.syncState);
+          setDraftStatus((status) => (status === 'storage-full' ? status : draft.syncState));
           if (draft.serverReport) {
             setSavedReportId(draft.serverReport.id);
             baseRevision.current = draft.baseServerRevision;
@@ -644,7 +657,7 @@ export function DailyReportPage() {
       await loadReports(payload.project_id);
       return reportId;
     } catch (saveError) {
-      setError(formatApiError(saveError, 'Unable to save the daily report.'));
+      showDraftSaveError(saveError, 'Unable to save the daily report.');
       return null;
     } finally {
       setIsSaving(false);
@@ -1081,7 +1094,9 @@ export function DailyReportPage() {
             ) : null}
           </section>
         ) : null}
-        {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
+        {!isOnline &&
+        draftStatus !== 'storage-full' &&
+        (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
             Local draft active
             {queuedUploads > 0
