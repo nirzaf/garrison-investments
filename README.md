@@ -109,7 +109,7 @@ flowchart TB
     runner --> release["Verify the exact commit<br/>Build, check compatibility, and activate"]
     release --> smoke{"Public readiness and<br/>served asset hashes pass?"}
     smoke -->|"Yes"| receipt["Record the active release"]
-    smoke -->|"No"| rollback["Restore the previous release"]
+    smoke -->|"No"| rollback["Restore a compatible release or stop writers for forward recovery"]
 ```
 
 [CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) checks the upstream CI run and commit, publishes the frontend, and verifies the public readiness endpoint and served asset hashes. Application service updates take encrypted backups before activation. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
