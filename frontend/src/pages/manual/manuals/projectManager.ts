@@ -5,20 +5,20 @@ export const projectManagerManual: Manual = {
   roleLabel: 'Project Manager',
   tagline: 'Your project, your view — manage reports, documents, and finances within your scope.',
   overview:
-    'As a Project Manager, you oversee the day-to-day operations of your assigned project(s). You can view and approve reports submitted by engineers and supervisors on your project, manage documents, track materials, and review financial data. Your dashboard is scoped to your project(s) only.',
+    'As a Project Manager, you oversee the day-to-day operations of your assigned project(s). You can review and decide official daily reports for your assigned projects, inspect linked supervisor evidence, manage documents, request materials, and work with project invoices. Your dashboard is scoped to your project(s) only.',
   permissions: [
     'Scoped dashboard (your project only)',
     'View your assigned projects',
-    'View and approve reports within your project',
-    'View inventory',
+    'View and decide submitted daily reports on assigned projects',
+    'View stock and create material requests for assigned active projects',
     'View and manage documents within your project',
     'View financial data'
   ],
   limitations: [
-    'Cannot access company-wide analytics or delivery planning',
+    'Company Analytics and Launch readiness are management pages',
     'Cannot manage users',
     'Cannot manage suppliers',
-    'Cannot manage inventory (view only)',
+    'Stock receipts, reservation, and issue require inventory management permission',
     'Cannot access audit logs',
     'Dashboard is scoped to your assigned project(s) only'
   ],
@@ -28,14 +28,14 @@ export const projectManagerManual: Manual = {
       title: 'Your Scoped Dashboard',
       icon: '🏠',
       content:
-        'Your dashboard shows data scoped to your assigned project(s). You will see pending approvals, recent report activity, and material usage — all filtered for your project.',
+        'Your dashboard shows data scoped to your assigned project(s). You will see active project and report counts, pending documents, and recent report activity within that scope, along with your unread alerts.',
       diagram: `
 Your Dashboard (Project-Scoped):
 ┌──────────────────────────────────────────────────┐
 │  Project Dashboard: [Your Project Name]          │
 ├───────────────┬───────────────┬──────────────────┤
-│  Pending      │  Reports      │  Materials       │
-│  Approvals    │  This Week    │  Summary         │
+│  Pending      │  Approved     │  Pending         │
+│  Reports      │  Reports      │  Documents       │
 └───────────────┴───────────────┴──────────────────┘
 │  Recent Reports (from your project only)         │
 └──────────────────────────────────────────────────┘
@@ -49,33 +49,34 @@ Your Dashboard (Project-Scoped):
       title: 'Approving Reports',
       icon: '✅',
       content:
-        'Your main daily task is reviewing and approving reports submitted by engineers and supervisors on your project.',
+        'Review submitted official daily reports for your assigned projects and inspect linked supervisor evidence.',
       steps: [
         {
           step: 1,
           action: 'Go to Approvals',
-          detail: 'Click "Approvals" in the sidebar. You will only see reports from your project.'
+          detail:
+            'Open Approvals in the sidebar, then choose Report approvals for submitted reports on assigned projects.'
         },
         {
           step: 2,
           action: 'Open a report',
-          detail: 'Click on a pending report to view its details.'
+          detail: 'Find the submitted report card and review the project and report date.'
         },
         {
           step: 3,
           action: 'Review the report',
           detail:
-            'Check the activities listed, quantities recorded, and any attached photos or notes.'
+            'Review the report contents, attachments, history, and linked supervisor evidence.'
         },
         {
           step: 4,
           action: 'Approve or reject',
           detail:
-            'Click "Approve" to accept. If there are issues, click "Reject" with a clear reason for the engineer.'
+            'Confirm target coverage and choose Approve, or enter a reason and choose Reject to return the report to draft.'
         }
       ],
       tips: [
-        'Engineers cannot progress their workflow until you approve. Aim to review reports by end of day.',
+        'Returned reports go back to the engineer for correction and resubmission.',
         'If quantities seem off, cross-reference with the Materials page to verify stock movements.'
       ]
     },
@@ -94,12 +95,12 @@ Your Dashboard (Project-Scoped):
           step: 2,
           action: 'Browse the report list',
           detail:
-            'You will see all reports for your project, with status (pending, approved, rejected).'
+            'Report cards display work completed, next-day plan, safety, history, and status for reports in your scope.'
         },
         {
           step: 3,
-          action: 'Filter by date',
-          detail: 'Use the date range filter to review a specific week or month.'
+          action: 'Download an approved report',
+          detail: 'Use Download PDF on the approved report card.'
         }
       ]
     },
@@ -114,17 +115,19 @@ Your Dashboard (Project-Scoped):
         {
           step: 2,
           action: 'Search or browse',
-          detail: 'Find documents by type, category, or search keyword.'
+          detail: 'Search or filter by project and document type.'
         },
         {
           step: 3,
           action: 'Upload a document',
-          detail: 'Click "Upload", select your file and document category, then confirm.'
+          detail:
+            'Fill the upload form for an assigned project and choose Upload. Use Upload replacement to add a version to an existing document.'
         },
         {
           step: 4,
-          action: 'Download or share',
-          detail: 'Click on a document to download it or copy a share link for your team.'
+          action: 'Review versions',
+          detail:
+            'Choose Approve on an eligible pending project version. Use Download for the active version or a version-specific download from the history.'
         }
       ],
       tips: [
@@ -135,19 +138,21 @@ Your Dashboard (Project-Scoped):
       id: 'inventory',
       title: 'Viewing Materials',
       icon: '📦',
-      content: 'Monitor material consumption and stock levels for your project.',
+      content:
+        'View company-wide stock and material movements. Create requests for your assigned active projects.',
       steps: [
         { step: 1, action: 'Go to Materials', detail: 'Click "Materials" in the sidebar.' },
         {
           step: 2,
           action: 'View current stock',
-          detail: 'See the inventory table with material names, quantities, and units.'
+          detail:
+            'Select an item to see its location-level On hand, Reserved, and Available balances.'
         },
         {
           step: 3,
-          action: 'Track consumption',
+          action: 'Request materials',
           detail:
-            'Compare inventory levels with report quantities to ensure materials are being logged correctly.'
+            'Choose an assigned active project and source location, add item quantities, and select Create request. Track it under My submitted requests in Approvals.'
         }
       ]
     },
@@ -162,12 +167,13 @@ Your Dashboard (Project-Scoped):
           step: 2,
           action: 'Filter to your project',
           detail:
-            'The finance view is pre-scoped to your project, but confirm the project selector shows the right project.'
+            'Use Project filter to select an assigned project. The view is limited to your assigned projects.'
         },
         {
           step: 3,
-          action: 'Review cost lines',
-          detail: 'Check cost breakdowns, supplier invoices, and budget vs. actual spending.'
+          action: 'Review invoices and budget',
+          detail:
+            'Compare the project budget with billable invoices and recorded payments. Open an invoice number for its details or choose New invoice to enter a new one.'
         }
       ]
     }

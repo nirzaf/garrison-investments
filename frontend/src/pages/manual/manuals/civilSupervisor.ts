@@ -5,16 +5,16 @@ export const civilSupervisorManual: Manual = {
   roleLabel: 'Civil Supervisor',
   tagline: 'Submit daily supervisor updates and track your assigned project.',
   overview:
-    'As a Civil Supervisor, you report on day-to-day site supervision activities. Your key task is submitting Supervisor Updates — a form specifically designed for site supervisors that captures worker attendance, activities overseen, safety observations, and materials received. Your access is focused on the reporting tools you need.',
+    'As a Civil Supervisor, you report on day-to-day site supervision activities. Your key task is submitting Supervisor Updates — a form specifically designed for site supervisors that captures attendance, overtime, work location, progress, delays, and supporting evidence. Your access is focused on the reporting tools you need.',
   permissions: [
     'Scoped dashboard (your project only)',
     'View your assigned projects',
     'Submit supervisor update reports',
-    'View reports within your project',
+    'View your own site updates and accessible site photos',
     'View documents within your project'
   ],
   limitations: [
-    'Cannot submit the standard daily engineer report (you use the Supervisor Update form instead)',
+    'Use Supervisor Site Update for field reporting. Official engineer daily reports are restricted to their authorized roles.',
     'Cannot approve any reports',
     'Cannot manage users or user accounts',
     'Cannot access inventory or materials',
@@ -39,8 +39,9 @@ export const civilSupervisorManual: Manual = {
         },
         {
           step: 2,
-          action: 'Start a new update',
-          detail: 'Click "New Update" or the equivalent button.'
+          action: 'Start or resume an update',
+          detail:
+            'Use the Supervisor Site Update form or select Resume draft under Recent Site Updates.'
         },
         {
           step: 3,
@@ -50,31 +51,29 @@ export const civilSupervisorManual: Manual = {
         {
           step: 4,
           action: 'Fill in workforce data',
-          detail: 'Enter the number of workers present today, their trades, and any absenteeism.'
+          detail: 'Enter Attendance and Overtime hours. Set the Update date and Day type.'
         },
         {
           step: 5,
           action: 'Record activities supervised',
-          detail:
-            'List the construction activities you supervised today and your observations on quality and safety.'
+          detail: 'Enter Work location and describe the activities in Progress notes.'
         },
         {
           step: 6,
-          action: 'Note materials received',
-          detail:
-            'Record any materials delivered to site today including quantities and delivery note references.'
+          action: 'Record delays and requirements',
+          detail: 'Use Delay notes for setbacks and Required notes for follow-up work or issues.'
         },
         {
           step: 7,
-          action: 'Add safety observations',
+          action: 'Attach evidence',
           detail:
-            'Note any safety incidents, near-misses, or hazards observed and what corrective action was taken.'
+            'Use Upload photos or Upload attachments. Up to five JPEG, PNG, or HEIC photos can be saved, at up to 10 MiB each.'
         },
         {
           step: 8,
           action: 'Submit',
           detail:
-            'Click "Submit". The update goes to your Project Manager or Operation Manager for review.'
+            'Choose Submit update. An engineer can select the submitted update as evidence when preparing a daily report.'
         }
       ],
       tips: [
@@ -85,15 +84,9 @@ export const civilSupervisorManual: Manual = {
       ],
       diagram: `
 Supervisor Update Flow:
-[You fill in daily update] ──→ [Submit]
-                                    │
-                        [Manager reviews in Approvals]
-                                    │
-                ┌───────────────────┴────────────────────┐
-                ▼                                        ▼
-          [Approved ✓]                            [Rejected ✗]
-                │                                        │
-      [Update finalised]            [You receive notification → Correct & resubmit]
+[Supervisor submits update] → [Engineer selects it for a daily report]
+                                        ↓
+                       [Update verified when engineer submits report]
 `
     },
     {
@@ -101,19 +94,20 @@ Supervisor Update Flow:
       title: 'Viewing Past Updates',
       icon: '📋',
       content:
-        'Review your previously submitted supervisor updates and track their approval status.',
+        'Review your site updates and check whether a submitted update was verified in a daily report.',
       steps: [
         { step: 1, action: 'Go to Reports', detail: 'Click "Reports" in the sidebar.' },
         {
           step: 2,
           action: 'View your update history',
-          detail: 'See a list of all your submitted updates with their current status.'
+          detail:
+            'Recent Site Updates shows your drafts, submitted updates, and verified updates for the selected project.'
         },
         {
           step: 3,
-          action: 'Check for rejections',
+          action: 'Check verification',
           detail:
-            'If a report has been rejected, it will be highlighted. Click to see the reason and resubmit after corrections.'
+            'A verified update shows the verification time, verifier when available, and linked report reference.'
         }
       ]
     },
@@ -134,7 +128,7 @@ Supervisor Update Flow:
         {
           step: 3,
           action: 'Download a document',
-          detail: 'Click on a document to open or download it.'
+          detail: 'Use Preview or Download on the document card for the active approved version.'
         }
       ],
       tips: [
@@ -147,10 +141,8 @@ Supervisor Update Flow:
       title: 'Your Dashboard',
       icon: '🏠',
       content:
-        'Your dashboard shows a quick summary scoped to your project: your recent updates and their statuses.',
-      tips: [
-        'If you see old pending reports in your dashboard, follow up to ensure they have been reviewed by your manager.'
-      ]
+        'Your dashboard summarizes assigned projects, report and document counts, and unread alerts. Use Reports for the status of your own site updates.',
+      tips: ['Check Recent Site Updates in Reports for submitted and verified status.']
     }
   ]
 };

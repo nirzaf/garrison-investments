@@ -3,23 +3,23 @@ import type { Manual } from './common';
 export const accountsManual: Manual = {
   roleKey: 'accounts',
   roleLabel: 'Accounts',
-  tagline: 'Finance visibility and document access — keep the numbers in order.',
+  tagline: 'Review invoices, record payments, and manage accounting documents.',
   overview:
-    'As an Accounts user, your focus is on financial data, project cost tracking, and documentation. You can view financial records across your assigned project scope, access and manage documents relevant to accounting (invoices, contracts, certificates), and review daily reports for cost reconciliation purposes.',
+    'Accounts can access project details, official daily reports, documents, and Finance across the company. Use the project-scoped Dashboard for activity in assigned projects and Finance for invoices and payments.',
   permissions: [
     'Scoped dashboard',
-    'View assigned projects',
-    'View reports within your project scope',
+    'View company project details',
+    'View official daily reports across the company',
     'View and manage documents',
-    'Access financial data'
+    'Create and correct eligible invoices, reject eligible submissions, and record payments'
   ],
   limitations: [
     'Cannot submit or approve reports',
     'Cannot manage users',
-    'Cannot manage inventory or suppliers',
-    'Cannot access analytics or delivery planning',
+    'Materials and supplier management are outside Accounts access',
+    'Company Analytics and Launch readiness are management pages',
     'Cannot access audit logs',
-    'Dashboard and data are scoped (not company-wide unless assigned to a company-level project)'
+    'Invoice approval requires an eligible Admin or Operation Manager'
   ],
   sections: [
     {
@@ -27,7 +27,7 @@ export const accountsManual: Manual = {
       title: 'Your Dashboard',
       icon: '🏠',
       content:
-        'Your dashboard provides a project-scoped financial overview: cost summaries, recent financial activity, and document activity.',
+        'Your dashboard shows activity and report and document counts for assigned projects, plus your unread alerts. Use Finance for the invoice register and project budgets.',
       tips: [
         'Use your dashboard as a starting point each morning to check for new financial entries or document uploads that require your review.'
       ]
@@ -37,47 +37,43 @@ export const accountsManual: Manual = {
       title: 'Accessing Financial Data',
       icon: '💰',
       content:
-        'The Finance page is your primary workspace. You can view project cost breakdowns, supplier invoices, and financial summaries.',
+        'The Finance page shows the invoice register, project budget comparison, and recorded payments.',
       steps: [
         { step: 1, action: 'Go to Finance', detail: 'Click "Finance" in the sidebar.' },
         {
           step: 2,
           action: 'Select a project',
-          detail: 'Use the project selector to filter financial data for a specific project.'
+          detail:
+            'Choose Project filter to show the project budget, billable invoices, and recorded payments.'
         },
         {
           step: 3,
-          action: 'Review cost entries',
-          detail: 'Browse cost lines, supplier charges, and budget comparisons.'
+          action: 'Enter an invoice',
+          detail:
+            'Choose New invoice and complete the project, invoice dates and amounts, and supplier if applicable. Select Submit invoice.'
         },
         {
           step: 4,
           action: 'View supplier invoices',
           detail:
-            'Click on an invoice line to see the full invoice detail or download the document.'
+            'Open the invoice number to review its status, attachment, and payments. Use Correct invoice and Resubmit invoice when an unpaid rejected invoice is eligible.'
         },
         {
           step: 5,
-          action: 'Export data',
+          action: 'Record a payment',
           detail:
-            'Use the export button to download the financial summary as a spreadsheet for external reporting.'
+            'On an approved invoice, use Record payment and enter an amount within the outstanding balance.'
         }
       ],
       tips: [
-        'Cross-reference material issues from the Materials page with finance entries to ensure all consumed materials are accounted for.',
+        'Use Invoice status filter to find submitted, approved, or rejected invoices.',
         'If you find a discrepancy, raise it with the Store Keeper or Project Manager.'
       ],
       diagram: `
-Financial Data Sources (in the Finance page):
-[Material Issues] ──→ [Project Cost Lines]
-[Supplier Invoices] ──→ [Finance Records]
-[Report Quantities] ──→ [Activity Cost Tracking]
-                              │
-                              ▼
-                   [Finance Page Summary]
-                              │
-                              ▼
-                   [Export to Spreadsheet]
+Invoice workflow:
+[Submit invoice] → [Eligible manager decides]
+                       ├─ [Approved] → [Record payment]
+                       └─ [Rejected] → [Correct and resubmit if unpaid]
 `
     },
     {
@@ -98,12 +94,12 @@ Financial Data Sources (in the Finance page):
           step: 3,
           action: 'Upload a document',
           detail:
-            'Click "Upload", select your file, choose the appropriate category (e.g., Invoice, Contract), and confirm.'
+            'Enter the title and document type, choose the project or company-wide scope, select the file, and choose Upload.'
         },
         {
           step: 4,
           action: 'Download or verify',
-          detail: 'Click on a document to download it or verify its contents against your records.'
+          detail: 'Use Preview or Download on the document card for the active approved version.'
         }
       ],
       tips: [
@@ -116,7 +112,7 @@ Financial Data Sources (in the Finance page):
       title: 'Reviewing Daily Reports',
       icon: '📋',
       content:
-        'You can view daily reports from engineers and supervisors to reconcile material usage and labour activities with financial entries.',
+        'Review official daily reports across the company. Use Supervisor updates to inspect submitted and verified field updates.',
       steps: [
         {
           step: 1,
@@ -126,17 +122,18 @@ Financial Data Sources (in the Finance page):
         {
           step: 2,
           action: 'Browse the report list',
-          detail: 'View all approved reports for your project. Filter by date range.'
+          detail: 'Read the report card and check the status and recorded work.'
         },
         {
           step: 3,
-          action: 'Open a report',
-          detail: 'Click a report to view materials used, activities, and any notes.'
+          action: 'Download the approved report',
+          detail: 'Use Download PDF on an approved report card to review the full record.'
         },
         {
           step: 4,
           action: 'Cross-reference with finance',
-          detail: 'Use the quantities in the report to verify matching entries in the Finance page.'
+          detail:
+            'Review the invoice and report evidence together when reconciling project records.'
         }
       ],
       tips: [
@@ -155,7 +152,8 @@ Financial Data Sources (in the Finance page):
         {
           step: 2,
           action: 'Open a project',
-          detail: 'Click on a project to see its details, team, and financial summary.'
+          detail:
+            'Choose a project name for its Overview, Team, and Timeline. Use Finance for the budget comparison.'
         }
       ]
     }

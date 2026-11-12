@@ -96,11 +96,11 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
 
 
 if __name__ == "__main__":
+    from app.utils.permissions import VALID_ROLES
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["seed", "seed-supervisor", "serve"])
-    parser.add_argument(
-        "--role", choices=["admin", "store_keeper", "operation_manager"], default="admin"
-    )
+    parser.add_argument("--role", choices=sorted(VALID_ROLES), default="admin")
     parser.add_argument("--project-id", type=UUID)
     args = parser.parse_args()
     configure()

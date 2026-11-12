@@ -28,6 +28,15 @@ import { SecurityPage } from './pages/security/SecurityPage';
 import { SuppliersPage } from './pages/suppliers/SuppliersPage';
 import { ManualPage } from './pages/manual/ManualPage';
 
+function DailyReportsRoute() {
+  const { user } = useAuth();
+  return user?.role === 'civil_supervisor' ? (
+    <Navigate to="/reports/supervisor-update" replace />
+  ) : (
+    <DailyReportPage />
+  );
+}
+
 function SupervisorUpdatesRoute() {
   const { user } = useAuth();
   return user?.role === 'civil_supervisor' ? <SupervisorUpdatePage /> : <SupervisorReviewPage />;
@@ -144,7 +153,7 @@ export function App() {
           path="/reports/daily"
           element={
             <RequirePermission permission="reports:view">
-              <DailyReportPage />
+              <DailyReportsRoute />
             </RequirePermission>
           }
         />

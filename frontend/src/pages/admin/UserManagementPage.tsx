@@ -357,7 +357,7 @@ export function UserManagementPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {canManage && user.is_active ? (
+                    {canManage && user.is_active && user.id !== currentUser?.id ? (
                       <div className="flex items-center justify-end gap-3">
                         <button
                           className="text-sm font-medium text-brand-600 hover:text-brand-700"

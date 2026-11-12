@@ -10,8 +10,8 @@ export const civilEngineerManual: Manual = {
     'Scoped dashboard (your project only)',
     'View your assigned projects',
     'Submit daily reports',
-    'View reports within your project',
-    'View inventory',
+    'View your own daily reports and submitted supervisor updates on assigned projects',
+    'View stock and create material requests for assigned active projects',
     'View and manage documents within your project'
   ],
   limitations: [
@@ -19,7 +19,7 @@ export const civilEngineerManual: Manual = {
     'Cannot manage users or user accounts',
     'Cannot manage suppliers',
     'Cannot access financial data',
-    'Cannot manage inventory (view only)',
+    'Stock receipts, reservation, and issue require inventory management permission',
     'Cannot access analytics or company-wide dashboard',
     'Cannot access audit logs'
   ],
@@ -29,7 +29,7 @@ export const civilEngineerManual: Manual = {
       title: 'Submitting a Daily Report',
       icon: '📝',
       content:
-        'Daily reports are the core of your workflow. You submit one per day per project to document site progress, activities, material usage, and any issues encountered.',
+        'Daily reports are the core of your workflow. Use the form to document site progress, activities, material usage, and any issues encountered.',
       steps: [
         {
           step: 1,
@@ -38,8 +38,9 @@ export const civilEngineerManual: Manual = {
         },
         {
           step: 2,
-          action: 'Click "New Report"',
-          detail: 'Click the "New Report" or equivalent button at the top of the page.'
+          action: 'Start or resume a report',
+          detail:
+            'Use the Engineer Daily Report form, or choose Resume report on one of your drafts under Recent Daily Reports.'
         },
         {
           step: 3,
@@ -60,22 +61,22 @@ export const civilEngineerManual: Manual = {
         },
         {
           step: 6,
-          action: 'Add notes/photos',
+          action: 'Link field evidence',
           detail:
-            'Attach any relevant photos from site and add notes about site conditions, weather, or blockers.'
+            'Select relevant submitted Supervisor Updates and add evidence with Upload photos or Upload attachments. The updates are verified when you submit.'
         },
         {
           step: 7,
           action: 'Submit the report',
           detail:
-            'Click "Submit". The report will be sent to your Project Manager or approver for review.'
+            'Choose Save draft to continue later or Submit report to send it for manager review. Submitting requires a connection.'
         }
       ],
       tips: [
         'Submit reports before end of business each day — managers review them in the morning.',
         'Be specific about quantities. Vague entries (e.g., "some concrete poured") lead to rejected reports.',
-        'If you made a mistake, you can edit a report before it is approved.',
-        'If your report is rejected, check the rejection reason in your notifications and correct it.'
+        'Edit a draft before submission. A submitted report is read-only until a reviewer returns it.',
+        'If a reviewer returns your report, open it from the notification or choose Resume report, correct the draft, and submit again.'
       ],
       diagram: `
 Daily Report Workflow:
@@ -96,25 +97,25 @@ Daily Report Workflow:
       id: 'viewing-reports',
       title: 'Viewing Past Reports',
       icon: '📋',
-      content:
-        'You can view all reports you have previously submitted, including their approval status.',
+      content: 'Recent Daily Reports shows your reports and their status for the selected project.',
       steps: [
         { step: 1, action: 'Go to Reports', detail: 'Click "Reports" in the sidebar.' },
         {
           step: 2,
           action: 'Browse your reports',
           detail:
-            'The report list shows all your submissions with statuses: Pending, Approved, or Rejected.'
+            'Recent Daily Reports shows your drafts, submitted reports, and approved reports for the selected project.'
         },
         {
           step: 3,
-          action: 'Filter by date',
-          detail: 'Use the date range picker to find a specific week or month of reports.'
+          action: 'Resume a draft',
+          detail:
+            'Choose Resume report to load an editable draft, including one returned by a reviewer.'
         },
         {
           step: 4,
-          action: 'Open a report',
-          detail: 'Click on any report to view its full details and approval history.'
+          action: 'Download an approved report',
+          detail: 'Use Download PDF on the approved report card.'
         }
       ]
     },
@@ -126,19 +127,20 @@ Daily Report Workflow:
       steps: [
         {
           step: 1,
-          action: 'Go to Photos',
-          detail: 'Click "Photos" in the sidebar to open the photo gallery.'
+          action: 'Open the report form',
+          detail: 'Go to Reports and complete the required fields or resume your draft.'
         },
         {
           step: 2,
           action: 'Upload photos',
-          detail: 'Click "Upload" and select photos from your device. Add captions or tags.'
+          detail:
+            'Use Upload photos in the report form. Each report accepts up to five JPEG, PNG, or HEIC photos, up to 10 MiB each.'
         },
         {
           step: 3,
-          action: 'Attach to reports',
+          action: 'Check saved evidence',
           detail:
-            'When submitting a daily report, link photos from the gallery or upload directly in the report form.'
+            'Review saved files in the draft. Offline files queue for upload when your account reconnects. Use Photos to review accessible uploads.'
         }
       ],
       tips: [
@@ -161,12 +163,13 @@ Daily Report Workflow:
         {
           step: 3,
           action: 'Upload a document',
-          detail: 'If you have a new site document, click "Upload" and categorise it correctly.'
+          detail:
+            'Enter the document title, type, and assigned project, select the file, then choose Upload. Use Upload replacement on an existing document for a new version.'
         },
         {
           step: 4,
           action: 'Download drawings',
-          detail: 'Click on a drawing or specification document to download the latest version.'
+          detail: 'Choose Download on the document card to get the active approved version.'
         }
       ],
       tips: [
@@ -178,19 +181,20 @@ Daily Report Workflow:
       title: 'Checking Materials',
       icon: '📦',
       content:
-        'View current inventory levels to understand what materials are available on your project.',
+        'Check company-wide stock by location and request materials for assigned active projects.',
       steps: [
         { step: 1, action: 'Go to Materials', detail: 'Click "Materials" in the sidebar.' },
         {
           step: 2,
           action: 'Check stock levels',
-          detail: 'See the current quantities of materials allocated to your project.'
+          detail:
+            'Select an inventory item and check On hand, Reserved, and Available in its stock matrix.'
         },
         {
           step: 3,
-          action: 'Report discrepancies',
+          action: 'Create a material request',
           detail:
-            'If the portal shows a quantity that does not match the physical count, raise it with your project manager.'
+            'Select an assigned active project and source location, add the item quantities, and choose Create request. Follow the request in Materials or My submitted requests in Approvals.'
         }
       ]
     }

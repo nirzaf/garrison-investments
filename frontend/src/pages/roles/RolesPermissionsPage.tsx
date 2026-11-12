@@ -489,7 +489,11 @@ function RolesDocumentation() {
             ['/analytics', 'dashboard:company', 'Management analytics'],
             ['/security', 'audit:view', 'Security page'],
             ['/delivery', 'dashboard:company', 'Launch readiness checklist'],
-            ['/reports/daily', 'reports:view', 'Daily report list and permitted actions'],
+            [
+              '/reports/daily',
+              'reports:view',
+              'Daily report list and permitted actions. Civil Supervisors are sent to site updates.'
+            ],
             [
               '/reports/supervisor-update',
               'reports:view',

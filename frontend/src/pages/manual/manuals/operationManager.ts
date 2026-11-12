@@ -5,22 +5,24 @@ export const operationManagerManual: Manual = {
   roleLabel: 'Operation Manager',
   tagline: 'Operations control — approve, oversee, and keep projects moving.',
   overview:
-    'As Operation Manager, you share the same broad access as the General Manager. You can view all projects, approve field reports, manage documents, monitor inventory, and handle financial overviews. Your focus is on the day-to-day operational efficiency of all active projects.',
+    'Operation Manager can manage projects, decide submitted daily reports and eligible invoices, approve document versions, and monitor inventory and supplier compliance.',
   permissions: [
     'View all users',
     'View and manage all projects',
     'Access the full company-wide dashboard',
-    'View and approve all reports',
-    'View and manage all inventory',
+    'View and decide submitted official daily reports',
+    'View stock and material requests across the company',
     'Manage suppliers',
     'View and manage all documents',
-    'Access all financial data',
-    'Access analytics and delivery planning'
+    'Access finance and decide eligible invoices',
+    'Access analytics and launch readiness'
   ],
   limitations: [
     'Cannot create or deactivate user accounts (Admin only)',
     'Cannot access audit logs or security events',
-    'Cannot bulk-import users'
+    'Cannot bulk-import users',
+    'Stock receipts, reservation, and issue require inventory management permission',
+    'Invoice approval excludes the original creator and current approval submitter'
   ],
   sections: [
     {
@@ -28,7 +30,7 @@ export const operationManagerManual: Manual = {
       title: 'Your Dashboard',
       icon: '🏠',
       content:
-        'Your dashboard shows operations data across all projects: pending approvals, material consumption, report volumes, and delivery schedules.',
+        'Your dashboard shows company-wide active projects, pending and approved reports, and pending documents, along with recent activity and your unread alerts.',
       tips: [
         'Check pending approvals every morning — field teams depend on timely responses to keep work moving.'
       ]
@@ -38,34 +40,33 @@ export const operationManagerManual: Manual = {
       title: 'Approving Reports',
       icon: '✅',
       content:
-        'This is likely your highest-frequency task. Engineers and supervisors submit daily reports; you review and approve or reject them.',
+        'Review official daily reports from engineers. Linked supervisor updates are available as evidence after the engineer submits the report.',
       steps: [
         { step: 1, action: 'Go to Approvals', detail: 'Click "Approvals" in the sidebar.' },
         {
           step: 2,
           action: 'View pending items',
-          detail: 'All pending reports are listed. The most recent are typically at the top.'
+          detail: 'Open Report approvals to find submitted daily reports.'
         },
         {
           step: 3,
           action: 'Open and review',
-          detail:
-            'Click a report. Review the description, activity log, quantities, and any attached photos.'
+          detail: 'Review the report card, attachments, history, and linked supervisor evidence.'
         },
         {
           step: 4,
           action: 'Approve or reject',
           detail:
-            'Click "Approve" if everything looks correct. If there are issues, click "Reject" and provide a clear reason so the engineer can correct and resubmit.'
+            'Confirm target coverage and choose Approve. To return the report to draft for correction, enter a reason and choose Reject.'
         }
       ],
       tips: [
-        'Always review photos before approving material deliveries — discrepancies in quantity are common.',
+        'Review attached photos and recorded quantities before deciding the report.',
         'If a report is incomplete, reject with specific feedback rather than leaving it pending.'
       ],
       diagram: `
 Report Approval Flow:
-[Engineer submits] ──→ [Pending in Approvals inbox]
+[Engineer submits] ──→ [Submitted in Report approvals]
                               │
                     ┌─────────┴─────────┐
                     ▼                   ▼
@@ -86,13 +87,13 @@ Report Approval Flow:
         {
           step: 2,
           action: 'Open a project',
-          detail: 'Click on a project to view its daily report history, team, and status.'
+          detail: 'Choose a project name to open its Overview, Team, and Timeline tabs.'
         },
         {
           step: 3,
-          action: 'Monitor report health',
+          action: 'Maintain the project record',
           detail:
-            'Look for projects with no recent report submissions — this may indicate a site issue.'
+            'Use Overview to edit project details, Team for assignments, and Timeline to review and update tasks.'
         }
       ]
     },
@@ -106,12 +107,14 @@ Report Approval Flow:
         {
           step: 2,
           action: 'View current stock',
-          detail: 'See the inventory list with current quantities, units, and associated projects.'
+          detail:
+            'Select an item to view its stock matrix by location, including On hand, Reserved, and Available.'
         },
         {
           step: 3,
           action: 'Review consumption trends',
-          detail: 'Use filters to identify which projects are consuming materials at a high rate.'
+          detail:
+            'Use Analytics to review material usage trends or export a filtered material usage report.'
         }
       ]
     },
@@ -119,7 +122,8 @@ Report Approval Flow:
       id: 'analytics',
       title: 'Analytics and launch readiness',
       icon: '📊',
-      content: 'Use analytics to identify performance trends and manage delivery schedules.',
+      content:
+        'Use Analytics to identify performance trends and Launch readiness to review release checks.',
       steps: [
         {
           step: 1,
@@ -137,13 +141,20 @@ Report Approval Flow:
       id: 'finance',
       title: 'Finance',
       icon: '💰',
-      content: 'Access project financials and supplier cost data.',
+      content:
+        'Review supplier invoices, their payments, and the comparison of project budget to billable invoices.',
       steps: [
         { step: 1, action: 'Go to Finance', detail: 'Click "Finance" in the sidebar.' },
         {
           step: 2,
-          action: 'Review project costs',
-          detail: 'Filter by project to see cost summaries and identify budget overruns.'
+          action: 'Review project budget',
+          detail: 'Select a project to see budget, billable invoices, and recorded payments.'
+        },
+        {
+          step: 3,
+          action: 'Decide an invoice',
+          detail:
+            'Open the invoice number. Choose Approve invoice or Reject invoice when available and enter the reason for a rejection.'
         }
       ]
     }

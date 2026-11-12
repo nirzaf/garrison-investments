@@ -42,6 +42,8 @@ test('an administrator creates a user, changes their role, and sees the audit en
   await searchUsers.fill(admin.email);
   await expect(ownRow).toBeVisible();
   await expect(ownRow.getByRole('button', { name: 'Change role' })).toHaveCount(0);
+  await expect(ownRow.getByRole('button', { name: 'Reset password' })).toHaveCount(0);
+  await expect(ownRow.getByRole('button', { name: 'Deactivate' })).toHaveCount(0);
 
   const row = page.getByRole('row').filter({ hasText: email });
   await searchUsers.fill(email);
