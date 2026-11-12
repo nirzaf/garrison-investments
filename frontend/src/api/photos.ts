@@ -9,7 +9,12 @@ export type PhotoRecord = components['schemas']['PhotoResponse'];
 export type PhotoListResponse = components['schemas']['PhotoListResponse'];
 export type ProtectedFileUrl = components['schemas']['ProtectedFileUrlResponse'];
 
-export type MediaUploadIntent = { file: File; kind: ReportFileKind; key: string };
+export type MediaUploadIntent = {
+  file: File;
+  kind: ReportFileKind;
+  key: string;
+  expectedReportRevision?: number;
+};
 
 export async function prepareMediaFiles(
   files: FileList | File[],
@@ -37,29 +42,37 @@ export async function uploadMediaFiles(
   entityType: string,
   entityId: string,
   items: MediaUploadIntent[],
-  scope?: OfflineScope
+  scope?: OfflineScope,
+  reportRevision?: number
 ) {
   const uploaded: PhotoRecord[] = [];
   const failed: MediaUploadIntent[] = [];
   const errors: string[] = [];
   for (const item of items) {
+    const intent = {
+      ...item,
+      expectedReportRevision: item.expectedReportRevision ?? reportRevision
+    };
     try {
-      uploaded.push(
-        ...(await uploadEntityFiles({
-          entityType,
-          entityId,
-          kind: item.kind,
-          files: [item.file],
-          idempotencyKey: item.key,
-          scope
-        }))
-      );
+      const result = await uploadEntityFilesWithRevision({
+        entityType,
+        entityId,
+        kind: intent.kind,
+        files: [intent.file],
+        idempotencyKey: intent.key,
+        scope,
+        expectedReportRevision: intent.expectedReportRevision
+      });
+      uploaded.push(...result.files);
+      if (reportRevision !== undefined && result.reportRevision === reportRevision + 1) {
+        reportRevision = result.reportRevision;
+      }
     } catch (error) {
-      failed.push(item);
+      failed.push(intent);
       errors.push(`${item.file.name} — ${formatApiError(error, 'Unable to upload file.')}`);
     }
   }
-  return { uploaded, failed, errors };
+  return { uploaded, failed, errors, reportRevision };
 }
 
 type UploadEntityFiles = {

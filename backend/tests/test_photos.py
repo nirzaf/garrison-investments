@@ -1,6 +1,6 @@
 from datetime import timedelta
 from io import BytesIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import UploadFile
@@ -53,14 +53,25 @@ async def test_photo_upload_download_url_and_delete_lock() -> None:
                 headers={"Authorization": f"Bearer {setup['engineer_token']}"},
             )
         ).json()
+        upload_payload = {
+            "entity_type": "daily_report",
+            "entity_id": report["id"],
+            "kind": "photo",
+            "expected_report_revision": str(report["revision"]),
+        }
+        upload_headers = {
+            "Authorization": f"Bearer {setup['engineer_token']}",
+            "Idempotency-Key": str(uuid4()),
+        }
         upload_response = await client.post(
             "/api/v1/photos/upload",
-            data={"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"},
+            data=upload_payload,
             files={"files": ("site.jpg", jpeg_bytes(), "image/jpeg")},
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers=upload_headers,
         )
 
         assert upload_response.status_code == 201
+        assert upload_response.headers["X-Report-Revision"] == str(report["revision"] + 1)
         photo = upload_response.json()[0]
         assert photo["thumbnail_path"]
 
@@ -88,10 +99,20 @@ async def test_photo_upload_download_url_and_delete_lock() -> None:
         assert url_response.status_code == 200
         assert "url" in url_response.json()
 
-        await client.post(
+        submitted = await client.post(
             f"/api/v1/reports/{report['id']}/submit",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},
         )
+        assert submitted.json()["revision"] == report["revision"] + 2
+        replay = await client.post(
+            "/api/v1/photos/upload",
+            data=upload_payload,
+            files={"files": ("site.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=upload_headers,
+        )
+        assert replay.status_code == 201
+        assert replay.json()[0]["id"] == photo["id"]
+        assert replay.headers["X-Report-Revision"] == upload_response.headers["X-Report-Revision"]
         delete_response = await client.delete(
             f"/api/v1/photos/{photo['id']}",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},

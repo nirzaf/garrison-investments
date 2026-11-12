@@ -27,6 +27,7 @@ class Photo(TimestampMixin, SoftDeleteMixin, Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
     entity_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
+    report_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'photo'"))
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

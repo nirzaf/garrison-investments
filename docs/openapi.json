@@ -1091,6 +1091,18 @@
             "title": "Entity Type",
             "type": "string"
           },
+          "expected_report_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Report Revision"
+          },
           "files": {
             "anyOf": [
               {
@@ -12533,7 +12545,14 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Report-Revision": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "422": {
             "content": {

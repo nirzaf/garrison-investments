@@ -143,6 +143,21 @@ async function editReportDraft(
   );
 }
 
+export async function acknowledgeReportEvidenceRevision(
+  scope: OfflineScope,
+  localDraftId: string,
+  reportId: string,
+  previousRevision: number,
+  nextRevision: number
+): Promise<void> {
+  await editReportDraft(scope, localDraftId, (draft) => {
+    if (draft?.serverReport?.id !== reportId || draft.baseServerRevision !== previousRevision) {
+      return undefined;
+    }
+    return { ...draft, baseServerRevision: nextRevision };
+  });
+}
+
 export async function saveReportDraft(
   scope: OfflineScope,
   payload: DailyReportPayload,

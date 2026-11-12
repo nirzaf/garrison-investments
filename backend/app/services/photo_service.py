@@ -72,6 +72,7 @@ class PhotoService:
         caption: str | None,
         actor: User,
         idempotency_key: str | None = None,
+        expected_report_revision: int | None = None,
     ) -> Photo:
         ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         self._validate_entity_type(entity_type)
@@ -101,8 +102,16 @@ class PhotoService:
                         status_code=409,
                         error_code="PHOTO_UPLOAD_KEY_CONFLICT",
                     )
+                if expected_report_revision is not None and (
+                    existing.report_revision != expected_report_revision + 1
+                ):
+                    self._raise_revision_conflict()
                 return existing
-        await self._ensure_upload_allowed(entity_type, entity_id, normalized_kind, actor)
+        owner = await self._ensure_upload_allowed(entity_type, entity_id, normalized_kind, actor)
+        if expected_report_revision is not None and (
+            not isinstance(owner, DailyReport) or owner.revision != expected_report_revision
+        ):
+            self._raise_revision_conflict()
         object_id = uuid4().hex
         extension = self._extension_for_mime(mime_type)
         base_key = f"{entity_type}/{entity_id}/{object_id}"
@@ -153,6 +162,9 @@ class PhotoService:
             for object_key, content, content_type in objects:
                 written.append(object_key)
                 await asyncio.to_thread(self._upload_object, object_key, content, content_type)
+            if isinstance(owner, DailyReport):
+                owner.revision += 1
+                photo.report_revision = owner.revision
             await self.photos.add(photo)
             await self.audit.record(
                 action="photos.uploaded",
@@ -361,6 +373,8 @@ class PhotoService:
                 )
         reason = self._evidence_reason(owner, actor, reason)
         photo.deleted_at = utc_now()
+        if isinstance(owner, DailyReport):
+            owner.revision += 1
         await self.audit.record(
             action="photos.deleted",
             user_id=actor.id,
@@ -403,6 +417,8 @@ class PhotoService:
                         ) from error
                     raise
         photo.deleted_at = None
+        if isinstance(owner, DailyReport):
+            owner.revision += 1
         await self.audit.record(
             action="photos.recovered",
             user_id=actor.id,
@@ -478,7 +494,7 @@ class PhotoService:
         entity_id: UUID,
         kind: str,
         actor: User,
-    ) -> None:
+    ) -> DailyReport | SupervisorUpdate | None:
         owner = await self._lock_owner(entity_type, entity_id, actor)
         if owner is not None:
             if actor.role != ROLE_ADMIN:
@@ -490,6 +506,15 @@ class PhotoService:
                     error_code="PHOTO_UPLOAD_LOCKED",
                 )
         await self._ensure_photo_capacity(entity_type, entity_id, kind)
+        return owner
+
+    @staticmethod
+    def _raise_revision_conflict() -> None:
+        raise AppException(
+            "The report changed. Reload before adding evidence.",
+            status_code=409,
+            error_code="DAILY_REPORT_REVISION_CONFLICT",
+        )
 
     async def _ensure_photo_capacity(self, entity_type: str, entity_id: UUID, kind: str) -> None:
         if kind != "photo" or entity_type not in {"daily_report", "supervisor_update"}:

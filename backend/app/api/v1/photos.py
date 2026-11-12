@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -24,15 +24,22 @@ MAX_UPLOAD_FILES = 100
 MAX_UPLOAD_BATCH_SIZE = 60 * 1024 * 1024
 
 
-@router.post("/upload", response_model=list[PhotoResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload",
+    response_model=list[PhotoResponse],
+    status_code=status.HTTP_201_CREATED,
+    responses={201: {"headers": {"X-Report-Revision": {"schema": {"type": "integer"}}}}},
+)
 async def upload_files(
     current_user: CanSubmitReports,
     session: DbSession,
+    response: Response,
     entity_type: Annotated[str, Form()],
     entity_id: Annotated[UUID, Form()],
     kind: Annotated[str, Form()] = "photo",
     caption: Annotated[str | None, Form()] = None,
     files: Annotated[list[UploadFile] | None, File()] = None,
+    expected_report_revision: Annotated[int | None, Form(ge=1)] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> list[PhotoResponse]:
     if not files:
@@ -48,6 +55,14 @@ async def upload_files(
         )
     service = PhotoService(session)
     base_key = validate_key(idempotency_key)
+    if expected_report_revision is not None and (
+        not base_key or len(files) != 1 or entity_type != "daily_report"
+    ):
+        raise AppException(
+            "Versioned uploads require one daily report file and an Idempotency-Key.",
+            status_code=422,
+            error_code="INVALID_VERSIONED_UPLOAD",
+        )
     uploaded = [
         await service.upload(
             file=file,
@@ -59,9 +74,12 @@ async def upload_files(
             # One key per queue item: a multi-file request derives a stable key per file
             # so replaying the batch cannot duplicate any individual upload.
             idempotency_key=f"{base_key}:{index}" if base_key else None,
+            expected_report_revision=expected_report_revision,
         )
         for index, file in enumerate(files)
     ]
+    if len(uploaded) == 1 and uploaded[0].report_revision is not None:
+        response.headers["X-Report-Revision"] = str(uploaded[0].report_revision)
     return [PhotoResponse.model_validate(photo) for photo in uploaded]
 
 

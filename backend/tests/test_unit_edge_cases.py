@@ -150,7 +150,12 @@ def test_document_file_validation_accepts_supported_magic_signatures(
     [
         ("tool.sh", b"#!/bin/sh", 422, "File type is blocked."),
         ("notes.txt", b"plain text", 422, "Unsupported document type."),
-        ("huge.pdf", b"%PDF-" + b"x" * MAX_DOCUMENT_SIZE, 413, "Document exceeds the 60 MiB limit."),
+        (
+            "huge.pdf",
+            b"%PDF-" + b"x" * MAX_DOCUMENT_SIZE,
+            413,
+            "Document exceeds the 60 MiB limit.",
+        ),
     ],
 )
 def test_document_file_validation_rejects_blocked_unsupported_and_oversized_files(

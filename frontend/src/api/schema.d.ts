@@ -1891,6 +1891,8 @@ export interface components {
             entity_id: string;
             /** Entity Type */
             entity_type: string;
+            /** Expected Report Revision */
+            expected_report_revision?: number | null;
             /** Files */
             files?: string[] | null;
             /**
@@ -6214,6 +6216,7 @@ export interface operations {
             /** @description Successful Response */
             201: {
                 headers: {
+                    "X-Report-Revision"?: number;
                     [name: string]: unknown;
                 };
                 content: {

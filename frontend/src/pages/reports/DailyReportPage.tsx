@@ -14,6 +14,7 @@ import {
   queueFiles,
   queuedPhotoCount,
   queuedDraftPhotoCount,
+  acknowledgeReportEvidenceRevision,
   registerBackgroundSync,
   saveReportDraft,
   type LocalReportDraft
@@ -704,8 +705,25 @@ export function DailyReportPage() {
     selectionErrors: string[]
   ) {
     if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
-    const result = await uploadMediaFiles('daily_report', entityId, items, scope);
+    const previousRevision = baseRevision.current;
+    const result = await uploadMediaFiles('daily_report', entityId, items, scope, previousRevision);
     if (!sameScope(getBrowserSession()?.scope, scope)) return;
+    if (
+      previousRevision !== undefined &&
+      result.reportRevision !== undefined &&
+      result.reportRevision > previousRevision
+    ) {
+      baseRevision.current = result.reportRevision;
+      if (draftKey.current) {
+        await acknowledgeReportEvidenceRevision(
+          scope,
+          draftKey.current,
+          entityId,
+          previousRevision,
+          result.reportRevision
+        );
+      }
+    }
     setUploadedFiles((current) => [
       ...current,
       ...result.uploaded.filter((file) => !current.some((existing) => existing.id === file.id))

@@ -334,6 +334,7 @@ async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence() -
         rejected = await client.post(f"{url}/reject", json={"comments": "Revise"}, headers=manager)
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "draft"
+        payload["expected_revision"] = rejected.json()["revision"]
 
         evidence = await client.get(f"{url}/supervisor-updates", headers=manager)
         assert evidence.status_code == 200
