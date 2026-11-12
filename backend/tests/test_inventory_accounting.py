@@ -218,25 +218,30 @@ async def read_unit_cost(item_id: UUID) -> Decimal | None:
 
 
 async def race_with_parent_lock[T, U](
-    parent: Select[tuple[UUID]], first: SessionOperation[T], second: SessionOperation[U]
+    parent: Select[UUID], first: SessionOperation[T], second: SessionOperation[U]
 ) -> list[object]:
     """Pin the commit order and verify the contender actually waits in PostgreSQL."""
     parent_locked = asyncio.Event()
-    contender_pid = asyncio.get_running_loop().create_future()
+    contender_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
 
     async def run_first(session: AsyncSession) -> T:
         assert await session.scalar(parent.with_for_update()) is not None
         holder_pid = await session.scalar(select(func.pg_backend_pid()))
+        assert isinstance(holder_pid, int)
         parent_locked.set()
         pid = await contender_pid
         async with asyncio.timeout(10):
-            while holder_pid not in (await session.scalar(select(func.pg_blocking_pids(pid)))):
+            while holder_pid not in (
+                await session.scalar(select(func.pg_blocking_pids(pid))) or []
+            ):
                 await asyncio.sleep(0.01)
         return await first(session)
 
     async def run_second(session: AsyncSession) -> U:
         await parent_locked.wait()
-        contender_pid.set_result(await session.scalar(select(func.pg_backend_pid())))
+        pid = await session.scalar(select(func.pg_backend_pid()))
+        assert isinstance(pid, int)
+        contender_pid.set_result(pid)
         return await second(session)
 
     return await race_sessions(run_first, run_second)
