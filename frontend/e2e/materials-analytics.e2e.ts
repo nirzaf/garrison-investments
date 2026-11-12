@@ -123,13 +123,35 @@ test('store requester selects company project and fulfills chosen quantities acr
   await expect(notes).toHaveValue('Browser receipt');
 
   await quantity.fill('2.125');
+  const receiptAttempts: { key: string; body: unknown }[] = [];
+  let firstReceiptId: string | undefined;
+  await storePage.route('**/inventory/movements', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    receiptAttempts.push({
+      key: route.request().headers()['idempotency-key'],
+      body: route.request().postDataJSON()
+    });
+    if (receiptAttempts.length > 1) return route.continue();
+    const original = await route.fetch();
+    expect(original.status()).toBe(201);
+    firstReceiptId = (await original.json()).id;
+    return route.abort();
+  });
+  await receiveButton.click();
+  await expect(receive.getByRole('alert')).toContainText('Retry this movement');
+  await expect(destination).toHaveValue(otherLocation.id);
+  await expect(quantity).toBeDisabled();
   const received = storePage.waitForResponse(
     (reply) => reply.url().endsWith('/inventory/movements') && reply.request().method() === 'POST'
   );
-  await receiveButton.click();
+  await receive.getByRole('button', { name: 'Retry receipt' }).click();
   const receipt = await received;
   expect(receipt.status()).toBe(201);
+  expect(receiptAttempts[0].key).toBeTruthy();
+  expect(receiptAttempts).toHaveLength(2);
+  expect(receiptAttempts[0]).toEqual(receiptAttempts[1]);
   expect(await receipt.json()).toMatchObject({
+    id: firstReceiptId,
     item_id: items[0].id,
     to_location_id: otherLocation.id,
     quantity: '2.125'
@@ -239,6 +261,23 @@ test('store requester selects company project and fulfills chosen quantities acr
       (row: { location_id: string }) => row.location_id === location.id
     )
   ).toMatchObject({ on_hand_qty: '9.000', reserved_qty: '0.000', available_qty: '9.000' });
+  const movementForm = storePage.getByRole('form', { name: 'Record stock movement' });
+  await movementForm.getByRole('combobox', { name: 'Movement type' }).selectOption('issue');
+  await movementForm.getByRole('combobox', { name: 'Movement item' }).selectOption(items[0].id);
+  await movementForm.getByRole('combobox', { name: 'From' }).selectOption(location.id);
+  const movementQuantity = movementForm.getByPlaceholder('Quantity');
+  await movementQuantity.fill('999');
+  await movementForm.getByRole('button', { name: 'Record movement' }).click();
+  await expect(movementForm.getByRole('alert')).toContainText('Insufficient stock');
+  await expect(movementQuantity).toHaveValue('999');
+  await expect(movementQuantity).toBeEnabled();
+  await movementQuantity.fill('1');
+  const corrected = storePage.waitForResponse(
+    (reply) => reply.url().endsWith('/inventory/movements') && reply.request().method() === 'POST'
+  );
+  await movementForm.getByRole('button', { name: 'Record movement' }).click();
+  expect((await corrected).status()).toBe(201);
+  await expect(movementQuantity).toHaveValue('');
   await storePage.close();
   await adminPage.close();
 });

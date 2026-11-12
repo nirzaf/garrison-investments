@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { ArrowRightLeft, MapPinned, PackagePlus, Warehouse } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -18,8 +19,8 @@ import {
   listMaterialRequests,
   listMovements,
   listSuppliers,
-  receiveStock,
-  type InventoryItemRecord
+  type InventoryItemRecord,
+  type MovementCreatePayload
 } from '../../api/inventory';
 import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
@@ -30,6 +31,8 @@ import { MaterialFulfillment, MaterialRequestForm } from './MaterialRequestContr
 
 const inventoryPageSize = 20;
 const movementPageSize = 8;
+type MovementForm = 'receipt' | 'movement';
+type MovementAttempt = { form: MovementForm; payload: MovementCreatePayload; key: string };
 
 export function InventoryPage() {
   const { user } = useAuth();
@@ -37,7 +40,11 @@ export function InventoryPage() {
   const focusedRequestId = searchParams.get('materialRequestId');
   const queryClient = useQueryClient();
   const [pickedItem, setPickedItem] = useState<InventoryItemRecord>();
-  const receiveInFlight = useRef(false);
+  const movementInFlight = useRef(false);
+  const [movementAttempt, setMovementAttempt] = useState<MovementAttempt | null>(null);
+  const [movementError, setMovementError] = useState<{ form: MovementForm; detail: string } | null>(
+    null
+  );
   const [stockLocation, setStockLocation] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
@@ -135,23 +142,56 @@ export function InventoryPage() {
     mutationFn: createInventoryItem,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['inventory-items'] })
   });
-  const receiveMutation = useMutation({
-    mutationFn: receiveStock,
-    onSuccess: () => {
-      refreshInventory();
-    }
-  });
   const createAssetMutation = useMutation({
     mutationFn: createAsset,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['inventory-assets'] })
   });
   const createMovementMutation = useMutation({
-    mutationFn: createMovement,
+    mutationFn: ({ payload, key }: MovementAttempt) => createMovement(payload, key),
     onSuccess: () => {
       refreshInventory();
       void queryClient.invalidateQueries({ queryKey: ['inventory-assets'] });
     }
   });
+  async function submitMovement(
+    form: MovementForm,
+    element: HTMLFormElement,
+    payload: MovementCreatePayload
+  ) {
+    if (movementInFlight.current || (movementAttempt && movementAttempt.form !== form)) return;
+    const attempt = movementAttempt ?? { form, payload, key: crypto.randomUUID() };
+    movementInFlight.current = true;
+    setMovementAttempt(attempt);
+    setMovementError(null);
+    try {
+      await createMovementMutation.mutateAsync(attempt);
+      setMovementAttempt(null);
+      element.reset();
+    } catch (failure) {
+      const response = isAxiosError<{ error_code?: string }>(failure)
+        ? failure.response
+        : undefined;
+      const status = response?.status;
+      const code = response?.data?.error_code;
+      const rejected =
+        Boolean(code) &&
+        (status === 400 ||
+          status === 404 ||
+          status === 422 ||
+          (status === 409 && code !== 'MOVEMENT_REPLAY_CONFLICT'));
+      if (rejected) setMovementAttempt(null);
+      setMovementError({
+        form,
+        detail:
+          rejected || code === 'MOVEMENT_REPLAY_CONFLICT'
+            ? formatApiError(failure, 'Unable to record stock movement.')
+            : 'The stock movement result could not be confirmed. Retry this movement to check the result.'
+      });
+    } finally {
+      movementInFlight.current = false;
+    }
+  }
+
   const cancelRequestMutation = useMutation({
     mutationFn: cancelMaterialRequest,
     onSuccess: refreshInventory
@@ -300,7 +340,7 @@ export function InventoryPage() {
                   className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-theme-main"
                   key={item.id}
                   aria-pressed={item.id === selectedItem?.id}
-                  disabled={receiveMutation.isPending}
+                  disabled={movementAttempt?.form === 'receipt'}
                   onClick={() => {
                     setPickedItem(item);
                     setStockLocation('');
@@ -404,28 +444,20 @@ export function InventoryPage() {
             <form
               aria-label="Receive stock"
               className="mt-3 space-y-3"
-              onSubmit={async (event) => {
+              onSubmit={(event) => {
                 event.preventDefault();
-                if (!selectedItem || receiveInFlight.current) return;
-                const element = event.currentTarget;
-                const form = new FormData(element);
-                receiveInFlight.current = true;
-                try {
-                  await receiveMutation.mutateAsync({
-                    item_id: selectedItem.id,
-                    to_location_id: String(form.get('location_id')),
-                    quantity: String(form.get('quantity') || '0'),
-                    notes: String(form.get('notes') || '')
-                  });
-                  element.reset();
-                } catch {
-                  /* The mutation error is shown below the form. */
-                } finally {
-                  receiveInFlight.current = false;
-                }
+                if (!selectedItem) return;
+                const form = new FormData(event.currentTarget);
+                void submitMovement('receipt', event.currentTarget, {
+                  item_id: selectedItem.id,
+                  movement_type: 'receive',
+                  to_location_id: String(form.get('location_id')),
+                  quantity: String(form.get('quantity') || '0'),
+                  notes: String(form.get('notes') || '')
+                });
               }}
             >
-              <fieldset className="min-w-0 space-y-3" disabled={receiveMutation.isPending}>
+              <fieldset className="min-w-0 space-y-3" disabled={movementAttempt !== null}>
                 <LocationSelect
                   locations={locations.data?.filter((location) => location.is_active) ?? []}
                   name="location_id"
@@ -436,21 +468,21 @@ export function InventoryPage() {
                 <input className="form-field" name="notes" placeholder="Notes" />
               </fieldset>
               {locations.isError && <p role="alert">Unable to load receipt destinations.</p>}
-              {receiveMutation.isError && (
-                <p role="alert">
-                  {formatApiError(receiveMutation.error, 'Unable to receive stock.')}
-                </p>
-              )}
+              {movementError?.form === 'receipt' && <p role="alert">{movementError.detail}</p>}
               <button
                 disabled={
                   !selectedItem ||
-                  locations.isPending ||
-                  locations.isError ||
-                  receiveMutation.isPending
+                  createMovementMutation.isPending ||
+                  movementAttempt?.form === 'movement' ||
+                  (!movementAttempt && (locations.isPending || locations.isError))
                 }
                 className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
               >
-                {receiveMutation.isPending ? 'Receiving…' : 'Receive stock'}
+                {movementAttempt?.form === 'receipt'
+                  ? createMovementMutation.isPending
+                    ? 'Receiving…'
+                    : 'Retry receipt'
+                  : 'Receive stock'}
               </button>
             </form>
           </div>
@@ -510,11 +542,12 @@ export function InventoryPage() {
           </form>
 
           <form
+            aria-label="Record stock movement"
             className="rounded-lg border border-theme-border bg-theme-card p-4"
             onSubmit={(event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
-              createMovementMutation.mutate({
+              void submitMovement('movement', event.currentTarget, {
                 item_id: String(form.get('item_id')),
                 asset_id: String(form.get('asset_id') || '') || undefined,
                 movement_type: String(form.get('movement_type')),
@@ -524,15 +557,17 @@ export function InventoryPage() {
                 project_id: String(form.get('project_id') || '') || undefined,
                 notes: String(form.get('notes') || '')
               });
-              event.currentTarget.reset();
             }}
           >
             <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
               <ArrowRightLeft className="h-4 w-4" />
               Movement
             </h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <select className="form-field" name="movement_type">
+            <fieldset
+              className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2"
+              disabled={movementAttempt !== null}
+            >
+              <select aria-label="Movement type" className="form-field" name="movement_type">
                 <option value="transfer">Transfer</option>
                 <option value="issue">Issue</option>
                 <option value="return">Return</option>
@@ -541,7 +576,7 @@ export function InventoryPage() {
                 <option value="wastage">Wastage</option>
                 <option value="damaged">Damaged</option>
               </select>
-              <select className="form-field" name="item_id" required>
+              <select aria-label="Movement item" className="form-field" name="item_id" required>
                 <option value="">Item</option>
                 {items.data?.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -549,7 +584,7 @@ export function InventoryPage() {
                   </option>
                 ))}
               </select>
-              <select className="form-field" name="asset_id">
+              <select aria-label="Movement asset tag" className="form-field" name="asset_id">
                 <option value="">No asset tag</option>
                 {assets.data?.map((asset) => (
                   <option key={asset.id} value={asset.id}>
@@ -564,7 +599,7 @@ export function InventoryPage() {
                 label="From"
               />
               <LocationSelect locations={locations.data ?? []} name="to_location_id" label="To" />
-              <select className="form-field" name="project_id">
+              <select aria-label="Movement project" className="form-field" name="project_id">
                 <option value="">No project</option>
                 {projects.data?.items.map((project) => (
                   <option key={project.id} value={project.id}>
@@ -573,9 +608,21 @@ export function InventoryPage() {
                 ))}
               </select>
               <input className="form-field" name="notes" placeholder="Notes" />
-            </div>
-            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              Record movement
+            </fieldset>
+            {movementError?.form === 'movement' && (
+              <p className="mt-3" role="alert">
+                {movementError.detail}
+              </p>
+            )}
+            <button
+              className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              disabled={createMovementMutation.isPending || movementAttempt?.form === 'receipt'}
+            >
+              {movementAttempt?.form === 'movement'
+                ? createMovementMutation.isPending
+                  ? 'Recording…'
+                  : 'Retry movement'
+                : 'Record movement'}
             </button>
           </form>
         </div>

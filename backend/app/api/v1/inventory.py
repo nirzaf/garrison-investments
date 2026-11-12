@@ -162,8 +162,11 @@ async def create_movement(
     payload: MovementCreateRequest,
     current_user: CanManageInventory,
     session: DbSession,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> MovementResponse:
-    movement = await InventoryService(session).create_movement(payload, current_user)
+    movement = await InventoryService(session).create_movement(
+        payload, current_user, idempotency_key=validate_key(idempotency_key)
+    )
     return MovementResponse.model_validate(movement)
 
 

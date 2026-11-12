@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
@@ -169,18 +170,34 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         assert item_response.status_code == 201
         item = item_response.json()
 
-        receive_response = await client.post(
-            "/api/v1/inventory/movements",
-            json={
-                "item_id": item["id"],
-                "movement_type": "receive",
-                "quantity": "10",
-                "to_location_id": location["id"],
-                "notes": "Opening stock",
-            },
-            headers={"Authorization": f"Bearer {store_token}"},
+        movement_payload = {
+            "item_id": item["id"],
+            "movement_type": "receive",
+            "quantity": "10",
+            "to_location_id": location["id"],
+            "notes": "Opening stock",
+        }
+        movement_headers = {
+            "Authorization": f"Bearer {store_token}",
+            "Idempotency-Key": f"receipt-{uuid4()}",
+        }
+        receive_response, replay = await asyncio.gather(
+            *(
+                client.post(
+                    "/api/v1/inventory/movements", json=movement_payload, headers=movement_headers
+                )
+                for _ in range(2)
+            )
         )
-        assert receive_response.status_code == 201
+        assert receive_response.status_code == replay.status_code == 201
+        assert receive_response.json() == replay.json()
+        reused_key = await client.post(
+            "/api/v1/inventory/movements",
+            json={**movement_payload, "quantity": "11"},
+            headers=movement_headers,
+        )
+        assert reused_key.status_code == 409
+        assert reused_key.json()["error_code"] == "MOVEMENT_REPLAY_CONFLICT"
 
         stock_response = await client.get(
             f"/api/v1/inventory/items/{item['id']}/stock",

@@ -101,19 +101,6 @@ export async function listItemStock(itemId: string) {
   return data;
 }
 
-export async function receiveStock(payload: {
-  item_id: string;
-  to_location_id: string;
-  quantity: string;
-  notes?: string;
-}) {
-  const { data } = await apiClient.post('/inventory/movements', {
-    ...payload,
-    movement_type: 'receive'
-  });
-  return data;
-}
-
 export async function listLowStock() {
   const { data } = await apiClient.get<StockRecord[]>('/inventory/low-stock');
   return data;
@@ -140,8 +127,10 @@ export function listMovements(
   return getInventoryPage<MovementRecord>('/inventory/movements', params, signal);
 }
 
-export async function createMovement(payload: MovementCreatePayload) {
-  const { data } = await apiClient.post<MovementRecord>('/inventory/movements', payload);
+export async function createMovement(payload: MovementCreatePayload, idempotencyKey: string) {
+  const { data } = await apiClient.post<MovementRecord>('/inventory/movements', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
   return data;
 }
 

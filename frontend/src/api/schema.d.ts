@@ -5756,7 +5756,9 @@ export interface operations {
     create_movement_api_v1_inventory_movements_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };

@@ -35,7 +35,7 @@ from app.schemas.inventory import (
 from app.services.approval_service import ApprovalService
 from app.services.audit_service import AuditService
 from app.services.authorization import accessible_project_ids
-from app.services.idempotency import resolve_or_reserve
+from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
@@ -54,6 +54,7 @@ from app.utils.permissions import (
 
 PRICE_VISIBLE_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_ACCOUNTS}
 STOCK_OUT_TYPES = {"issue", "consume", "wastage", "damaged"}
+MOVEMENT_IDEMPOTENCY_ROUTE = "inventory.movements.create"
 REQUEST_CREATOR_ROLES = {ROLE_ADMIN, ROLE_STORE_KEEPER, ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
 
 
@@ -204,7 +205,27 @@ class InventoryService:
         *,
         commit: bool = True,
         import_row: tuple[UUID, int] | None = None,
+        idempotency_key: str | None = None,
     ) -> InventoryMovement:
+        if idempotency_key is not None:
+            recorded_id = await resolve_or_reserve(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=MOVEMENT_IDEMPOTENCY_ROUTE,
+            )
+            if recorded_id is not None:
+                recorded = await self.session.get(InventoryMovement, recorded_id)
+                if recorded is None or any(
+                    getattr(recorded, field) != value
+                    for field, value in payload.model_dump().items()
+                ):
+                    raise AppException(
+                        "This movement key was already used for a different stock movement.",
+                        status_code=409,
+                        error_code="MOVEMENT_REPLAY_CONFLICT",
+                    )
+                return recorded
         movement = await self._apply_movement(payload, actor, import_row=import_row)
         await self.audit.record(
             action=f"inventory.movements.{payload.movement_type}",
@@ -214,6 +235,16 @@ class InventoryService:
             new_values=payload.model_dump(mode="json"),
         )
         await self._notify_low_stock_for_movement(payload)
+        if idempotency_key is not None:
+            await bind(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=MOVEMENT_IDEMPOTENCY_ROUTE,
+                resource_type="inventory_movement",
+                resource_id=movement.id,
+            )
+            await self.session.refresh(movement)
         if commit:
             await self.session.commit()
         return movement
