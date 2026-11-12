@@ -5,9 +5,11 @@ import {
   createUser,
   deactivateUser,
   listUsers,
+  updateUserRole,
   type CreateUserPayload,
   type UserRecord
 } from '../../api/users';
+import { useAuth } from '../../context/useAuth';
 
 const roles = [
   'admin',
@@ -38,6 +40,8 @@ function roleLabel(role: string) {
 }
 
 export function UserManagementPage() {
+  const { user: currentUser } = useAuth();
+  const canManage = currentUser?.permissions?.includes('users:manage') ?? false;
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [activeFilter, setActiveFilter] = useState('active');
@@ -46,6 +50,9 @@ export function UserManagementPage() {
   const [form, setForm] = useState<CreateUserPayload>(initialForm);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [roleEdit, setRoleEdit] = useState<{ userId: string; role: string } | null>(null);
+  const [isSavingRole, setIsSavingRole] = useState(false);
+  const [roleNotice, setRoleNotice] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
@@ -99,6 +106,25 @@ export function UserManagementPage() {
       await loadUsers();
     } catch {
       setError('Unable to deactivate user.');
+    }
+  }
+
+  async function handleRoleChange(event: FormEvent<HTMLFormElement>, user: UserRecord) {
+    event.preventDefault();
+    if (!roleEdit || roleEdit.userId !== user.id || roleEdit.role === user.role || isSavingRole) {
+      return;
+    }
+    setError(null);
+    setIsSavingRole(true);
+    try {
+      const updated = await updateUserRole(user.id, roleEdit.role);
+      setRoleEdit(null);
+      setRoleNotice(`Role updated for ${updated.full_name}.`);
+      await loadUsers();
+    } catch {
+      setError('Unable to change the user role.');
+    } finally {
+      setIsSavingRole(false);
     }
   }
 
@@ -163,71 +189,78 @@ export function UserManagementPage() {
       </div>
 
       {error ? <p className="alert-error rounded-md px-3 py-2 text-sm">{error}</p> : null}
+      {roleNotice ? (
+        <p role="status" className="text-sm text-theme-text-secondary">
+          {roleNotice}
+        </p>
+      ) : null}
 
-      <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
-        <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, full_name: event.target.value })}
-            placeholder="Full name"
-            required
-            value={form.full_name}
-          />
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
-            placeholder="Email"
-            required
-            type="email"
-            value={form.email}
-          />
-          <select
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, role: event.target.value })}
-            value={form.role}
-          >
-            {roles.map((role) => (
-              <option key={role} value={role}>
-                {roleLabel(role)}
-              </option>
-            ))}
-          </select>
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, employee_code: event.target.value })}
-            placeholder="Employee code"
-            required
-            value={form.employee_code}
-          />
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, phone: event.target.value })}
-            placeholder="Phone"
-            required
-            value={form.phone}
-          />
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, designation: event.target.value })}
-            placeholder="Designation"
-            value={form.designation ?? ''}
-          />
-          <input
-            className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
-            onChange={(event) => setForm({ ...form, temporary_password: event.target.value })}
-            placeholder="Temporary password"
-            required
-            type="password"
-            value={form.temporary_password}
-          />
-          <button
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-            type="submit"
-          >
-            Create user
-          </button>
-        </form>
-      </section>
+      {canManage ? (
+        <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
+          <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, full_name: event.target.value })}
+              placeholder="Full name"
+              required
+              value={form.full_name}
+            />
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+              placeholder="Email"
+              required
+              type="email"
+              value={form.email}
+            />
+            <select
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, role: event.target.value })}
+              value={form.role}
+            >
+              {roles.map((role) => (
+                <option key={role} value={role}>
+                  {roleLabel(role)}
+                </option>
+              ))}
+            </select>
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, employee_code: event.target.value })}
+              placeholder="Employee code"
+              required
+              value={form.employee_code}
+            />
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, phone: event.target.value })}
+              placeholder="Phone"
+              required
+              value={form.phone}
+            />
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, designation: event.target.value })}
+              placeholder="Designation"
+              value={form.designation ?? ''}
+            />
+            <input
+              className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
+              onChange={(event) => setForm({ ...form, temporary_password: event.target.value })}
+              placeholder="Temporary password"
+              required
+              type="password"
+              value={form.temporary_password}
+            />
+            <button
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              type="submit"
+            >
+              Create user
+            </button>
+          </form>
+        </section>
+      ) : null}
 
       <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card shadow-xs">
         <div className="border-b border-theme-border px-4 py-3 text-sm text-theme-text-secondary">
@@ -252,7 +285,62 @@ export function UserManagementPage() {
                     <p className="font-medium text-theme-text-primary">{user.full_name}</p>
                     <p className="text-xs text-theme-text-muted">{user.email}</p>
                   </td>
-                  <td className="px-4 py-3">{roleLabel(user.role)}</td>
+                  <td className="px-4 py-3">
+                    {roleEdit?.userId === user.id ? (
+                      <form
+                        className="flex flex-wrap items-center gap-2"
+                        onSubmit={(event) => void handleRoleChange(event, user)}
+                      >
+                        <select
+                          aria-label={`New role for ${user.full_name}`}
+                          className="rounded-md border border-theme-border bg-theme-card px-2 py-1"
+                          disabled={isSavingRole}
+                          onChange={(event) =>
+                            setRoleEdit({ userId: user.id, role: event.target.value })
+                          }
+                          value={roleEdit.role}
+                        >
+                          {roles.map((role) => (
+                            <option key={role} value={role}>
+                              {roleLabel(role)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                          disabled={isSavingRole || roleEdit.role === user.role}
+                          type="submit"
+                        >
+                          {isSavingRole ? 'Saving…' : 'Save role'}
+                        </button>
+                        <button
+                          className="text-theme-text-secondary hover:opacity-80 disabled:opacity-50"
+                          disabled={isSavingRole}
+                          onClick={() => setRoleEdit(null)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <span>{roleLabel(user.role)}</span>
+                        {canManage && user.id !== currentUser?.id && user.is_active ? (
+                          <button
+                            className="ml-2 font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                            disabled={roleEdit !== null}
+                            onClick={() => {
+                              setRoleNotice(null);
+                              setRoleEdit({ userId: user.id, role: user.role });
+                            }}
+                            type="button"
+                          >
+                            Change role
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{user.employee_code}</td>
                   <td className="px-4 py-3">{user.phone}</td>
                   <td className="px-4 py-3">
@@ -267,7 +355,7 @@ export function UserManagementPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {user.is_active ? (
+                    {canManage && user.is_active ? (
                       <div className="flex items-center justify-end gap-3">
                         <button
                           className="text-sm font-medium text-brand-600 hover:text-brand-700"

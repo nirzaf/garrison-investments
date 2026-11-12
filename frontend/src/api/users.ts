@@ -21,6 +21,12 @@ export async function createUser(payload: CreateUserPayload): Promise<UserRecord
   return response.data;
 }
 
+export async function updateUserRole(userId: string, role: string): Promise<UserRecord> {
+  const payload: components['schemas']['UserUpdateRequest'] = { role };
+  const response = await apiClient.patch<UserRecord>(`/users/${userId}`, payload);
+  return response.data;
+}
+
 export async function deactivateUser(userId: string): Promise<UserRecord> {
   const response = await apiClient.delete<UserRecord>(`/users/${userId}`);
   return response.data;
