@@ -17,6 +17,7 @@ from app.main import create_app
 from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
 from app.utils.security import hash_password, utc_now
 from scripts import log_cli
@@ -92,6 +93,7 @@ async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
             context_payload={"phase": "qa"},
             old_values={"status": "draft"},
             new_values={"status": "active"},
+            storage_tier="archive",
         )
         await session.commit()
 
@@ -101,7 +103,12 @@ async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
 
         response = await client.get(
             "/api/v1/log-events",
-            params={"event_type": "state_change", "search": "qa", "endpoint": "/api/v1/projects"},
+            params={
+                "event_type": "state_change",
+                "search": "qa",
+                "endpoint": "/api/v1/projects",
+                "storage_tier": "archive",
+            },
             headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-search"},
         )
         assert response.status_code == 200
@@ -111,6 +118,7 @@ async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
             item["event_type"] == "state_change"
             and item["endpoint"] == "/api/v1/projects"
             and item["context_payload"]["phase"] == "qa"
+            and item["storage_tier"] == "archive"
             for item in payload["items"]
         )
 
@@ -161,7 +169,7 @@ async def test_log_event_stream_returns_matching_events() -> None:
             assert ids == sorted(set(ids))
 
 
-async def test_log_retention_archives_then_purges_old_logs() -> None:
+async def test_unconfigured_log_retention_archives_without_purging_old_logs() -> None:
     await skip_if_database_unavailable()
     async with AsyncSessionLocal() as session:
         await AuditService(session).record(
@@ -189,24 +197,16 @@ async def test_log_retention_archives_then_purges_old_logs() -> None:
         logs[0].archived_at = utc_now() - timedelta(days=400)
         await session.commit()
 
-        audit = AuditService(session)
-        audit.settings = audit.settings.model_copy(update={"log_purge_enabled": True})
-        assert await audit.purge_logs(archive_retention_days=365) == 0
-
         log = logs[0]
         log.retention_until = utc_now() - timedelta(seconds=1)
         await session.flush()
-        preview = await audit.preview_purge(archive_retention_days=365)
-        assert [row[0] for row in preview] == [log.id]
-        assert await AuditService(session).purge_logs(archive_retention_days=365) == 0
-
-        log.retention_until = None
-        await session.flush()
+        audit = AuditService(session)
+        assert await audit.preview_purge(archive_retention_days=365) == []
         assert await audit.purge_logs(archive_retention_days=365) == 0
-        log.retention_until = utc_now() - timedelta(seconds=1)
-        await session.flush()
-        assert await audit.purge_logs(archive_retention_days=365) == 1
-        await session.commit()
+        audit.settings = audit.settings.model_copy(update={"log_purge_enabled": True})
+        with pytest.raises(AuditRetentionPolicyError, match="scheduled_expiry_policy_required"):
+            await audit.purge_logs(archive_retention_days=365)
+        assert await session.get(ActivityLog, log.id) is not None
 
 
 @asynccontextmanager

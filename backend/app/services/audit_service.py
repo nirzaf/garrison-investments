@@ -3,15 +3,37 @@ from typing import Any
 from typing import cast as type_cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, Select, Text, cast, delete, func, or_, select, tuple_, update
+from sqlalchemy import (
+    CursorResult,
+    Select,
+    Text,
+    and_,
+    cast,
+    delete,
+    false,
+    func,
+    null,
+    or_,
+    select,
+    tuple_,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.activity_log import ActivityLog
 from app.observability.context import get_log_context
+from app.services.audit_retention_policy import (
+    AuditRetentionPolicyError,
+    VerifiedAuditRetentionPolicy,
+    audit_writer_policy,
+    load_audit_retention_policy,
+)
 from app.utils.redaction import redact_payload, redact_text
 from app.utils.security import utc_now
+
+RETENTION_BATCH_SIZE = 1000
 
 
 class AuditService:
@@ -47,8 +69,15 @@ class AuditService:
     ) -> None:
         context = get_log_context()
         resolved_user_id = user_id or self._context_user_id(context.user_id)
-        resolved_retention = retention_until or (
-            utc_now() + self._retention_delta(self.settings.log_archive_retention_days)
+        resolved_event_type = event_type or self._infer_event_type(action, old_values, new_values)
+        created_at = utc_now()
+        policy = audit_writer_policy(
+            self.settings.audit_retention_policy_path, self.settings.audit_retention_policy_sha256
+        )
+        resolved_retention = (
+            policy.policy.deadline(action, resolved_event_type, created_at, retention_until)
+            if policy is not None
+            else retention_until
         )
         payload = dict(context_payload or {})
         payload.setdefault("request_id", request_id or context.request_id)
@@ -63,7 +92,7 @@ class AuditService:
         self.session.add(
             ActivityLog(
                 user_id=resolved_user_id,
-                event_type=event_type or self._infer_event_type(action, old_values, new_values),
+                event_type=resolved_event_type,
                 severity=(severity or self._infer_severity(action, status_code)).upper(),
                 action=action,
                 entity_type=entity_type,
@@ -80,6 +109,7 @@ class AuditService:
                 instance_id=instance_id or context.instance_id or self.settings.log_instance_id,
                 storage_tier=storage_tier,
                 archived_at=archived_at,
+                created_at=created_at,
                 retention_until=resolved_retention,
                 user_agent=user_agent,
                 comments=redact_text(comments) if comments else comments,
@@ -186,56 +216,144 @@ class AuditService:
         total = int(await self.session.scalar(total_query) or 0)
         return logs, total
 
-    async def archive_logs(self, *, hot_retention_days: int | None = None) -> int:
-        cutoff_at = utc_now()
+    def configured_retention_policy(self) -> VerifiedAuditRetentionPolicy | None:
+        return load_audit_retention_policy(
+            self.settings.audit_retention_policy_path, self.settings.audit_retention_policy_sha256
+        )
+
+    async def archive_logs(
+        self, *, hot_retention_days: int | None = None, cutoff_at: datetime | None = None
+    ) -> int:
+        cutoff_at = cutoff_at or utc_now()
         hot_cutoff = cutoff_at - self._retention_delta(
             hot_retention_days or self.settings.log_hot_retention_days
         )
-        result = await self.session.execute(
-            update(ActivityLog)
+        candidates = (
+            select(ActivityLog.id)
             .where(
                 ActivityLog.deleted_at.is_(None),
                 ActivityLog.storage_tier == "hot",
                 ActivityLog.created_at < hot_cutoff,
             )
+            .order_by(ActivityLog.id)
+            .limit(RETENTION_BATCH_SIZE)
+            .with_for_update(skip_locked=True)
+            .cte("archive_candidates")
+            .prefix_with("MATERIALIZED", dialect="postgresql")
+        )
+        result = await self.session.execute(
+            update(ActivityLog)
+            .where(ActivityLog.id.in_(select(candidates.c.id)))
             .values(storage_tier="archive", archived_at=cutoff_at)
             .execution_options(synchronize_session=False)
         )
         return int(type_cast(CursorResult[Any], result).rowcount or 0)
 
-    def _purge_candidates(self, archive_retention_days: int | None) -> Select:
-        now = utc_now()
-        purge_cutoff = now - self._retention_delta(
+    def _purge_eligible(
+        self,
+        policy: VerifiedAuditRetentionPolicy | None,
+        cutoff_at: datetime,
+        archive_retention_days: int | None,
+    ) -> ColumnElement[bool]:
+        if policy is None or policy.policy.mode != "scheduled_expiry":
+            return false()
+        minimum_deadline = policy.policy.sql_deadline()
+        archive_cutoff = cutoff_at - self._retention_delta(
             archive_retention_days or self.settings.log_archive_retention_days
         )
+        return and_(
+            ActivityLog.storage_tier == "archive",
+            ActivityLog.retention_until <= cutoff_at,
+            ActivityLog.retention_until >= minimum_deadline,
+            func.coalesce(ActivityLog.archived_at, ActivityLog.created_at) < archive_cutoff,
+        )
+
+    def retention_categories(
+        self, policy: VerifiedAuditRetentionPolicy | None, cutoff_at: datetime
+    ) -> dict[str, ColumnElement[bool]]:
+        minimum_deadline = policy.policy.sql_deadline() if policy else null()
+        return {
+            "missing": ActivityLog.retention_until.is_(None),
+            "held": false(),
+            "future": ActivityLog.retention_until > cutoff_at,
+            "unknown": minimum_deadline.is_(None),
+            "shorter_than_policy": (
+                ActivityLog.retention_until < minimum_deadline if policy else false()
+            ),
+            "eligible": self._purge_eligible(policy, cutoff_at, None),
+        }
+
+    async def retention_counts(
+        self, policy: VerifiedAuditRetentionPolicy | None, cutoff_at: datetime
+    ) -> dict[str, int]:
+        categories = self.retention_categories(policy, cutoff_at)
+        row = (
+            await self.session.execute(
+                select(
+                    func.count().label("total"),
+                    *(
+                        func.count().filter(condition).label(name)
+                        for name, condition in categories.items()
+                    ),
+                )
+                .select_from(ActivityLog)
+                .where(ActivityLog.deleted_at.is_(None), ActivityLog.created_at <= cutoff_at)
+            )
+        ).one()
+        counts = {name: int(count) for name, count in row._mapping.items()}
+        counts["protected"] = counts["total"] - counts["eligible"]
+        return counts
+
+    def _purge_candidates(
+        self,
+        policy: VerifiedAuditRetentionPolicy | None,
+        cutoff_at: datetime,
+        archive_retention_days: int | None,
+    ) -> Select:
         return (
             select(ActivityLog.id, ActivityLog.retention_until)
             .where(
-                ActivityLog.storage_tier == "archive",
                 ActivityLog.deleted_at.is_(None),
-                ActivityLog.retention_until <= now,
-                func.coalesce(ActivityLog.archived_at, ActivityLog.created_at) < purge_cutoff,
+                self._purge_eligible(policy, cutoff_at, archive_retention_days),
             )
             .order_by(ActivityLog.retention_until, ActivityLog.id)
-            .limit(1000)
+            .limit(RETENTION_BATCH_SIZE)
         )
 
     async def preview_purge(
-        self, *, archive_retention_days: int | None = None
+        self, *, archive_retention_days: int | None = None, cutoff_at: datetime | None = None
     ) -> list[tuple[UUID, datetime]]:
-        rows = await self.session.execute(self._purge_candidates(archive_retention_days))
+        rows = await self.session.execute(
+            self._purge_candidates(
+                self.configured_retention_policy(), cutoff_at or utc_now(), archive_retention_days
+            )
+        )
         return [(row.id, row.retention_until) for row in rows]
 
-    async def purge_logs(self, *, archive_retention_days: int | None = None) -> int:
+    async def purge_logs(
+        self, *, archive_retention_days: int | None = None, cutoff_at: datetime | None = None
+    ) -> int:
         if not self.settings.log_purge_enabled:
             return 0
+        policy = self.configured_retention_policy()
+        if policy is None or policy.policy.mode != "scheduled_expiry":
+            raise AuditRetentionPolicyError("retention_scheduled_expiry_policy_required")
+        now = cutoff_at or utc_now()
         candidates = (
-            self._purge_candidates(archive_retention_days)
+            self._purge_candidates(policy, now, archive_retention_days)
             .with_only_columns(ActivityLog.id)
             .with_for_update(skip_locked=True)
+            # The candidate set must be selected once even when PostgreSQL
+            # chooses a nested-loop plan for the DELETE.
+            .cte("purge_candidates")
+            .prefix_with("MATERIALIZED", dialect="postgresql")
         )
         result = await self.session.execute(
-            delete(ActivityLog).where(ActivityLog.id.in_(candidates))
+            delete(ActivityLog).where(
+                ActivityLog.id.in_(select(candidates.c.id)),
+                ActivityLog.deleted_at.is_(None),
+                self._purge_eligible(policy, now, archive_retention_days),
+            )
         )
         return int(type_cast(CursorResult[Any], result).rowcount or 0)
 

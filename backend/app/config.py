@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     log_hot_retention_days: int = 30
     log_archive_retention_days: int = 365
     log_purge_enabled: bool = False
+    audit_retention_policy_path: str | None = None
+    audit_retention_policy_sha256: str | None = None
     log_stream_poll_seconds: float = 1.0
 
     jwt_algorithm: str = "RS256"

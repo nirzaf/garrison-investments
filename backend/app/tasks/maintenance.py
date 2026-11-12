@@ -1,17 +1,18 @@
 from datetime import time, timedelta
+from time import monotonic
 
 import structlog
 from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
-from app.models.activity_log import ActivityLog
 from app.models.daily_report import DailyReport
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
@@ -37,33 +38,59 @@ def archive_and_purge_logs() -> str:
 
 
 async def _archive_and_purge_logs() -> str:
-    async with AsyncSessionLocal() as session:
-        audit = AuditService(session)
-        archived = await audit.archive_logs()
-        purge_enabled = audit.settings.log_purge_enabled
-        preview_count = len(await audit.preview_purge()) if not purge_enabled else 0
-        purged = await audit.purge_logs()
-        await audit.record(
-            action="maintenance.logs_retention",
-            event_type="system_event",
-            severity="INFO",
-            entity_type="log_events",
-            comments="Log archive/purge cycle completed",
-            context_payload={
+    started = monotonic()
+    cutoff = utc_now()
+    policy_revision = None
+    mode = "unconfigured"
+    try:
+        async with AsyncSessionLocal() as session:
+            audit = AuditService(session)
+            verified = audit.configured_retention_policy()
+            if verified is not None:
+                policy_revision = verified.policy.revision
+                mode = verified.policy.mode
+            purge_enabled = audit.settings.log_purge_enabled
+            archived = await audit.archive_logs(cutoff_at=cutoff)
+            counts = await audit.retention_counts(verified, cutoff)
+            purged = await audit.purge_logs(cutoff_at=cutoff)
+            receipt = {
+                "policy_revision": policy_revision,
+                "policy_sha256": verified.sha256 if verified else None,
+                "mode": mode,
+                "cutoff_utc": cutoff.isoformat(),
+                "scanned": counts["total"],
                 "archived": archived,
                 "purged": purged,
+                "deleted": purged,
+                "protected": counts["protected"] if purge_enabled else counts["total"],
+                "failed": 0,
                 "purge_enabled": purge_enabled,
-                "preview_count": preview_count,
-            },
+                "preview_count": counts["eligible"],
+                "duration_seconds": monotonic() - started,
+            }
+            await audit.record(
+                action="maintenance.logs_retention",
+                event_type="system_event",
+                severity="INFO",
+                entity_type="log_events",
+                comments="Log retention cycle completed",
+                context_payload=receipt,
+            )
+            await session.commit()
+    except Exception as error:
+        logger.error(
+            "logs_retention_failed",
+            policy_revision=policy_revision,
+            mode=mode,
+            cutoff_utc=cutoff.isoformat(),
+            failed=1,
+            reason=str(error)
+            if isinstance(error, AuditRetentionPolicyError)
+            else type(error).__name__,
+            duration_seconds=monotonic() - started,
         )
-        await session.commit()
-    logger.info(
-        "logs_retention_completed",
-        archived=archived,
-        purged=purged,
-        purge_enabled=purge_enabled,
-        preview_count=preview_count,
-    )
+        raise
+    logger.info("logs_retention_completed", **receipt)
     return f"{archived} logs archived, {purged} logs purged"
 
 
@@ -167,17 +194,16 @@ async def _check_late_reports() -> str:
                     reference_type="projects",
                     reference_id=project.id,
                 )
-            session.add(
-                ActivityLog(
-                    action="daily_reports.late_missing",
-                    entity_type="projects",
-                    entity_id=project.id,
-                    comments=f"Daily report missing for {report_date.isoformat()}",
-                    new_values={
-                        "report_date": report_date.isoformat(),
-                        "project_code": project.code,
-                    },
-                )
+            await AuditService(session).record(
+                action="daily_reports.late_missing",
+                event_type="audit",
+                entity_type="projects",
+                entity_id=project.id,
+                comments=f"Daily report missing for {report_date.isoformat()}",
+                new_values={
+                    "report_date": report_date.isoformat(),
+                    "project_code": project.code,
+                },
             )
         await session.commit()
     return f"{missing_count} late daily report alerts recorded"
