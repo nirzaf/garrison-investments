@@ -31,6 +31,9 @@ export function ProfilePage() {
         <div>
           <p className="text-sm font-medium text-brand-600">My account</p>
           <h2 className="text-2xl font-semibold text-theme-text-primary">Profile</h2>
+          <p className="text-sm text-theme-text-muted">
+            Contact an administrator to correct your account details.
+          </p>
         </div>
         <Link
           className="inline-flex min-h-10 items-center justify-center rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"

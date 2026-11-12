@@ -170,7 +170,7 @@ export const adminManual: Manual = {
     },
     {
       id: 'analytics',
-      title: 'Analytics & Delivery Planning',
+      title: 'Analytics and launch readiness',
       icon: '📊',
       content:
         'Access company-wide analytics and delivery schedule planning, available exclusively to high-level management roles.',
@@ -182,9 +182,8 @@ export const adminManual: Manual = {
         },
         {
           step: 2,
-          action: 'Click Delivery',
-          detail:
-            'Select "Delivery" from the sidebar to manage material and equipment delivery planning.'
+          action: 'Open Launch readiness',
+          detail: 'Review the deployment, recovery, and user acceptance checks for a release.'
         }
       ]
     },

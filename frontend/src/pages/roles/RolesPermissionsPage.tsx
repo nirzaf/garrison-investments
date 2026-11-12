@@ -4,24 +4,9 @@ import { useState } from 'react';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
-const PERMISSIONS = [
-  'users:manage',
-  'users:read',
-  'projects:manage',
-  'projects:read',
-  'audit:view',
-  'dashboard:company',
-  'dashboard:scoped',
-  'reports:view',
-  'reports:submit',
-  'reports:approve',
-  'inventory:view',
-  'inventory:manage',
-  'suppliers:manage',
-  'documents:view',
-  'documents:manage',
-  'financial:view'
-] as const;
+import rolePermissions from './rolePermissions.json';
+
+const PERMISSIONS = rolePermissions.permissions;
 
 const PERMISSION_LABELS: Record<string, string> = {
   'users:manage': 'Manage Users',
@@ -47,103 +32,49 @@ const ROLES: { key: string; label: string; description: string; permissions: str
     key: 'admin',
     label: 'Admin',
     description: 'Platform administrator with full access to all features and settings.',
-    permissions: [...PERMISSIONS]
+    permissions: rolePermissions.roles.admin
   },
   {
     key: 'general_manager',
     label: 'General Manager',
     description: 'Senior company-wide manager with operational visibility across all projects.',
-    permissions: [
-      'users:read',
-      'projects:read',
-      'projects:manage',
-      'dashboard:company',
-      'reports:view',
-      'reports:approve',
-      'inventory:view',
-      'suppliers:manage',
-      'documents:view',
-      'documents:manage',
-      'financial:view'
-    ]
+    permissions: rolePermissions.roles.general_manager
   },
   {
     key: 'operation_manager',
     label: 'Operation Manager',
     description: 'Operations manager with company-wide visibility and approval authority.',
-    permissions: [
-      'users:read',
-      'projects:read',
-      'projects:manage',
-      'dashboard:company',
-      'reports:view',
-      'reports:approve',
-      'inventory:view',
-      'suppliers:manage',
-      'documents:view',
-      'documents:manage',
-      'financial:view'
-    ]
+    permissions: rolePermissions.roles.operation_manager
   },
   {
     key: 'project_manager',
     label: 'Project Manager',
     description: 'Project-level manager with scoped dashboard, approvals, and document access.',
-    permissions: [
-      'dashboard:scoped',
-      'projects:read',
-      'reports:view',
-      'reports:approve',
-      'inventory:view',
-      'documents:view',
-      'documents:manage',
-      'financial:view'
-    ]
+    permissions: rolePermissions.roles.project_manager
   },
   {
     key: 'civil_engineer',
     label: 'Civil Engineer',
     description: 'Site engineer who can submit reports and work with project-scoped features.',
-    permissions: [
-      'dashboard:scoped',
-      'projects:read',
-      'reports:view',
-      'reports:submit',
-      'inventory:view',
-      'documents:view',
-      'documents:manage'
-    ]
+    permissions: rolePermissions.roles.civil_engineer
   },
   {
     key: 'civil_supervisor',
     label: 'Civil Supervisor',
     description: 'Site supervisor who can submit updates and use project-scoped reporting.',
-    permissions: [
-      'dashboard:scoped',
-      'projects:read',
-      'reports:view',
-      'reports:submit',
-      'documents:view'
-    ]
+    permissions: rolePermissions.roles.civil_supervisor
   },
   {
     key: 'store_keeper',
     label: 'Store Keeper',
     description: 'Inventory and stores operator with supplier management access.',
-    permissions: ['dashboard:scoped', 'inventory:view', 'inventory:manage', 'suppliers:manage']
+    permissions: rolePermissions.roles.store_keeper
   },
   {
     key: 'accounts',
     label: 'Accounts',
     description: 'Finance and accounting user with document and financial visibility.',
-    permissions: [
-      'dashboard:scoped',
-      'projects:read',
-      'reports:view',
-      'documents:view',
-      'documents:manage',
-      'financial:view'
-    ]
+    permissions: rolePermissions.roles.accounts
   }
 ];
 
@@ -550,15 +481,20 @@ function RolesDocumentation() {
             ['/admin/users', 'users:read', 'User management screen'],
             ['/admin/audit-logs', 'audit:view', 'Audit log screen'],
             ['/admin/imports', 'users:manage', 'Imports administration'],
-            ['/documents', 'documents:manage', 'Documents page'],
+            ['/documents', 'documents:view', 'Document library and permitted files'],
             ['/photos', 'reports:view', 'Photo / report evidence view'],
             ['/materials', 'inventory:view', 'Inventory and materials page'],
+            ['/suppliers', 'suppliers:manage', 'Supplier register and TDS files'],
             ['/finance', 'financial:view', 'Finance page'],
             ['/analytics', 'dashboard:company', 'Management analytics'],
             ['/security', 'audit:view', 'Security page'],
-            ['/delivery', 'dashboard:company', 'Delivery planning page'],
-            ['/reports/daily', 'reports:submit', 'Daily report workflow'],
-            ['/reports/supervisor-update', 'reports:submit', 'Supervisor update workflow'],
+            ['/delivery', 'dashboard:company', 'Launch readiness checklist'],
+            ['/reports/daily', 'reports:view', 'Daily report list and permitted actions'],
+            [
+              '/reports/supervisor-update',
+              'reports:view',
+              'Site update review and supervisor authoring'
+            ],
             ['/approvals', 'reports:approve', 'Approval inbox']
           ]}
         />
@@ -575,7 +511,7 @@ function RolesDocumentation() {
           </li>
           <li>
             Users with <code className="text-xs text-brand-600">dashboard:company</code> permission
-            see the <strong>Analytics</strong> and <strong>Delivery</strong> tabs at the end of the
+            see the <strong>Analytics</strong> and <strong>Launch readiness</strong> tabs in the
             main navigation.
           </li>
         </ul>
@@ -598,7 +534,7 @@ function RolesDocumentation() {
             [
               'Dashboard',
               'dashboard:company / dashboard:scoped',
-              'Company-wide or scoped visibility; dashboard:company also unlocks Analytics and Delivery tabs'
+              'Company-wide or scoped visibility. The company permission also opens Analytics and Launch readiness.'
             ],
             ['Daily reports', 'reports:submit', 'Submit daily reports or supervisor updates'],
             ['Approvals', 'reports:approve', 'Approval inbox and workflows'],
@@ -608,19 +544,19 @@ function RolesDocumentation() {
               'inventory:view / inventory:manage',
               'View materials page and manage inventory operations'
             ],
+            ['Suppliers', 'suppliers:manage', 'Supplier register and TDS upload or download'],
             [
-              'Suppliers',
-              'suppliers:manage',
-              'Supplier APIs, TDS upload/download, supplier-backed finance selections'
+              'Documents',
+              'documents:view / documents:manage',
+              'Read or manage documents within the assigned scope'
             ],
-            ['Documents', 'documents:manage', 'Documents page and document workflows'],
             ['Finance', 'financial:view', 'Finance page and financial reporting'],
             ['Imports', 'users:manage', 'Import administration'],
             ['Audit and security', 'audit:view', 'Audit logs and security page'],
             [
-              'Analytics and delivery',
+              'Analytics and launch readiness',
               'dashboard:company',
-              'Management-only analytics and delivery planning'
+              'Management analytics and release verification checklist'
             ]
           ]}
         />
@@ -641,8 +577,12 @@ function RolesDocumentation() {
             (engineer-only submission, project membership, admin override).
           </li>
           <li>
-            There is no standalone Suppliers page in the frontend navigation; supplier data feeds
-            into finance workflows only.
+            The Suppliers page and TDS file access require <code>suppliers:manage</code>.
+          </li>
+          <li>
+            Accounts can read reports, documents, and finance data across the company. Project
+            Managers are scoped to assigned projects for those workflows. Inventory reads use
+            company-wide visibility for roles with <code>inventory:view</code>.
           </li>
         </ul>
       </DocSection>

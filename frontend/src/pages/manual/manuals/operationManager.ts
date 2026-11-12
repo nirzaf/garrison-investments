@@ -117,7 +117,7 @@ Report Approval Flow:
     },
     {
       id: 'analytics',
-      title: 'Analytics & Delivery',
+      title: 'Analytics and launch readiness',
       icon: '📊',
       content: 'Use analytics to identify performance trends and manage delivery schedules.',
       steps: [
@@ -128,8 +128,8 @@ Report Approval Flow:
         },
         {
           step: 2,
-          action: 'Go to Delivery',
-          detail: 'Click "Delivery" to view and coordinate material delivery plans.'
+          action: 'Open Launch readiness',
+          detail: 'Review the operations guide and the release acceptance checks.'
         }
       ]
     },

@@ -179,10 +179,11 @@ describe('App route smoke tests', () => {
     expect(html).toContain('Security And Audit');
   });
 
-  it('renders delivery route for management users', () => {
+  it('renders launch readiness at the existing delivery route for management users', () => {
     const html = renderApp({ route: '/delivery', permissions: ['dashboard:company'] });
 
-    expect(html).toContain('Delivery Plan');
+    expect(html).toContain('Launch readiness');
+    expect(html).toContain('operations guide');
   });
 
   it('renders profile route for signed-in users', () => {

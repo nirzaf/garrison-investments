@@ -274,6 +274,13 @@
       },
       "ApprovalResponse": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "amount": {
             "anyOf": [
               {
@@ -3136,6 +3143,57 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MaterialQuantityCommand": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialQuantityLine"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "lines"
+        ],
+        "title": "MaterialQuantityCommand",
+        "type": "object"
+      },
+      "MaterialQuantityLine": {
+        "properties": {
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "required": [
+          "line_id",
+          "quantity"
+        ],
+        "title": "MaterialQuantityLine",
+        "type": "object"
+      },
       "MaterialRequestCreateRequest": {
         "properties": {
           "from_location_id": {
@@ -3147,6 +3205,7 @@
             "items": {
               "$ref": "#/components/schemas/MaterialRequestLineCreate"
             },
+            "maxItems": 100,
             "minItems": 1,
             "title": "Lines",
             "type": "array"
@@ -3308,6 +3367,10 @@
             ],
             "title": "Requester Id"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3324,6 +3387,7 @@
           "requester_id",
           "from_location_id",
           "status",
+          "revision",
           "total_estimated_cost",
           "notes",
           "lines"
@@ -5750,6 +5814,51 @@
         "title": "ReportMaterialConsumptionResponse",
         "type": "object"
       },
+      "RequestProjectOption": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "title": "RequestProjectOption",
+        "type": "object"
+      },
+      "RequestProjectOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RequestProjectOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "RequestProjectOptions",
+        "type": "object"
+      },
       "StockResponse": {
         "properties": {
           "available_qty": {
@@ -6010,6 +6119,29 @@
             ],
             "title": "Verified By"
           },
+          "verified_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Name"
+          },
+          "verified_report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Report Id"
+          },
           "work_location": {
             "title": "Work Location",
             "type": "string"
@@ -6032,6 +6164,7 @@
           "submitted_at",
           "verified_by",
           "verified_at",
+          "verified_report_id",
           "verification_notes"
         ],
         "title": "SupervisorUpdateResponse",
@@ -7022,6 +7155,17 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status_group",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(open|all)$",
+              "title": "Status Group",
+              "type": "string"
             }
           },
           {
@@ -10546,6 +10690,92 @@
         ]
       }
     },
+    "/api/v1/inventory/request-projects": {
+      "get": {
+        "operationId": "list_material_request_projects_api_v1_inventory_request_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestProjectOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Material Request Projects Api V1 Inventory Request Projects Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Material Request Projects",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
     "/api/v1/inventory/requests": {
       "get": {
         "operationId": "list_material_requests_api_v1_inventory_requests_get",
@@ -10771,8 +11001,41 @@
               "title": "Request Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MaterialQuantityCommand"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Command"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -10827,8 +11090,41 @@
               "title": "Request Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MaterialQuantityCommand"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Command"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -13310,6 +13606,66 @@
           }
         ],
         "summary": "Submit Report",
+        "tags": [
+          "Daily Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/supervisor-updates": {
+      "get": {
+        "operationId": "list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupervisorUpdateResponse"
+                  },
+                  "title": "Response List Report Supervisor Updates Api V1 Reports  Report Id  Supervisor Updates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Report Supervisor Updates Api V1 Reports  Report Id  Supervisor Updates Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Report Supervisor Updates",
         "tags": [
           "Daily Reports"
         ]

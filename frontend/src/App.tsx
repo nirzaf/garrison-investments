@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './components/layout/AppLayout';
 import { RequirePermission } from './components/layout/RequirePermission';
+import { useAuth } from './context/useAuth';
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage';
 import { AuditLogPage } from './pages/admin/AuditLogPage';
 import { ImportPage } from './pages/admin/ImportPage';
@@ -22,9 +23,15 @@ import { ProjectListPage } from './pages/projects/ProjectListPage';
 import { RolesPermissionsPage } from './pages/roles/RolesPermissionsPage';
 import { DailyReportPage } from './pages/reports/DailyReportPage';
 import { SupervisorUpdatePage } from './pages/reports/SupervisorUpdatePage';
+import { SupervisorReviewPage } from './pages/reports/SupervisorReviewPage';
 import { SecurityPage } from './pages/security/SecurityPage';
 import { SuppliersPage } from './pages/suppliers/SuppliersPage';
 import { ManualPage } from './pages/manual/ManualPage';
+
+function SupervisorUpdatesRoute() {
+  const { user } = useAuth();
+  return user?.role === 'civil_supervisor' ? <SupervisorUpdatePage /> : <SupervisorReviewPage />;
+}
 
 export function App() {
   return (
@@ -144,19 +151,12 @@ export function App() {
         <Route
           path="/reports/supervisor-update"
           element={
-            <RequirePermission permission="reports:submit">
-              <SupervisorUpdatePage />
+            <RequirePermission permission="reports:view">
+              <SupervisorUpdatesRoute />
             </RequirePermission>
           }
         />
-        <Route
-          path="/approvals"
-          element={
-            <RequirePermission permission="reports:approve">
-              <ApprovalInboxPage />
-            </RequirePermission>
-          }
-        />
+        <Route path="/approvals" element={<ApprovalInboxPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/manual" element={<ManualPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

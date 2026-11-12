@@ -55,6 +55,12 @@ const navItems: NavItem[] = [
     mobile: true
   },
   {
+    label: 'Supervisor updates',
+    to: '/reports/supervisor-update',
+    permission: 'reports:view',
+    icon: ClipboardList
+  },
+  {
     label: 'Materials',
     to: '/materials',
     permission: 'inventory:view',
@@ -66,9 +72,9 @@ const navItems: NavItem[] = [
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
   { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
-  { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
+  { label: 'Approvals', to: '/approvals', icon: ShieldCheck },
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
-  { label: 'Delivery', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
+  { label: 'Launch readiness', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
   { label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
   { label: 'User Manual', to: '/manual', icon: BookOpen },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
@@ -104,6 +110,7 @@ export function AppLayout() {
     () =>
       navItems
         .filter((item) => canAccess(item, user?.permissions ?? []))
+        .filter((item) => user?.role !== 'civil_supervisor' || item.label !== 'Supervisor updates')
         .map((item) =>
           item.label === 'Reports'
             ? {

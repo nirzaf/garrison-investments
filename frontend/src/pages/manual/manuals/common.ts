@@ -58,7 +58,7 @@ export const COMMON_SECTIONS: ManualSection[] = [
     id: 'profile-security',
     title: 'Your Profile & Security',
     icon: '👤',
-    content: 'All users can manage their own profile and account security.',
+    content: 'View your account details and manage your password.',
     steps: [
       {
         step: 1,
@@ -68,7 +68,8 @@ export const COMMON_SECTIONS: ManualSection[] = [
       {
         step: 2,
         action: 'Go to Profile',
-        detail: 'Click "Profile" to view and edit your full name, email, and other details.'
+        detail:
+          'Open Profile to view your account details. Contact an authorized administrator for corrections.'
       },
       {
         step: 3,

@@ -118,7 +118,7 @@ Dashboard Overview:
     },
     {
       id: 'analytics',
-      title: 'Analytics & Delivery',
+      title: 'Analytics and launch readiness',
       icon: '📊',
       content: 'Access executive-level charts and manage delivery scheduling.',
       steps: [
@@ -130,8 +130,8 @@ Dashboard Overview:
         },
         {
           step: 2,
-          action: 'Go to Delivery',
-          detail: 'Click "Delivery" to view and plan material delivery schedules for all projects.'
+          action: 'Open Launch readiness',
+          detail: 'Review release verification and acceptance checks.'
         }
       ]
     },

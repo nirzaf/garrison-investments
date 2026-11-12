@@ -56,7 +56,7 @@ Sign-in and password reset are public. Dashboard, notifications, profile, passwo
 | `/admin/audit-logs`, `/security` | `audit:view` |
 | `/projects` | `projects:read` |
 | `/reports/daily`, `/photos` | `reports:view` |
-| `/reports/supervisor-update` | `reports:submit` |
+| `/reports/supervisor-update` | `reports:view`. Civil Supervisors author updates. Other eligible roles review scoped updates. |
 | `/approvals` | `reports:approve` |
 | `/materials` | `inventory:view` |
 | `/suppliers` | `suppliers:manage` |

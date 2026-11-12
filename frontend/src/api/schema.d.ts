@@ -779,6 +779,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/request-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Material Request Projects */
+        get: operations["list_material_request_projects_api_v1_inventory_request_projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/requests": {
         parameters: {
             query?: never;
@@ -1296,6 +1313,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/{report_id}/supervisor-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Report Supervisor Updates */
+        get: operations["list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supervisor-updates": {
         parameters: {
             query?: never;
@@ -1587,6 +1621,8 @@ export interface components {
         };
         /** ApprovalResponse */
         ApprovalResponse: {
+            /** Allowed Actions */
+            allowed_actions?: string[];
             /** Amount */
             amount: string | null;
             /** Approver Id */
@@ -2541,6 +2577,23 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** MaterialQuantityCommand */
+        MaterialQuantityCommand: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Lines */
+            lines: components["schemas"]["MaterialQuantityLine"][];
+        };
+        /** MaterialQuantityLine */
+        MaterialQuantityLine: {
+            /**
+             * Line Id
+             * Format: uuid
+             */
+            line_id: string;
+            /** Quantity */
+            quantity: number | string;
+        };
         /** MaterialRequestCreateRequest */
         MaterialRequestCreateRequest: {
             /**
@@ -2611,6 +2664,8 @@ export interface components {
             request_number: string;
             /** Requester Id */
             requester_id: string | null;
+            /** Revision */
+            revision: number;
             /** Status */
             status: string;
             /** Total Estimated Cost */
@@ -3362,6 +3417,25 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** RequestProjectOption */
+        RequestProjectOption: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** RequestProjectOptions */
+        RequestProjectOptions: {
+            /** Items */
+            items: components["schemas"]["RequestProjectOption"][];
+            /** Total */
+            total: number;
+        };
         /** StockResponse */
         StockResponse: {
             /** Available Qty */
@@ -3478,6 +3552,10 @@ export interface components {
             verified_at: string | null;
             /** Verified By */
             verified_by: string | null;
+            /** Verified By Name */
+            verified_by_name?: string | null;
+            /** Verified Report Id */
+            verified_report_id: string | null;
             /** Work Location */
             work_location: string;
         };
@@ -3785,6 +3863,7 @@ export interface operations {
             query?: {
                 box?: string;
                 status?: string | null;
+                status_group?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -5520,6 +5599,39 @@ export interface operations {
             };
         };
     };
+    list_material_request_projects_api_v1_inventory_request_projects_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestProjectOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_material_requests_api_v1_inventory_requests_get: {
         parameters: {
             query?: {
@@ -5621,13 +5733,19 @@ export interface operations {
     issue_material_request_api_v1_inventory_requests__request_id__issue_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 request_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MaterialQuantityCommand"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5652,13 +5770,19 @@ export interface operations {
     reserve_material_request_api_v1_inventory_requests__request_id__reserve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 request_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MaterialQuantityCommand"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6727,6 +6851,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DailyReportResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorUpdateResponse"][];
                 };
             };
             /** @description Invalid request */
