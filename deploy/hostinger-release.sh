@@ -16,6 +16,10 @@ die() {
   exit 1
 }
 
+report_duration() {
+  printf '%s took %ss\n' "$1" "$((SECONDS - $2))"
+}
+
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
    "$3" == rollback-v2 && "$4" == release-contract-v1 ]] ||
   die 'Expected a CI run ID, full SHA, rollback-v2 and release-contract-v1.'
@@ -86,6 +90,7 @@ if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
   exit 0
 fi
 
+phase_started=$SECONDS
 authorization=$(verify_authorization)
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
@@ -95,6 +100,7 @@ for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEP
 done
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
+report_duration 'Release authorization and source preparation' "$phase_started"
 
 generation=$(cat "$candidate/deploy/rollback-generation")
 [[ "$generation" =~ ^[1-9][0-9]*$ ]] || die 'Invalid candidate rollback generation.'
@@ -103,9 +109,28 @@ if [[ -f "$previous/deploy/rollback-generation" ]]; then
   previous_generation=$(cat "$previous/deploy/rollback-generation")
 fi
 
+same_backend_runtime() (
+  shopt -s dotglob nullglob
+  local entry name counterpart
+  [[ -d "$1" && -d "$2" ]] || return 1
+  for entry in "$1"/*; do
+    name=${entry##*/}
+    case "$name" in ARCHITECTURE.md|tests) continue ;; esac
+    counterpart="$2/$name"
+    [[ ( -d "$entry" && -d "$counterpart" ) || ( ! -d "$entry" && ! -d "$counterpart" ) ]] ||
+      return 1
+    diff -qr --exclude=tests -- "$entry" "$counterpart" >/dev/null || return 1
+  done
+  for entry in "$2"/*; do
+    name=${entry##*/}
+    case "$name" in ARCHITECTURE.md|tests) continue ;; esac
+    [[ -e "$1/$name" || -L "$1/$name" ]] || return 1
+  done
+)
+
 runtime_changed=0
 if [[ "$generation" != "$previous_generation" ]] ||
-   ! diff -qr --exclude=tests "$previous/backend" "$candidate/backend" >/dev/null ||
+   ! same_backend_runtime "$previous/backend" "$candidate/backend" ||
    ! cmp -s "$previous/docker-compose.prod.yml" "$candidate/docker-compose.prod.yml" ||
    ! diff -qr --exclude=ssl "$previous/nginx" "$candidate/nginx" >/dev/null ||
    ! diff -qr "$previous/observability" "$candidate/observability" >/dev/null; then
@@ -130,6 +155,7 @@ compose() {
     -f "$state/compose.vps.yml" "$@"
 }
 
+phase_started=$SECONDS
 compose "$candidate" config --quiet
 if ! docker image inspect "$frontend_image" >/dev/null 2>&1; then
   compose "$candidate" build frontend_dist
@@ -175,6 +201,7 @@ PY
   fi
   compose "$candidate" pull --policy missing nginx grafana loki alloy
 fi
+report_duration 'Image preparation and configuration checks' "$phase_started"
 
 backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
 frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
@@ -194,11 +221,36 @@ current=$(docker exec "$project-postgres-1" sh -ec \
 verify_main
 
 hash() { sha256sum | cut -d' ' -f1; }
-expected=$(docker run --rm --network none "$frontend_image" cat /dist/index.html | hash)
-asset=$(docker run --rm --network none "$frontend_image" sh -ec 'grep -o "/assets/index-[^\"]*\.js" /dist/index.html')
-[[ "$asset" =~ ^/assets/index-[A-Za-z0-9_-]+\.js$ ]] || die 'The frontend entry point is missing.'
-expected_asset=$(docker run --rm --network none "$frontend_image" cat "/dist$asset" | hash)
-expected_worker=$(docker run --rm --network none "$frontend_image" cat /dist/sw.js | hash)
+
+read_frontend_identity() {
+  local identity extra asset_pattern='^/assets/index-[A-Za-z0-9_-]+\.js$'
+  local digest_pattern='^[a-f0-9]{64}$'
+  identity=$(docker run --rm --network none "$1" sh -ec '
+    cd /dist
+    asset=$(grep -o "/assets/index-[^\"]*\.js" index.html)
+    case "$asset" in
+      /assets/index-*.js) ;;
+      *) exit 1 ;;
+    esac
+    name=${asset#/assets/index-}
+    name=${name%.js}
+    case "$name" in
+      ""|*[!A-Za-z0-9_-]*) exit 1 ;;
+    esac
+    index_hash=$(sha256sum index.html)
+    asset_hash=$(sha256sum ".$asset")
+    worker_hash=$(sha256sum sw.js)
+    printf "%s %s %s %s\n" "${index_hash%% *}" "$asset" "${asset_hash%% *}" "${worker_hash%% *}"
+  ') || die 'Unable to read the frontend entry point and hashes from the release image.'
+
+  read -r expected asset expected_asset expected_worker extra <<< "$identity"
+  [[ "$asset" =~ $asset_pattern ]] || die 'The frontend entry point is missing.'
+  [[ -z "$extra" && "$identity" == "$expected $asset $expected_asset $expected_worker" &&
+     "$expected" =~ $digest_pattern && "$expected_asset" =~ $digest_pattern &&
+     "$expected_worker" =~ $digest_pattern ]] || die 'Invalid frontend hashes from the release image.'
+}
+
+read_frontend_identity "$frontend_image"
 runtime_args=()
 while IFS= read -r head; do
   runtime_args+=(--schema-head "$head")
@@ -260,20 +312,25 @@ trap rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 if (( runtime_changed )); then
+  phase_started=$SECONDS
   compose "$candidate" run --rm --no-deps --pull never -T backend \
     python scripts/backup.py --target all --skip-retention
+  report_duration 'Pre-activation backup' "$phase_started"
 fi
 verify_main
 verify_authorization "${runtime_args[@]}" --backend-image "$backend_id" --frontend-image "$frontend_id" \
   --frontend-sha256 "$expected_asset" --service-worker-sha256 "$expected_worker" > "$candidate/PREDEPLOY.json"
 unset token
+phase_started=$SECONDS
 if (( runtime_changed )); then
   runtime_attempted=1
   apply_runtime "$candidate"
 fi
 frontend_attempted=1
 publish_frontend "$frontend_image"
+report_duration 'Activation' "$phase_started"
 
+phase_started=$SECONDS
 for service in backend celery_worker celery_beat; do
   container=$(compose "$candidate" ps -q "$service")
   [[ -n "$container" && "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] ||
@@ -294,6 +351,7 @@ with open(sys.argv[1]) as file:
     if json.load(file) != {"status": "ready", "database": "connected"}:
         sys.exit("The served readiness response does not report a connected database.")
 PY
+report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
 
 printf 'Commit: %s\nCI run: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \

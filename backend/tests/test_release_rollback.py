@@ -1,10 +1,133 @@
 import shlex
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "hostinger-release.sh"
+
+
+@pytest.mark.parametrize(
+    ("path", "operation", "expected_runtime_changed"),
+    [
+        ("backend/ARCHITECTURE.md", "modify", False),
+        ("backend/ARCHITECTURE.md", "add", False),
+        ("backend/ARCHITECTURE.md", "remove", False),
+        ("backend/tests/test_example.py", "modify", False),
+        ("backend/app/ARCHITECTURE.md", "modify", True),
+        ("backend/app/main.py", "add", True),
+        ("backend/alembic/env.py", "remove", True),
+        ("backend/.dockerignore", "modify", True),
+        ("docker-compose.prod.yml", "modify", True),
+    ],
+)
+def test_only_backend_documentation_and_tests_skip_runtime_changes(
+    tmp_path: Path, path: str, operation: str, expected_runtime_changed: bool
+) -> None:
+    previous = tmp_path / "previous"
+    candidate = tmp_path / "candidate"
+    for release in (previous, candidate):
+        for directory in ("backend", "nginx", "observability"):
+            (release / directory).mkdir(parents=True)
+        (release / "docker-compose.prod.yml").write_text("services: {}")
+    for release, content in ((previous, "previous"), (candidate, "candidate")):
+        if (release == previous and operation == "add") or (
+            release == candidate and operation == "remove"
+        ):
+            continue
+        target = release / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+
+    source = SCRIPT.read_text()
+    start = source.index("\nsame_backend_runtime() (\n")
+    end = source.index("\nfrontend_image=", start)
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+previous={shlex.quote(str(previous))}
+candidate={shlex.quote(str(candidate))}
+generation=1
+previous_generation=1
+{source[start:end]}
+printf '%s\n' "$runtime_changed"
+""",
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    assert result.stdout.strip() == str(int(expected_runtime_changed))
+
+
+@pytest.mark.parametrize(
+    "scenario", ["valid", "duplicate-entry", "malformed-entry", "missing-worker", "invalid-digest"]
+)
+def test_frontend_identity_reads_one_container_and_validates_its_response(
+    tmp_path: Path, scenario: str
+) -> None:
+    asset = "/assets/index-aB2_-9.js"
+    index = f'<script type="module" src="{asset}"></script>'.encode()
+    if scenario == "duplicate-entry":
+        index += b'<script type="module" src="/assets/index-other.js"></script>'
+    if scenario == "malformed-entry":
+        index = b'<script type="module" src="/assets/index-../entry.js"></script>'
+    script = b"console.log('app');\n"
+    worker = b"self.addEventListener('install', () => {});\n"
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_bytes(index)
+    (tmp_path / asset.lstrip("/")).write_bytes(script)
+    if scenario != "missing-worker":
+        (tmp_path / "sw.js").write_bytes(worker)
+
+    source = SCRIPT.read_text()
+    start = source.index("\nread_frontend_identity() {\n")
+    end = source.index("\nruntime_args=()", start)
+    invocation = source[start:end].replace("    cd /dist", '    cd "$FRONTEND_DIST"', 1)
+    calls = tmp_path / "docker-calls"
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+export FRONTEND_DIST={shlex.quote(str(tmp_path))}
+frontend_image=fixture-frontend
+die() {{ printf '%s\n' "$1" >&2; exit 1; }}
+docker() {{
+  [[ "$1 $2 $3 $4 $5 $6 $7" == "run --rm --network none fixture-frontend sh -ec" ]] || return 2
+  printf 'readback\n' >> {shlex.quote(str(calls))}
+  shift 5
+  if [[ {shlex.quote(scenario)} == invalid-digest ]]; then
+    printf '%s\n' "broken {asset} {sha256(script).hexdigest()} {sha256(worker).hexdigest()}"
+    return
+  fi
+  "$@"
+}}
+{invocation}
+printf '%s\n' "$expected" "$asset" "$expected_asset" "$expected_worker"
+""",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert calls.read_text().splitlines() == ["readback"]
+    if scenario == "valid":
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines() == [
+            sha256(index).hexdigest(),
+            asset,
+            sha256(script).hexdigest(),
+            sha256(worker).hexdigest(),
+        ]
+    else:
+        assert result.returncode != 0
+        assert not result.stdout
 
 
 @pytest.mark.parametrize(

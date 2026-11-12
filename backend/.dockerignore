@@ -6,5 +6,6 @@
 __pycache__
 *.pyc
 celerybeat-schedule
+/ARCHITECTURE.md
 tests
 scripts/dev/
