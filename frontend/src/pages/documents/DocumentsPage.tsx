@@ -9,14 +9,26 @@ import {
   getDocumentDownloadUrl,
   listDocuments,
   uploadDocument,
+  uploadDocumentVersion,
   type DocumentRecord
 } from '../../api/documents';
+import { formatApiError } from '../../api/errors';
+import { PDF_IMAGE_ACCEPT, validateDocumentFile } from '../../api/fileValidation';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
 const documentPageSize = 25;
+const documentTypes = [
+  ['mar', 'MAR'],
+  ['mir', 'MIR'],
+  ['wir', 'WIR'],
+  ['delivery_note', 'Delivery note'],
+  ['drawing', 'Drawing'],
+  ['contract', 'Contract'],
+  ['invoice', 'Invoice']
+] as const;
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -24,11 +36,20 @@ export function DocumentsPage() {
   const [searchParams] = useSearchParams();
   const focusedDocumentId = searchParams.get('documentId');
   const focusedVersionId = searchParams.get('versionId');
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectOptions, setProjectOptions] = useState<ProjectRecord[]>([]);
   const [search, setSearch] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
   const [page, setPage] = useState(0);
   const [projectId, setProjectId] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [uploadProjectId, setUploadProjectId] = useState('');
+  const [replacementDocumentId, setReplacementDocumentId] = useState<string | null>(null);
+  const [replacementFile, setReplacementFile] = useState<File | null>(null);
+  const [pending, setPending] = useState(false);
+  const pendingWrite = useRef(false);
+  const replacementKey = useRef('');
+  const uploadFileInput = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [documentType, setDocumentType] = useState('wir');
   const [expiryDate, setExpiryDate] = useState('');
@@ -39,12 +60,21 @@ export function DocumentsPage() {
   const [previewTitle, setPreviewTitle] = useState('');
   const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
+  const canUseCompanyScope = ['admin', 'general_manager', 'operation_manager', 'accounts'].includes(user?.role ?? '');
+  const projectsQuery = useQuery({
+    queryKey: ['documents', 'project-options', projectSearch],
+    queryFn: () => listProjects({ search: projectSearch || undefined })
+  });
+  const projects = [...(projectsQuery.data?.items ?? []), ...projectOptions.filter(
+    (option) => !projectsQuery.data?.items.some((item) => item.id === option.id)
+  )];
 
   const documentList = useQuery({
-    queryKey: ['documents', 'page', projectId, committedSearch, page],
+    queryKey: ['documents', 'page', projectId, committedSearch, filterType, page],
     queryFn: ({ signal }) => listDocuments({
       search: committedSearch || undefined,
       project_id: projectId || undefined,
+      document_type: filterType.trim() || undefined,
       limit: documentPageSize,
       offset: page * documentPageSize
     }, signal)
@@ -52,23 +82,18 @@ export function DocumentsPage() {
   const focusedDocument = useQuery({
     queryKey: ['documents', 'detail', focusedDocumentId],
     queryFn: ({ signal }) => getDocument(focusedDocumentId!, signal),
-    enabled: Boolean(focusedDocumentId) && !projectId && !committedSearch && page === 0
+    enabled: Boolean(focusedDocumentId)
   });
   const documents = useMemo(() => {
     const items = documentList.data?.items ?? [];
     const focused = focusedDocument.data;
-    if (focused && page === 0 && !projectId && !committedSearch &&
-      !items.some((item) => item.id === focused.id)) {
+    if (focused && !items.some((item) => item.id === focused.id)) {
       return [focused, ...items];
     }
     return items;
-  }, [documentList.data, focusedDocument.data, page, projectId, committedSearch]);
+  }, [documentList.data, focusedDocument.data]);
   const totalPages = Math.max(1, Math.ceil((documentList.data?.total ?? 0) / documentPageSize));
   const pagingDisabled = documentList.isPending || search.trim() !== committedSearch;
-
-  useEffect(() => {
-    void listProjects({ status: 'active' }).then((response) => setProjects(response.items));
-  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -84,51 +109,71 @@ export function DocumentsPage() {
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [documents, focusedDocumentId]);
 
-  async function submitUpload(event: FormEvent<HTMLFormElement>) {
+  async function saveDocument(action: () => Promise<void>, fallback: string) {
+    if (pendingWrite.current) return;
+    pendingWrite.current = true;
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      await queryClient.invalidateQueries({ queryKey: ['documents'] });
+    } catch (reason) {
+      setError(formatApiError(reason, reason instanceof Error && reason.name !== 'AxiosError'
+        ? reason.message : fallback));
+    } finally {
+      setPending(false);
+      pendingWrite.current = false;
+    }
+  }
+
+  function retainProjectOption(id: string) {
+    const option = projects.find((project) => project.id === id);
+    if (option) setProjectOptions((previous) => previous.some((project) => project.id === id)
+      ? previous : [...previous, option]);
+  }
+
+  function submitUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file) {
       setError('Select a document file.');
       return;
     }
-    if (file.size > 60 * 1024 * 1024) {
-      setError('Document exceeds the 60 MB size limit.');
-      return;
-    }
-    setError(null);
-    setNotice(null);
-    try {
+    void saveDocument(async () => {
+      await validateDocumentFile(file);
       await uploadDocument({
         title,
         documentType,
-        projectId: projectId || undefined,
+        projectId: uploadProjectId || undefined,
         expiryDate: expiryDate || undefined,
         file
       });
       setTitle('');
       setExpiryDate('');
       setFile(null);
+      if (uploadFileInput.current) uploadFileInput.current.value = '';
       setNotice('Document uploaded for approval.');
       setPage(0);
-      await queryClient.invalidateQueries({ queryKey: ['documents'] });
-    } catch {
-      setError('Unable to upload document.');
-    }
+    }, 'Unable to upload document.');
   }
 
-  async function approve(document: DocumentRecord) {
-    const pending = document.versions.find((version) => version.status === 'pending_approval');
-    if (!pending) return;
-    try {
-      await approveDocumentVersion({
-        documentId: document.id,
-        versionId: pending.id,
-        comments: 'Approved from document library.'
-      });
+  function submitReplacement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!replacementDocumentId || !replacementFile) return;
+    void saveDocument(async () => {
+      await validateDocumentFile(replacementFile);
+      await uploadDocumentVersion(replacementDocumentId, replacementFile, replacementKey.current);
+      setReplacementDocumentId(null);
+      setReplacementFile(null);
+      setNotice('Replacement uploaded for approval.');
+    }, 'Unable to upload the replacement.');
+  }
+
+  function approve(document: DocumentRecord, versionId: string) {
+    void saveDocument(async () => {
+      await approveDocumentVersion({ documentId: document.id, versionId });
       setNotice('Document version approved.');
-      await queryClient.invalidateQueries({ queryKey: ['documents'] });
-    } catch {
-      setError('Unable to approve document.');
-    }
+    }, 'Unable to approve document version.');
   }
 
   async function download(document: DocumentRecord, versionId?: string) {
@@ -138,8 +183,8 @@ export function DocumentsPage() {
         setNotice('This is a superseded document version.');
       }
       window.open(response.url, '_blank', 'noopener,noreferrer');
-    } catch {
-      setError('Unable to create download link.');
+    } catch (reason) {
+      setError(formatApiError(reason, 'Unable to create download link.'));
     }
   }
 
@@ -148,8 +193,9 @@ export function DocumentsPage() {
       const response = await getDocumentDownloadUrl(document.id, versionId);
       setPreviewUrl(response.url);
       setPreviewTitle(document.title);
-    } catch {
-      setError('Unable to load document preview.');
+      if (response.superseded_warning) setNotice('This is a superseded document version.');
+    } catch (reason) {
+      setError(formatApiError(reason, 'Unable to load document preview.'));
     }
   }
 
@@ -160,10 +206,20 @@ export function DocumentsPage() {
           <p className="text-sm font-medium text-brand-600">Documents</p>
           <h2 className="text-2xl font-semibold text-theme-text-primary">Document Library</h2>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[220px_260px]">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <input
+            aria-label="Find projects by name or code"
+            className="form-field"
+            maxLength={100}
+            onChange={(event) => setProjectSearch(event.target.value)}
+            placeholder="Find projects"
+            value={projectSearch}
+          />
           <select
+            aria-label="Filter documents by project"
             className="form-field"
             onChange={(event) => {
+              retainProjectOption(event.target.value);
               setProjectId(event.target.value);
               setPage(0);
             }}
@@ -176,9 +232,24 @@ export function DocumentsPage() {
               </option>
             ))}
           </select>
+          <input
+            aria-label="Filter documents by type"
+            className="form-field"
+            list="document-type-options"
+            onChange={(event) => {
+              setFilterType(event.target.value);
+              setPage(0);
+            }}
+            placeholder="All types"
+            value={filterType}
+          />
+          <datalist id="document-type-options">
+            {documentTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </datalist>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-theme-text-muted" />
             <input
+              aria-label="Search documents"
               className="form-field pl-9"
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search documents"
@@ -190,7 +261,33 @@ export function DocumentsPage() {
 
       {notice ? <Alert tone="success" message={notice} /> : null}
       {error ? <Alert tone="error" message={error} /> : null}
-      {documentList.isError ? <Alert tone="error" message="Unable to load documents." /> : null}
+      {projectsQuery.isError ? (
+        <Alert tone="error" message={formatApiError(projectsQuery.error, 'Unable to load project options.')} />
+      ) : null}
+      {documentList.isError ? (
+        <div>
+          <Alert tone="error" message={formatApiError(documentList.error, 'Unable to load documents.')} />
+          <button onClick={() => void documentList.refetch()} type="button">Retry loading documents</button>
+        </div>
+      ) : null}
+      {focusedDocument.isError ? (
+        <Alert tone="error" message={formatApiError(focusedDocument.error, 'Unable to open linked document.')} />
+      ) : null}
+      {projectId || filterType || search ? (
+        <button
+          className="form-field"
+          onClick={() => {
+            setProjectId('');
+            setFilterType('');
+            setSearch('');
+            setCommittedSearch('');
+            setPage(0);
+          }}
+          type="button"
+        >
+          Clear filters
+        </button>
+      ) : null}
 
       {canManageDocuments ? (
         <form
@@ -198,40 +295,60 @@ export function DocumentsPage() {
           onSubmit={submitUpload}
         >
           <input
+            aria-label="Document title"
             className="form-field"
+            disabled={pending}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Document title"
             required
             value={title}
           />
           <select
+            aria-label="Upload document type"
             className="form-field"
+            disabled={pending}
             onChange={(event) => setDocumentType(event.target.value)}
             value={documentType}
           >
-            <option value="mar">MAR</option>
-            <option value="mir">MIR</option>
-            <option value="wir">WIR</option>
-            <option value="delivery_note">Delivery note</option>
-            <option value="drawing">Drawing</option>
-            <option value="contract">Contract</option>
-            <option value="invoice">Invoice</option>
+            {documentTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select
+            aria-label="Upload document project"
+            className="form-field"
+            disabled={pending}
+            onChange={(event) => {
+              retainProjectOption(event.target.value);
+              setUploadProjectId(event.target.value);
+            }}
+            required={!canUseCompanyScope}
+            value={uploadProjectId}
+          >
+            <option value="">{canUseCompanyScope ? 'Company-wide document' : 'Select a project'}</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.code} - {project.name}</option>
+            ))}
           </select>
           <input
+            aria-label="Document expiry date"
             className="form-field"
+            disabled={pending}
             onChange={(event) => setExpiryDate(event.target.value)}
             type="date"
             value={expiryDate}
           />
           <input
-            accept="application/pdf,image/jpeg,image/png"
+            accept={PDF_IMAGE_ACCEPT}
+            aria-label="Document file"
             className="form-field"
+            disabled={pending}
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            ref={uploadFileInput}
             required
             type="file"
           />
           <button
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            disabled={pending}
             type="submit"
           >
             <FileUp className="h-4 w-4" />
@@ -241,16 +358,21 @@ export function DocumentsPage() {
       ) : null}
 
       {documents.length === 0 ? (
-        <EmptyState
-          description={documentList.isPending ? 'Fetching document records.' : 'Uploaded documents will appear here.'}
-          title={documentList.isPending ? 'Loading documents' : 'No documents found'}
-        />
+        documentList.isError ? null : (
+          <EmptyState
+            description={documentList.isPending ? 'Fetching document records.' : 'No documents match these filters.'}
+            title={documentList.isPending ? 'Loading documents' : 'No documents found'}
+          />
+        )
       ) : (
         <div className="grid gap-4">
           {documents.map((document) => {
-            const pending = document.versions.find(
-              (version) => version.status === 'pending_approval'
+            const canApprove = canManageDocuments && document.status !== 'archived' && (
+              user?.role === 'admin' || user?.role === 'operation_manager' ||
+              (user?.role === 'project_manager' && Boolean(document.project_id))
             );
+            const outsideResults = document.id === focusedDocumentId &&
+              !documentList.data?.items.some((item) => item.id === document.id);
             const active = document.versions.find(
               (version) => version.version === document.active_version
             );
@@ -276,19 +398,26 @@ export function DocumentsPage() {
                         {document.status.replace('_', ' ')}
                       </StatusBadge>
                     </div>
+                    {outsideResults ? (
+                      <p className="mt-1 text-sm text-theme-text-muted">Linked document outside the current results</p>
+                    ) : null}
                     <p className="mt-1 text-sm text-theme-text-muted">
-                      {document.document_type} - active v{document.active_version ?? '-'}
+                      {document.document_type} · {projects.find((project) => project.id === document.project_id)?.name ??
+                        (document.project_id ? 'Project document' : 'Company-wide')} · {active ? `Active v${active.version}` : 'No active version'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {canManageDocuments && pending ? (
+                    {canManageDocuments && document.status !== 'archived' && replacementDocumentId !== document.id ? (
                       <button
-                        className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white"
-                        onClick={() => void approve(document)}
+                        className="form-field"
+                        disabled={pending}
+                        onClick={() => {
+                          setReplacementFile(null);
+                          setReplacementDocumentId(document.id);
+                        }}
                         type="button"
                       >
-                        <Check className="h-4 w-4" />
-                        Approve
+                        Upload replacement
                       </button>
                     ) : null}
                     {active ? (
@@ -313,6 +442,37 @@ export function DocumentsPage() {
                     ) : null}
                   </div>
                 </div>
+                {replacementDocumentId === document.id ? (
+                  <form className="mt-4 flex flex-wrap items-center gap-3" onSubmit={submitReplacement}>
+                    <label className="text-sm">
+                      Replacement file · PDF, JPEG, PNG up to 60 MiB
+                      <input
+                        accept={PDF_IMAGE_ACCEPT}
+                        className="form-field block"
+                        disabled={pending}
+                        onChange={(event) => {
+                          setReplacementFile(event.target.files?.[0] ?? null);
+                          replacementKey.current = crypto.randomUUID();
+                        }}
+                        type="file"
+                      />
+                    </label>
+                    <button className="form-field" disabled={pending || !replacementFile} type="submit">
+                      Upload for approval
+                    </button>
+                    <button
+                      className="form-field"
+                      disabled={pending}
+                      onClick={() => {
+                        setReplacementDocumentId(null);
+                        setReplacementFile(null);
+                      }}
+                      type="button"
+                    >
+                      Cancel replacement
+                    </button>
+                  </form>
+                ) : null}
                 <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                   {document.versions.map((version) => (
                     <div
@@ -324,13 +484,26 @@ export function DocumentsPage() {
                       <span>
                         v{version.version} - {version.original_name}
                       </span>
-                      <button
-                        className="text-sm font-semibold text-brand-600"
-                        onClick={() => void download(document, version.id)}
-                        type="button"
-                      >
-                        {version.status}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{version.status.replace('_', ' ')}</span>
+                        <button
+                          className="form-field"
+                          onClick={() => void download(document, version.id)}
+                          type="button"
+                        >
+                          Download v{version.version}
+                        </button>
+                        {canApprove && version.status === 'pending_approval' ? (
+                          <button
+                            className="form-field"
+                            disabled={pending}
+                            onClick={() => approve(document, version.id)}
+                            type="button"
+                          >
+                            Approve v{version.version}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -395,7 +568,7 @@ function Alert({ message, tone }: { message: string; tone: 'error' | 'success' }
   const Icon = tone === 'success' ? Check : AlertTriangle;
   const cls = tone === 'success' ? 'alert-success' : 'alert-error';
   return (
-    <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${cls}`}>
+    <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${cls}`} role={tone === 'error' ? 'alert' : 'status'}>
       <Icon className="h-4 w-4" />
       <span>{message}</span>
     </div>

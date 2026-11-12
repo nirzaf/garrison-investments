@@ -56,6 +56,15 @@ export async function approveDocumentVersion(params: {
   return response.data;
 }
 
+export async function uploadDocumentVersion(documentId: string, file: File, idempotencyKey: string) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiClient.post<DocumentRecord>(`/documents/${documentId}/versions`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': idempotencyKey }
+  });
+  return response.data;
+}
+
 export async function getDocumentDownloadUrl(
   documentId: string,
   versionId?: string

@@ -54,7 +54,6 @@ class DocumentRepository:
         value = await self.session.scalar(
             select(func.max(DocumentVersion.version)).where(
                 DocumentVersion.document_id == document_id,
-                DocumentVersion.deleted_at.is_(None),
             )
         )
         return int(value or 0) + 1
