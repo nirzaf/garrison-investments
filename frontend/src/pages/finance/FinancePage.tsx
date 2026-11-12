@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -11,9 +12,11 @@ import {
   listInvoices,
   updateInvoice,
   uploadInvoiceAttachment,
-  type InvoiceRecord
+  type InvoiceRecord,
+  type PaymentCreatePayload
 } from '../../api/finance';
 import { businessDate } from '../../businessDate';
+import { useAuth } from '../../context/useAuth';
 import { FinancePicker } from './FinancePicker';
 import { InvoiceForm } from './InvoiceForm';
 
@@ -21,8 +24,15 @@ const pageSize = 25;
 const actionClass = 'rounded-md border border-theme-border px-3 py-2 text-sm disabled:opacity-50';
 const submitClass =
   'rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50';
+const paymentRejectedCodes = new Set([
+  'VALIDATION_ERROR',
+  'INVOICE_NOT_APPROVED',
+  'INVOICE_ALREADY_PAID',
+  'PAYMENT_EXCEEDS_BALANCE'
+]);
 
 export function FinancePage() {
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const invoiceId = params.get('invoiceId');
   const [projectId, setProjectId] = useState('');
@@ -184,7 +194,7 @@ export function FinancePage() {
           )}
           {detail.data && (
             <InvoiceDetails
-              key={invoiceId}
+              key={`${user?.id}:${invoiceId}`}
               invoice={detail.data}
               refresh={refresh}
               reload={() => void detail.refetch()}
@@ -289,6 +299,10 @@ function InvoiceDetails({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [paymentAmount, setPaymentAmount] = useState<string | null>(null);
+  const [paymentAttempt, setPaymentAttempt] = useState<{
+    key: string;
+    payload: PaymentCreatePayload;
+  } | null>(null);
   const [attachment, setAttachment] = useState<File>();
   const [downloadUrl, setDownloadUrl] = useState('');
   const [rejecting, setRejecting] = useState(false);
@@ -297,7 +311,12 @@ function InvoiceDetails({
   const locked = useRef(false);
   const actions = invoice.allowed_actions ?? [];
 
-  async function mutate(action: () => Promise<InvoiceRecord>, done?: () => void) {
+  async function mutate(
+    action: () => Promise<InvoiceRecord>,
+    done?: () => void,
+    describeFailure = (failure: unknown) =>
+      formatApiError(failure, 'Unable to complete invoice action.')
+  ) {
     if (locked.current) return;
     locked.current = true;
     setPending(true);
@@ -306,7 +325,7 @@ function InvoiceDetails({
       refresh(await action());
       done?.();
     } catch (failure) {
-      setError(formatApiError(failure, 'Unable to complete invoice action.'));
+      setError(describeFailure(failure));
     } finally {
       locked.current = false;
       setPending(false);
@@ -330,14 +349,32 @@ function InvoiceDetails({
 
   function pay(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (locked.current) return;
+    const attempt = paymentAttempt ?? {
+      key: crypto.randomUUID(),
+      payload: {
+        amount: paymentAmount ?? invoice.outstanding_amount,
+        payment_date: businessDate(),
+        method: 'bank_transfer'
+      }
+    };
+    setPaymentAttempt(attempt);
     void mutate(
-      () =>
-        createPayment(invoice.id, {
-          amount: paymentAmount ?? invoice.outstanding_amount,
-          payment_date: businessDate(),
-          method: 'bank_transfer'
-        }),
-      () => setPaymentAmount(null)
+      () => createPayment(invoice.id, attempt.payload, attempt.key),
+      () => {
+        setPaymentAttempt(null);
+        setPaymentAmount(null);
+      },
+      (failure) => {
+        const code = isAxiosError<{ error_code?: string }>(failure)
+          ? failure.response?.data?.error_code
+          : undefined;
+        if (code && paymentRejectedCodes.has(code)) {
+          setPaymentAttempt(null);
+          return formatApiError(failure, 'Unable to record payment.');
+        }
+        return 'The payment result could not be confirmed. Retry this payment to check the result.';
+      }
     );
   }
 
@@ -442,7 +479,7 @@ function InvoiceDetails({
               </button>
             </div>
           )}
-          {actions.includes('record_payment') && (
+          {(paymentAttempt || actions.includes('record_payment')) && (
             <form className="flex flex-wrap items-end gap-2" onSubmit={pay}>
               <label className="block text-sm">
                 Payment amount
@@ -450,12 +487,15 @@ function InvoiceDetails({
                   required
                   className="form-field mt-1 w-full"
                   inputMode="decimal"
-                  value={paymentAmount ?? invoice.outstanding_amount}
+                  readOnly={paymentAttempt !== null}
+                  value={
+                    paymentAttempt?.payload.amount ?? paymentAmount ?? invoice.outstanding_amount
+                  }
                   onChange={(event) => setPaymentAmount(event.target.value)}
                 />
               </label>
               <button type="submit" className={submitClass}>
-                Record payment
+                {paymentAttempt && !pending ? 'Retry payment' : 'Record payment'}
               </button>
             </form>
           )}

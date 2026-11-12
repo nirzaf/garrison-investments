@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -17,6 +17,7 @@ from app.schemas.finance import (
     PaymentCreateRequest,
 )
 from app.services.finance_service import SIGNED_URL_SECONDS, FinanceService
+from app.services.idempotency import validate_key
 from app.utils.permissions import PERMISSION_FINANCIAL_VIEW
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
@@ -129,9 +130,12 @@ async def create_payment(
     payload: PaymentCreateRequest,
     current_user: CanViewFinance,
     session: DbSession,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> InvoiceResponse:
     service = FinanceService(session)
-    invoice = await service.create_payment(invoice_id, payload, current_user)
+    invoice = await service.create_payment(
+        invoice_id, payload, current_user, idempotency_key=validate_key(idempotency_key)
+    )
     return (await service.invoice_responses([invoice], current_user))[0]
 
 

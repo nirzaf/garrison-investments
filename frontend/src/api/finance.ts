@@ -54,10 +54,15 @@ export async function createInvoice(payload: InvoiceCreatePayload) {
   return data;
 }
 
-export async function createPayment(invoiceId: string, payload: PaymentCreatePayload) {
+export async function createPayment(
+  invoiceId: string,
+  payload: PaymentCreatePayload,
+  idempotencyKey?: string
+) {
   const { data } = await apiClient.post<InvoiceRecord>(
     `/finance/invoices/${invoiceId}/payments`,
-    payload
+    payload,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
   );
   return data;
 }

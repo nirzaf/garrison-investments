@@ -193,10 +193,38 @@ test('Accounts and assigned Project Manager use the finance lookup and complete 
     await expect(operationsDetails.getByText('approved', { exact: true })).toBeVisible();
 
     await accountsPage.reload();
-    await details.getByLabel('Payment amount', { exact: true }).fill('100.10');
+    const paymentUrl = `**/api/v1/finance/invoices/${invoice.id}/payments`;
+    let firstKey: string | undefined;
+    let firstBody: string | null = null;
+    await accountsPage.route(paymentUrl, async (route) => {
+      const outgoing = route.request();
+      const key = outgoing.headers()['idempotency-key'];
+      if (firstKey === undefined) {
+        expect(key).toBeTruthy();
+        firstKey = key;
+        firstBody = outgoing.postData();
+        const committed = await route.fetch();
+        expect(committed.ok()).toBe(true);
+        await route.abort('failed');
+      } else {
+        expect(key).toBe(firstKey);
+        expect(outgoing.postData()).toBe(firstBody);
+        await route.continue();
+      }
+    });
+    await details.getByLabel('Payment amount', { exact: true }).fill('40.10');
     await details.getByRole('button', { name: 'Record payment', exact: true }).click();
+    await expect(
+      details.getByText('The payment result could not be confirmed.', { exact: false })
+    ).toBeVisible();
+    await expect(details.getByLabel('Payment amount', { exact: true })).toHaveValue('40.10');
+    await details.getByRole('button', { name: 'Retry payment', exact: true }).click();
     await expect(details.getByText('partial', { exact: true })).toBeVisible();
-    await expect(details.getByLabel('Payment amount', { exact: true })).toHaveValue('44.90');
+    await expect(details.getByLabel('Payment amount', { exact: true })).toHaveValue('104.90');
+    await expect(
+      details.getByRole('table', { name: 'Payment history' }).getByRole('row')
+    ).toHaveCount(2);
+    await accountsPage.unroute(paymentUrl);
     await details.getByRole('button', { name: 'Record payment', exact: true }).click();
     await expect(details.getByText('paid', { exact: true })).toBeVisible();
     await accountsPage.reload();

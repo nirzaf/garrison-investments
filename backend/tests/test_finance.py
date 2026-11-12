@@ -871,3 +871,48 @@ async def test_invoice_correction_resubmission_and_payment_rejection_races_seria
         invoice = await session.get(Invoice, UUID(approved["id"]))
         assert invoice is not None
         assert (invoice.status == "approved") == bool(invoice.payments)
+
+
+async def test_payment_replay_keeps_one_record_and_rejects_a_changed_intent() -> None:
+    await skip_if_database_unavailable()
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(manager)
+    async with create_test_client() as client:
+        account_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        first = await create_invoice_via_api(client, account_token, project, supplier)
+        second = await create_invoice_via_api(client, account_token, project, supplier)
+        for invoice in (first, second):
+            approval = await patch_status(client, manager_token, invoice["id"], "approved")
+            assert approval.status_code == 200
+        headers = {
+            "Authorization": f"Bearer {account_token}",
+            "Idempotency-Key": str(uuid4()),
+        }
+        url = f"/api/v1/finance/invoices/{first['id']}/payments"
+        payment = {
+            "payment_date": date.today().isoformat(),
+            "amount": "50.00",
+            "method": "bank_transfer",
+        }
+        requests = await asyncio.gather(
+            client.post(url, headers=headers, json=payment),
+            client.post(url, headers=headers, json=payment),
+        )
+        assert all(response.status_code == 200 for response in requests)
+        created, replayed = (response.json() for response in requests)
+        assert created["payments"] == replayed["payments"]
+        assert len(created["payments"]) == 1
+        assert Decimal(replayed["outstanding_amount"]) == Decimal("250.00")
+        assert replayed["revision"] == created["revision"]
+
+        changed = await client.post(url, headers=headers, json={**payment, "amount": "51.00"})
+        wrong_invoice = await client.post(
+            f"/api/v1/finance/invoices/{second['id']}/payments", headers=headers, json=payment
+        )
+        for response in (changed, wrong_invoice):
+            assert response.status_code == 409
+            assert response.json()["error_code"] == "PAYMENT_REPLAY_CONFLICT"
+        persisted = await client.get(f"/api/v1/finance/invoices/{first['id']}", headers=headers)
+        assert persisted.json()["payments"] == created["payments"]

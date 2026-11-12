@@ -32,6 +32,7 @@ from app.schemas.finance import (
 from app.services.approval_service import APPROVAL_PENDING_STATUSES, ApprovalService
 from app.services.audit_service import AuditService
 from app.services.authorization import accessible_project_ids, ensure_project_access
+from app.services.idempotency import bind, resolve_or_reserve
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
@@ -53,6 +54,7 @@ FINANCE_ROLES = {
     ROLE_GENERAL_MANAGER,
     ROLE_PROJECT_MANAGER,
 }
+PAYMENT_IDEMPOTENCY_ROUTE = "finance.payments.create"
 MAX_INVOICE_FILE_SIZE = 10 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
 ALLOWED_INVOICE_FILE_MAGIC = {
@@ -504,8 +506,31 @@ class FinanceService:
         invoice_id: UUID,
         payload: PaymentCreateRequest,
         actor: User,
+        *,
+        idempotency_key: str | None = None,
     ) -> Invoice:
         invoice = await self._get_invoice_for_update(invoice_id, actor)
+        values = payload.model_dump()
+        if idempotency_key is not None:
+            recorded_id = await resolve_or_reserve(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=PAYMENT_IDEMPOTENCY_ROUTE,
+            )
+            if recorded_id is not None:
+                recorded = await self.session.get(Payment, recorded_id)
+                if (
+                    recorded is None
+                    or recorded.invoice_id != invoice.id
+                    or any(getattr(recorded, field) != value for field, value in values.items())
+                ):
+                    raise AppException(
+                        "This payment key was already used for a different payment.",
+                        status_code=409,
+                        error_code="PAYMENT_REPLAY_CONFLICT",
+                    )
+                return invoice
         if invoice.status != "approved":
             raise AppException(
                 "Invoice must be approved before recording payments.",
@@ -537,7 +562,7 @@ class FinanceService:
                 status_code=409,
                 error_code="PAYMENT_EXCEEDS_BALANCE",
             )
-        payment = Payment(**payload.model_dump(), invoice_id=invoice.id, recorded_by=actor.id)
+        payment = Payment(**values, invoice_id=invoice.id, recorded_by=actor.id)
         self.session.add(payment)
         await self.session.flush()
         paid_total = Decimal(
@@ -563,6 +588,15 @@ class FinanceService:
             entity_id=invoice.id,
             new_values=payload.model_dump(mode="json"),
         )
+        if idempotency_key is not None:
+            await bind(
+                self.session,
+                key=idempotency_key,
+                user_id=actor.id,
+                route=PAYMENT_IDEMPOTENCY_ROUTE,
+                resource_type="payment",
+                resource_id=payment.id,
+            )
         invoice_id = invoice.id
         await self.session.commit()
         return await self.get_invoice(invoice_id, actor)
