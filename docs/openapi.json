@@ -3870,7 +3870,7 @@
                 "type": "string"
               }
             ],
-            "description": "Positive, or negative for a stock adjustment.",
+            "description": "Positive, or negative for a stock adjustment. Up to three decimal places.",
             "title": "Quantity"
           },
           "reference_id": {
@@ -10078,6 +10078,22 @@
               "format": "uuid",
               "title": "Invoice Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],

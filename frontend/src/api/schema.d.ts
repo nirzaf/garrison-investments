@@ -2837,7 +2837,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Quantity
-             * @description Positive, or negative for a stock adjustment.
+             * @description Positive, or negative for a stock adjustment. Up to three decimal places.
              */
             quantity: number | string;
             /** Reference Id */
@@ -5141,7 +5141,9 @@ export interface operations {
     create_payment_api_v1_finance_invoices__invoice_id__payments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 invoice_id: string;
             };
