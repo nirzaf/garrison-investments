@@ -853,7 +853,6 @@ export function DailyReportPage() {
             entityType: 'daily_report',
             entityId,
             localDraftId,
-            draftPayload: savedReportId ? undefined : payload,
             kind: entry.kind,
             files: [entry.file]
           });
