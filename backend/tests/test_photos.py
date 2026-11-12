@@ -11,8 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import AsyncSessionLocal, engine
 from app.models.activity_log import ActivityLog
+from app.models.daily_report import DailyReport
+from app.models.photo import Photo
 from app.models.user import User
 from app.services.photo_service import PhotoService
+from app.services.report_service import ReportService
 from app.services.storage_service import minio_client
 from tests.concurrency_helpers import error_codes, race_sessions, status_counts
 from tests.test_daily_reports import (
@@ -24,6 +27,7 @@ from tests.test_daily_reports import (
     setup_project_team,
     skip_if_database_unavailable,
 )
+from tests.test_inventory_accounting import race_with_parent_lock
 
 pytestmark = pytest.mark.asyncio
 
@@ -233,6 +237,92 @@ async def test_photo_quota_serializes_upload_and_recovery() -> None:
         )
         assert upload.status_code == 201
         assert upload.json()[0]["kind"] == "attachment"
+
+
+@pytest.mark.parametrize("submit_first", [True, False], ids=["submit-first", "upload-first"])
+async def test_photo_upload_and_report_submission_serialize(submit_first: bool) -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        engineer = {"Authorization": f"Bearer {team['engineer_token']}"}
+        created = await client.post(
+            "/api/v1/reports",
+            json=report_payload(team["project_id"], team["supervisor_update_id"]),
+            headers=engineer,
+        )
+        assert created.status_code == 201
+        report = created.json()
+        report_id = UUID(report["id"])
+        engineer_id = UUID(report["engineer_id"])
+        first_photo = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "daily_report", "entity_id": str(report_id), "kind": "photo"},
+            files={"files": ("existing.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=engineer,
+        )
+        assert first_photo.status_code == 201
+        before_revision = int(first_photo.headers["X-Report-Revision"])
+
+        async def submit(session: AsyncSession) -> int:
+            actor = await session.get_one(User, engineer_id)
+            submitted = await ReportService(session).submit_report(report_id, actor)
+            assert submitted.status == "submitted"
+            return 200
+
+        async def upload(session: AsyncSession) -> int:
+            actor = await session.get_one(User, engineer_id)
+            await PhotoService(session).upload(
+                file=UploadFile(BytesIO(jpeg_bytes()), filename="contending.jpg"),
+                entity_type="daily_report",
+                entity_id=report_id,
+                kind="photo",
+                caption=None,
+                actor=actor,
+            )
+            return 201
+
+        parent = select(DailyReport.id).where(DailyReport.id == report_id)
+        operations = (submit, upload) if submit_first else (upload, submit)
+        results = await race_with_parent_lock(parent, *operations)
+        if submit_first:
+            assert status_counts(results) == {200: 1, 409: 1}, results
+            assert error_codes(results) == ["PHOTO_UPLOAD_LOCKED"]
+        else:
+            assert results == [201, 200], results
+
+        async with AsyncSessionLocal() as session:
+            saved_report = await session.get_one(DailyReport, report_id)
+            assert saved_report.status == "submitted"
+            assert saved_report.revision == before_revision + (1 if submit_first else 2)
+            photos = (
+                await session.scalars(
+                    select(Photo).where(
+                        Photo.entity_type == "daily_report", Photo.entity_id == report_id
+                    )
+                )
+            ).all()
+            assert all(photo.deleted_at is None for photo in photos)
+            names = ["existing.jpg"] if submit_first else ["contending.jpg", "existing.jpg"]
+            assert sorted(photo.original_name for photo in photos) == names
+            assert all(
+                photo.report_revision == before_revision + (photo.original_name == "contending.jpg")
+                for photo in photos
+            )
+            expected_objects = {
+                path
+                for photo in photos
+                for path in (photo.storage_path, photo.compressed_path, photo.thumbnail_path)
+                if path
+            }
+        settings = get_settings()
+        actual_objects = {
+            item.object_name
+            for item in minio_client(settings).list_objects(
+                settings.minio_bucket, prefix=f"daily_report/{report_id}/", recursive=True
+            )
+        }
+        assert len(expected_objects) == 3 * len(names)
+        assert actual_objects == expected_objects
 
 
 async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:

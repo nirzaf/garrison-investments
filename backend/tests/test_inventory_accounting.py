@@ -4,6 +4,7 @@ floor (M5), and price masking that must not mutate ORM state (X1).
 Follows the per-module harness convention used by ``tests/test_inventory.py``.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -12,7 +13,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
@@ -21,10 +22,12 @@ from app.models.approval import Approval
 from app.models.inventory import (
     InventoryItem,
     InventoryLocationStock,
+    InventoryMovement,
     MaterialRequest,
     MaterialRequestLine,
     StorageLocation,
 )
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -34,7 +37,7 @@ from app.services.approval_service import ApprovalService
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
 from app.utils.security import hash_password, utc_now
-from tests.concurrency_helpers import race_sessions, status_counts
+from tests.concurrency_helpers import SessionOperation, error_codes, race_sessions, status_counts
 
 pytestmark = pytest.mark.asyncio
 
@@ -212,6 +215,149 @@ async def read_unit_cost(item_id: UUID) -> Decimal | None:
         return await session.scalar(
             select(InventoryItem.unit_cost).where(InventoryItem.id == item_id)
         )
+
+
+async def race_with_parent_lock[T, U](
+    parent: Select[tuple[UUID]], first: SessionOperation[T], second: SessionOperation[U]
+) -> list[object]:
+    """Pin the commit order and verify the contender actually waits in PostgreSQL."""
+    parent_locked = asyncio.Event()
+    contender_pid = asyncio.get_running_loop().create_future()
+
+    async def run_first(session: AsyncSession) -> T:
+        assert await session.scalar(parent.with_for_update()) is not None
+        holder_pid = await session.scalar(select(func.pg_backend_pid()))
+        parent_locked.set()
+        pid = await contender_pid
+        async with asyncio.timeout(10):
+            while holder_pid not in (await session.scalar(select(func.pg_blocking_pids(pid)))):
+                await asyncio.sleep(0.01)
+        return await first(session)
+
+    async def run_second(session: AsyncSession) -> U:
+        await parent_locked.wait()
+        contender_pid.set_result(await session.scalar(select(func.pg_backend_pid())))
+        return await second(session)
+
+    return await race_sessions(run_first, run_second)
+
+
+async def seed_actionable_approval(fixture: Fixture, approver: User, *, overdue: bool) -> UUID:
+    now = utc_now()
+    async with AsyncSessionLocal() as session:
+        approval = Approval(
+            request_type="material_request",
+            request_id=fixture.request.id,
+            project_id=fixture.project.id,
+            submitter_id=fixture.engineer.id,
+            approver_id=approver.id,
+            escalation_user_id=approver.id,
+            title="Stores request",
+            status="pending",
+            submitted_at=now - timedelta(days=3) if overdue else now,
+            due_at=now - timedelta(days=2) if overdue else now + timedelta(days=2),
+        )
+        session.add(approval)
+        await session.commit()
+        return approval.id
+
+
+async def assert_cancelled_without_stock_effect(fixture: Fixture, *, decisions: int) -> None:
+    request_id = fixture.request.id
+    async with AsyncSessionLocal() as session:
+        request = await session.get_one(MaterialRequest, request_id)
+        assert request.status == "cancelled"
+        assert request.revision == fixture.request.revision + decisions
+        assert not await session.scalar(
+            select(InventoryMovement.id).where(InventoryMovement.item_id == fixture.item.id)
+        )
+    stock = await read_stock(fixture.item.id, fixture.location.id)
+    line = await read_line(request_id)
+    assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("10"), Decimal("2"))
+    assert (line.reserved_quantity, line.issued_quantity) == (ZERO, ZERO)
+
+
+@pytest.mark.parametrize("cancel_first", [True, False], ids=["cancel-first", "approve-first"])
+async def test_cancel_and_approval_serialize(cancel_first: bool) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(
+        on_hand=Decimal("10"),
+        quantity=Decimal("4"),
+        status="requested",
+        stock_reserved=Decimal("2"),
+    )
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=False)
+    request_id = fixture.request.id
+
+    async def cancel(session: AsyncSession) -> str:
+        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+
+    async def approve(session: AsyncSession) -> str:
+        return (await ApprovalService(session).approve(approval_id, approver, None)).status
+
+    parent = select(MaterialRequest.id).where(MaterialRequest.id == request_id)
+    operations = (cancel, approve) if cancel_first else (approve, cancel)
+    results = await race_with_parent_lock(parent, *operations)
+    if cancel_first:
+        assert results[0] == "cancelled", results
+        assert status_counts(results) == {"cancelled": 1, 409: 1}, results
+        assert error_codes(results) == ["APPROVAL_FINAL"]
+    else:
+        assert results == ["approved", "cancelled"], results
+
+    async with AsyncSessionLocal() as session:
+        approval = await session.get_one(Approval, approval_id)
+        assert approval.status == ("cancelled" if cancel_first else "approved")
+        assert approval.decided_at is not None
+        titles = await session.scalars(
+            select(Notification.title).where(Notification.reference_id == approval_id)
+        )
+        assert titles.all() == ([] if cancel_first else ["Approval completed"])
+    await assert_cancelled_without_stock_effect(fixture, decisions=1 if cancel_first else 2)
+
+
+@pytest.mark.parametrize("cancel_first", [True, False], ids=["cancel-first", "reminder-first"])
+async def test_cancel_and_overdue_reminder_serialize(cancel_first: bool) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(
+        on_hand=Decimal("10"),
+        quantity=Decimal("4"),
+        status="requested",
+        stock_reserved=Decimal("2"),
+    )
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
+    request_id = fixture.request.id
+
+    async def cancel(session: AsyncSession) -> str:
+        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+
+    async def remind(session: AsyncSession) -> str:
+        await ApprovalService(session).send_reminders_and_escalations()
+        return "processed"
+
+    parent = select(MaterialRequest.id).where(MaterialRequest.id == request_id)
+    operations = (cancel, remind) if cancel_first else (remind, cancel)
+    results = await race_with_parent_lock(parent, *operations)
+    assert results == (["cancelled", "processed"] if cancel_first else ["processed", "cancelled"])
+
+    async with AsyncSessionLocal() as session:
+        approval = await session.get_one(Approval, approval_id)
+        assert approval.status == "cancelled" and approval.decided_at is not None
+        if cancel_first:
+            assert approval.reminded_at is None and approval.escalated_at is None
+        else:
+            assert approval.reminded_at is not None and approval.escalated_at is not None
+            assert approval.reminded_at <= approval.decided_at
+            assert approval.escalated_at <= approval.decided_at
+        titles = await session.scalars(
+            select(Notification.title).where(Notification.reference_id == approval_id)
+        )
+        assert sorted(titles) == (
+            [] if cancel_first else ["Approval escalated", "Approval reminder"]
+        )
+    await assert_cancelled_without_stock_effect(fixture, decisions=1)
 
 
 async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None:
