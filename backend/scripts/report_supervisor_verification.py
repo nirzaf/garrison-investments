@@ -1,4 +1,4 @@
-"""List missing or ambiguous historical supervisor verification bindings."""
+"""List unresolved historical supervisor verification bindings for review."""
 
 import argparse
 import asyncio
@@ -14,7 +14,13 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal, engine
 
 QUERY = text("""
-    SELECT u.id AS update_id, count(r.id) AS candidate_count
+    SELECT u.id AS update_id, count(r.id) AS candidate_count,
+           CASE count(r.id)
+             WHEN 0 THEN 'no_historical_candidate'
+             WHEN 1 THEN 'unique_candidate_unbound'
+             ELSE 'multiple_historical_candidates'
+           END AS reason,
+           'operator_review' AS proposed_disposition
     FROM supervisor_updates AS u
     LEFT JOIN daily_reports AS r
       ON r.project_id = u.project_id
@@ -22,9 +28,8 @@ QUERY = text("""
      AND r.submitted_at >= u.verified_at
      AND r.deleted_at IS NULL
      AND r.supervisor_update_ids @> jsonb_build_array(u.id::text)
-    WHERE u.status = 'verified' AND u.deleted_at IS NULL
+    WHERE u.status = 'verified' AND u.deleted_at IS NULL AND u.verified_report_id IS NULL
     GROUP BY u.id
-    HAVING count(r.id) <> 1
     ORDER BY u.id
     """)
 

@@ -70,7 +70,7 @@ The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs the retentio
 
 The scheduled job reports a bounded preview count by default. A row becomes a purge candidate after both the archive window and its recorded `retention_until` deadline expire. Rows without a deadline are retained. `LOG_PURGE_ENABLED` defaults to `false`. Enabling it requires the approved records policy, legacy deadline review, and recovery evidence.
 
-Run `python scripts/preview_audit_retention.py` from the backend directory to list candidate IDs and deadlines and count records with missing deadlines. The preview reads from a read-only transaction and omits event payloads.
+Run `python scripts/preview_audit_retention.py` from the backend directory to list candidate IDs and deadlines and review missing deadlines. The output includes the total missing-deadline count and a page of IDs, creation times, storage tiers, and reasons. The proposed disposition is to retain the records pending owner review. Use `--missing-limit` to set the page size from 1 to 1000, and pass `next_missing_after` as `--missing-after` for the next page. The preview uses a read-only transaction and omits event payloads.
 
 ## Grafana, Loki, and Alloy
 
