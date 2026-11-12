@@ -74,7 +74,7 @@ class DocumentRepository:
         if project_id:
             query = query.where(Document.project_id == project_id)
         if document_type:
-            query = query.where(Document.document_type == document_type)
+            query = query.where(func.lower(Document.document_type) == document_type.strip().lower())
         if search:
             clean = search.strip()
             if clean:

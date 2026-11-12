@@ -7,7 +7,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 type TestAccount = { email: string; password: string; projectId: string };
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
-const jpeg = readFileSync(new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url));
+const jpeg = readFileSync(
+  new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url)
+);
 const pdfFile = (name: string) => ({
   name,
   mimeType: 'application/pdf',
@@ -39,12 +41,15 @@ async function signIn(page: Page) {
   return { account, headers: { Authorization: `Bearer ${access_token}` } };
 }
 
-test('document type filtering and replacement preserve the active version', async ({ page, request }) => {
+test('document type filtering and replacement preserve the active version', async ({
+  page,
+  request
+}) => {
   const { account, headers } = await signIn(page);
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   const typeFilter = page.getByRole('combobox', { name: 'Filter documents by type' });
   const uploadType = page.getByLabel('Upload document type');
-  await typeFilter.fill('drawing');
+  await typeFilter.fill('DRAWING');
   await expect(uploadType).toHaveValue('wir');
   await uploadType.selectOption('drawing');
   const title = `Versioned plan ${account.projectId.slice(0, 8)}`;
@@ -104,7 +109,9 @@ test('media removal and recovery persist after reload', async ({ page, request }
   const upload = await request.post('/api/v1/photos/upload', {
     headers,
     multipart: {
-      entity_type: 'daily_report', entity_id: reportId, kind: 'photo',
+      entity_type: 'daily_report',
+      entity_id: reportId,
+      kind: 'photo',
       files: { name: originalName, mimeType: 'image/jpeg', buffer: jpeg }
     }
   });
