@@ -26,6 +26,10 @@ class ImportRunResponse(BaseModel):
     summary: dict
 
 
+class ImportQueueResponse(ImportRunResponse):
+    task_id: str
+
+
 class ImportBatchListResponse(BaseModel):
     items: list[ImportRunResponse]
     total: int

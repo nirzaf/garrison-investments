@@ -378,6 +378,11 @@ async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
     await skip_if_database_unavailable()
     actor = await create_admin()
     suffix = uuid4().hex[:8]
+    key = str(uuid4())
+    content = csv_bytes(
+        "item_code,location_code,quantity,notes",
+        f"ITEM-{suffix},LOC-{suffix},8,Opening balance",
+    )
     async with AsyncSessionLocal() as session:
         item = InventoryItem(
             name=f"Replay Item {suffix}",
@@ -391,22 +396,28 @@ async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
             code=f"LOC-{suffix}",
             location_type="warehouse",
         )
-        batch = ImportBatch(
-            template_type="opening_stock",
-            file_name="opening_stock.csv",
-            status="queued",
-            created_by=actor.id,
-        )
-        session.add_all([item, location, batch])
+        session.add_all([item, location])
         await session.commit()
         item_id = item.id
         location_id = location.id
-        batch_id = batch.id
-
-    content = csv_bytes(
-        "item_code,location_code,quantity,notes",
-        f"ITEM-{suffix},LOC-{suffix},8,Opening balance",
-    )
+        queued = await ImportService(session).queue_import(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            content=content,
+            actor=actor,
+            idempotency_key=key,
+        )
+        assert queued.status == "queued"
+        batch_id = queued.batch_id
+    async with AsyncSessionLocal() as session:
+        replay = await ImportService(session).queue_import(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            content=content,
+            actor=actor,
+            idempotency_key=key,
+        )
+        assert replay == queued
 
     async def deliver() -> dict:
         async with AsyncSessionLocal() as session:
@@ -420,6 +431,16 @@ async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
             return result.summary
 
     assert (await deliver())["created"] == 1
+    async with AsyncSessionLocal() as session:
+        replay = await ImportService(session).run_import(
+            template_type="opening_stock",
+            file_name="opening_stock.csv",
+            content=content,
+            actor=actor,
+            idempotency_key=key,
+        )
+        assert replay.batch_id == batch_id
+        assert replay.status == "completed"
 
     # The worker was lost after the rows became durable but before the completed marker
     # was seen by the redelivery, so the batch looks runnable again.

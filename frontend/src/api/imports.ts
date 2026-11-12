@@ -4,12 +4,7 @@ import type { components } from './schema';
 export type ImportPreview = components['schemas']['ImportPreviewResponse'];
 export type ImportRunResult = components['schemas']['ImportRunResponse'];
 
-export type AsyncImportResult = {
-  task_id: string;
-  batch_id: string;
-  template_type: string;
-  status: string;
-};
+export type AsyncImportResult = components['schemas']['ImportQueueResponse'];
 
 export const importTemplates = [
   'users',
@@ -37,23 +32,23 @@ export async function previewImport(template: string, file: File) {
   return data;
 }
 
-export async function runImport(template: string, file: File) {
+export async function runImport(template: string, file: File, key: string) {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await apiClient.post<ImportRunResult>(`/imports/${template}/run`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': key }
   });
   return data;
 }
 
-export async function runImportAsync(template: string, file: File) {
+export async function runImportAsync(template: string, file: File, key: string) {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await apiClient.post<AsyncImportResult>(
     `/imports/${template}/run-async`,
     formData,
     {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data', 'Idempotency-Key': key }
     }
   );
   return data;

@@ -2469,6 +2469,62 @@
         "title": "ImportPreviewResponse",
         "type": "object"
       },
+      "ImportQueueResponse": {
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "template_type": {
+            "title": "Template Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "template_type",
+          "status",
+          "row_count",
+          "error_count",
+          "summary",
+          "task_id"
+        ],
+        "title": "ImportQueueResponse",
+        "type": "object"
+      },
       "ImportRunResponse": {
         "properties": {
           "batch_id": {
@@ -10519,6 +10575,22 @@
               "title": "Template Type",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -10584,6 +10656,22 @@
               "title": "Template Type",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -10597,10 +10685,12 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ImportQueueResponse"
+                }
               }
             },
             "description": "Successful Response"

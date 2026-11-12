@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 
 import {
@@ -23,6 +23,7 @@ export function ImportPage() {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submissionKey = useRef<string>(null);
   const batches = useQuery({
     queryKey: ['import-batches'],
     queryFn: () => listImportBatches()
@@ -48,7 +49,11 @@ export function ImportPage() {
     setResult(null);
     setBusy(true);
     try {
-      setResult(await runImport(template, file));
+      const key = (submissionKey.current ??= crypto.randomUUID());
+      const batch = await runImport(template, file, key);
+      setResult(batch);
+      if (batch.status === 'queued' || batch.status === 'processing') setBatchId(batch.batch_id);
+      void batches.refetch();
     } catch {
       setError('Unable to run import.');
     } finally {
@@ -63,16 +68,11 @@ export function ImportPage() {
     setResult(null);
     setBusy(true);
     try {
-      const queued = await runImportAsync(template, file);
+      const key = (submissionKey.current ??= crypto.randomUUID());
+      const queued = await runImportAsync(template, file, key);
       setBatchId(queued.batch_id);
-      setResult({
-        batch_id: queued.batch_id,
-        template_type: queued.template_type,
-        status: queued.status,
-        row_count: 0,
-        error_count: 0,
-        summary: { task_id: queued.task_id }
-      });
+      setResult(queued);
+      void batches.refetch();
     } catch {
       setError('Unable to queue import.');
     } finally {
@@ -86,6 +86,7 @@ export function ImportPage() {
     setBusy(true);
     try {
       setResult(await getImportBatchStatus(batchId));
+      void batches.refetch();
     } catch {
       setError('Unable to refresh import status.');
     } finally {
@@ -130,6 +131,7 @@ export function ImportPage() {
             disabled={busy}
             onChange={(event) => {
               setTemplate(event.target.value);
+              submissionKey.current = null;
               clearImportState();
             }}
             value={template}
@@ -147,6 +149,7 @@ export function ImportPage() {
             disabled={busy}
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
+              submissionKey.current = null;
               clearImportState();
             }}
             type="file"

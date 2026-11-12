@@ -3,14 +3,20 @@ from io import StringIO
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Header, UploadFile
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.import_batch import ImportBatch
 from app.models.user import User
-from app.schemas.imports import ImportBatchListResponse, ImportPreviewResponse, ImportRunResponse
+from app.schemas.imports import (
+    ImportBatchListResponse,
+    ImportPreviewResponse,
+    ImportQueueResponse,
+    ImportRunResponse,
+)
+from app.services.idempotency import validate_key
 from app.services.import_service import TEMPLATE_COLUMNS, ImportService
 from app.tasks.imports import run_import_async
 from app.utils.permissions import PERMISSION_USERS_MANAGE
@@ -106,6 +112,7 @@ async def run_import(
     current_user: CanManageImports,
     session: DbSession,
     file: Annotated[UploadFile, File()],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ImportRunResponse:
     content = await file.read()
     return await ImportService(session).run_import(
@@ -113,42 +120,38 @@ async def run_import(
         file_name=file.filename or "import.csv",
         content=content,
         actor=current_user,
+        idempotency_key=validate_key(idempotency_key),
     )
 
 
-@router.post("/{template_type}/run-async")
+@router.post("/{template_type}/run-async", response_model=ImportQueueResponse, status_code=202)
 async def run_import_async_endpoint(
     template_type: str,
     current_user: CanManageImports,
     session: DbSession,
     file: Annotated[UploadFile, File()],
-) -> JSONResponse:
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ImportQueueResponse:
     content = await file.read()
-    batch = ImportBatch(
-        template_type=template_type,
-        file_name=file.filename or "import.csv",
-        status="queued",
-        created_by=current_user.id,
-        row_count=0,
-        error_count=0,
-        summary={},
-    )
-    session.add(batch)
-    await session.commit()
-    await session.refresh(batch)
-    task = run_import_async.delay(
+    batch = await ImportService(session).queue_import(
         template_type=template_type,
         file_name=file.filename or "import.csv",
         content=content,
-        actor_id=str(current_user.id),
-        batch_id=str(batch.id),
+        actor=current_user,
+        idempotency_key=validate_key(idempotency_key),
     )
-    return JSONResponse(
-        status_code=202,
-        content={
-            "task_id": task.id,
-            "batch_id": str(batch.id),
-            "template_type": template_type,
-            "status": "queued",
-        },
-    )
+    task_id = str(batch.batch_id)
+    if batch.status == "queued":
+        # A retry can publish again if the original broker acknowledgement was lost.
+        # Every delivery processes the same database batch under its existing lock.
+        run_import_async.apply_async(
+            kwargs={
+                "template_type": template_type,
+                "file_name": file.filename or "import.csv",
+                "content": content,
+                "actor_id": str(current_user.id),
+                "batch_id": task_id,
+            },
+            task_id=task_id,
+        )
+    return ImportQueueResponse(**batch.model_dump(), task_id=task_id)

@@ -4,6 +4,7 @@ import re
 import zipfile
 from datetime import date
 from decimal import Decimal
+from hashlib import sha256
 from io import BytesIO, StringIO
 from pathlib import Path
 from uuid import UUID
@@ -16,6 +17,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 
 from app.models.boq_item import BoqItem
 from app.models.document import Document
+from app.models.idempotency_record import IdempotencyRecord
 from app.models.import_batch import ImportBatch
 from app.models.inventory import InventoryItem, InventoryMovement, StorageLocation
 from app.models.project import Project
@@ -24,6 +26,7 @@ from app.models.user import User
 from app.schemas.imports import ImportErrorItem, ImportPreviewResponse, ImportRunResponse
 from app.schemas.inventory import MovementCreateRequest
 from app.services.audit_service import AuditService
+from app.services.idempotency import resolve_or_reserve
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import validate_role
@@ -35,6 +38,7 @@ MAX_XLSX_ENTRIES = 1_000
 MAX_XLSX_EXPANDED_BYTES = 200 * 1024 * 1024
 MAX_XLSX_COLUMNS = 16_384
 MAX_XLSX_CELLS = 1_000_000
+IMPORT_SUBMISSION_ROUTE = "imports.submit"
 
 TEMPLATE_COLUMNS = {
     "users": [
@@ -130,8 +134,15 @@ class ImportService:
         content: bytes,
         actor: User,
         batch_id: UUID | None = None,
+        idempotency_key: str | None = None,
     ) -> ImportRunResponse:
+        submission = None
         if batch_id is None:
+            submission = await self._reserve_submission(
+                template_type, file_name, content, actor.id, idempotency_key
+            )
+            if submission is not None and submission.resource_id is not None:
+                return self._batch_response(await self._get_submitted_batch(submission.resource_id))
             batch = ImportBatch(
                 template_type=template_type,
                 file_name=file_name,
@@ -170,11 +181,86 @@ class ImportService:
                     "error_count": len(errors),
                 },
             )
+            if submission is not None:
+                submission.resource_type = "import_batch"
+                submission.resource_id = batch.id
             await self.session.commit()
         except Exception:
             await self.session.rollback()
             raise
         return self._batch_response(batch)
+
+    async def queue_import(
+        self,
+        *,
+        template_type: str,
+        file_name: str,
+        content: bytes,
+        actor: User,
+        idempotency_key: str | None,
+    ) -> ImportRunResponse:
+        self._ensure_template(template_type)
+        submission = await self._reserve_submission(
+            template_type, file_name, content, actor.id, idempotency_key
+        )
+        if submission is not None and submission.resource_id is not None:
+            return self._batch_response(await self._get_submitted_batch(submission.resource_id))
+        batch = ImportBatch(
+            template_type=template_type,
+            file_name=file_name,
+            created_by=actor.id,
+            status="queued",
+            row_count=0,
+            error_count=0,
+            summary={},
+        )
+        self.session.add(batch)
+        await self.session.flush()
+        if submission is not None:
+            submission.resource_type = "import_batch"
+            submission.resource_id = batch.id
+        await self.session.commit()
+        return self._batch_response(batch)
+
+    async def _reserve_submission(
+        self,
+        template_type: str,
+        file_name: str,
+        content: bytes,
+        user_id: UUID,
+        key: str | None,
+    ) -> IdempotencyRecord | None:
+        if key is None:
+            return None
+        fingerprint = sha256(
+            f"{template_type}\0{file_name}\0{sha256(content).hexdigest()}".encode()
+        ).hexdigest()
+        await resolve_or_reserve(
+            self.session, key=key, user_id=user_id, route=IMPORT_SUBMISSION_ROUTE
+        )
+        record = await self.session.scalar(
+            select(IdempotencyRecord).where(
+                IdempotencyRecord.key == key,
+                IdempotencyRecord.user_id == user_id,
+                IdempotencyRecord.route == IMPORT_SUBMISSION_ROUTE,
+            )
+        )
+        assert record is not None
+        if record.resource_id is None:
+            record.request_fingerprint = fingerprint
+        elif record.request_fingerprint != fingerprint:
+            raise AppException(
+                "This import key was used for a different file or template.",
+                status_code=409,
+                error_code="IMPORT_REPLAY_CONFLICT",
+            )
+        return record
+
+    async def _get_submitted_batch(self, batch_id: UUID) -> ImportBatch:
+        batch = await self.session.get(ImportBatch, batch_id)
+        if batch is None or batch.deleted_at is not None:
+            raise NotFoundException("Import batch")
+        return batch
 
     @staticmethod
     def _batch_response(batch: ImportBatch) -> ImportRunResponse:

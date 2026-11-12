@@ -2377,6 +2377,30 @@ export interface components {
             /** Valid */
             valid: boolean;
         };
+        /** ImportQueueResponse */
+        ImportQueueResponse: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Error Count */
+            error_count: number;
+            /** File Name */
+            file_name?: string | null;
+            /** Row Count */
+            row_count: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Task Id */
+            task_id: string;
+            /** Template Type */
+            template_type: string;
+        };
         /** ImportRunResponse */
         ImportRunResponse: {
             /**
@@ -5371,7 +5395,9 @@ export interface operations {
     run_import_api_v1_imports__template_type__run_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_type: string;
             };
@@ -5406,7 +5432,9 @@ export interface operations {
     run_import_async_endpoint_api_v1_imports__template_type__run_async_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 template_type: string;
             };
@@ -5419,12 +5447,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ImportQueueResponse"];
                 };
             };
             /** @description Invalid request */

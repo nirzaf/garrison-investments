@@ -23,3 +23,5 @@ cd backend
 ```
 
 The CLI checks file structure and row values. The portal preview also checks references against the target database. Resolve preview errors before running the import, then review the batch status and summary for created and skipped records. The [import service](../../backend/app/services/import_service.py) defines field validation and duplicate handling.
+
+If an import response is lost, retry with the file still selected or check Recent imports for the batch before selecting it again. The portal reuses the same submission key for the selected file and template. Selecting a file again or changing the template starts a new submission. API clients can retry either run endpoint with the same `Idempotency-Key`, template, filename and bytes to recover the existing batch.
