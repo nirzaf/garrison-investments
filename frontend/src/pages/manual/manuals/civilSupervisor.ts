@@ -78,6 +78,7 @@ export const civilSupervisorManual: Manual = {
         }
       ],
       tips: [
+        'Use Save draft to save your work. Open it again with Resume draft under Recent Site Updates.',
         'Submit before leaving site each day — this ensures the record is accurate while the day is fresh.',
         'Be specific about safety observations — they are important for compliance and incident prevention.',
         'If a delivery does not match the delivery note, document the discrepancy before signing anything.'

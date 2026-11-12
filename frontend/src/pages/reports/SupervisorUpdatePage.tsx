@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { formatApiError } from '../../api/errors';
-import { uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createSupervisorUpdate,
@@ -18,6 +18,7 @@ import {
 import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useAuth } from '../../context/useAuth';
 
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE = 60 * 1024 * 1024;
@@ -64,12 +65,39 @@ function parseAttachmentNames(value?: string) {
     .map((name) => ({ name, kind: name.match(/\.(jpg|jpeg|png|webp)$/i) ? 'photo' : 'file' }));
 }
 
+function buildPayload(values: UpdateFormValues, draft: SupervisorUpdateRecord | null) {
+  return {
+    project_id: values.project_id,
+    update_date: values.update_date,
+    day_type: values.day_type,
+    work_location: values.work_location,
+    attendance_count: values.attendance_count,
+    overtime_hours: values.overtime_hours.toString(),
+    progress_notes: values.progress_notes,
+    delay_notes: values.delay_notes || null,
+    required_notes: values.required_notes,
+    attachment_refs: draft
+      ? draft.attachment_refs.flatMap(({ name, kind }) =>
+          typeof name === 'string'
+            ? [{ name, kind: typeof kind === 'string' ? kind : 'photo' }]
+            : []
+        )
+      : parseAttachmentNames(values.attachment_names)
+  };
+}
+
+function persistDraft(values: UpdateFormValues, draft: SupervisorUpdateRecord | null) {
+  const payload = buildPayload(values, draft);
+  return draft ? updateSupervisorUpdate(draft.id, payload) : createSupervisorUpdate(payload);
+}
+
 export function SupervisorUpdatePage() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [updates, setUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<SupervisorUpdateRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
@@ -85,7 +113,7 @@ export function SupervisorUpdatePage() {
   }, []);
 
   const {
-    formState: { errors },
+    formState: { errors, isDirty },
     getValues,
     handleSubmit,
     register,
@@ -149,40 +177,57 @@ export function SupervisorUpdatePage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       const parsed = updateSchema.safeParse(getValues());
-      if (!parsed.success || isSaving) return;
-      const payload = buildPayload(parsed.data);
-      const autosave = savedDraftId
-        ? updateSupervisorUpdate(savedDraftId, payload)
-        : createSupervisorUpdate(payload);
-      autosave
+      if (!parsed.success || isSaving || (savedDraft && !isDirty)) return;
+      setIsSaving(true);
+      void persistDraft(parsed.data, savedDraft)
         .then((update) => {
-          setSavedDraftId(update.id);
+          setSavedDraft(update);
           setLastAutosavedAt(new Date().toLocaleTimeString());
         })
         .catch(() => {
           window.localStorage.setItem(draftKey, JSON.stringify(getValues()));
-        });
+        })
+        .finally(() => setIsSaving(false));
     }, 30000);
     return () => window.clearInterval(interval);
-  }, [getValues, isSaving, savedDraftId]);
+  }, [getValues, isDirty, isSaving, savedDraft]);
 
   useEffect(() => {
     void loadUpdates(selectedProjectId);
   }, [loadUpdates, selectedProjectId]);
 
-  function buildPayload(values: UpdateFormValues) {
-    return {
-      project_id: values.project_id,
-      update_date: values.update_date,
-      day_type: values.day_type,
-      work_location: values.work_location,
-      attendance_count: values.attendance_count,
-      overtime_hours: values.overtime_hours.toString(),
-      progress_notes: values.progress_notes,
-      delay_notes: values.delay_notes || null,
-      required_notes: values.required_notes,
-      attachment_refs: parseAttachmentNames(values.attachment_names)
-    };
+  async function resumeDraft(update: SupervisorUpdateRecord) {
+    const { day_type } = update;
+    if (day_type !== 'weekday' && day_type !== 'friday' && day_type !== 'public_holiday') {
+      setError('This draft has an unsupported day type.');
+      return;
+    }
+    setError(null);
+    setIsSaving(true);
+    setSavedDraft(update);
+    setLastAutosavedAt(null);
+    setUploadedFiles([]);
+    reset({
+      project_id: update.project_id,
+      update_date: update.update_date,
+      day_type,
+      work_location: update.work_location,
+      attendance_count: update.attendance_count,
+      overtime_hours: Number(update.overtime_hours),
+      progress_notes: update.progress_notes,
+      delay_notes: update.delay_notes ?? '',
+      required_notes: update.required_notes,
+      attachment_names: ''
+    });
+    setNotice('Draft reopened.');
+    try {
+      const files = await listPhotos({ entityType: 'supervisor_update', entityId: update.id });
+      setUploadedFiles(files.items);
+    } catch (loadError) {
+      setError(formatApiError(loadError, 'Unable to load existing attachments.'));
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
@@ -192,9 +237,8 @@ export function SupervisorUpdatePage() {
     setNotice(null);
     try {
       const values = watch();
-      const updateId =
-        savedDraftId ?? (await createSupervisorUpdate(buildPayload(values as UpdateFormValues))).id;
-      if (!savedDraftId) setSavedDraftId(updateId);
+      const update = savedDraft ?? (await persistDraft(values as UpdateFormValues, null));
+      setSavedDraft(update);
       const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
       const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
       const fileList = Array.from(files);
@@ -209,7 +253,7 @@ export function SupervisorUpdatePage() {
       }
       const uploaded = await uploadEntityFiles({
         entityType: 'supervisor_update',
-        entityId: updateId,
+        entityId: update.id,
         kind,
         files
       });
@@ -225,15 +269,10 @@ export function SupervisorUpdatePage() {
   async function saveDraft(values: UpdateFormValues) {
     setError(null);
     setNotice(null);
-    if (savedDraftId) {
-      setNotice('Draft already saved. Submit it when the site update is ready.');
-      return savedDraftId;
-    }
-
     setIsSaving(true);
     try {
-      const update = await createSupervisorUpdate(buildPayload(values));
-      setSavedDraftId(update.id);
+      const update = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      setSavedDraft(update);
       setNotice('Draft saved.');
       await loadUpdates(values.project_id);
       return update.id;
@@ -250,9 +289,12 @@ export function SupervisorUpdatePage() {
     setNotice(null);
     setIsSaving(true);
     try {
-      const updateId = savedDraftId ?? (await createSupervisorUpdate(buildPayload(values))).id;
-      await submitSupervisorUpdate(updateId);
-      setSavedDraftId(null);
+      const draft = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      setSavedDraft(draft);
+      await submitSupervisorUpdate(draft.id);
+      setSavedDraft(null);
+      setUploadedFiles([]);
+      setLastAutosavedAt(null);
       reset(defaultValues);
       window.localStorage.removeItem(draftKey);
       setNotice('Site update submitted.');
@@ -463,6 +505,16 @@ export function SupervisorUpdatePage() {
                 <p className="mt-3 line-clamp-3 text-sm text-theme-text-secondary">
                   {update.progress_notes}
                 </p>
+                {update.status === 'draft' && update.supervisor_id === user?.id ? (
+                  <button
+                    className="mt-3 text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                    disabled={isSaving}
+                    onClick={() => void resumeDraft(update)}
+                    type="button"
+                  >
+                    Resume draft
+                  </button>
+                ) : null}
               </article>
             ))}
           </div>

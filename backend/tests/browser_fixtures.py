@@ -41,9 +41,10 @@ def configure() -> None:
     )
 
 
-async def seed() -> None:
+async def seed(role: str) -> None:
     from app.database import AsyncSessionLocal, engine
     from app.models.project import Project
+    from app.models.project_member import ProjectMember
     from app.models.user import User
     from app.utils.security import hash_password
     from app.utils.time import business_today
@@ -55,8 +56,8 @@ async def seed() -> None:
         async with AsyncSessionLocal() as session:
             user = User(
                 email=email,
-                full_name="Browser Test Admin",
-                role="admin",
+                full_name=f"Browser Test {role.replace('_', ' ').title()}",
+                role=role,
                 employee_code=f"E2E-{identifier}",
                 password_hash=hash_password(password),
                 must_change_password=False,
@@ -73,6 +74,8 @@ async def seed() -> None:
             )
             session.add(project)
             await session.flush()
+            if role == "civil_supervisor":
+                session.add(ProjectMember(project_id=project.id, user_id=user.id))
             project_id = str(project.id)
             await session.commit()
     finally:
@@ -82,10 +85,10 @@ async def seed() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["seed", "serve"])
+    parser.add_argument("command", choices=["seed", "seed-supervisor", "serve"])
     args = parser.parse_args()
     configure()
     if args.command == "serve":
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
     else:
-        asyncio.run(seed())
+        asyncio.run(seed("civil_supervisor" if args.command == "seed-supervisor" else "admin"))
