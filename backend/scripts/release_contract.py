@@ -40,7 +40,8 @@ CI_JOBS = {
     "Compose files are valid",
     "Backend tests (1/2)",
     "Backend tests (2/2)",
-    "Browser regressions",
+    "Browser regressions (1/2)",
+    "Browser regressions (2/2)",
 }
 ROLE_IDS = {
     "admin",

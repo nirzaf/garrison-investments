@@ -88,7 +88,12 @@ jobs:
             name: Backend tests (2/2)
             database: garrison_portal
           - suite: browser
-            name: Browser regressions
+            shard: 1
+            name: Browser regressions (1/2)
+            database: garrison_browser_test
+          - suite: browser
+            shard: 2
+            name: Browser regressions (2/2)
             database: garrison_browser_test
     defaults:
       run:
@@ -157,4 +162,6 @@ jobs:
       - name: Browser regressions
         if: matrix.suite == 'browser'
         working-directory: frontend
-        run: npm run test:browser
+        env:
+          BROWSER_SHARD: ${{ matrix.shard }}
+        run: npm run test:browser -- --shard="$BROWSER_SHARD/2"

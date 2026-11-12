@@ -413,7 +413,9 @@ def ci_receipt(bundle: Bundle) -> dict[str, Any]:
     }
 
 
-@pytest.mark.parametrize("job", ["Browser regressions", "Backend tests (2/2)"])
+@pytest.mark.parametrize(
+    "job", ["Browser regressions (1/2)", "Browser regressions (2/2)", "Backend tests (2/2)"]
+)
 def test_ci_receipt_requires_all_parallel_suites(tmp_path: Path, job: str) -> None:
     bundle = Bundle(tmp_path)
     receipt = ci_receipt(bundle)

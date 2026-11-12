@@ -39,7 +39,7 @@ The workflow invokes the installed [host release script](../deploy/hostinger-rel
 
 Compare the candidate's Actions run with the previous release. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests. Use those timings to look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and retain the same required checks and test coverage.
 
-The two backend shards and the Chromium browser suite run in parallel on separate PostgreSQL, Redis and object storage services. Each job applies the migrations to its own database. Backend shards keep test modules together and each test belongs to exactly one shard; local `pytest` without `--garrison-shard` still runs the full suite. The release receipt requires success from both backend shards and the browser job.
+The backend suite and Chromium browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. Each job applies the migrations to its own database. Shards keep test files together and each test belongs to exactly one shard. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
 For deployment, compare build, pre-activation backup, activation, and readback time. Reuse the reviewed, SHA-tagged staging images when available: the host checks their image IDs and served hashes against the exact release authorization before activation.
 
