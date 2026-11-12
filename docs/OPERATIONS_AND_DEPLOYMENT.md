@@ -37,11 +37,11 @@ The workflow invokes the installed [host release script](../deploy/hostinger-rel
 
 ### Review pipeline time on every release
 
-Compare the candidate's Actions run with the previous release. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests. Use those timings to look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and retain the same required checks and test coverage.
+Compare the exact candidate's Actions run with recent runs that cover the same tests. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests and the browser jobs log individual test durations. Look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and confirm the same required checks and test coverage ran.
 
-The backend suite and Chromium browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. Each job applies the migrations to its own database. Shards keep test files together and each test belongs to exactly one shard. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
+The backend suite and Chromium browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. Each job applies the migrations to its own database. Each Chromium shard runs two workers on separate test files with synthetic accounts and projects. Each test belongs to exactly one shard. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
-For deployment, compare build, pre-activation backup, activation, and readback time. Reuse the reviewed, SHA-tagged staging images when available: the host checks their image IDs and served hashes against the exact release authorization before activation.
+For deployment, measure time awaiting approval or a runner separately from build, pre-activation backup, activation, and readback time. Reuse the reviewed, SHA-tagged staging images when available. The host checks their image IDs and served hashes against the exact release authorization before activation.
 
 ### Host bootstrap and runner maintenance
 
