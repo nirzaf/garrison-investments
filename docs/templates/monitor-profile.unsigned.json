@@ -1,0 +1,42 @@
+{
+  "profile_id": null,
+  "revision": null,
+  "source_sha": null,
+  "approval_ref": null,
+  "environment": null,
+  "approved_hosts": [],
+  "targets": [
+    {
+      "check_id": null,
+      "url": null
+    }
+  ],
+  "transport": {
+    "mode": null,
+    "sender": null,
+    "recipients": [],
+    "escalation_recipients": [],
+    "endpoint": null
+  },
+  "timeout_seconds": null,
+  "probe_interval_seconds": null,
+  "failure_threshold": null,
+  "recovery_threshold": null,
+  "repeat_interval_seconds": null,
+  "acknowledgement_limit_seconds": null,
+  "primary_responder": null,
+  "substitute_responder": null,
+  "heartbeat_window_seconds": null,
+  "backup": {
+    "check_id": null,
+    "policy_file": null,
+    "key_file": null,
+    "key_id": null,
+    "policy_revision": null,
+    "policy_sha256": null,
+    "configuration_sha256": null,
+    "rpo_minutes": null,
+    "alert_margin_minutes": null
+  },
+  "maintenance": []
+}

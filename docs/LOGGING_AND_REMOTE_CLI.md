@@ -68,9 +68,9 @@ Typical event types include `api_request`, `security_event`, `user_action`, `sta
 
 The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs the retention check daily at 03:30 UTC. The default hot window is 30 days (`LOG_HOT_RETENTION_DAYS`), and the default archive window is 365 days (`LOG_ARCHIVE_RETENTION_DAYS`). Archived rows remain in PostgreSQL and can be queried with `search --storage-tier archive`. `LOG_STREAM_POLL_SECONDS` defaults to one second.
 
-The scheduled job reports a bounded preview count by default. A row becomes a purge candidate after both the archive window and its recorded `retention_until` deadline expire. Rows without a deadline are retained. `LOG_PURGE_ENABLED` defaults to `false`. Enabling it requires the approved records policy, legacy deadline review, and recovery evidence.
+The scheduled job reports a bounded preview count by default. Expiry requires the approved `scheduled_expiry` policy at `AUDIT_RETENTION_POLICY_PATH` with the exact `AUDIT_RETENTION_POLICY_SHA256`, plus `LOG_PURGE_ENABLED=true`. The application retains unknown records, missing deadlines, future deadlines and records protected by a longer configured policy window. Leave expiry disabled until the named records owner approves the policy, legacy plan and recovery evidence. Policies requiring holds need the separately reviewed hold schema.
 
-Run `python scripts/preview_audit_retention.py` from the backend directory to list candidate IDs and deadlines and review missing deadlines. The output includes the total missing-deadline count and a page of IDs, creation times, storage tiers, and reasons. The proposed disposition is to retain the records pending owner review. Use `--missing-limit` to set the page size from 1 to 1000, and pass `next_missing_after` as `--missing-after` for the next page. The preview uses a read-only transaction and omits event payloads.
+Run `python scripts/preview_audit_retention.py --help` for the supported categories, cutoff and paging inputs. The preview runs read-only and omits event payloads. For an approved policy, use `--extension-plan "$PRIVATE_PLAN"` to record the exact proposed deadline extensions. Review the plan with `python scripts/apply_audit_retention.py "$PRIVATE_PLAN"` in its default preview mode. Only a separately authorized apply with the exact plan hash and approval reference can write extensions. Each bounded batch reports its disposition and preserves existing longer deadlines.
 
 ## Grafana, Loki, and Alloy
 
@@ -118,7 +118,21 @@ prod logs --since 30m backend celery_worker celery_beat
 
 Treat raw Nginx error logs as restricted. An upstream error can include its original signed URL before Alloy redacts collected output. Use the redacted Loki view for sharing incident excerpts.
 
-The [standalone HTTP monitor](../backend/scripts/health_monitor.py) can probe an external URL from a host with SMTP relay access. Grafana alerting and this monitor use separate delivery paths.
+Run the [independent monitor](../backend/scripts/health_monitor.py) on the approved host outside the portal's failure domain. Use the [unsigned template](templates/monitor-profile.unsigned.json) to prepare the D-30 profile for owner review. The approved profile binds the environment, HTTPS readiness targets, allowed hosts, timings, sender and recipient groups, responders, and any bounded maintenance windows. Supply SMTP credentials for STARTTLS or implicit TLS, or a useSend key for the approved HTTPS endpoint, through the monitor's private environment. The production profile also requires the authenticated freshness check against the independent recovery destination. Give the monitor only the read-only backup credentials and the independently managed receipt authentication key.
+
+Keep an existing owner-only directory for incident state and write each structured receipt to a separate private path. The command exits nonzero for a failed check or delivery and rejects corrupt state or an overlapping invocation.
+
+```bash
+cd backend
+python -m scripts.health_monitor \
+  --profile "$APPROVED_MONITOR_PROFILE" --profile-sha256 "$APPROVED_PROFILE_SHA256" \
+  --state-dir "$MONITOR_STATE" \
+  --receipt "$MONITOR_RUN_RECEIPT"
+```
+
+Supply the profile digest from the approved release record. After a responder has received the message, use `--acknowledge CHECK_ID --operator NAME --ack-ref REFERENCE --message-id ID` with the same profile, digest and state directory in place of `--receipt`. The acknowledgement records the received message identity and the local account that entered the attestation. Provider acceptance and human acknowledgement are separate evidence.
+
+Generate the dedicated missing-ingestion rule with the same profile and digest and `--heartbeat-rule "$HEARTBEAT_RULE"`. Before provisioning that output, enable `LOG_HEALTHCHECKS` in the approved environment and verify the actual readiness completion stream in Loki at the approved cadence. The rule detects a missing readiness stream. The existing error-count rules retain their idle no-data behavior.
 
 ## Verify logging changes
 
