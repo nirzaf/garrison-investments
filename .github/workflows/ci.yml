@@ -133,11 +133,14 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
+        if: matrix.suite == 'backend'
         run: pip install -r requirements.txt
       - name: Wait for the test S3 endpoint
+        if: matrix.suite == 'backend'
         run: curl --fail --silent --show-error --retry 15 --retry-connrefused http://127.0.0.1:9000/ -o /dev/null
       # The suite has no schema-creating fixture, so migrations must run first.
       - name: Apply migrations
+        if: matrix.suite == 'backend'
         env:
           APP_ENV: test
           DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/${{ matrix.database }}
@@ -153,12 +156,38 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install browser test dependencies
+      - name: Prepare browser and backend test dependencies
         if: matrix.suite == 'browser'
-        working-directory: frontend
+        shell: bash
+        env:
+          MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/${{ matrix.database }}
         run: |
-          npm ci
-          npx playwright install --with-deps --only-shell chromium
+          set -euo pipefail
+
+          (
+            pip install -r requirements.txt
+            curl --fail --silent --show-error --retry 15 --retry-connrefused http://127.0.0.1:9000/ -o /dev/null
+            APP_ENV=test DATABASE_URL="$MIGRATION_DATABASE_URL" alembic upgrade head
+          ) &
+          backend_pid=$!
+
+          (
+            cd ../frontend
+            npm ci
+            npx playwright install --with-deps --only-shell chromium
+          ) &
+          browser_pid=$!
+
+          failed=0
+          if ! wait "$backend_pid"; then
+            echo "::error::Browser job backend dependencies or service setup failed."
+            failed=1
+          fi
+          if ! wait "$browser_pid"; then
+            echo "::error::Browser job npm or Playwright setup failed."
+            failed=1
+          fi
+          exit "$failed"
       - name: Browser regressions
         if: matrix.suite == 'browser'
         working-directory: frontend
