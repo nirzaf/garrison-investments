@@ -50,6 +50,30 @@ def test_grafana_security_database_and_public_urls_are_provisioned() -> None:
     assert staging["GF_SERVER_SERVE_FROM_SUB_PATH"] == "true"
 
 
+def test_grafana_contact_point_transports_preserve_the_operations_route() -> None:
+    grafana = ROOT / "observability/grafana"
+    alerting = grafana / "provisioning/alerting"
+    policy = yaml.safe_load((alerting / "alerts.yml").read_text())["policies"][0]
+    smtp = yaml.safe_load((alerting / "contact-point.yml").read_text())["contactPoints"][0]
+    usesend_config = yaml.safe_load((grafana / "contact-points/usesend.yml").read_text())
+    usesend = usesend_config["contactPoints"][0]
+
+    assert smtp["name"] == usesend["name"] == policy["receiver"]
+    smtp_receiver, usesend_receiver = smtp["receivers"][0], usesend["receivers"][0]
+    assert smtp_receiver["uid"] == usesend_receiver["uid"]
+    assert smtp_receiver["type"] == "email"
+    assert usesend_receiver["type"] == "webhook"
+    assert usesend_receiver["disableResolveMessage"] is False
+    assert usesend_receiver["settings"]["authorization_credentials"] == "$USESEND_API_KEY"
+    for filename in ("docker-compose.prod.yml", "docker-compose.staging.yml"):
+        volumes = _compose(filename)["services"]["grafana"]["volumes"]
+        assert any(
+            mount.startswith("${GRAFANA_CONTACT_POINT_FILE:-")
+            and mount.endswith(":/etc/grafana/provisioning/alerting/contact-point.yml:ro")
+            for mount in volumes
+        )
+
+
 def test_loki_retention_storage_and_alloy_labels_match_policy() -> None:
     loki = yaml.safe_load((ROOT / "observability/loki-config.yml").read_text())
     assert loki["auth_enabled"] is False

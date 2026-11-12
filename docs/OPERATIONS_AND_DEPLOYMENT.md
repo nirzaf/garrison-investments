@@ -146,7 +146,9 @@ PORTAL_DOMAIN=portal.garrisons.lk
 curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health"
 curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health/readiness"
 curl --fail "https://${GRAFANA_DOMAIN}/api/health"
-docker compose -f docker-compose.prod.yml exec -T backend python scripts/validate_import_sources.py --check
+docker compose -f docker-compose.prod.yml run -T --rm --no-deps --pull never \
+  -v "$PWD/docs/import_templates:/docs/import_templates:ro" \
+  backend python scripts/validate_import_sources.py --check
 docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all
 ```
 
@@ -269,7 +271,26 @@ docker compose -f docker-compose.prod.yml exec -T backend \
 ```
 
 ### Operational Alerts
+
 Phase 1 alert routing sends business-critical outages to Admin and the Operation Manager.
+Grafana uses SMTP by default. For an installation that uses useSend, configure the following
+in the private deployment environment file:
+
+```dotenv
+USESEND_API_URL=https://usesend.example.com/api/v1/emails
+USESEND_API_KEY=<useSend-api-key>
+SMTP_FROM_EMAIL=mailservice@garrisons.lk
+GRAFANA_SMTP_ENABLED=false
+GRAFANA_CONTACT_POINT_FILE=./observability/grafana/contact-points/usesend.yml
+GRAFANA_USESEND_RECIPIENTS_JSON='["admin@example.com","operations@example.com"]'
+```
+
+Use an HTTPS API URL, an authorized sender, and a JSON array of the approved alert recipients.
+Recreate Grafana after changing the environment file and verify delivery of firing and resolved
+notifications before disabling `EXCEPTION_EMAIL_ENABLED`.
+
+Run the independent HTTP monitor from a location with access to the portal and its configured SMTP relay:
+
 ```bash
 docker compose -f docker-compose.prod.yml exec -T backend \
   python scripts/health_monitor.py \
@@ -365,16 +386,18 @@ docker compose exec backend python scripts/seed.py
 Record deployment runs, approvers, health checks, backup objects, and sign-offs in a durable record:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
-  python scripts/launch_evidence.py \
+mkdir -p docs/launch_evidence
+docker compose -f docker-compose.prod.yml run -T --rm --no-deps --pull never \
+  -v "$PWD/docs:/docs" \
+  backend python scripts/launch_evidence.py \
   --target production \
-  --output docs/launch_evidence/production-launch.md \
+  --output /docs/launch_evidence/production-launch.md \
   --health-url https://portal.example.com/health \
   --readiness-url https://portal.example.com/health/readiness \
   --approver "Operation Manager" \
-  --backup-object backups/daily/latest.sql.gz \
-  --restore-log docs/launch_evidence/restore-dry-run.md \
-  --uat-signoff docs/launch_signoff/uat.md
+  --backup-object backups/daily/application-YYYYMMDDTHHMMSSZ.sql.gz.enc \
+  --restore-log /docs/launch_evidence/restore-dry-run.md \
+  --uat-signoff /docs/launch_signoff/uat.md
 ```
 
 ### Sign-Off Checklist

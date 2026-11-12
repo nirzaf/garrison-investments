@@ -1,0 +1,22 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Garrison Operations Email
+    receivers:
+      - uid: garrison-operations-email
+        type: webhook
+        settings:
+          url: $USESEND_API_URL
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: $USESEND_API_KEY
+          payload:
+            vars:
+              sender: $SMTP_FROM_EMAIL
+              recipients: $GRAFANA_USESEND_RECIPIENTS_JSON
+            template: >-
+              {{ coll.Dict "from" .Vars.sender "to" (.Vars.recipients | data.JSON)
+              "subject" (tmpl.Exec "default.title" .) "text" (tmpl.Exec "default.message" .)
+              | data.ToJSON }}
+        disableResolveMessage: false
