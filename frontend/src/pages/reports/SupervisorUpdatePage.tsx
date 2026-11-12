@@ -15,6 +15,7 @@ import {
   updateSupervisorUpdate,
   type SupervisorUpdateRecord
 } from '../../api/supervisorUpdates';
+import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
@@ -42,20 +43,20 @@ const updateSchema = z.object({
 type UpdateFormInput = z.input<typeof updateSchema>;
 type UpdateFormValues = z.output<typeof updateSchema>;
 
-const today = new Date().toISOString().slice(0, 10);
-
-const defaultValues: UpdateFormValues = {
-  project_id: '',
-  update_date: today,
-  day_type: 'weekday',
-  work_location: '',
-  attendance_count: 0,
-  overtime_hours: 0,
-  progress_notes: '',
-  delay_notes: '',
-  required_notes: '',
-  attachment_names: ''
-};
+function createDefaultValues(): UpdateFormValues {
+  return {
+    project_id: '',
+    update_date: businessDate(),
+    day_type: 'weekday',
+    work_location: '',
+    attendance_count: 0,
+    overtime_hours: 0,
+    progress_notes: '',
+    delay_notes: '',
+    required_notes: '',
+    attachment_names: ''
+  };
+}
 
 function parseAttachmentNames(value?: string) {
   return (value ?? '')
@@ -104,6 +105,7 @@ export function SupervisorUpdatePage() {
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
 
   const storedDraft = useMemo(() => {
+    const defaultValues = createDefaultValues();
     try {
       const raw = window.localStorage.getItem(draftKey);
       return raw ? { ...defaultValues, ...JSON.parse(raw) } : defaultValues;
@@ -162,8 +164,9 @@ export function SupervisorUpdatePage() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    const subscription = watch((value) => {
+    const subscription = watch((value, { name }) => {
       window.clearTimeout(timer);
+      if (!name && !value.project_id) return;
       timer = window.setTimeout(() => {
         window.localStorage.setItem(draftKey, JSON.stringify(value));
       }, 800);
@@ -295,7 +298,7 @@ export function SupervisorUpdatePage() {
       setSavedDraft(null);
       setUploadedFiles([]);
       setLastAutosavedAt(null);
-      reset(defaultValues);
+      reset(createDefaultValues());
       window.localStorage.removeItem(draftKey);
       setNotice('Site update submitted.');
       await loadUpdates(values.project_id);

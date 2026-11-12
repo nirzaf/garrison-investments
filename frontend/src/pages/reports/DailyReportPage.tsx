@@ -24,20 +24,10 @@ import {
   type DailyReportRecord
 } from '../../api/reports';
 import { listSupervisorUpdates, type SupervisorUpdateRecord } from '../../api/supervisorUpdates';
+import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
-
-function businessDate() {
-  const now = new Date();
-  const timeZone = import.meta.env.VITE_BUSINESS_TIMEZONE || 'Asia/Qatar';
-  try {
-    return now.toLocaleDateString('en-CA', { timeZone });
-  } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
-    return now.toISOString().slice(0, 10);
-  }
-}
 
 const emptyPayload: DailyReportPayload = {
   project_id: '',

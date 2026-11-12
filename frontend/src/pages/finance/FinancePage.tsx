@@ -13,6 +13,7 @@ import {
 } from '../../api/finance';
 import { listProjects } from '../../api/projects';
 import { listSuppliers } from '../../api/inventory';
+import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 
@@ -32,7 +33,7 @@ export function FinancePage() {
   const createPaymentMutation = useMutation({
     mutationFn: ({ invoiceId, amount }: { invoiceId: string; amount: string }) =>
       createPayment(invoiceId, {
-        payment_date: new Date().toISOString().slice(0, 10),
+        payment_date: businessDate(),
         amount,
         method: 'bank_transfer'
       }),

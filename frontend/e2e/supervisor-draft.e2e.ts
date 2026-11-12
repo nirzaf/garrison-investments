@@ -14,6 +14,7 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
     )
   );
 
+  await page.clock.setFixedTime(new Date('2026-11-11T20:59:00Z'));
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(account.email);
   await page.getByLabel('Password', { exact: true }).fill(account.password);
@@ -23,7 +24,11 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
   await page.getByLabel('Verification code').fill(code);
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
 
+  await page.clock.setFixedTime(new Date('2026-11-11T21:01:00Z'));
   await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page.getByLabel('Update date')).toHaveValue('2026-11-12');
+  await page.clock.setFixedTime(new Date());
+  await page.reload();
   await page
     .getByRole('combobox', { name: 'Project', exact: true })
     .selectOption(account.projectId);
@@ -54,9 +59,12 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
   await page
     .getByLabel('Progress notes')
     .fill('Verified the handrails after the final inspection.');
+  await page.clock.setFixedTime(new Date('2026-11-12T21:01:00Z'));
   await page.getByRole('button', { name: 'Submit update' }).click();
   await expect(page.getByText('Site update submitted.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Update date')).toHaveValue('2026-11-13');
   await page.reload();
+  await expect(page.getByLabel('Update date')).toHaveValue('2026-11-13');
   await expect(record).toHaveCount(1);
   await expect(record.getByText('submitted', { exact: true })).toBeVisible();
   await expect(
