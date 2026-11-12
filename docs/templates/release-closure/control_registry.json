@@ -1,0 +1,595 @@
+{
+  "format_version": 1,
+  "excluded_requirement_ids": [
+    "G-01"
+  ],
+  "controls": {
+    "G-02": [
+      "REG-G-02"
+    ],
+    "G-03": [
+      "REG-G-03"
+    ],
+    "G-04": [
+      "REG-G-04"
+    ],
+    "G-05": [
+      "REG-G-05"
+    ],
+    "G-06": [
+      "REG-G-06"
+    ],
+    "G-07": [
+      "REG-G-07"
+    ],
+    "G-08": [
+      "REG-G-08"
+    ],
+    "G-09": [
+      "REG-G-09"
+    ],
+    "G-10": [
+      "REG-G-10"
+    ],
+    "G-11": [
+      "REG-G-11"
+    ],
+    "G-12": [
+      "REG-G-12"
+    ],
+    "G-13": [
+      "REG-G-13"
+    ],
+    "G-14": [
+      "REG-G-14"
+    ],
+    "G-15": [
+      "REG-G-15"
+    ],
+    "G-16": [
+      "REG-G-16"
+    ],
+    "G-17": [
+      "REG-G-17"
+    ],
+    "G-18": [
+      "REG-G-18"
+    ],
+    "G-19": [
+      "REG-G-19"
+    ],
+    "G-20": [
+      "REG-G-20"
+    ],
+    "G-21": [
+      "REG-G-21"
+    ],
+    "G-22": [
+      "REG-G-22"
+    ],
+    "G-23": [
+      "REG-G-23"
+    ],
+    "G-24": [
+      "REG-G-24"
+    ],
+    "G-25": [
+      "REG-G-25"
+    ],
+    "G-26": [
+      "REG-G-26"
+    ],
+    "G-27": [
+      "AC-27-01",
+      "AC-27-02",
+      "AC-27-03",
+      "AC-27-04"
+    ],
+    "G-28": [
+      "AC-28-01",
+      "AC-28-02",
+      "AC-28-03",
+      "AC-28-04",
+      "AC-28-05",
+      "AC-28-06",
+      "AC-28-07",
+      "AC-28-08",
+      "AC-28-09",
+      "AC-28-10",
+      "AC-28-11"
+    ],
+    "G-29": [
+      "AC-29-01",
+      "AC-29-02",
+      "AC-29-03",
+      "AC-29-04",
+      "AC-29-05",
+      "AC-29-06",
+      "AC-29-07",
+      "AC-29-08",
+      "AC-29-09",
+      "AC-29-10",
+      "AC-29-11",
+      "AC-29-12",
+      "AC-29-13"
+    ],
+    "G-30": [
+      "AC-30-01",
+      "AC-30-02",
+      "AC-30-03",
+      "AC-30-04",
+      "AC-30-05",
+      "AC-30-06",
+      "AC-30-07",
+      "AC-30-08",
+      "AC-30-09",
+      "AC-30-10",
+      "AC-30-11"
+    ],
+    "G-31": [
+      "REG-G-31"
+    ],
+    "G-32": [
+      "AC-32-01",
+      "AC-32-02",
+      "AC-32-03",
+      "AC-32-04",
+      "AC-32-05",
+      "AC-32-06",
+      "AC-32-07",
+      "AC-32-08",
+      "AC-32-09",
+      "AC-32-10"
+    ],
+    "G-33": [
+      "AC-33-01",
+      "AC-33-02",
+      "AC-33-03",
+      "AC-33-04",
+      "AC-33-05",
+      "AC-33-06",
+      "AC-33-07",
+      "AC-33-08",
+      "AC-33-09",
+      "AC-33-10",
+      "AC-33-11",
+      "AC-33-12"
+    ]
+  },
+  "control_receipt_kinds": {
+    "REG-G-02": [
+      "uat"
+    ],
+    "REG-G-03": [
+      "uat"
+    ],
+    "REG-G-04": [
+      "uat"
+    ],
+    "REG-G-05": [
+      "uat"
+    ],
+    "REG-G-06": [
+      "uat"
+    ],
+    "REG-G-07": [
+      "uat"
+    ],
+    "REG-G-08": [
+      "uat"
+    ],
+    "REG-G-09": [
+      "uat"
+    ],
+    "REG-G-10": [
+      "uat"
+    ],
+    "REG-G-11": [
+      "uat"
+    ],
+    "REG-G-12": [
+      "uat"
+    ],
+    "REG-G-13": [
+      "uat"
+    ],
+    "REG-G-14": [
+      "uat"
+    ],
+    "REG-G-15": [
+      "uat"
+    ],
+    "REG-G-16": [
+      "uat"
+    ],
+    "REG-G-17": [
+      "uat"
+    ],
+    "REG-G-18": [
+      "uat"
+    ],
+    "REG-G-19": [
+      "uat"
+    ],
+    "REG-G-20": [
+      "uat"
+    ],
+    "REG-G-21": [
+      "uat"
+    ],
+    "REG-G-22": [
+      "uat"
+    ],
+    "REG-G-23": [
+      "uat"
+    ],
+    "REG-G-24": [
+      "uat"
+    ],
+    "REG-G-25": [
+      "uat"
+    ],
+    "REG-G-26": [
+      "uat"
+    ],
+    "AC-27-01": [
+      "uat"
+    ],
+    "AC-27-02": [
+      "uat"
+    ],
+    "AC-27-03": [
+      "uat"
+    ],
+    "AC-27-04": [
+      "uat"
+    ],
+    "AC-28-01": [
+      "retention"
+    ],
+    "AC-28-02": [
+      "retention"
+    ],
+    "AC-28-03": [
+      "retention"
+    ],
+    "AC-28-04": [
+      "retention"
+    ],
+    "AC-28-05": [
+      "retention"
+    ],
+    "AC-28-06": [
+      "retention"
+    ],
+    "AC-28-07": [
+      "retention"
+    ],
+    "AC-28-08": [
+      "retention"
+    ],
+    "AC-28-09": [
+      "retention"
+    ],
+    "AC-28-10": [
+      "retention"
+    ],
+    "AC-28-11": [
+      "retention"
+    ],
+    "AC-29-01": [
+      "recovery"
+    ],
+    "AC-29-02": [
+      "recovery"
+    ],
+    "AC-29-03": [
+      "recovery"
+    ],
+    "AC-29-04": [
+      "recovery"
+    ],
+    "AC-29-05": [
+      "recovery"
+    ],
+    "AC-29-06": [
+      "recovery"
+    ],
+    "AC-29-07": [
+      "recovery"
+    ],
+    "AC-29-08": [
+      "recovery"
+    ],
+    "AC-29-09": [
+      "recovery"
+    ],
+    "AC-29-10": [
+      "recovery"
+    ],
+    "AC-29-11": [
+      "recovery"
+    ],
+    "AC-29-12": [
+      "recovery"
+    ],
+    "AC-29-13": [
+      "recovery"
+    ],
+    "AC-30-01": [
+      "observability"
+    ],
+    "AC-30-02": [
+      "observability"
+    ],
+    "AC-30-03": [
+      "observability"
+    ],
+    "AC-30-04": [
+      "observability"
+    ],
+    "AC-30-05": [
+      "observability"
+    ],
+    "AC-30-06": [
+      "observability"
+    ],
+    "AC-30-07": [
+      "observability"
+    ],
+    "AC-30-08": [
+      "observability"
+    ],
+    "AC-30-09": [
+      "observability"
+    ],
+    "AC-30-10": [
+      "observability"
+    ],
+    "AC-30-11": [
+      "observability"
+    ],
+    "REG-G-31": [
+      "uat"
+    ],
+    "AC-32-01": [
+      "uat"
+    ],
+    "AC-32-02": [
+      "uat"
+    ],
+    "AC-32-03": [
+      "uat"
+    ],
+    "AC-32-04": [
+      "data_reconciliation"
+    ],
+    "AC-32-05": [
+      "uat"
+    ],
+    "AC-32-06": [
+      "ci"
+    ],
+    "AC-32-07": [
+      "uat"
+    ],
+    "AC-32-08": [
+      "uat"
+    ],
+    "AC-32-09": [
+      "observation",
+      "runtime_readback",
+      "uat"
+    ],
+    "AC-32-10": [
+      "uat"
+    ],
+    "AC-33-01": [
+      "uat"
+    ],
+    "AC-33-02": [
+      "uat"
+    ],
+    "AC-33-03": [
+      "data_reconciliation"
+    ],
+    "AC-33-04": [
+      "ci"
+    ],
+    "AC-33-05": [
+      "ci"
+    ],
+    "AC-33-06": [
+      "ci"
+    ],
+    "AC-33-07": [
+      "ci"
+    ],
+    "AC-33-08": [
+      "ci"
+    ],
+    "AC-33-09": [
+      "data_reconciliation"
+    ],
+    "AC-33-10": [
+      "observability",
+      "observation",
+      "recovery",
+      "retention",
+      "runtime_readback",
+      "uat"
+    ],
+    "AC-33-11": [
+      "uat"
+    ],
+    "AC-33-12": [
+      "handover"
+    ]
+  },
+  "final_only_controls": [
+    "AC-28-10",
+    "AC-29-02",
+    "AC-29-06",
+    "AC-30-02",
+    "AC-30-06",
+    "AC-30-11",
+    "AC-32-09",
+    "AC-32-10",
+    "AC-33-10",
+    "AC-33-11",
+    "AC-33-12"
+  ],
+  "uat_platforms": {
+    "UAT-01": [
+      "desktop"
+    ],
+    "UAT-02": [
+      "desktop"
+    ],
+    "UAT-03": [
+      "desktop"
+    ],
+    "UAT-04": [
+      "desktop"
+    ],
+    "UAT-05": [
+      "desktop"
+    ],
+    "UAT-06": [
+      "desktop"
+    ],
+    "UAT-07": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-08": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-09": [
+      "desktop"
+    ],
+    "UAT-10": [
+      "desktop"
+    ],
+    "UAT-11": [
+      "desktop"
+    ],
+    "UAT-12": [
+      "desktop"
+    ],
+    "UAT-13": [
+      "desktop"
+    ],
+    "UAT-14": [
+      "desktop"
+    ],
+    "UAT-15": [
+      "desktop"
+    ],
+    "UAT-16": [
+      "desktop"
+    ],
+    "UAT-17": [
+      "desktop"
+    ],
+    "UAT-18": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-19": [
+      "desktop"
+    ],
+    "UAT-20": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-21": [
+      "android",
+      "ios"
+    ],
+    "UAT-22": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-23": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-24": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-25": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-26": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-27": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-28": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-29": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-30": [
+      "desktop"
+    ],
+    "UAT-31": [
+      "desktop"
+    ],
+    "UAT-32": [
+      "desktop"
+    ],
+    "UAT-33": [
+      "desktop",
+      "operations"
+    ],
+    "UAT-34": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-35": [
+      "android",
+      "desktop",
+      "ios"
+    ],
+    "UAT-36": [
+      "operations"
+    ],
+    "UAT-37": [
+      "operations"
+    ],
+    "UAT-38": [
+      "operations"
+    ],
+    "UAT-39": [
+      "desktop"
+    ],
+    "UAT-40": [
+      "desktop",
+      "operations"
+    ]
+  }
+}

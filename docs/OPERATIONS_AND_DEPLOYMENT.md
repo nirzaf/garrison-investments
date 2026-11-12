@@ -31,7 +31,9 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 [CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency and a host lock serialize releases.
 
-The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub, downloads that exact source revision, builds the frontend, and compares the candidate Alembic heads with the live revision. For runtime changes it also checks protected resources, builds the backend, and runs the application and Grafana backup command in a one-off container before activation. It swaps the frontend index atomically, verifies the served sign-in HTML, JavaScript and service worker hashes, and checks public readiness. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and hashes in `DEPLOYED`. Failed activations follow the [rollback procedure](#rollback).
+If the approval bundle becomes available after CI, dispatch `deploy.yml` from `main` with `ci_run_id` set to the original successful CI run ID. The host verifies the same CI run, current `main` SHA and approval bundle. This preserves the job IDs already recorded in the bundle.
+
+The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub and requires approved evidence before fetching the candidate. After building the exact revision, it compares the image identities, Alembic heads and frontend hashes with the authorization. For runtime changes it also checks protected resources and runs the application and Grafana backup command in a one-off container before activation. It swaps the frontend index atomically, verifies the served sign-in HTML, JavaScript and service worker hashes, and checks public readiness. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and hashes in `DEPLOYED`. Failed activations follow the [rollback procedure](#rollback).
 
 ### Host bootstrap and runner maintenance
 
@@ -43,8 +45,11 @@ Provision the existing stack and an initial active release before registering th
 | `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
 | `current` | Link to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
 | `deploy.lock` | Host-side serialization across release attempts. |
+| `authorizations/<sha>/release_manifest.json` | Restricted, source-bound predeployment evidence and approvals with artifacts under the same release directory. |
+| `approval-trust.json` | Root-controlled registry of independently verified approval artifacts, outside the candidate and evidence bundle. |
+| `authorized-configuration.json` | Approved configuration digest and protected input hashes, including `production.env` and `compose.vps.yml`. |
 
-Install the reviewed script as root at `/usr/local/sbin/garrison-deploy` before the first release using the `rollback-v2` invocation. The old script rejects this invocation before activation. The runner account needs only noninteractive `sudo` for that script. Keep the privileged script and production inputs outside the runner workspace.
+Before activation with `rollback-v2 release-contract-v1`, the authorized host operator installs the reviewed [verifier](../backend/scripts/release_contract.py) at `/usr/local/libexec/garrison-release-contract.py` and the [release script](../deploy/hostinger-release.sh) at `/usr/local/sbin/garrison-deploy`. Keep both root-owned and protected from runner writes. The operator verifies the actual approval provenance before adding registry entries. The runner account needs only noninteractive `sudo` for the release script. Older installed scripts reject the four-argument protocol before activation.
 
 On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 
@@ -164,6 +169,12 @@ python -m scripts.backup_set verify /private/independent-storage/backup-set
 
 The `verify` command checks artifact presence, size and SHA-256. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
 
+For the approved D-29 recovery policy, pass `--policy "$RECOVERY_POLICY"` when capturing, publishing, fetching and restoring a format 2 set. Supply `BACKUP_AUTH_KEY_FILE` and `BACKUP_AUTH_KEY_ID` through the operator's restricted environment, separately from the backup encryption password. The independent destination uses its approved `DR_BACKUP_*` settings and separate publisher and reader credentials. Publish with `python -m scripts.backup_set publish "$LOCAL_SET" --policy "$RECOVERY_POLICY" --receipt "$PUBLICATION_RECEIPT"`. The publisher verifies the remote encrypted artifacts before it writes the signed completion record. A substitute operator can fetch a complete set with `fetch "$BACKUP_SET_ID" --policy "$RECOVERY_POLICY" --destination "$ISOLATED_SET"` and then restore it with `--require-authenticated`. Retain the existing format 1 sets for historical recovery and record their checksum-only assurance.
+
+The [scheduled capture service](../deploy/backup-set.service) invokes the [capture wrapper](../deploy/capture-recovery-set.sh) under the same host lock as deployment. Set `RECOVERY_POLICY`, `RECOVERY_CAPTURE_TEMPLATE`, `RECOVERY_CAPTURE_ENV`, `RECOVERY_PUBLISH_ENV`, and the two authentication key variables in the root-owned scheduler environment. Set `RECOVERY_CONFIGURATION_ROOT` to a dedicated root-owned directory containing only the approved nonsecret recovery configuration. Keep the policy, capture inventory, credentials and authentication key outside that directory. Install the service and wrapper only after exercising the write pause and recovery against the approved destination. Choose the timer interval from the approved recovery point target and measured capture duration.
+
+When rotating the authentication key or changing the policy revision, use a new approved destination prefix. Keep the previous prefix and escrow the exact policy bytes, key ID, authentication key and decryption material until the retained sets expire. Verify a complete set under the new policy before changing the monitor. Preview expired sets with the separate retention command; apply only the reviewed plan using authorized retention credentials.
+
 ```bash
 python -m scripts.backup_set restore /private/independent-storage/backup-set
 ```
@@ -191,7 +202,7 @@ Apply the report revision migration before activating the report API and fronten
 
 ### Rollback
 
-Automatic rollback requires matching [rollback generations](../deploy/rollback-generation), previous backend Alembic heads that match the live database, and the retained frontend image. Generation 1 requires the owner-aware service worker, report revision enforcement, and deadline-aware audit retention. Change the generation when a release invalidates the previous release's ability to use the same data and client state safely.
+Automatic rollback requires matching [rollback generations](../deploy/rollback-generation), previous backend Alembic heads that match the live database, and the retained frontend image. Generation 1 requires the owner-aware service worker, report revision enforcement, and deadline-aware audit retention. Generation 2 also requires the policy checks and safeguards for legacy audit records. Keep destructive purge disabled during the switch. Change the generation when a release invalidates the previous release's ability to use the same data and client state safely.
 
 If a compatible rollback runs, verify readiness and the served assets against the previous release receipt. If no compatible rollback exists, the script records `ACTIVATION_FAILED` under the candidate release, stops Nginx and the application writers, and leaves `current` pointing at the last verified release. Keep the maintenance write block in place, verify that ingress and writers are stopped, and reconcile actual containers and static assets before activating a compatible forward fix. The failure receipt can exist even if the application or static assets were partly switched.
 
@@ -203,7 +214,19 @@ Use sample data only in an approved non-production environment. Follow the [seed
 
 ## 5. Launch Evidence Capture & Sign-Off
 
-Record the target, source SHA, CI and deployment run URLs, actual approver, application and Grafana backup objects, isolated restore evidence, and UAT result. Record the Operation Manager's approval for launch. Capture the GitHub deployment job result alongside the launch sign-off. Include the applicable approval when an environment or acceptance step was waived.
+Freeze the source SHA and approved configuration. Collect the signed scope, retention, recovery, operations, device/support and business decisions together with executed control receipts. Use the [unsigned release templates](templates/release-closure/README.md) and keep sensitive evidence private. Record the operator and approvers as separate roles and have the trusted reviewer verify the actual approvals before populating the approval registry.
+
+Run strict predeployment validation against the frozen bundle before activation:
+
+```bash
+cd backend
+python scripts/launch_evidence.py --target production --commit "$RELEASE_SHA" \
+  --manifest "$RELEASE_MANIFEST" --evidence-root "$PRIVATE_EVIDENCE_ROOT" \
+  --trust-registry "$APPROVAL_TRUST_REGISTRY" --phase predeploy --validate-only \
+  --output "$PREDEPLOY_REPORT" --json-output "$PREDEPLOY_VERDICT"
+```
+
+After deployed readback, live checks, the approved observation cycle, and final owner acceptance, run the same command with `--phase final` and separate verdict paths. Only the final successful verdict can certify the frozen scope. The existing collection command below remains useful for a draft evidence summary.
 
 [launch_evidence.py](../backend/scripts/launch_evidence.py) checks the supplied URLs and records hashes for attached evidence files. Run it from a trusted checkout using private output paths and the actual release values:
 

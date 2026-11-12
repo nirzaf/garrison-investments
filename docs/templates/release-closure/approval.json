@@ -1,0 +1,12 @@
+{
+  "purpose": null,
+  "approver_identity": null,
+  "authority_role": null,
+  "subject_sha256": null,
+  "approved_at": null,
+  "approval_artifact": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  }
+}

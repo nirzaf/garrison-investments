@@ -1,0 +1,19 @@
+{
+  "release_id": null,
+  "source_sha": null,
+  "environment": null,
+  "configuration_sha256": null,
+  "inventory_sha256": null,
+  "control_registry_sha256": null,
+  "support_matrix_sha256": null,
+  "staging_equivalence_sha256": null,
+  "frontend_sha256": null,
+  "service_worker_sha256": null,
+  "repository": "nirzaf/garrison-investments",
+  "decision_sha256": {},
+  "schema_heads": [],
+  "image_digests": {
+    "backend": null,
+    "frontend": null
+  }
+}

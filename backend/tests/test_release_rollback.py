@@ -75,16 +75,45 @@ exit 23
         assert not receipt.exists()
 
 
-def test_legacy_workflow_invocation_is_rejected_before_token_read() -> None:
+@pytest.mark.parametrize("protocol", [[], ["rollback-v2"]])
+def test_legacy_workflow_invocation_is_rejected_before_token_read(protocol: list[str]) -> None:
     result = subprocess.run(
-        ["bash", str(SCRIPT), "123", "a" * 40],
+        ["bash", str(SCRIPT), "123", "a" * 40, *protocol],
         input="",
         capture_output=True,
         check=False,
         text=True,
     )
     assert result.returncode == 1
-    assert "rollback-v2 protocol" in result.stderr
+    assert "rollback-v2 and release-contract-v1" in result.stderr
+
+
+def test_missing_installed_verifier_blocks_candidate_download(tmp_path: Path) -> None:
+    source = SCRIPT.read_text()
+    start = source.index("\nverify_authorization() {\n")
+    end = source.index('\noperator=$(github "actions/runs/', start)
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+verifier={shlex.quote(str(tmp_path / "missing.py"))}
+die() {{ printf '%s\\n' "$*" >&2; exit 1; }}
+{source[start:end]}
+verify_authorization
+printf 'Candidate activation reached\\n'
+""",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "root-installed release verifier is unavailable" in result.stderr
+    assert not result.stdout
+    authorization = source.index("authorization=$(verify_authorization)")
+    assert authorization < source.index('github "tarball/$sha"')
 
 
 def test_unhealthy_runtime_cannot_be_masked_by_nginx_reload() -> None:

@@ -1,0 +1,21 @@
+{
+  "receipt_id": null,
+  "kind": null,
+  "phase": null,
+  "source_sha": null,
+  "environment": null,
+  "configuration_sha256": null,
+  "synthetic": null,
+  "started_at": null,
+  "completed_at": null,
+  "executed_by": null,
+  "tool": null,
+  "outcome": null,
+  "results": {},
+  "artifacts": [],
+  "review": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  }
+}

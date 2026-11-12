@@ -1,0 +1,629 @@
+[
+  {
+    "workstream_id": "G-02",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-02",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-03",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-03",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-04",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-04",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-05",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-05",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-06",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-06",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-07",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-07",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-08",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-08",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-09",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-09",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-10",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-10",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-11",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-11",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-12",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-12",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-13",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-13",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-14",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-14",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-15",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-15",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-16",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-16",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-17",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-17",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-18",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-18",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-19",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-19",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-20",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-20",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-21",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-21",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-22",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-22",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-23",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-23",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-24",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-24",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-25",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-25",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-26",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-26",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-27",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-27-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-27-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-27-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-27-04",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-28",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-28-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-04",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-05",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-06",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-07",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-08",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-09",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-10",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-28-11",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-29",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-29-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-04",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-05",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-06",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-07",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-08",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-09",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-10",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-11",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-12",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-29-13",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-30",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-30-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-04",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-05",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-06",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-07",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-08",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-09",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-10",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-30-11",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-31",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "REG-G-31",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-32",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-32-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-04",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-05",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-06",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-07",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-08",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-09",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-32-10",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  },
+  {
+    "workstream_id": "G-33",
+    "status": "open",
+    "controls": [
+      {
+        "control_id": "AC-33-01",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-02",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-03",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-04",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-05",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-06",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-07",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-08",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-09",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-10",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-11",
+        "status": "open",
+        "receipt_ids": []
+      },
+      {
+        "control_id": "AC-33-12",
+        "status": "open",
+        "receipt_ids": []
+      }
+    ]
+  }
+]

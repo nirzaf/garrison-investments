@@ -1,0 +1,151 @@
+[
+  {
+    "decision_id": "D-27-SCOPE",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "delivery_scope": null,
+    "accepted_inventory_sha256": null,
+    "excluded_requirement_ids": null
+  },
+  {
+    "decision_id": "D-28-POLICY",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "policy_id": null,
+    "mode": null,
+    "classes": null,
+    "unknown_disposition": null,
+    "holds_required": null,
+    "policy_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    }
+  },
+  {
+    "decision_id": "D-29-RECOVERY",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "policy_id": null,
+    "rpo_minutes": null,
+    "rto_minutes": null,
+    "backup_interval_minutes": null,
+    "maximum_capture_pause_seconds": null,
+    "maximum_publication_delay_minutes": null,
+    "retention_rules": null,
+    "destination_identity": null,
+    "failure_domains": null,
+    "key_custodians": null,
+    "operator": null,
+    "substitute_operator": null,
+    "exercise_interval": null,
+    "required_artifact_categories": null,
+    "minimum_spool_free_bytes": null,
+    "required_configuration_paths": null,
+    "policy_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    }
+  },
+  {
+    "decision_id": "D-30-OPERATIONS",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "profile_id": null,
+    "environment": null,
+    "targets": null,
+    "probe_interval_seconds": null,
+    "failure_threshold": null,
+    "recovery_threshold": null,
+    "repeat_interval_seconds": null,
+    "acknowledgement_limit_seconds": null,
+    "primary_responder": null,
+    "substitute_responder": null,
+    "recipient_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "transport_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "maintenance_rules_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "profile_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    }
+  },
+  {
+    "decision_id": "D-32-SUPPORT",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "desktop_targets": null,
+    "physical_mobile_targets": null,
+    "scenario_platform_map": null,
+    "network_profiles": null,
+    "budgets": null,
+    "testers": null
+  },
+  {
+    "decision_id": "D-33-BUSINESS",
+    "revision": null,
+    "approval_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "approved_at": null,
+    "assignment_export": null,
+    "accepted_samples": null,
+    "timezone": null,
+    "currency": null,
+    "precision": null,
+    "tax_rounding_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "material_approval_threshold": null,
+    "numbering_rules_ref": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "import_sources": null,
+    "signatories": null,
+    "release_authorizer": null
+  }
+]

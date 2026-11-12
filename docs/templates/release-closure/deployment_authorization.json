@@ -1,0 +1,17 @@
+{
+  "purpose": "deployment_authorization",
+  "authority_role": "release_authorizer",
+  "approver_identity": null,
+  "subject_sha256": null,
+  "approved_at": null,
+  "source_sha": null,
+  "environment": null,
+  "valid_from": null,
+  "valid_until": null,
+  "authorization_reference": null,
+  "approval_artifact": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  }
+}

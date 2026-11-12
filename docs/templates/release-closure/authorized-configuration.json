@@ -1,0 +1,7 @@
+{
+  "configuration_sha256": null,
+  "protected_files": {
+    "production.env": null,
+    "compose.vps.yml": null
+  }
+}

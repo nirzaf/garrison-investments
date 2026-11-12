@@ -1,0 +1,57 @@
+{
+  "format_version": 1,
+  "release_id": null,
+  "repository": "nirzaf/garrison-investments",
+  "source_sha": null,
+  "target_environment": null,
+  "release_subject": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  },
+  "scope": {
+    "accepted_inventory": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "control_registry": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    },
+    "delivery_scope": "launch_readiness_only",
+    "excluded_requirement_ids": [
+      "G-01"
+    ]
+  },
+  "decisions": [],
+  "ledger": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  },
+  "receipts": [],
+  "approvals": {
+    "deployment_authorization": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    }
+  },
+  "defects": {
+    "path": null,
+    "sha256": null,
+    "size_bytes": null
+  },
+  "validation_profile": {
+    "validator_version": 1,
+    "validator_sha256": null,
+    "control_registry_sha256": null,
+    "staging_equivalence": {
+      "path": null,
+      "sha256": null,
+      "size_bytes": null
+    }
+  }
+}

@@ -9,14 +9,16 @@ repository=nirzaf/garrison-investments
 portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
+verifier=/usr/local/libexec/garrison-release-contract.py
 
 die() {
   printf '%s\n' "$*" >&2
   exit 1
 }
 
-[[ $# == 3 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ && "$3" == rollback-v2 ]] ||
-  die 'Expected a GitHub CI run ID, a full commit SHA, and the rollback-v2 protocol.'
+[[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
+   "$3" == rollback-v2 && "$4" == release-contract-v1 ]] ||
+  die 'Expected a CI run ID, full SHA, rollback-v2 and release-contract-v1.'
 run_id=$1
 sha=$2
 IFS= read -r token || die 'A GitHub Actions token is required on stdin.'
@@ -39,7 +41,22 @@ if json.load(sys.stdin)["object"]["sha"] != sys.argv[1]:
 ' "$sha"
 }
 
-github "actions/runs/$run_id" | python3 -c '
+verify_authorization() {
+  local component mode
+  [[ $EUID == 0 && -f "$verifier" ]] ||
+    die 'The root-installed release verifier is unavailable.'
+  for component in / /usr /usr/local /usr/local/libexec "$verifier"; do
+    [[ ! -L "$component" && -O "$component" ]] ||
+      die 'The release verifier path must be root-owned and free of symlinks.'
+    mode=$(stat -c '%a' "$component")
+    (( (8#$mode & 022) == 0 )) ||
+      die 'The release verifier must be protected from runner writes.'
+  done
+  printf '%s\n' "$token" | /usr/bin/python3 -I "$verifier" \
+    --host-state "$state" --commit "$sha" --ci-run "$run_id" --operator "$operator" "$@"
+}
+
+operator=$(github "actions/runs/$run_id" | python3 -c '
 import json, sys
 r = json.load(sys.stdin)
 if not (
@@ -52,7 +69,11 @@ if not (
     and r["head_sha"] == sys.argv[2]
 ):
     sys.exit("The candidate does not match a successful CI push to main.")
-' "$repository" "$sha"
+operator = (r.get("triggering_actor") or r.get("actor") or {}).get("login")
+if not operator:
+    sys.exit("The release operator could not be verified from GitHub.")
+print(operator)
+' "$repository" "$sha")
 verify_main
 
 previous=$(readlink -f "$state/current")
@@ -64,10 +85,13 @@ if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
   exit 0
 fi
 
+authorization=$(verify_authorization)
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-[[ ! -e "$candidate/.env" && ! -L "$candidate/.env" ]] ||
-  die 'The source archive must not contain a production environment file.'
+for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEPLOY.json READINESS.json; do
+  [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
+    die 'The source archive contains a reserved release file.'
+done
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
 
@@ -106,7 +130,9 @@ compose() {
 }
 
 compose "$candidate" config --quiet
-compose "$candidate" build frontend_dist
+if ! docker image inspect "$frontend_image" >/dev/null 2>&1; then
+  compose "$candidate" build frontend_dist
+fi
 image_heads() {
   docker run --rm --network none --entrypoint alembic "$1" heads |
     awk 'NF {print $1}' | sort
@@ -143,9 +169,20 @@ PY
     cmp -s "$previous/$file" "$candidate/$file" ||
       die 'Storage bootstrap files changed. Prepare a maintenance rollout first.'
   done
-  compose "$candidate" build backend
+  if ! docker image inspect "$backend_image" >/dev/null 2>&1; then
+    compose "$candidate" build backend
+  fi
   compose "$candidate" pull --policy missing nginx grafana loki alloy
 fi
+
+backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
+frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
+printf '%s' "$authorization" | python3 -c '
+import json, sys
+approved = json.load(sys.stdin)["runtime_identity"]["image_digests"]
+if approved != {"backend": sys.argv[1], "frontend": sys.argv[2]}:
+    sys.exit("Built images differ from the authorized candidate.")
+' "$backend_id" "$frontend_id"
 
 heads=$(image_heads "$backend_image")
 current=$(docker exec "$project-postgres-1" sh -ec \
@@ -154,7 +191,17 @@ current=$(docker exec "$project-postgres-1" sh -ec \
   die 'Pending database migrations require the reviewed maintenance procedure.'
 
 verify_main
-unset token
+
+hash() { sha256sum | cut -d' ' -f1; }
+expected=$(docker run --rm --network none "$frontend_image" cat /dist/index.html | hash)
+asset=$(docker run --rm --network none "$frontend_image" sh -ec 'grep -o "/assets/index-[^\"]*\.js" /dist/index.html')
+[[ "$asset" =~ ^/assets/index-[A-Za-z0-9_-]+\.js$ ]] || die 'The frontend entry point is missing.'
+expected_asset=$(docker run --rm --network none "$frontend_image" cat "/dist$asset" | hash)
+expected_worker=$(docker run --rm --network none "$frontend_image" cat /dist/sw.js | hash)
+runtime_args=()
+while IFS= read -r head; do
+  runtime_args+=(--schema-head "$head")
+done <<< "$current"
 
 publish_frontend() {
   docker run --rm --network none -v "$frontend_volume:/site" "$1" sh -ec '
@@ -214,28 +261,43 @@ trap 'exit 143' TERM
 if (( runtime_changed )); then
   compose "$candidate" run --rm --no-deps --pull never -T backend \
     python scripts/backup.py --target all --skip-retention
+fi
+verify_main
+verify_authorization "${runtime_args[@]}" --backend-image "$backend_id" --frontend-image "$frontend_id" \
+  --frontend-sha256 "$expected_asset" --service-worker-sha256 "$expected_worker" > "$candidate/PREDEPLOY.json"
+unset token
+if (( runtime_changed )); then
   runtime_attempted=1
   apply_runtime "$candidate"
 fi
 frontend_attempted=1
 publish_frontend "$frontend_image"
 
-hash() { sha256sum | cut -d' ' -f1; }
-expected=$(docker run --rm --network none "$frontend_image" cat /dist/index.html | hash)
+for service in backend celery_worker celery_beat; do
+  container=$(compose "$candidate" ps -q "$service")
+  [[ -n "$container" && "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] ||
+    die "The active $service image differs from the approved backend build."
+done
 actual=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/login" | hash)
 [[ "$expected" == "$actual" ]] || die 'The served sign-in page differs from the release image.'
-asset=$(docker run --rm --network none "$frontend_image" sh -ec 'grep -o "/assets/index-[^\"]*\.js" /dist/index.html')
-[[ "$asset" =~ ^/assets/index-[A-Za-z0-9_-]+\.js$ ]] || die 'The frontend entry point is missing.'
-expected_asset=$(docker run --rm --network none "$frontend_image" cat "/dist$asset" | hash)
 actual_asset=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal$asset" | hash)
 [[ "$expected_asset" == "$actual_asset" ]] || die 'The served JavaScript differs from the release image.'
-expected_worker=$(docker run --rm --network none "$frontend_image" cat /dist/sw.js | hash)
 actual_worker=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/sw.js" | hash)
 [[ "$expected_worker" == "$actual_worker" ]] || die 'The served service worker differs from the release image.'
-curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/health/readiness"
+curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/health/readiness" > "$candidate/READINESS.json"
+python3 - "$candidate/READINESS.json" <<'PY'
+import json
+import sys
 
-printf 'Commit: %s\nCI run: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\n' \
-  "$sha" "$run_id" "$(date -u +%FT%TZ)" "$asset" "$expected_asset" "$expected_worker" > "$candidate/DEPLOYED"
+with open(sys.argv[1]) as file:
+    if json.load(file) != {"status": "ready", "database": "connected"}:
+        sys.exit("The served readiness response does not report a connected database.")
+PY
+cat "$candidate/READINESS.json"
+
+printf 'Commit: %s\nCI run: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+  "$sha" "$run_id" "$(date -u +%FT%TZ)" "$asset" "$expected_asset" "$expected_worker" \
+  "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
 ln -sfn "$candidate" "$state/.current-next"
 mv -Tf "$state/.current-next" "$state/current"
 trap - EXIT INT TERM

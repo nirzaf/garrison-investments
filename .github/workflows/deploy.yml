@@ -5,6 +5,12 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful main push CI run for the approved release
+        type: string
+        required: true
 
 permissions:
   actions: read
@@ -18,11 +24,13 @@ jobs:
   production:
     name: Deploy to Hostinger
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_sha == github.sha &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_sha == github.sha &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: [self-hosted, linux, x64, garrison-production]
     timeout-minutes: 30
     environment:
@@ -32,8 +40,8 @@ jobs:
       - name: Deploy the tested commit
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ github.event.workflow_run.id }}
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           printf '%s\n' "$GH_TOKEN" |
-            sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2
+            sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 release-contract-v1

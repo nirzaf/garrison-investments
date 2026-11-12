@@ -4,12 +4,18 @@ import argparse
 import hashlib
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+if __package__:
+    from .release_contract import VERSION, ContractError, Validation
+else:
+    from release_contract import VERSION, ContractError, Validation  # type: ignore[no-redef]
 
 
 @dataclass(frozen=True)
@@ -76,9 +82,14 @@ def check_url(url: str, timeout: int) -> dict[str, Any]:
 def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     generated_at = datetime.now(UTC).isoformat()
     target = args.target
-    approver = args.approver or env.get("GITHUB_TRIGGERING_ACTOR") or env.get("GITHUB_ACTOR")
-    if target == "production" and not approver:
-        raise ValueError("Production evidence requires --approver or a GitHub actor environment.")
+    approver = args.approver
+    operator = (
+        getattr(args, "operator", None)
+        or env.get("GITHUB_TRIGGERING_ACTOR")
+        or env.get("GITHUB_ACTOR")
+    )
+    if target == "production" and not (approver or operator):
+        raise ValueError("Production evidence collection requires an identified operator.")
 
     checks = []
     for label, url in (("health", args.health_url), ("readiness", args.readiness_url)):
@@ -103,9 +114,13 @@ def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str,
     return {
         "generated_at": generated_at,
         "target": target,
-        "commit": env.get("GITHUB_SHA") or args.commit,
+        "commit": args.commit or env.get("GITHUB_SHA"),
         "run_url": args.run_url or build_run_url(env),
         "approver": approver,
+        "operator": operator,
+        "status": "collected_incomplete",
+        "accepted_scope_complete": False,
+        "ready_for_authorized_deployment": False,
         "backup_object": args.backup_object,
         "checks": checks,
         "files": [
@@ -124,11 +139,14 @@ def render_markdown(evidence: dict[str, Any]) -> str:
     lines = [
         "# Launch Evidence Record",
         "",
+        "Status: collected / incomplete",
+        "",
         f"Generated at: `{evidence['generated_at']}`",
         f"Target: `{evidence['target']}`",
         f"Commit: `{evidence.get('commit') or 'not recorded'}`",
         f"Run URL: `{evidence.get('run_url') or 'not recorded'}`",
-        f"Approver/operator: `{evidence.get('approver') or 'not recorded'}`",
+        f"Operator: `{evidence.get('operator') or 'not recorded'}`",
+        f"Reported approver: `{evidence.get('approver') or 'not recorded'}`",
         f"Backup object: `{evidence.get('backup_object') or 'not recorded'}`",
         "",
         "## Runtime Checks",
@@ -140,9 +158,7 @@ def render_markdown(evidence: dict[str, Any]) -> str:
     if checks:
         for check in checks:
             result = "pass" if check["ok"] else "fail"
-            lines.append(
-                f"| {check['label']} | `{check['url']}` | {check['status']} | {result} |"
-            )
+            lines.append(f"| {check['label']} | `{check['url']}` | {check['status']} | {result} |")
     else:
         lines.append("| not supplied | not supplied |  | not checked |")
 
@@ -162,9 +178,7 @@ def render_markdown(evidence: dict[str, Any]) -> str:
                 f"| {item['label']} | `{item['path']}` | "
                 f"`{item['sha256']}` | {item['size_bytes']} |"
             )
-            lines.append(
-                row
-            )
+            lines.append(row)
     else:
         lines.append("| not supplied | not supplied | not supplied | 0 |")
     lines.append("")
@@ -173,13 +187,14 @@ def render_markdown(evidence: dict[str, Any]) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Capture deployment and launch evidence.")
-    parser.add_argument("--target", choices=["staging", "production"], required=True)
+    parser.add_argument("--target", choices=["staging", "production", "test"], required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--health-url")
     parser.add_argument("--readiness-url")
     parser.add_argument("--timeout", type=int, default=10)
     parser.add_argument("--approver")
+    parser.add_argument("--operator")
     parser.add_argument("--run-url")
     parser.add_argument("--commit")
     parser.add_argument("--backup-object")
@@ -187,18 +202,123 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--uat-signoff")
     parser.add_argument("--template-signoff")
     parser.add_argument("--migration-source", action="append", default=[])
-    return parser.parse_args()
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--evidence-root", type=Path)
+    parser.add_argument("--trust-registry", type=Path)
+    parser.add_argument("--phase", choices=["predeploy", "final"])
+    parser.add_argument("--validate-only", action="store_true")
+    args = parser.parse_args()
+    if any(
+        (args.manifest, args.evidence_root, args.trust_registry, args.phase, args.validate_only)
+    ):
+        if not all(
+            (
+                args.manifest,
+                args.evidence_root,
+                args.trust_registry,
+                args.phase,
+                args.validate_only,
+                args.commit,
+            )
+        ):
+            parser.error(
+                "Strict validation requires --manifest, --evidence-root, --trust-registry, "
+                "--phase, --validate-only and --commit."
+            )
+        root = args.evidence_root.resolve()
+        verdicts = root / "verdicts"
+        inputs = {args.manifest.resolve(), args.trust_registry.resolve()}
+        for output in (args.output, args.json_output):
+            if output is None:
+                continue
+            location = output.resolve()
+            if location in inputs or (
+                location.is_relative_to(root) and not location.is_relative_to(verdicts)
+            ):
+                parser.error(
+                    "Verdicts belong outside the input evidence or under its verdicts directory."
+                )
+    elif args.target == "test":
+        parser.error("The test target is reserved for strict fixture validation.")
+    if args.json_output and args.json_output.resolve() == args.output.resolve():
+        parser.error("Markdown and JSON outputs must be distinct.")
+    return args
+
+
+def atomic_write(path: Path, content: str) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=".verdict-", delete=False
+        ) as file:
+            pending = Path(file.name)
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        pending.replace(path)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+
+
+def strict_verdict(args: argparse.Namespace, env: dict[str, str]) -> tuple[dict[str, Any], int]:
+    try:
+        if env.get("GITHUB_SHA") and env["GITHUB_SHA"] != args.commit:
+            raise ContractError(3, "The explicit source SHA differs from the GitHub environment.")
+        verifier = Validation(
+            args.evidence_root,
+            args.trust_registry,
+            phase=args.phase,
+            sha=args.commit,
+            target=args.target,
+            token=env.get("GH_TOKEN") or env.get("GITHUB_TOKEN"),
+            actor=args.operator or env.get("GITHUB_TRIGGERING_ACTOR") or env.get("GITHUB_ACTOR"),
+        )
+        return verifier.run(args.manifest), 0
+    except (ContractError, OSError, TypeError, ValueError, KeyError) as error:
+        reason = str(error) if isinstance(error, ContractError) else "Invalid evidence input."
+        return {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "phase": args.phase,
+            "status": "blocked",
+            "accepted_scope_complete": False,
+            "ready_for_authorized_deployment": False,
+            "source_sha": args.commit,
+            "target_environment": args.target,
+            "validator_version": VERSION,
+            "blockers": [reason],
+        }, error.code if isinstance(error, ContractError) else 2
+
+
+def render_verdict(verdict: dict[str, Any]) -> str:
+    lines = [
+        "# Release evidence verdict",
+        "",
+        f"Phase `{verdict['phase']}` returned `{verdict['status']}`.",
+        f"Source `{verdict['source_sha']}` targets `{verdict['target_environment']}`.",
+        f"Accepted scope complete is `{str(verdict['accepted_scope_complete']).lower()}`.",
+    ]
+    if verdict["blockers"]:
+        lines.extend(["", *(f"- {reason}" for reason in verdict["blockers"])])
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
     args = parse_args()
-    evidence = collect_evidence(args, dict(os.environ))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render_markdown(evidence), encoding="utf-8")
+    env = dict(os.environ)
+    if args.phase:
+        evidence, status = strict_verdict(args, env)
+        markdown = render_verdict(evidence)
+    else:
+        evidence, status = collect_evidence(args, env), 0
+        markdown = render_markdown(evidence)
+    atomic_write(args.output, markdown)
     if args.json_output:
-        args.json_output.parent.mkdir(parents=True, exist_ok=True)
-        args.json_output.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+        atomic_write(args.json_output, json.dumps(evidence, indent=2) + "\n")
     print(f"Wrote launch evidence to {args.output}")
+    if status:
+        raise SystemExit(status)
 
 
 if __name__ == "__main__":
