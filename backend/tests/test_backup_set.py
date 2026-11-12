@@ -1,7 +1,11 @@
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
+from scripts import backup
 from scripts.backup_set import (
     MANIFEST,
     BackupSetError,
@@ -12,6 +16,29 @@ from scripts.backup_set import (
     require_disposable_bucket,
     require_disposable_database,
 )
+
+
+@pytest.mark.parametrize(("flags", "cleanup_calls"), [([], 2), (["--skip-retention"], 0)])
+def test_backup_retention_can_be_skipped_for_release(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[str], cleanup_calls: int
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["backup.py", "--target", "all", *flags])
+    monkeypatch.setenv("DATABASE_URL", "postgresql://synthetic@127.0.0.1/disposable")
+    monkeypatch.setenv("GRAFANA_DB_PASSWORD", "synthetic")
+    monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "synthetic")
+    monkeypatch.setenv("BACKUP_LOCAL_DIR", str(tmp_path))
+    monkeypatch.setenv("MINIO_BUCKET", "disposable-backups")
+    client = Mock()
+    cleanup = Mock()
+    monkeypatch.setattr(backup, "get_minio_client", lambda: client)
+    monkeypatch.setattr(backup, "create_dump", Mock())
+    monkeypatch.setattr(backup, "encrypt_file", lambda path, password: path.with_suffix(".enc"))
+    monkeypatch.setattr(backup, "cleanup_retention", cleanup)
+
+    backup.main()
+
+    assert client.fput_object.call_count == 2
+    assert cleanup.call_count == cleanup_calls
 
 
 @pytest.mark.parametrize(

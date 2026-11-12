@@ -112,6 +112,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create encrypted PostgreSQL backups in MinIO.")
     parser.add_argument("--monthly", action="store_true", help="Store backup under monthly prefix.")
     parser.add_argument(
+        "--skip-retention", action="store_true", help="Upload without removing expired backups."
+    )
+    parser.add_argument(
         "--allow-unencrypted", action="store_true", help="Explicitly allow a plaintext backup."
     )
     parser.add_argument(
@@ -149,6 +152,7 @@ def backup_database(
     bucket: str,
     local_dir: Path,
     encryption_password: str | None,
+    skip_retention: bool = False,
 ) -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_path = local_dir / f"{name}-{timestamp}.sql.gz"
@@ -164,12 +168,13 @@ def backup_database(
     ensure_bucket(client, bucket)
     upload_backup(client, bucket, object_name, backup_path)
 
-    retention_days = (
-        monthly_retention_days(int(os.getenv("MONTHLY_BACKUP_RETENTION_MONTHS", "12")))
-        if monthly
-        else int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
-    )
-    cleanup_retention(client, bucket, prefix, retention_days)
+    if not skip_retention:
+        retention_days = (
+            monthly_retention_days(int(os.getenv("MONTHLY_BACKUP_RETENTION_MONTHS", "12")))
+            if monthly
+            else int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
+        )
+        cleanup_retention(client, bucket, prefix, retention_days)
     return f"Uploaded backup {object_name} from {redact_url(database_url)}"
 
 
@@ -196,6 +201,7 @@ def main() -> None:
                     bucket=bucket,
                     local_dir=Path(run_dir),
                     encryption_password=encryption_password,
+                    skip_retention=args.skip_retention,
                 )
             )
 

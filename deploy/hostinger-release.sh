@@ -212,7 +212,8 @@ trap rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 if (( runtime_changed )); then
-  compose "$previous" run --rm --no-deps --pull never -T backend python scripts/backup.py --target all
+  compose "$candidate" run --rm --no-deps --pull never -T backend \
+    python scripts/backup.py --target all --skip-retention
   runtime_attempted=1
   apply_runtime "$candidate"
 fi
