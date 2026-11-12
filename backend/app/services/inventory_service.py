@@ -1,4 +1,6 @@
 from decimal import Decimal
+from hashlib import sha256
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import Select, func, or_, select, text
@@ -6,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.daily_report import DailyReport
+from app.models.idempotency_record import IdempotencyRecord
 from app.models.inventory import (
     InventoryAsset,
     InventoryItem,
@@ -16,6 +19,7 @@ from app.models.inventory import (
     StorageLocation,
 )
 from app.models.notification import Notification
+from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.approvals import ApprovalCreateRequest
@@ -23,11 +27,15 @@ from app.schemas.inventory import (
     AssetCreateRequest,
     InventoryItemCreateRequest,
     LocationCreateRequest,
+    MaterialQuantityCommand,
     MaterialRequestCreateRequest,
+    MaterialRequestResponse,
     MovementCreateRequest,
 )
 from app.services.approval_service import ApprovalService
 from app.services.audit_service import AuditService
+from app.services.authorization import accessible_project_ids
+from app.services.idempotency import resolve_or_reserve
 from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
@@ -35,15 +43,18 @@ from app.utils.permissions import (
     PERMISSION_INVENTORY_MANAGE,
     ROLE_ACCOUNTS,
     ROLE_ADMIN,
+    ROLE_CIVIL_ENGINEER,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
     ROLE_PROJECT_MANAGER,
     ROLE_STORE_KEEPER,
+    ensure_permission,
     has_permission,
 )
 
 PRICE_VISIBLE_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_ACCOUNTS}
 STOCK_OUT_TYPES = {"issue", "consume", "wastage", "damaged"}
+REQUEST_CREATOR_ROLES = {ROLE_ADMIN, ROLE_STORE_KEEPER, ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
 
 
 class InventoryService:
@@ -306,6 +317,20 @@ class InventoryService:
         payload: MaterialRequestCreateRequest,
         actor: User,
     ) -> MaterialRequest:
+        projects = await self._request_projects_query(actor)
+        project = await self.session.scalar(projects.where(Project.id == payload.project_id))
+        if project is None:
+            raise NotFoundException("Eligible request project")
+        location = await self.session.scalar(
+            select(StorageLocation).where(
+                StorageLocation.id == payload.from_location_id,
+                StorageLocation.deleted_at.is_(None),
+                StorageLocation.is_active.is_(True),
+                or_(StorageLocation.project_id.is_(None), StorageLocation.project_id == project.id),
+            )
+        )
+        if location is None:
+            raise NotFoundException("Eligible request source location")
         sequence = int(
             await self.session.scalar(text("select nextval('material_request_number_seq')"))
         )
@@ -323,6 +348,10 @@ class InventoryService:
         await self.session.flush()
         for line_payload in payload.lines:
             item = await self._get_item(line_payload.item_id)
+            if not item.is_active:
+                raise AppException(
+                    "Select an active inventory item.", status_code=422, error_code="ITEM_INACTIVE"
+                )
             line_cost = (item.unit_cost or Decimal("0")) * line_payload.quantity
             total += line_cost
             self.session.add(
@@ -353,6 +382,34 @@ class InventoryService:
         await self.session.commit()
         self.session.expire_all()
         return await self._get_material_request(request_id)
+
+    async def _request_projects_query(self, actor: User) -> Select[Project]:
+        if actor.role not in REQUEST_CREATOR_ROLES:
+            raise AppException(
+                "You cannot create material requests.",
+                status_code=403,
+                error_code="REQUEST_CREATE_FORBIDDEN",
+            )
+        query = select(Project).where(Project.deleted_at.is_(None), Project.status == "active")
+        if actor.role != ROLE_STORE_KEEPER:
+            ids = await accessible_project_ids(self.session, actor)
+            if ids is not None:
+                query = query.where(Project.id.in_(ids))
+        return query
+
+    async def list_request_projects(
+        self,
+        actor: User,
+        *,
+        search: str | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[Project], int]:
+        query = await self._request_projects_query(actor)
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            query = query.where(or_(Project.code.ilike(pattern), Project.name.ilike(pattern)))
+        return await self._list_page(query.order_by(Project.name, Project.id), limit, offset)
 
     async def list_material_requests(
         self, *, request_id: UUID | None = None, limit: int | None = None, offset: int = 0
@@ -386,7 +443,7 @@ class InventoryService:
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )
-        for line in request.lines:
+        for line in sorted(request.lines, key=lambda line: (line.item_id, line.id)):
             # ``reserved_quantity`` tracks only what is reserved and NOT yet issued, so
             # re-reserving a partially issued request must not reserve the issued part again.
             remaining = line.quantity - line.reserved_quantity - line.issued_quantity
@@ -407,6 +464,7 @@ class InventoryService:
                 )
             )
         request.status = "reserved"
+        request.revision += 1
         await self.session.commit()
         return request
 
@@ -419,7 +477,7 @@ class InventoryService:
                 error_code="REQUEST_STATUS_INVALID",
             )
         fully_issued = True
-        for line in request.lines:
+        for line in sorted(request.lines, key=lambda line: (line.item_id, line.id)):
             remaining = line.quantity - line.issued_quantity
             if remaining <= 0:
                 continue
@@ -455,11 +513,12 @@ class InventoryService:
                 )
             )
         request.status = "issued" if fully_issued else "partially_issued"
+        request.revision += 1
         await self.session.commit()
         return request
 
     async def cancel_request(self, request_id: UUID, actor: User) -> MaterialRequest:
-        request = await self._get_material_request(request_id, for_update=True)
+        request = await self._get_material_request(request_id, for_update=True, lock_lines=False)
         if request.requester_id != actor.id and not has_permission(
             actor,
             PERMISSION_INVENTORY_MANAGE,
@@ -469,13 +528,18 @@ class InventoryService:
                 status_code=403,
                 error_code="REQUEST_CANCEL_FORBIDDEN",
             )
-        if request.status in {"issued", "cancelled"}:
+        if request.status == "issued":
             raise AppException(
                 "Material request cannot be cancelled.",
                 status_code=409,
                 error_code="REQUEST_STATUS_INVALID",
             )
-        for line in request.lines:
+        await ApprovalService(self.session).cancel_material_request_approvals(request.id, actor)
+        if request.status == "cancelled":
+            await self.session.commit()
+            return request
+        await self._lock_request_lines(request.id)
+        for line in sorted(request.lines, key=lambda line: (line.item_id, line.id)):
             if line.reserved_quantity > 0:
                 stock = await self._get_stock(
                     line.item_id,
@@ -490,6 +554,7 @@ class InventoryService:
                 stock.reserved_qty -= release
                 line.reserved_quantity = Decimal("0")
         request.status = "cancelled"
+        request.revision += 1
         await self.audit.record(
             action="inventory.requests.cancelled",
             user_id=actor.id,
@@ -498,6 +563,153 @@ class InventoryService:
         )
         await self.session.commit()
         return request
+
+    async def fulfill_quantities(
+        self,
+        request_id: UUID,
+        actor: User,
+        command: MaterialQuantityCommand,
+        *,
+        action: Literal["reserve", "issue"],
+        key: str,
+    ) -> MaterialRequestResponse:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+        route = f"inventory.requests.{action}"
+        amounts = {line.line_id: line.quantity for line in command.lines}
+        payload = "|".join(
+            [
+                str(request_id),
+                str(command.expected_revision),
+                *(f"{line_id}:{amount:.3f}" for line_id, amount in sorted(amounts.items())),
+            ]
+        )
+        fingerprint = sha256(payload.encode()).hexdigest()
+        replay = await resolve_or_reserve(self.session, key=key, user_id=actor.id, route=route)
+        record = await self.session.scalar(
+            select(IdempotencyRecord).where(
+                IdempotencyRecord.key == key,
+                IdempotencyRecord.user_id == actor.id,
+                IdempotencyRecord.route == route,
+            )
+        )
+        assert record is not None
+        if replay is not None:
+            if record.request_fingerprint != fingerprint or record.response_json is None:
+                raise AppException(
+                    "This command key was used for different quantities.",
+                    status_code=409,
+                    error_code="REQUEST_REPLAY_CONFLICT",
+                )
+            return MaterialRequestResponse.model_validate(record.response_json)
+
+        request = await self._get_material_request(request_id, for_update=True)
+        if request.revision != command.expected_revision:
+            raise AppException(
+                "Refresh the request before making further changes.",
+                status_code=409,
+                error_code="REQUEST_REVISION_CONFLICT",
+            )
+        if request.status not in {"approved", "partially_reserved", "reserved", "partially_issued"}:
+            raise AppException(
+                "This material request is no longer eligible for fulfillment.",
+                status_code=409,
+                error_code="REQUEST_STATUS_INVALID",
+            )
+
+        lines = [line for line in request.lines if line.deleted_at is None]
+        selected = sorted(
+            (line for line in lines if line.id in amounts), key=lambda line: (line.item_id, line.id)
+        )
+        if len(selected) != len(amounts):
+            raise AppException(
+                "Every selected line must belong to this request.",
+                status_code=422,
+                error_code="REQUEST_LINE_INVALID",
+            )
+        stocks: dict[UUID, InventoryLocationStock] = {}
+        allocated: dict[UUID, Decimal] = {}
+        for line in selected:
+            if line.item_id not in stocks:
+                stocks[line.item_id] = await self._get_stock(
+                    line.item_id, request.from_location_id, for_update=True
+                )
+            stock = stocks[line.item_id]
+            quantity = amounts[line.id]
+            prior = allocated.get(line.item_id, Decimal("0"))
+            outstanding = line.quantity - line.issued_quantity
+            if action == "reserve":
+                allowed = min(
+                    outstanding - line.reserved_quantity,
+                    stock.on_hand_qty - stock.reserved_qty - prior,
+                )
+            else:
+                allowed = min(
+                    outstanding,
+                    line.reserved_quantity,
+                    stock.reserved_qty - prior,
+                    stock.on_hand_qty - prior,
+                )
+            if quantity > allowed:
+                raise AppException(
+                    "A selected quantity exceeds the line or available stock balance.",
+                    status_code=409,
+                    error_code="REQUEST_QUANTITY_UNAVAILABLE",
+                )
+            allocated[line.item_id] = prior + quantity
+
+        for line in selected:
+            quantity = amounts[line.id]
+            stock = stocks[line.item_id]
+            if action == "reserve":
+                stock.reserved_qty += quantity
+                line.reserved_quantity += quantity
+            else:
+                stock.reserved_qty -= quantity
+                stock.on_hand_qty -= quantity
+                line.reserved_quantity -= quantity
+                line.issued_quantity += quantity
+            self.session.add(
+                InventoryMovement(
+                    item_id=line.item_id,
+                    movement_type=action,
+                    quantity=quantity,
+                    from_location_id=request.from_location_id,
+                    project_id=request.project_id,
+                    reference_type="material_request",
+                    reference_id=request.id,
+                    handled_by=actor.id,
+                )
+            )
+        if action == "issue":
+            for item_id in stocks:
+                await self._notify_low_stock(
+                    item_id=item_id,
+                    location_id=request.from_location_id,
+                    project_id=request.project_id,
+                )
+        if all(line.issued_quantity == line.quantity for line in lines):
+            request.status = "issued"
+        elif any(line.issued_quantity > 0 for line in lines):
+            request.status = "partially_issued"
+        elif all(line.reserved_quantity == line.quantity for line in lines):
+            request.status = "reserved"
+        else:
+            request.status = "partially_reserved"
+        request.revision += 1
+        await self.audit.record(
+            action=f"inventory.requests.{action}",
+            user_id=actor.id,
+            entity_type="material_requests",
+            entity_id=request.id,
+            new_values={"revision": request.revision, "status": request.status},
+        )
+        response = MaterialRequestResponse.model_validate(request)
+        record.resource_type = "material_request"
+        record.resource_id = request.id
+        record.request_fingerprint = fingerprint
+        record.response_json = response.model_dump(mode="json")
+        await self.session.commit()
+        return response
 
     async def _apply_movement(
         self,
@@ -794,6 +1006,7 @@ class InventoryService:
         request_id: UUID,
         *,
         for_update: bool = False,
+        lock_lines: bool = True,
     ) -> MaterialRequest:
         query = (
             select(MaterialRequest)
@@ -808,13 +1021,17 @@ class InventoryService:
         request = await self.session.scalar(query)
         if not request:
             raise NotFoundException("Material request")
-        if for_update:
-            await self.session.scalars(
-                select(MaterialRequestLine)
-                .where(
-                    MaterialRequestLine.request_id == request.id,
-                    MaterialRequestLine.deleted_at.is_(None),
-                )
-                .with_for_update()
-            )
+        if for_update and lock_lines:
+            await self._lock_request_lines(request.id)
         return request
+
+    async def _lock_request_lines(self, request_id: UUID) -> None:
+        await self.session.scalars(
+            select(MaterialRequestLine)
+            .where(
+                MaterialRequestLine.request_id == request_id,
+                MaterialRequestLine.deleted_at.is_(None),
+            )
+            .order_by(MaterialRequestLine.id)
+            .with_for_update()
+        )

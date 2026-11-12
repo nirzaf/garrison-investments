@@ -52,6 +52,7 @@ class ApprovalResponse(BaseModel):
     reminded_at: datetime | None
     escalated_at: datetime | None
     decided_at: datetime | None
+    allowed_actions: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

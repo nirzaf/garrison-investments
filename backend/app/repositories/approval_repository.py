@@ -32,25 +32,51 @@ class ApprovalRepository:
             )
         )
 
+    async def lock_open_for_request(self, request_type: str, request_id: UUID) -> list[Approval]:
+        return list(
+            await self.session.scalars(
+                select(Approval)
+                .where(
+                    Approval.request_type == request_type,
+                    Approval.request_id == request_id,
+                    Approval.status.in_(["pending", "delegated", "escalated"]),
+                    Approval.deleted_at.is_(None),
+                )
+                .order_by(Approval.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        )
+
     async def list_for_user(
         self,
         *,
         user_id: UUID,
         box: str,
         status: str | None,
+        open_only: bool = False,
         limit: int,
         offset: int,
         include_all_inbox: bool = False,
+        project_ids: list[UUID] | None = None,
     ) -> tuple[list[Approval], int]:
         query: Select[Approval] = select(Approval).where(Approval.deleted_at.is_(None))
         if box == "outbox":
             query = query.where(Approval.submitter_id == user_id)
         elif not include_all_inbox:
             query = query.where(
-                or_(Approval.approver_id == user_id, Approval.delegated_to_id == user_id)
+                or_(
+                    Approval.approver_id == user_id,
+                    Approval.delegated_to_id == user_id,
+                    (Approval.escalation_user_id == user_id) & (Approval.status == "escalated"),
+                )
             )
+            if project_ids is not None:
+                query = query.where(Approval.project_id.in_(project_ids))
         if status:
             query = query.where(Approval.status == status)
+        elif open_only:
+            query = query.where(Approval.status.in_(["pending", "delegated", "escalated"]))
         total_query = select(func.count()).select_from(
             query.with_only_columns(Approval.id).subquery()
         )
@@ -58,7 +84,9 @@ class ApprovalRepository:
         approvals = list(
             (
                 await self.session.scalars(
-                    query.order_by(Approval.submitted_at.desc()).limit(limit).offset(offset)
+                    query.order_by(Approval.submitted_at.desc(), Approval.id.desc())
+                    .limit(limit)
+                    .offset(offset)
                 )
             ).all()
         )

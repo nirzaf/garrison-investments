@@ -1,7 +1,7 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.inventory import InventoryItem, InventoryLocationStock
@@ -13,13 +13,18 @@ from app.schemas.inventory import (
     InventoryItemResponse,
     LocationCreateRequest,
     LocationResponse,
+    MaterialQuantityCommand,
     MaterialRequestCreateRequest,
     MaterialRequestResponse,
     MovementCreateRequest,
     MovementResponse,
+    RequestProjectOption,
+    RequestProjectOptions,
     StockResponse,
 )
+from app.services.idempotency import validate_key
 from app.services.inventory_service import PRICE_VISIBLE_ROLES, InventoryService
+from app.utils.exceptions import AppException
 from app.utils.permissions import PERMISSION_INVENTORY_MANAGE, PERMISSION_INVENTORY_VIEW
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -196,13 +201,36 @@ async def create_material_request(
     return MaterialRequestResponse.model_validate(request)
 
 
+@router.get("/request-projects", response_model=RequestProjectOptions)
+async def list_material_request_projects(
+    current_user: CanViewInventory,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> RequestProjectOptions:
+    projects, total = await InventoryService(session).list_request_projects(
+        current_user, search=search, limit=limit, offset=offset
+    )
+    return RequestProjectOptions(
+        items=[RequestProjectOption.model_validate(project) for project in projects], total=total
+    )
+
+
 @router.post("/requests/{request_id}/reserve", response_model=MaterialRequestResponse)
 async def reserve_material_request(
     request_id: UUID,
     current_user: CanManageInventory,
     session: DbSession,
+    command: MaterialQuantityCommand | None = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> MaterialRequestResponse:
-    request = await InventoryService(session).reserve_request(request_id, current_user)
+    service = InventoryService(session)
+    if command is not None:
+        return await service.fulfill_quantities(
+            request_id, current_user, command, action="reserve", key=quantity_key(idempotency_key)
+        )
+    request = await service.reserve_request(request_id, current_user)
     return MaterialRequestResponse.model_validate(request)
 
 
@@ -211,9 +239,27 @@ async def issue_material_request(
     request_id: UUID,
     current_user: CanManageInventory,
     session: DbSession,
+    command: MaterialQuantityCommand | None = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> MaterialRequestResponse:
-    request = await InventoryService(session).issue_request(request_id, current_user)
+    service = InventoryService(session)
+    if command is not None:
+        return await service.fulfill_quantities(
+            request_id, current_user, command, action="issue", key=quantity_key(idempotency_key)
+        )
+    request = await service.issue_request(request_id, current_user)
     return MaterialRequestResponse.model_validate(request)
+
+
+def quantity_key(header: str | None) -> str:
+    key = validate_key(header)
+    if key is None:
+        raise AppException(
+            "Selected quantities require an Idempotency-Key.",
+            status_code=422,
+            error_code="REQUEST_IDEMPOTENCY_KEY_REQUIRED",
+        )
+    return key
 
 
 @router.post("/requests/{request_id}/cancel", response_model=MaterialRequestResponse)
