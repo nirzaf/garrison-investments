@@ -18,6 +18,13 @@ private_file() {
   (( (8#$mode & 077) == 0 )) || die 'Recovery inputs require owner-only permissions.'
 }
 
+protected_directory() {
+  local directory=$1 forbidden=$2 mode
+  [[ -d "$directory" && ! -L "$directory" && "$(stat -c %u "$directory")" == 0 ]] || return 1
+  mode=$(stat -c %a "$directory") || return 1
+  (( (8#$mode & forbidden) == 0 ))
+}
+
 policy=${RECOVERY_POLICY:?Set the approved recovery policy file path.}
 template=${RECOVERY_CAPTURE_TEMPLATE:?Set the approved capture inventory path.}
 configuration=${RECOVERY_CONFIGURATION_ROOT:?Set the dedicated nonsecret configuration directory.}
@@ -63,8 +70,6 @@ sha=$(cat "$release/SOURCE_COMMIT")
 backend="$project-backend-1"
 image=$(docker inspect --format '{{.Image}}' "$backend")
 [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]] || die 'Active backend image identity is unavailable.'
-network=$(docker inspect --format '{{range $name, $value := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$project-postgres-1")
-[[ "$network" =~ ^[a-zA-Z0-9_-]+$ ]] || die 'Expected one private database network.'
 read -r pause_seconds publish_minutes < <(
   docker run --rm --network none -v "$policy:/policy.json:ro" "$image" \
     python -m scripts.backup_set policy-check --policy /policy.json
@@ -72,12 +77,23 @@ read -r pause_seconds publish_minutes < <(
 [[ "$pause_seconds" =~ ^[1-9][0-9]*$ && "$publish_minutes" =~ ^[1-9][0-9]*$ ]] ||
   die 'Approved recovery time limits could not be read.'
 
-install -d -m 0700 "$recovery"
-run=$(mktemp -d "$recovery/capture-XXXXXXXX")
+protected_directory "$base" 022 || die 'Recovery requires a protected root-owned portal directory.'
+recovery_parent=${recovery%/*}
+if [[ ! -e "$recovery_parent" && ! -L "$recovery_parent" ]]; then mkdir -m 0700 -- "$recovery_parent"; fi
+protected_directory "$recovery_parent" 022 || die 'Recovery requires a protected root-owned directory.'
+if [[ ! -e "$recovery" && ! -L "$recovery" ]]; then mkdir -m 0700 -- "$recovery"; fi
+protected_directory "$recovery" 077 || die 'Scheduled recovery requires an owner-only root directory.'
+
+# Use one owned slot. A publication failure must not allocate another full set.
+run="$recovery/.scheduled-capture"
 started_at=$(date -u +%FT%TZ)
-phase=preflight
+phase=spool
+created=0
 paused=0
 writers=()
+remove_run() {
+  protected_directory "$run" 077 && rm -rf -- "$run"
+}
 resume_writers() {
   if (( paused && ${#writers[@]} )); then
     local service writer status failed=0 end=$((SECONDS + 90))
@@ -116,6 +132,11 @@ finish() {
   if ! resume_writers; then
     phase=resume
     status=1
+  elif (( created )) && [[ -d "$run" && ! -e "$run/set/manifest.json" && ! -L "$run/set/manifest.json" ]]; then
+    if ! remove_run; then
+      phase=cleanup
+      status=1
+    fi
   fi
   python3 - "$recovery" "$sha" "$started_at" "$phase" "$status" <<'PY'
 import json
@@ -140,6 +161,43 @@ PY
 }
 trap finish EXIT
 trap 'exit 1' INT TERM
+
+common=(-v "$policy:/policy.json:ro" -v "$auth_key:/recovery-key:ro"
+  -e BACKUP_AUTH_KEY_FILE=/recovery-key -e "BACKUP_AUTH_KEY_ID=$key_id")
+publish_capture() {
+  protected_directory "$run/set" 077 || die 'Pending recovery set is not a private directory.'
+  private_file "$run/set/manifest.json"
+  phase=publication
+  timeout "$((publish_minutes * 60))" docker run --rm --env-file "$publisher_env" \
+    "${common[@]}" -v "$run/set:/capture:ro" -v "$recovery:/receipts" "$image" \
+    python -m scripts.backup_set publish /capture --policy /policy.json \
+    --receipt /receipts/latest-success.json
+  phase=cleanup
+  remove_run || die 'Published recovery workspace could not be removed safely.'
+  phase=complete
+}
+
+if [[ -e "$run" || -L "$run" ]]; then
+  protected_directory "$run" 077 || die 'Pending recovery workspace is not a private directory.'
+  private_file "$run/attempt"
+  [[ -f "$run/writers-resumed" && ! -L "$run/writers-resumed" ]] ||
+    die 'Pending recovery workspace requires operator review before reuse.'
+  private_file "$run/writers-resumed"
+  read -r capture_sha capture_image capture_started extra < "$run/attempt"
+  [[ "$capture_sha" == "$sha" && "$capture_image" == "$image" && -z "$extra" &&
+     "$capture_started" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+    die 'Pending recovery capture differs from the active release or has invalid metadata.'
+  # The receipt covers the original snapshot and its eventual verified publication.
+  started_at=$capture_started
+  publish_capture
+  exit 0
+fi
+
+network=$(docker inspect --format '{{range $name, $value := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$project-postgres-1")
+[[ "$network" =~ ^[a-zA-Z0-9_-]+$ ]] || die 'Expected one private database network.'
+mkdir -m 0700 -- "$run"
+created=1
+printf '%s %s %s\n' "$sha" "$image" "$started_at" > "$run/attempt"
 
 for service in nginx celery_beat celery_worker backend grafana; do
   writer="$project-$service-1"
@@ -174,8 +232,6 @@ PY
 
 remaining=$((pause_seconds - (SECONDS - pause_started)))
 (( remaining > 0 )) || die 'The capture pause limit was exceeded.'
-common=(-v "$policy:/policy.json:ro" -v "$auth_key:/recovery-key:ro"
-  -e BACKUP_AUTH_KEY_FILE=/recovery-key -e "BACKUP_AUTH_KEY_ID=$key_id")
 phase=capture
 timeout "$remaining" docker run --rm --network "$network" --env-file "$capture_env" \
   "${common[@]}" -v "$run:/capture" -v "$configuration:/configuration:ro" "$image" \
@@ -185,9 +241,5 @@ timeout "$remaining" docker run --rm --network "$network" --env-file "$capture_e
 phase=resume
 resume_writers || die 'Previously running writers could not be resumed.'
 (( SECONDS - pause_started <= pause_seconds )) || die 'The approved capture pause was exceeded.'
-phase=publication
-timeout "$((publish_minutes * 60))" docker run --rm --env-file "$publisher_env" \
-  "${common[@]}" -v "$run/set:/capture:ro" -v "$recovery:/receipts" "$image" \
-  python -m scripts.backup_set publish /capture --policy /policy.json \
-  --receipt /receipts/latest-success.json
-phase=complete
+: > "$run/writers-resumed"
+publish_capture

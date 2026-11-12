@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -11,11 +12,17 @@ WRAPPER = Path(__file__).resolve().parents[2] / "deploy" / "capture-recovery-set
 SHA = "a" * 40
 IMAGE = "sha256:" + "b" * 64
 
-DOCKER = """#!/usr/bin/env python3
+DOCKER = r"""#!/usr/bin/env python3
 import json, os, pathlib, sys
 path = pathlib.Path(os.environ['FIXTURE_WRITER_STATE'])
 state = json.loads(path.read_text())
+events = pathlib.Path(os.environ['FIXTURE_EVENTS'])
 args = sys.argv[1:]
+
+def record(action, set_id):
+    with events.open('a') as output:
+        output.write(f'{action}:{set_id}\n')
+
 if args[0] == 'inspect':
     if '.Image' in args[2]:
         print(os.environ['FIXTURE_IMAGE'])
@@ -26,6 +33,7 @@ if args[0] == 'inspect':
     else:
         print(str(state[args[3]]).lower())
 elif args[0] == 'stop':
+    record('stop', len(args) - 1)
     for name in args[1:]:
         assert state[name]
         state[name] = False
@@ -42,12 +50,25 @@ elif 'policy-check' in args:
 elif 'capture' in args:
     assert not any(state.values())
     volume = next(arg for arg in args if arg.endswith(':/capture'))
-    (pathlib.Path(volume.removesuffix(':/capture')) / 'set').mkdir()
+    destination = pathlib.Path(volume.removesuffix(':/capture')) / 'set'
+    destination.mkdir(mode=0o700)
+    (destination / 'application.sql.gz.enc').write_text('fixture data')
+    set_id = 1 + events.read_text().count('capture:')
+    record('capture', set_id)
+    if os.environ.get('FIXTURE_FAILURE') == 'capture':
+        sys.exit(124)
+    (destination / 'manifest.json').write_text(str(set_id))
 elif 'publish' in args:
     assert state['garrison-portal-backend-1'] and state['garrison-portal-nginx-1']
+    volume = next(arg for arg in args if arg.endswith(':/capture:ro'))
+    set_path = pathlib.Path(volume.removesuffix(':/capture:ro'))
+    set_id = (set_path / 'manifest.json').read_text()
+    record('publish', set_id)
+    if os.environ.get('FIXTURE_FAILURE') == 'publication':
+        sys.exit(1)
     volume = next(arg for arg in args if arg.endswith(':/receipts'))
     root = pathlib.Path(volume.removesuffix(':/receipts'))
-    (root / 'latest-success.json').write_text('published')
+    (root / 'latest-success.json').write_text(set_id)
 else:
     sys.exit(2)
 """
@@ -59,12 +80,28 @@ def executable(directory: Path, name: str, source: str) -> None:
     target.chmod(0o700)
 
 
-@pytest.mark.parametrize(
-    ("failure", "phase"), [("", "complete"), ("capture", "capture"), ("resume", "resume")]
-)
-def test_capture_wrapper_preserves_writer_state_and_failure_receipts(
-    tmp_path: Path, failure: str, phase: str
-) -> None:
+@dataclass
+class ScheduledCapture:
+    script: Path
+    env: dict[str, str]
+    evidence: Path
+    before: dict[str, bool]
+    writer_state: Path
+    events: Path
+
+    def run(
+        self, failure: str = "", *, now: str = "2026-11-12T17:00:00Z"
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["/bin/bash", str(self.script)],
+            env={**self.env, "FIXTURE_FAILURE": failure, "FIXTURE_UTC": now},
+            capture_output=True,
+            text=True,
+        )
+
+
+@pytest.fixture
+def scheduled_capture(tmp_path: Path) -> ScheduledCapture:
     commands = tmp_path / "bin"
     commands.mkdir()
     executable(commands, "docker", DOCKER)
@@ -72,23 +109,24 @@ def test_capture_wrapper_preserves_writer_state_and_failure_receipts(
     executable(
         commands,
         "timeout",
-        """#!/bin/bash
-if [[ ${FIXTURE_FAILURE:-} == capture && " $* " == *'scripts.backup_set capture '* ]]; then
-    exit 124
-fi
-shift
-exec "$@"
-""",
+        '#!/bin/bash\nshift\nexec "$@"\n',
     )
     executable(
         commands,
         "stat",
-        """#!/bin/bash
-case "$2" in %u) echo 0;; %a) echo 600;; %s) echo 32;; *) exit 2;; esac
+        """#!/usr/bin/env python3
+import pathlib, stat, sys
+info = pathlib.Path(sys.argv[3]).stat()
+match sys.argv[2]:
+    case '%u': print(0)
+    case '%a': print(f'{stat.S_IMODE(info.st_mode):o}')
+    case '%s': print(info.st_size)
+    case _: sys.exit(2)
 """,
     )
     executable(commands, "readlink", '#!/bin/bash\nprintf "%s\\n" "$FIXTURE_RELEASE"\n')
     executable(commands, "realpath", '#!/bin/bash\nprintf "%s\\n" "$3"\n')
+    executable(commands, "date", '#!/bin/bash\nprintf "%s\\n" "$FIXTURE_UTC"\n')
     base = tmp_path / "portal"
     release = base / "releases" / SHA
     release.mkdir(parents=True)
@@ -101,6 +139,8 @@ case "$2" in %u) echo 0;; %a) echo 600;; %s) echo 32;; *) exit 2;; esac
     }
     state = tmp_path / "writers.json"
     state.write_text(json.dumps(before))
+    events = tmp_path / "events.txt"
+    events.write_text("")
     configuration = tmp_path / "nonsecret-configuration"
     configuration.mkdir(mode=0o700)
     files = {
@@ -143,7 +183,7 @@ case "$2" in %u) echo 0;; %a) echo 600;; %s) echo 32;; *) exit 2;; esac
         RECOVERY_CONFIGURATION_ROOT=str(configuration),
         FIXTURE_WRITER_STATE=str(state),
         FIXTURE_IMAGE=IMAGE,
-        FIXTURE_FAILURE=failure,
+        FIXTURE_EVENTS=str(events),
         FIXTURE_RELEASE=str(release),
     )
     shell = (
@@ -153,11 +193,104 @@ case "$2" in %u) echo 0;; %a) echo 600;; %s) echo 32;; *) exit 2;; esac
     )
     fixture = tmp_path / "wrapper.sh"
     fixture.write_text(shell)
-    result = subprocess.run(["/bin/bash", str(fixture)], env=env, capture_output=True, text=True)
-    evidence = base / "recovery" / "scheduled"
+    return ScheduledCapture(fixture, env, base / "recovery" / "scheduled", before, state, events)
+
+
+@pytest.mark.parametrize(
+    ("failure", "phase"), [("", "complete"), ("capture", "capture"), ("resume", "resume")]
+)
+def test_capture_wrapper_preserves_writer_state_and_failure_receipts(
+    scheduled_capture: ScheduledCapture, failure: str, phase: str
+) -> None:
+    result = scheduled_capture.run(failure)
+    evidence = scheduled_capture.evidence
     assert (result.returncode == 0) == (not failure), result.stderr
     assert (evidence / "latest-success.json").exists() == (not failure)
     assert json.loads((evidence / "last-attempt.json").read_text())["phase"] == phase
+    before = scheduled_capture.before.copy()
     if failure == "resume":
         before["garrison-portal-grafana-1"] = False
-    assert json.loads(state.read_text()) == before
+    assert json.loads(scheduled_capture.writer_state.read_text()) == before
+    scratch = evidence / ".scheduled-capture"
+    if failure == "resume":
+        assert (scratch / "set" / "manifest.json").read_text() == "1"
+        assert scheduled_capture.run().returncode != 0
+        assert scheduled_capture.events.read_text().splitlines() == ["stop:4", "capture:1"]
+    else:
+        assert not any(path.is_dir() for path in evidence.iterdir())
+
+
+def test_successes_release_only_the_current_capture_workspace(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    evidence = scheduled_capture.evidence
+    historical = evidence / "capture-abcdefgh" / "set"
+    historical.mkdir(parents=True, mode=0o700)
+    evidence.chmod(0o700)
+    (historical / "manifest.json").write_text("historical")
+
+    for expected_id in ("1", "2"):
+        result = scheduled_capture.run()
+        assert result.returncode == 0, result.stderr
+        assert (evidence / "latest-success.json").read_text() == expected_id
+        assert json.loads((evidence / "last-attempt.json").read_text())["phase"] == "complete"
+        assert [path for path in evidence.iterdir() if path.is_dir()] == [historical.parent]
+        assert (historical / "manifest.json").read_text() == "historical"
+
+
+def test_failed_publication_retries_the_same_capture_without_pausing_writers_again(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    assert scheduled_capture.run().returncode == 0
+    evidence = scheduled_capture.evidence
+    success = evidence / "latest-success.json"
+    attempt = evidence / "last-attempt.json"
+    assert success.read_text() == "1"
+
+    for minute in (1, 2):
+        result = scheduled_capture.run("publication", now=f"2026-11-12T17:0{minute}:00Z")
+        assert result.returncode != 0
+        assert success.read_text() == "1"
+        failure = json.loads(attempt.read_text())
+        assert (failure["phase"], failure["outcome"]) == ("publication", "fail")
+        pending = evidence / ".scheduled-capture" / "set"
+        assert (pending / "manifest.json").read_text() == "2"
+        assert (pending / "application.sql.gz.enc").read_text() == "fixture data"
+        assert json.loads(scheduled_capture.writer_state.read_text()) == scheduled_capture.before
+
+    result = scheduled_capture.run(now="2026-11-12T17:03:00Z")
+    assert result.returncode == 0, result.stderr
+    assert success.read_text() == "2"
+    assert not pending.exists()
+    receipt = json.loads(attempt.read_text())
+    assert (receipt["phase"], receipt["outcome"]) == ("complete", "pass")
+    assert receipt["started_at_utc"] == "2026-11-12T17:01:00Z"
+    assert scheduled_capture.events.read_text().splitlines() == [
+        "stop:4",
+        "capture:1",
+        "publish:1",
+        "stop:4",
+        "capture:2",
+        "publish:2",
+        "publish:2",
+        "publish:2",
+    ]
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_wrapper_leaves_unknown_workspace_untouched(
+    scheduled_capture: ScheduledCapture, tmp_path: Path, symlink: bool
+) -> None:
+    evidence = scheduled_capture.evidence
+    evidence.mkdir(parents=True, mode=0o700)
+    scratch = evidence / ".scheduled-capture"
+    target = tmp_path / "external-backup" if symlink else scratch
+    target.mkdir(mode=0o700)
+    if symlink:
+        scratch.symlink_to(target, target_is_directory=True)
+    (target / "manifest.json").write_text("keep")
+
+    assert scheduled_capture.run().returncode != 0
+    assert (target / "manifest.json").read_text() == "keep"
+    assert scratch.is_symlink() == symlink
+    assert scheduled_capture.events.read_text() == ""
