@@ -124,19 +124,28 @@ export async function writeOfflineSession(
   return applied === true;
 }
 
+export function withOwnedOfflineTransaction<T>(
+  scope: OfflineScope,
+  stores: string[],
+  mode: IDBTransactionMode,
+  operation: (tx: IDBTransaction, result: (value: T) => void) => void
+): Promise<T | undefined> {
+  return transaction<T>([SESSION_STORE, ...stores], mode, (tx, result) => {
+    const request = tx.objectStore(SESSION_STORE).get(scope.namespace);
+    request.onsuccess = () => {
+      const current = request.result as OfflineSession | undefined;
+      if (current?.state === 'active' && sameScope(current, scope)) operation(tx, result);
+    };
+  });
+}
+
 export function withOwnedOfflineData<T>(
   scope: OfflineScope,
   storeName: string,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore, result: (value: T) => void) => void
 ): Promise<T | undefined> {
-  return transaction<T>([SESSION_STORE, storeName], mode, (tx, result) => {
-    const request = tx.objectStore(SESSION_STORE).get(scope.namespace);
-    request.onsuccess = () => {
-      const current = request.result as OfflineSession | undefined;
-      if (current?.state === 'active' && sameScope(current, scope)) {
-        operation(tx.objectStore(storeName), result);
-      }
-    };
-  });
+  return withOwnedOfflineTransaction(scope, [storeName], mode, (tx, result) =>
+    operation(tx.objectStore(storeName), result)
+  );
 }

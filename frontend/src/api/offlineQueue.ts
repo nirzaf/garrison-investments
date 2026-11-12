@@ -5,7 +5,8 @@
 // must be mirrored there — `planSyncBatches` is the shared, unit-tested seam.
 import axios from 'axios';
 import type { DraftSyncState, SyncDraft } from '../../public/report-draft-sync.js';
-import { getReportDraftSync } from './reportDraftSync';
+import type { UploadIntent } from '../../public/report-file-sync.js';
+import { getReportDraftSync, getReportFileSync } from './reportDraftSync';
 import { getMe } from './auth';
 import { getBrowserSession, isActiveOfflineScope } from './browserSession';
 import {
@@ -16,15 +17,11 @@ import {
   SUPERVISOR_DRAFTS,
   sameScope,
   withOwnedOfflineData,
+  withOwnedOfflineTransaction,
   type OfflineScope
 } from './offlineDb';
 import { uploadEntityFilesWithRevision } from './photos';
-import {
-  createDailyReport,
-  getDailyReport,
-  updateDailyReport,
-  type DailyReportPayload
-} from './reports';
+import { createDailyReport, updateDailyReport, type DailyReportPayload } from './reports';
 
 /** A claim older than this is assumed dead (tab closed mid-upload) and may be reclaimed. */
 const STALE_CLAIM_MS = 5 * 60_000;
@@ -36,63 +33,38 @@ export type QueuedPhoto = {
   localDraftId: string;
   entityType: string;
   entityId: string;
-  draftPayload?: DailyReportPayload;
   kind: 'photo' | 'attachment';
   file: File;
   createdAt: string;
   claimedAt: string;
   claimId?: string;
   claimGeneration?: string;
-  status: 'queued' | 'syncing' | 'failed' | 'synced' | 'server_newer';
+  status: 'queued' | 'syncing' | 'failed' | 'blocked' | 'suspended' | 'synced' | 'server_newer';
+  intent?: UploadIntent;
+  reason?: string;
+  attempts?: number;
+  retryAfter?: number;
 };
 
-/** One report-create (at most) plus the uploads that belong to the same entity. */
-export type SyncBatch = {
-  entityId: string;
-  needsReportCreate: boolean;
-  draftPayload?: DailyReportPayload;
-  items: QueuedPhoto[];
-};
+export type SyncBatch = { localDraftId: string; items: QueuedPhoto[] };
 
-/**
- * Pure grouping seam for the offline drain — kept free of IndexedDB and network calls so
- * the "3 photos + 1 local id => 1 create + 3 uploads" invariant is unit-testable.
- *
- * Mirrored by `public/sw.js` (planSyncBatches); keep the two in step.
- */
 export function planSyncBatches(items: QueuedPhoto[]): SyncBatch[] {
   const batches = new Map<string, SyncBatch>();
   for (const item of items) {
-    if (item.status === 'synced' || item.status === 'server_newer') continue;
-    const key = JSON.stringify([
-      item.namespace,
-      item.ownerUserId,
-      item.localDraftId,
-      item.entityId
-    ]);
+    if (isBlocked(item) || item.status === 'synced') continue;
+    const key = JSON.stringify([item.namespace, item.ownerUserId, item.localDraftId]);
     let batch = batches.get(key);
     if (!batch) {
-      batch = {
-        entityId: item.entityId,
-        needsReportCreate: item.entityId.startsWith('local-'),
-        draftPayload: item.draftPayload,
-        items: []
-      };
+      batch = { localDraftId: item.localDraftId, items: [] };
       batches.set(key, batch);
     }
-    batch.draftPayload ??= item.draftPayload;
     batch.items.push(item);
   }
   return [...batches.values()];
 }
 
-/**
- * Pure retry record for a failed upload. Keeping the resolved server id is what stops a
- * retry from re-creating the report: the next `planSyncBatches` sees a non-`local-` id and
- * therefore plans uploads only.
- */
-export function retryPatch(item: QueuedPhoto, resolvedEntityId: string): QueuedPhoto {
-  return { ...item, entityId: resolvedEntityId, status: 'failed' };
+function isBlocked(item: QueuedPhoto): boolean {
+  return item.status === 'blocked' || item.status === 'server_newer';
 }
 
 type SavedReportReference = { id: string; engineerId: string; revision?: number };
@@ -274,7 +246,6 @@ export async function queueFiles(
     entityType: string;
     entityId: string;
     localDraftId: string;
-    draftPayload?: DailyReportPayload;
     kind: 'photo' | 'attachment';
     files: FileList | File[];
   }
@@ -292,7 +263,6 @@ export async function queueFiles(
           localDraftId: args.localDraftId,
           entityType: args.entityType,
           entityId: args.entityId,
-          draftPayload: args.draftPayload,
           kind: args.kind,
           file,
           createdAt: new Date().toISOString(),
@@ -306,17 +276,62 @@ export async function queueFiles(
   return queued === true;
 }
 
-export async function queuedPhotoCount(scope: OfflineScope): Promise<number> {
-  const count = await withOwnedOfflineData<number>(
+async function listQueuedPhotos(
+  scope: OfflineScope,
+  localDraftId?: string
+): Promise<QueuedPhoto[]> {
+  const queued = await withOwnedOfflineData<QueuedPhoto[]>(
     scope,
     PHOTO_QUEUE,
     'readonly',
     (queue, result) => {
-      const request = queue.index(OWNER_INDEX).count(ownerKey(scope));
-      request.onsuccess = () => result(request.result);
+      const request = localDraftId
+        ? queue.index('byOwnerDraft').getAll([...ownerKey(scope), localDraftId])
+        : queue.index(OWNER_INDEX).getAll(ownerKey(scope));
+      request.onsuccess = () => result(request.result as QueuedPhoto[]);
     }
   );
-  return count ?? 0;
+  return queued ?? [];
+}
+
+export async function queuedPhotoCount(scope: OfflineScope): Promise<number> {
+  return (await listQueuedPhotos(scope)).filter(
+    (item) => !isBlocked(item) && item.status !== 'synced'
+  ).length;
+}
+
+export type QueuedUploadIssue = { id: string; name: string; reason: string; canRetry: boolean };
+
+function needsAttention(item: QueuedPhoto): boolean {
+  return isBlocked(item) || (item.status === 'failed' && (item.attempts ?? 0) >= 4);
+}
+
+export async function getQueuedUploadIssues(scope: OfflineScope): Promise<QueuedUploadIssue[]> {
+  return (await listQueuedPhotos(scope)).filter(needsAttention).map((item) => ({
+    id: item.id,
+    name: item.file.name,
+    reason:
+      item.reason ??
+      (isBlocked(item)
+        ? 'The server report changed before this file could be uploaded.'
+        : 'Upload confirmation is pending. Retry or remove the local copy.'),
+    canRetry: !isBlocked(item)
+  }));
+}
+
+export async function removeQueuedUploadIssue(scope: OfflineScope, id: string): Promise<void> {
+  await withOwnedOfflineData(scope, PHOTO_QUEUE, 'readwrite', (queue) => {
+    const request = queue.get(id);
+    request.onsuccess = () => {
+      const item = request.result as QueuedPhoto | undefined;
+      if (
+        item?.ownerUserId === scope.ownerUserId &&
+        item.namespace === scope.namespace &&
+        needsAttention(item)
+      )
+        queue.delete(id);
+    };
+  });
 }
 
 export async function queuedDraftPhotoCount(
@@ -330,7 +345,11 @@ export async function queuedDraftPhotoCount(
     (queue, result) => {
       const request = queue.index('byOwnerDraft').getAll([...ownerKey(scope), localDraftId]);
       request.onsuccess = () =>
-        result((request.result as QueuedPhoto[]).filter((entry) => entry.kind === 'photo').length);
+        result(
+          (request.result as QueuedPhoto[]).filter(
+            (entry) => entry.kind === 'photo' && !isBlocked(entry) && entry.status !== 'synced'
+          ).length
+        );
     }
   );
   return count ?? 0;
@@ -400,7 +419,12 @@ export async function flushPhotoQueue(force = false): Promise<void> {
   return result;
 }
 
-function claimQueuedPhoto(scope: OfflineScope, id: string): Promise<QueuedPhoto | undefined> {
+function claimQueuedPhoto(
+  scope: OfflineScope,
+  id: string,
+  hasLock: boolean,
+  force: boolean
+): Promise<QueuedPhoto | undefined> {
   return withOwnedOfflineData<QueuedPhoto>(scope, PHOTO_QUEUE, 'readwrite', (queue, result) => {
     const request = queue.get(id);
     request.onsuccess = () => {
@@ -409,11 +433,14 @@ function claimQueuedPhoto(scope: OfflineScope, id: string): Promise<QueuedPhoto 
         !item ||
         item.ownerUserId !== scope.ownerUserId ||
         item.namespace !== scope.namespace ||
+        isBlocked(item) ||
         item.status === 'synced' ||
-        item.status === 'server_newer'
+        (item.status === 'suspended' && item.claimGeneration === scope.generation) ||
+        (!force && (item.retryAfter ?? 0) > Date.now())
       )
         return;
       if (
+        !hasLock &&
         item.status === 'syncing' &&
         item.claimGeneration === scope.generation &&
         Date.now() - Date.parse(item.claimedAt) < STALE_CLAIM_MS
@@ -432,26 +459,29 @@ function claimQueuedPhoto(scope: OfflineScope, id: string): Promise<QueuedPhoto 
   });
 }
 
-async function updateClaims(
+type QueuePatch = Partial<
+  Pick<QueuedPhoto, 'status' | 'reason' | 'attempts' | 'retryAfter' | 'intent'>
+>;
+
+function patchClaim(
   scope: OfflineScope,
-  claims: QueuedPhoto[],
-  patch?: Partial<Pick<QueuedPhoto, 'entityId' | 'status' | 'claimedAt'>>
-): Promise<void> {
-  await withOwnedOfflineData(scope, PHOTO_QUEUE, 'readwrite', (queue) => {
-    for (const claim of claims) {
-      const request = queue.get(claim.id);
-      request.onsuccess = () => {
-        const item = request.result as QueuedPhoto | undefined;
-        if (
-          item?.claimId !== claim.claimId ||
-          item?.ownerUserId !== scope.ownerUserId ||
-          item.namespace !== scope.namespace
-        )
-          return;
-        if (patch) queue.put({ ...item, ...patch });
-        else queue.delete(claim.id);
-      };
-    }
+  claim: QueuedPhoto,
+  patch: QueuePatch
+): Promise<QueuedPhoto | undefined> {
+  return withOwnedOfflineData<QueuedPhoto>(scope, PHOTO_QUEUE, 'readwrite', (queue, result) => {
+    const request = queue.get(claim.id);
+    request.onsuccess = () => {
+      const current = request.result as QueuedPhoto | undefined;
+      if (
+        current?.claimId !== claim.claimId ||
+        current?.ownerUserId !== scope.ownerUserId ||
+        current.namespace !== scope.namespace
+      )
+        return;
+      const updated = { ...current, ...patch, intent: current.intent ?? patch.intent };
+      queue.put(updated);
+      result(updated);
+    };
   });
 }
 
@@ -464,17 +494,6 @@ function publishSyncResult(scope: OfflineScope, conflicts: number): void {
 
 async function canSync(scope: OfflineScope): Promise<boolean> {
   return (await isActiveOfflineScope(scope)) && sameScope(getBrowserSession()?.scope, scope);
-}
-
-async function syncReportDraft(scope: OfflineScope, localDraftId: string, force: boolean) {
-  const lockName = `garrisons-draft-sync:${JSON.stringify([...ownerKey(scope), localDraftId])}`;
-  if (navigator.locks) {
-    await navigator.locks.request(lockName, () =>
-      persistReportDraft(scope, localDraftId, force, true)
-    );
-  } else {
-    await persistReportDraft(scope, localDraftId, force, false);
-  }
 }
 
 async function persistReportDraft(
@@ -557,99 +576,172 @@ async function persistReportDraft(
   }
 }
 
-export async function advanceDraftEvidenceRevision(
+async function syncQueuedPhoto(
+  scope: OfflineScope,
+  item: QueuedPhoto,
+  draft: LocalReportDraft | undefined,
+  hasLock: boolean,
+  force: boolean
+): Promise<'saved' | 'blocked' | 'conflict' | 'pending' | 'waiting'> {
+  if (!(await canSync(scope))) return 'pending';
+  const claim = await claimQueuedPhoto(scope, item.id, hasLock, force);
+  if (!claim) {
+    const retryAfter = item.retryAfter ?? 0;
+    if (item.status === 'failed' && (item.attempts ?? 0) < 4 && retryAfter > Date.now()) {
+      scheduleRetry(scope, retryAfter);
+    }
+    return 'pending';
+  }
+  const rules = await getReportFileSync();
+  let kind: QueuedPhoto['kind'];
+  try {
+    kind = await rules.classifyQueuedReportFile(claim.file, claim.kind);
+  } catch (error) {
+    await patchClaim(scope, claim, {
+      status: 'blocked',
+      reason: error instanceof Error ? error.message : 'File could not be read.'
+    });
+    return 'blocked';
+  }
+
+  if (!claim.intent && draft && (draft.syncState !== 'saved' || !draft.serverReport)) {
+    await patchClaim(scope, claim, { status: 'queued' });
+    return 'waiting';
+  }
+  const reportId = draft?.serverReport?.id;
+  const revision = draft?.baseServerRevision;
+  const intent =
+    claim.intent ??
+    (reportId && revision !== undefined
+      ? { reportId, expectedRevision: revision, kind }
+      : undefined);
+  if (!intent) {
+    await patchClaim(scope, claim, {
+      status: 'blocked',
+      reason: 'This local report is no longer available.'
+    });
+    return 'blocked';
+  }
+
+  try {
+    if (!(await patchClaim(scope, claim, { intent })) || !(await canSync(scope))) return 'pending';
+    const uploaded = await uploadEntityFilesWithRevision({
+      entityType: claim.entityType,
+      entityId: intent.reportId,
+      kind: intent.kind,
+      files: [claim.file],
+      idempotencyKey: claim.id,
+      expectedReportRevision: intent.expectedRevision,
+      scope
+    });
+    if (uploaded.reportRevision === intent.expectedRevision + 1) {
+      const saved = await withOwnedOfflineTransaction<boolean>(
+        scope,
+        [PHOTO_QUEUE, REPORT_DRAFTS],
+        'readwrite',
+        (tx, result) =>
+          rules.commitUploadReceipt(
+            tx,
+            PHOTO_QUEUE,
+            REPORT_DRAFTS,
+            claim,
+            intent,
+            uploaded.reportRevision,
+            result
+          )
+      );
+      return saved ? 'saved' : 'pending';
+    }
+  } catch (error) {
+    const response = axios.isAxiosError<{ error_code?: string }>(error)
+      ? error.response
+      : undefined;
+    const failure = rules.uploadFailure(
+      response?.status,
+      response?.data?.error_code,
+      axios.isCancel(error)
+    );
+    if (failure.state === 'suspended') {
+      await patchClaim(scope, claim, { status: 'suspended' });
+      return 'pending';
+    }
+    if (failure.state === 'blocked') {
+      await patchClaim(scope, claim, { status: 'blocked', reason: failure.reason });
+      if (failure.conflict) {
+        await editReportDraft(scope, claim.localDraftId, (latest) =>
+          latest ? { ...latest, syncState: 'conflict' } : undefined
+        );
+        return 'conflict';
+      }
+      return 'blocked';
+    }
+  }
+
+  const retry = rules.uploadRetry(claim.attempts ?? 0, force);
+  await patchClaim(scope, claim, { status: 'failed', ...retry });
+  if (retry.attempts < 4) scheduleRetry(scope, retry.retryAfter);
+  return 'pending';
+}
+
+async function syncOwnedDraft(
   scope: OfflineScope,
   localDraftId: string,
-  expected: number,
-  committed: number
-): Promise<boolean> {
-  const updated = await editReportDraft(scope, localDraftId, (draft) => {
-    if (!draft || draft.baseServerRevision !== expected) return undefined;
-    if (committed !== expected + 1) return { ...draft, syncState: 'conflict' };
-    return { ...draft, baseServerRevision: committed };
-  });
-  return updated?.baseServerRevision === committed;
+  hasLock: boolean,
+  force: boolean
+): Promise<number> {
+  if (!(await canSync(scope))) return 0;
+  const actor = await getMe(scope).catch(() => null);
+  if (actor?.id !== scope.ownerUserId || !(await canSync(scope))) return 0;
+  const queued = (await listQueuedPhotos(scope, localDraftId)).filter(
+    (item) => !isBlocked(item) && item.status !== 'synced'
+  );
+
+  // Recover an acknowledged upload before comparing or changing the draft's base revision.
+  for (const item of queued) {
+    if (!item.intent) continue;
+    const result = await syncQueuedPhoto(scope, item, undefined, hasLock, force);
+    if (result === 'conflict') return 1;
+    if (result === 'pending') return 0;
+  }
+
+  const original = await getReportDraft(scope, localDraftId);
+  if (original && original.lastSyncedLocalRevision < original.localRevision) {
+    if (
+      !force &&
+      original.syncState === 'retry' &&
+      original.attempts < 4 &&
+      original.retryAfter > Date.now()
+    )
+      scheduleRetry(scope, original.retryAfter);
+    await persistReportDraft(scope, localDraftId, force, hasLock);
+  }
+  let draft = await getReportDraft(scope, localDraftId);
+  for (const item of queued) {
+    if (item.intent) continue;
+    const result = await syncQueuedPhoto(scope, item, draft, hasLock, force);
+    if (result === 'conflict') return 1;
+    if (result === 'pending') break;
+    draft = await getReportDraft(scope, localDraftId);
+  }
+  return 0;
 }
 
 async function drainPhotoQueue(scope: OfflineScope, force: boolean): Promise<void> {
+  const draftIds = new Set([
+    ...((await listReportDrafts(scope)) ?? [])
+      .filter((draft) => draft.lastSyncedLocalRevision < draft.localRevision)
+      .map((draft) => draft.localDraftId),
+    ...planSyncBatches(await listQueuedPhotos(scope)).map((batch) => batch.localDraftId)
+  ]);
   let conflicts = 0;
-  for (const draft of (await listReportDrafts(scope)) ?? []) {
+  for (const localDraftId of draftIds) {
     if (!(await canSync(scope))) return;
-    await syncReportDraft(scope, draft.localDraftId, force);
-  }
-  const queued = await withOwnedOfflineData<QueuedPhoto[]>(
-    scope,
-    PHOTO_QUEUE,
-    'readonly',
-    (queue, result) => {
-      const request = queue.index(OWNER_INDEX).getAll(ownerKey(scope));
-      request.onsuccess = () => result(request.result as QueuedPhoto[]);
-    }
-  );
-  for (const batch of planSyncBatches(queued ?? [])) {
-    if (!(await canSync(scope))) return;
-    const first = batch.items[0];
-    const draft = await getReportDraft(scope, first.localDraftId);
-    if (!draft?.serverReport || draft.syncState !== 'saved') continue;
-    const entityId = draft.serverReport.id;
-    const actor = await getMe(scope).catch(() => null);
-    if (actor?.id !== scope.ownerUserId || !(await canSync(scope))) return;
-    const current = await getDailyReport(entityId, scope).catch(() => null);
-    if (!current) continue;
-    if (current.status !== 'draft' || current.revision !== draft.baseServerRevision) {
-      await editReportDraft(scope, first.localDraftId, (latest) =>
-        latest ? { ...latest, syncState: 'conflict' } : undefined
-      );
-      conflicts += batch.items.length;
-      continue;
-    }
-
-    let revision = current.revision;
-    for (const item of batch.items) {
-      if (!(await canSync(scope))) return;
-      const claimed = await claimQueuedPhoto(scope, item.id);
-      if (!claimed) continue;
-      try {
-        const uploaded = await uploadEntityFilesWithRevision({
-          entityType: claimed.entityType,
-          entityId,
-          kind: claimed.kind,
-          files: [claimed.file],
-          idempotencyKey: claimed.id,
-          expectedReportRevision: revision,
-          scope
-        });
-        await updateClaims(scope, [claimed]);
-        if (uploaded.reportRevision !== undefined) {
-          const advanced = await advanceDraftEvidenceRevision(
-            scope,
-            first.localDraftId,
-            revision,
-            uploaded.reportRevision
-          );
-          if (!advanced) {
-            conflicts += 1;
-            break;
-          }
-          revision = uploaded.reportRevision;
-        }
-      } catch (error) {
-        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
-        await updateClaims(scope, [claimed], {
-          entityId,
-          status:
-            status && status < 500 && status !== 408 && status !== 429 ? 'server_newer' : 'failed'
-        });
-        if (status === 401 || status === 403 || axios.isCancel(error)) return;
-        if (status === 409) {
-          await editReportDraft(scope, first.localDraftId, (latest) =>
-            latest ? { ...latest, syncState: 'conflict' } : undefined
-          );
-          conflicts += 1;
-          break;
-        }
-      }
-    }
+    const lockName = `garrisons-draft-sync:${JSON.stringify([...ownerKey(scope), localDraftId])}`;
+    conflicts += navigator.locks
+      ? await navigator.locks.request(lockName, () =>
+          syncOwnedDraft(scope, localDraftId, true, force)
+        )
+      : await syncOwnedDraft(scope, localDraftId, false, force);
   }
   if (await canSync(scope)) publishSyncResult(scope, conflicts);
 }

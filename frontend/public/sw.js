@@ -1,4 +1,10 @@
 import { persistOwnedDraft } from './report-draft-sync.js';
+import {
+  classifyQueuedReportFile,
+  commitUploadReceipt,
+  uploadFailure,
+  uploadRetry
+} from './report-file-sync.js';
 
 // The standalone drain uses the same owner, generation and claim checks as offlineQueue.ts.
 const CACHE_NAME = 'garrisons-app-shell-v4';
@@ -26,6 +32,7 @@ const APP_SHELL = [
   '/',
   '/manifest.json',
   '/report-draft-sync.js',
+  '/report-file-sync.js',
   '/brand/apple-touch-icon.png',
   '/brand/icon-192.png',
   '/brand/icon-512.png',
@@ -182,13 +189,19 @@ function readSession() {
   });
 }
 
-function withOwnedStore(scope, store, mode, operation) {
-  return transaction([SESSION_STORE, store], mode, (tx, result) => {
+function withOwnedTransaction(scope, stores, mode, operation) {
+  return transaction([SESSION_STORE, ...stores], mode, (tx, result) => {
     const request = tx.objectStore(SESSION_STORE).get(scope.namespace);
     request.onsuccess = () => {
-      if (sameScope(request.result, scope)) operation(tx.objectStore(store), result);
+      if (sameScope(request.result, scope)) operation(tx, result);
     };
   });
+}
+
+function withOwnedStore(scope, store, mode, operation) {
+  return withOwnedTransaction(scope, [store], mode, (tx, result) =>
+    operation(tx.objectStore(store), result)
+  );
 }
 
 function withOwnedQueue(scope, mode, operation) {
@@ -227,7 +240,22 @@ function readReportDraft(scope, localDraftId) {
   });
 }
 
-function claimQueuedPhoto(scope, id) {
+function isBlocked(item) {
+  return item.status === 'blocked' || item.status === 'server_newer';
+}
+
+async function listQueuedPhotos(scope, localDraftId) {
+  return (
+    (await withOwnedQueue(scope, 'readonly', (queue, result) => {
+      const request = localDraftId
+        ? queue.index('byOwnerDraft').getAll([scope.namespace, scope.ownerUserId, localDraftId])
+        : queue.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
+      request.onsuccess = () => result(request.result);
+    })) ?? []
+  );
+}
+
+function claimQueuedPhoto(scope, id, hasLock) {
   return withOwnedQueue(scope, 'readwrite', (queue, result) => {
     const request = queue.get(id);
     request.onsuccess = () => {
@@ -236,11 +264,14 @@ function claimQueuedPhoto(scope, id) {
         !item ||
         item.ownerUserId !== scope.ownerUserId ||
         item.namespace !== scope.namespace ||
+        isBlocked(item) ||
         item.status === 'synced' ||
-        item.status === 'server_newer'
+        (item.status === 'suspended' && item.claimGeneration === scope.generation) ||
+        (item.retryAfter ?? 0) > Date.now()
       )
         return;
       if (
+        !hasLock &&
         item.status === 'syncing' &&
         item.claimGeneration === scope.generation &&
         Date.now() - Date.parse(item.claimedAt) < STALE_CLAIM_MS
@@ -259,42 +290,21 @@ function claimQueuedPhoto(scope, id) {
   });
 }
 
-function planSyncBatches(items) {
-  const batches = new Map();
-  for (const item of items) {
-    if (item.status === 'synced' || item.status === 'server_newer') continue;
-    const key = JSON.stringify([
-      item.namespace,
-      item.ownerUserId,
-      item.localDraftId,
-      item.entityId
-    ]);
-    let batch = batches.get(key);
-    if (!batch) {
-      batch = { entityId: item.entityId, items: [] };
-      batches.set(key, batch);
-    }
-    batch.items.push(item);
-  }
-  return [...batches.values()];
-}
-
-function updateClaims(scope, claims, patch) {
-  return withOwnedQueue(scope, 'readwrite', (queue) => {
-    for (const claim of claims) {
-      const request = queue.get(claim.id);
-      request.onsuccess = () => {
-        const item = request.result;
-        if (
-          item?.claimId !== claim.claimId ||
-          item?.ownerUserId !== scope.ownerUserId ||
-          item.namespace !== scope.namespace
-        )
-          return;
-        if (patch) queue.put({ ...item, ...patch });
-        else queue.delete(claim.id);
-      };
-    }
+function patchClaim(scope, claim, patch) {
+  return withOwnedQueue(scope, 'readwrite', (queue, result) => {
+    const request = queue.get(claim.id);
+    request.onsuccess = () => {
+      const current = request.result;
+      if (
+        current?.claimId !== claim.claimId ||
+        current?.ownerUserId !== scope.ownerUserId ||
+        current.namespace !== scope.namespace
+      )
+        return;
+      const updated = { ...current, ...patch, intent: current.intent ?? patch.intent };
+      queue.put(updated);
+      result(updated);
+    };
   });
 }
 
@@ -348,17 +358,6 @@ async function writeReport(path, payload, accessToken, signal, options) {
       status: response.status
     });
   return await response.json();
-}
-
-async function syncReportDraft(scope, localDraftId, accessToken, signal) {
-  const lockName = `garrisons-draft-sync:${JSON.stringify([scope.namespace, scope.ownerUserId, localDraftId])}`;
-  if (self.navigator?.locks) {
-    await self.navigator.locks.request(lockName, () =>
-      persistReportDraft(scope, localDraftId, accessToken, signal, true)
-    );
-  } else {
-    await persistReportDraft(scope, localDraftId, accessToken, signal, false);
-  }
 }
 
 async function persistReportDraft(scope, localDraftId, accessToken, signal, hasLock) {
@@ -441,22 +440,128 @@ async function persistReportDraft(scope, localDraftId, accessToken, signal, hasL
   }
 }
 
-async function uploadQueuedFile(item, entityId, revision, accessToken, signal) {
+async function uploadQueuedFile(item, intent, accessToken, signal) {
   const formData = new FormData();
   formData.append('entity_type', item.entityType);
-  formData.append('entity_id', entityId);
-  formData.append('kind', item.kind);
-  formData.append('expected_report_revision', String(revision));
+  formData.append('entity_id', intent.reportId);
+  formData.append('kind', intent.kind);
+  formData.append('expected_report_revision', String(intent.expectedRevision));
   formData.append('files', item.file);
   const response = await signedRequest('/photos/upload', accessToken, signal, {
     method: 'POST',
     headers: { 'Idempotency-Key': item.id },
     body: formData
   });
-  if (!response.ok)
-    throw Object.assign(new Error('Unable to upload queued file.'), { status: response.status });
+  if (!response.ok) {
+    const details = await response.json().catch(() => null);
+    throw Object.assign(new Error('Unable to upload queued file.'), {
+      status: response.status,
+      code: details?.error_code
+    });
+  }
   const committed = Number(response.headers.get('X-Report-Revision'));
   return Number.isSafeInteger(committed) && committed > 0 ? committed : undefined;
+}
+
+async function syncQueuedPhoto(scope, item, draft, hasLock, accessToken, signal) {
+  if (signal.aborted || !sameScope(await readSession(), scope)) return 'pending';
+  const claim = await claimQueuedPhoto(scope, item.id, hasLock);
+  if (!claim) return 'pending';
+  let kind;
+  try {
+    kind = await classifyQueuedReportFile(claim.file, claim.kind);
+  } catch (error) {
+    await patchClaim(scope, claim, {
+      status: 'blocked',
+      reason: error?.message ?? 'File could not be read.'
+    });
+    return 'blocked';
+  }
+
+  if (!claim.intent && draft && (draft.syncState !== 'saved' || !draft.serverReport)) {
+    await patchClaim(scope, claim, { status: 'queued' });
+    return 'waiting';
+  }
+  const reportId = draft?.serverReport?.id;
+  const revision = draft?.baseServerRevision;
+  const intent =
+    claim.intent ??
+    (reportId && revision !== undefined
+      ? { reportId, expectedRevision: revision, kind }
+      : undefined);
+  if (!intent) {
+    await patchClaim(scope, claim, {
+      status: 'blocked',
+      reason: 'This local report is no longer available.'
+    });
+    return 'blocked';
+  }
+
+  try {
+    if (
+      !(await patchClaim(scope, claim, { intent })) ||
+      signal.aborted ||
+      !sameScope(await readSession(), scope)
+    )
+      return 'pending';
+    const committed = await uploadQueuedFile(claim, intent, accessToken, signal);
+    if (committed === intent.expectedRevision + 1) {
+      const saved = await withOwnedTransaction(
+        scope,
+        [PHOTO_QUEUE, REPORT_DRAFTS],
+        'readwrite',
+        (tx, result) =>
+          commitUploadReceipt(tx, PHOTO_QUEUE, REPORT_DRAFTS, claim, intent, committed, result)
+      );
+      return saved ? 'saved' : 'pending';
+    }
+  } catch (error) {
+    const failure = uploadFailure(error?.status, error?.code, signal.aborted);
+    if (failure.state === 'suspended') {
+      await patchClaim(scope, claim, { status: 'suspended' });
+      return 'pending';
+    }
+    if (failure.state === 'blocked') {
+      await patchClaim(scope, claim, { status: 'blocked', reason: failure.reason });
+      if (failure.conflict) {
+        await editReportDraft(scope, claim.localDraftId, (latest) => ({
+          ...latest,
+          syncState: 'conflict'
+        }));
+        return 'conflict';
+      }
+      return 'blocked';
+    }
+  }
+  await patchClaim(scope, claim, { status: 'failed', ...uploadRetry(claim.attempts ?? 0, false) });
+  return 'pending';
+}
+
+async function syncOwnedDraft(scope, localDraftId, hasLock, accessToken, signal) {
+  if (!(await isVerifiedOwner(scope, accessToken, signal))) return 0;
+  const queued = (await listQueuedPhotos(scope, localDraftId)).filter(
+    (item) => !isBlocked(item) && item.status !== 'synced'
+  );
+  for (const item of queued) {
+    if (!item.intent) continue;
+    const result = await syncQueuedPhoto(scope, item, undefined, hasLock, accessToken, signal);
+    if (result === 'conflict') return 1;
+    if (result === 'pending') return 0;
+  }
+
+  const original = await readReportDraft(scope, localDraftId);
+  if (original && original.lastSyncedLocalRevision < original.localRevision) {
+    await persistReportDraft(scope, localDraftId, accessToken, signal, hasLock);
+  }
+  let draft = await readReportDraft(scope, localDraftId);
+  for (const item of queued) {
+    if (item.intent) continue;
+    const result = await syncQueuedPhoto(scope, item, draft, hasLock, accessToken, signal);
+    if (result === 'conflict') return 1;
+    if (result === 'pending') break;
+    draft = await readReportDraft(scope, localDraftId);
+  }
+  return 0;
 }
 
 async function drainPhotoQueue(scope, signal) {
@@ -464,75 +569,28 @@ async function drainPhotoQueue(scope, signal) {
     const request = drafts.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
     request.onsuccess = () => result(request.result);
   });
-  if (!ownedDrafts?.length) return;
-
+  const queued = await listQueuedPhotos(scope);
+  const draftIds = new Set([
+    ...(ownedDrafts ?? [])
+      .filter((draft) => (draft.lastSyncedLocalRevision ?? 0) < (draft.localRevision ?? 1))
+      .map((draft) => draft.localDraftId),
+    ...queued
+      .filter((item) => !isBlocked(item) && item.status !== 'synced')
+      .map((item) => item.localDraftId)
+  ]);
+  if (!draftIds.size) return;
   const accessToken = await refreshAccessToken(scope, signal);
   if (!accessToken) return;
-  for (const draft of ownedDrafts) {
-    if (signal.aborted || !sameScope(await readSession(), scope)) return;
-    await syncReportDraft(scope, draft.localDraftId, accessToken, signal);
-  }
 
-  const queued = await withOwnedQueue(scope, 'readonly', (queue, result) => {
-    const request = queue.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
-    request.onsuccess = () => result(request.result);
-  });
   let conflicts = 0;
-  for (const batch of planSyncBatches(queued ?? [])) {
-    if (!(await isVerifiedOwner(scope, accessToken, signal))) return;
-    const first = batch.items[0];
-    const draft = await readReportDraft(scope, first.localDraftId);
-    if (!draft?.serverReport || draft.syncState !== 'saved') continue;
-    const entityId = draft.serverReport.id;
-    const response = await signedRequest(`/reports/${entityId}`, accessToken, signal);
-    if (!response.ok) continue;
-    const current = await response.json();
-    if (current.status !== 'draft' || current.revision !== draft.baseServerRevision) {
-      await editReportDraft(scope, first.localDraftId, (latest) => ({
-        ...latest,
-        syncState: 'conflict'
-      }));
-      conflicts += batch.items.length;
-      continue;
-    }
-    let revision = current.revision;
-    for (const item of batch.items) {
-      if (signal.aborted || !sameScope(await readSession(), scope)) return;
-      const claimed = await claimQueuedPhoto(scope, item.id);
-      if (!claimed) continue;
-      try {
-        const committed = await uploadQueuedFile(claimed, entityId, revision, accessToken, signal);
-        await updateClaims(scope, [claimed]);
-        if (committed !== undefined) {
-          const advanced = await editReportDraft(scope, first.localDraftId, (latest) => {
-            if (latest.baseServerRevision !== revision) return;
-            if (committed !== revision + 1) return { ...latest, syncState: 'conflict' };
-            return { ...latest, baseServerRevision: committed };
-          });
-          if (advanced?.baseServerRevision !== committed) {
-            conflicts += 1;
-            break;
-          }
-          revision = committed;
-        }
-      } catch (error) {
-        const status = error?.status;
-        await updateClaims(scope, [claimed], {
-          entityId,
-          status:
-            status && status < 500 && status !== 408 && status !== 429 ? 'server_newer' : 'failed'
-        });
-        if (status === 401 || status === 403 || signal.aborted) return;
-        if (status === 409) {
-          await editReportDraft(scope, first.localDraftId, (latest) => ({
-            ...latest,
-            syncState: 'conflict'
-          }));
-          conflicts += 1;
-          break;
-        }
-      }
-    }
+  for (const localDraftId of draftIds) {
+    if (signal.aborted || !sameScope(await readSession(), scope)) return;
+    const lockName = `garrisons-draft-sync:${JSON.stringify([scope.namespace, scope.ownerUserId, localDraftId])}`;
+    conflicts += self.navigator?.locks
+      ? await self.navigator.locks.request(lockName, () =>
+          syncOwnedDraft(scope, localDraftId, true, accessToken, signal)
+        )
+      : await syncOwnedDraft(scope, localDraftId, false, accessToken, signal);
   }
   if (signal.aborted || !sameScope(await readSession(), scope)) return;
   const clients = await self.clients.matchAll({ type: 'window' });

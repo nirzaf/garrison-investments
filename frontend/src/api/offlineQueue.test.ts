@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { planSyncBatches, retryPatch, type QueuedPhoto } from './offlineQueue';
-import type { DailyReportPayload } from './reports';
-
-const draftPayload = { project_id: 'project-1' } as unknown as DailyReportPayload;
+import { planSyncBatches, type QueuedPhoto } from './offlineQueue';
 
 function photo(overrides: Partial<QueuedPhoto> = {}): QueuedPhoto {
   return {
-    id: `item-${Math.random().toString(36).slice(2)}`,
+    id: crypto.randomUUID(),
     namespace: 'app-and-api-a',
     ownerUserId: 'owner-a',
     localDraftId: 'draft-a',
     entityType: 'daily_report',
     entityId: 'local-abc',
-    draftPayload,
     kind: 'photo',
     file: new File(['bytes'], 'site.jpg', { type: 'image/jpeg' }),
     createdAt: '2026-05-29T08:00:00.000Z',
@@ -24,42 +20,9 @@ function photo(overrides: Partial<QueuedPhoto> = {}): QueuedPhoto {
 }
 
 describe('planSyncBatches', () => {
-  it('plans one report create and three uploads for three photos sharing a local id', () => {
-    const items = [photo(), photo(), photo()];
-
-    const batches = planSyncBatches(items);
-
-    expect(batches).toHaveLength(1);
-    expect(batches[0].needsReportCreate).toBe(true);
-    expect(batches[0].entityId).toBe('local-abc');
-    expect(batches[0].items).toHaveLength(3);
-    expect(batches[0].draftPayload).toBe(draftPayload);
-    // One create + one upload per item, never one create per item.
-    expect(batches.filter((batch) => batch.needsReportCreate)).toHaveLength(1);
-  });
-
-  it('does not plan a create for an entity that already has a server id', () => {
-    const batches = planSyncBatches([
-      photo({ entityId: '11111111-1111-1111-1111-111111111111' }),
-      photo({ entityId: '11111111-1111-1111-1111-111111111111' })
-    ]);
-
-    expect(batches).toHaveLength(1);
-    expect(batches[0].needsReportCreate).toBe(false);
-    expect(batches[0].items).toHaveLength(2);
-  });
-
-  it('keeps separate local batches separate', () => {
-    const batches = planSyncBatches([
-      photo({ entityId: 'local-a' }),
-      photo({ entityId: 'local-b' }),
-      photo({ entityId: 'local-a' })
-    ]);
-
-    expect(batches).toHaveLength(2);
-    expect(batches.map((batch) => batch.entityId).sort()).toEqual(['local-a', 'local-b']);
-    expect(batches.every((batch) => batch.needsReportCreate)).toBe(true);
-    expect(batches.find((batch) => batch.entityId === 'local-a')?.items).toHaveLength(2);
+  it('groups files by local draft after some have a known server ID', () => {
+    const items = [photo(), photo({ entityId: '11111111-1111-1111-1111-111111111111' }), photo()];
+    expect(planSyncBatches(items)).toEqual([{ localDraftId: 'draft-a', items }]);
   });
 
   it('keeps matching entity IDs separate across owners, API environments, and drafts', () => {
@@ -73,22 +36,23 @@ describe('planSyncBatches', () => {
     expect(batches.every((batch) => batch.items.length === 1)).toBe(true);
   });
 
-  it('takes the draft payload from any sibling that carries one', () => {
-    const batches = planSyncBatches([photo({ draftPayload: undefined }), photo({ draftPayload })]);
-
-    expect(batches[0].draftPayload).toBe(draftPayload);
+  it('preserves the identity of a file whose upload receipt is pending', () => {
+    const item = photo({
+      status: 'failed',
+      intent: { reportId: 'report-1', expectedRevision: 3, kind: 'attachment' }
+    });
+    expect(planSyncBatches([item])[0].items[0]).toEqual(item);
   });
 
-  it('ignores items that are already synced or superseded by the server', () => {
+  it('skips blocked, superseded, and already uploaded files', () => {
+    const pending = photo({ status: 'failed' });
     const batches = planSyncBatches([
-      photo({ status: 'synced' }),
+      photo({ status: 'blocked' }),
       photo({ status: 'server_newer' }),
-      photo({ status: 'failed' })
+      photo({ status: 'synced' }),
+      pending
     ]);
-
-    expect(batches).toHaveLength(1);
-    expect(batches[0].items).toHaveLength(1);
-    expect(batches[0].items[0].status).toBe('failed');
+    expect(batches[0].items).toEqual([pending]);
   });
 
   it('returns no batches for an empty queue', () => {
@@ -96,38 +60,68 @@ describe('planSyncBatches', () => {
   });
 });
 
-describe('retryPatch', () => {
-  it('keeps the resolved server id so a retry never re-creates the report', () => {
-    const item = photo();
-    const serverId = '22222222-2222-2222-2222-222222222222';
+const fileRulesUrl = new URL('../../public/report-file-sync.js', import.meta.url).href;
+const fileRules = (await import(
+  /* @vite-ignore */ fileRulesUrl
+)) as typeof import('../../public/report-file-sync.js');
 
-    const retried = retryPatch(item, serverId);
-
-    expect(retried.entityId).toBe(serverId);
-    expect(retried.status).toBe('failed');
-    expect(retried.id).toBe(item.id);
-
-    const replanned = planSyncBatches([retried]);
-    expect(replanned).toHaveLength(1);
-    expect(replanned[0].needsReportCreate).toBe(false);
-    expect(replanned[0].entityId).toBe(serverId);
+describe('queued report file rules shared with the worker', () => {
+  it('accepts JPEG bytes at 10 MiB and rejects one extra byte', async () => {
+    const boundary = new Uint8Array(10 * 1024 * 1024);
+    boundary.set([0xff, 0xd8, 0xff]);
+    await expect(
+      fileRules.classifyQueuedReportFile(new File([boundary], 'site.jpg'), 'photo')
+    ).resolves.toBe('photo');
+    await expect(
+      fileRules.classifyQueuedReportFile(new File([boundary, 'x'], 'site.jpg'), 'photo')
+    ).rejects.toThrow('10 MiB');
   });
 
-  it('keeps the local id when the create itself failed, so the retry can create it', () => {
-    const item = photo();
-
-    const retried = retryPatch(item, item.entityId);
-
-    expect(retried.entityId).toBe('local-abc');
-    expect(planSyncBatches([retried])[0].needsReportCreate).toBe(true);
+  it('classifies real PDF and HEIC headers and rejects unsupported attachment formats', async () => {
+    await expect(
+      fileRules.classifyQueuedReportFile(new File(['%PDF-'], 'site.pdf'), 'photo')
+    ).resolves.toBe('attachment');
+    const heic = new File(['0000ftypheic'], 'site.heic');
+    await expect(fileRules.classifyQueuedReportFile(heic, 'photo')).resolves.toBe('photo');
+    await expect(fileRules.classifyQueuedReportFile(heic, 'attachment')).rejects.toThrow(
+      'attachments'
+    );
   });
 
-  it('does not mutate the original queue item', () => {
-    const item = photo();
+  it('does not trust a claimed MIME type or allow blocked extensions', async () => {
+    await expect(
+      fileRules.classifyQueuedReportFile(
+        new File(['text'], 'site.jpg', { type: 'image/jpeg' }),
+        'photo'
+      )
+    ).rejects.toThrow('Unsupported file type.');
+    await expect(
+      fileRules.classifyQueuedReportFile(
+        new File([new Uint8Array([0xff, 0xd8, 0xff])], 'site.sh'),
+        'photo'
+      )
+    ).rejects.toThrow('File type is blocked.');
+  });
 
-    retryPatch(item, 'server-id');
+  it('separates permanent quota and revision errors from auth and transport failures', () => {
+    expect(fileRules.uploadFailure(409, 'REPORT_PHOTO_LIMIT_REACHED')).toEqual({
+      state: 'blocked',
+      reason: 'The report already has five active photos.'
+    });
+    expect(fileRules.uploadFailure(409, 'DAILY_REPORT_REVISION_CONFLICT')).toMatchObject({
+      state: 'blocked',
+      conflict: true
+    });
+    expect(fileRules.uploadFailure(403)).toEqual({ state: 'suspended' });
+    expect(fileRules.uploadFailure(503)).toEqual({ state: 'retry' });
+  });
 
-    expect(item.entityId).toBe('local-abc');
-    expect(item.status).toBe('queued');
+  it('caps automatic retry attempts and honors a new explicit retry', () => {
+    expect(fileRules.uploadRetry(1, false, 1000)).toEqual({ attempts: 2, retryAfter: 5000 });
+    expect(fileRules.uploadRetry(3, false, 1000)).toEqual({
+      attempts: 4,
+      retryAfter: Number.MAX_SAFE_INTEGER
+    });
+    expect(fileRules.uploadRetry(4, true, 1000)).toEqual({ attempts: 1, retryAfter: 3000 });
   });
 });

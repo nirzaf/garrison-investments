@@ -367,3 +367,145 @@ test('text-only drafts recover a lost create response and preserve concurrent lo
     expect.objectContaining({ id: saved.id, revision: 3, work_completed: 'Current server edit' })
   ]);
 });
+
+test('an invalid legacy queued file stays local with a removable reason', async ({
+  page,
+  context,
+  request
+}) => {
+  const account = seed();
+  const token = await signIn(page, account);
+  await queueReport(page, context, account.projectId, 'Valid offline site report', 'valid.jpg');
+
+  // Simulate a queue entry written before byte validation was introduced.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('garrisons-offline');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction('ownedPhotoQueue', 'readwrite');
+          const queue = tx.objectStore('ownedPhotoQueue');
+          const files = queue.getAll();
+          files.onsuccess = () =>
+            queue.add({
+              ...files.result[0],
+              id: crypto.randomUUID(),
+              file: new File(['not an image'], 'invalid.jpg', { type: 'image/jpeg' })
+            });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onabort = () => {
+            db.close();
+            reject(tx.error);
+          };
+        };
+      })
+  );
+
+  await context.setOffline(false);
+  const issues = page.getByRole('region', { name: 'Queued uploads needing attention' });
+  await expect(issues).toContainText('invalid.jpg. Unsupported file type.');
+  await expect.poll(() => ownedRecordCount(page, 'ownedPhotoQueue')).toBe(1);
+  const [report] = await getReports(request, token, account.projectId);
+  const photos = await request.get('/api/v1/photos', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { entity_type: 'daily_report', entity_id: report.id }
+  });
+  expect(photos.ok()).toBe(true);
+  expect(
+    (await photos.json()).items.map((item: { original_name: string }) => item.original_name)
+  ).toEqual(['valid.jpg']);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await issues.getByRole('button', { name: 'Remove queued file invalid.jpg' }).click();
+  await expect(issues).toHaveCount(0);
+  expect(await ownedRecordCount(page, 'ownedPhotoQueue')).toBe(0);
+});
+
+test('a lost upload receipt is replayed before a newer local text edit', async ({
+  page,
+  context,
+  request
+}) => {
+  const account = seed();
+  const token = await signIn(page, account);
+  await queueReport(page, context, account.projectId, 'Original report text', 'receipt.jpg');
+
+  let afterUpload!: () => void;
+  let releaseResponse!: () => void;
+  const committed = new Promise<void>((resolve) => {
+    afterUpload = resolve;
+  });
+  const delayed = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  let originalKey: string | undefined;
+  let attempts = 0;
+  await page.route('**/api/v1/photos/upload', async (route) => {
+    attempts += 1;
+    const key = route.request().headers()['idempotency-key'];
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    expect(response.headers()['x-report-revision']).toBe('2');
+    if (attempts === 1) {
+      originalKey = key;
+      afterUpload();
+      await delayed;
+      await route.abort();
+    } else {
+      expect(key).toBe(originalKey);
+      await route.fulfill({ response });
+    }
+  });
+
+  await context.setOffline(false);
+  await committed;
+  await page.getByLabel('Work completed').fill('Edited while waiting for the upload receipt');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async () =>
+          new Promise<string>((resolve, reject) => {
+            const open = indexedDB.open('garrisons-offline');
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+              const db = open.result;
+              const tx = db.transaction('ownedReportDrafts', 'readonly');
+              const drafts = tx.objectStore('ownedReportDrafts').getAll();
+              tx.oncomplete = () => {
+                db.close();
+                resolve(drafts.result[0]?.payload.work_completed);
+              };
+              tx.onabort = () => {
+                db.close();
+                reject(tx.error);
+              };
+            };
+          })
+      )
+    )
+    .toBe('Edited while waiting for the upload receipt');
+  releaseResponse();
+
+  await expect
+    .poll(async () => {
+      const reports = await getReports(request, token, account.projectId);
+      return reports.map(({ work_completed, revision }) => ({ work_completed, revision }));
+    })
+    .toEqual([{ work_completed: 'Edited while waiting for the upload receipt', revision: 3 }]);
+  expect(attempts).toBe(2);
+  const [report] = await getReports(request, token, account.projectId);
+  const photos = await request.get('/api/v1/photos', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { entity_type: 'daily_report', entity_id: report.id }
+  });
+  expect(photos.ok()).toBe(true);
+  expect(
+    (await photos.json()).items.map((item: { original_name: string }) => item.original_name)
+  ).toEqual(['receipt.jpg']);
+  expect(await ownedRecordCount(page, 'ownedPhotoQueue')).toBe(0);
+});

@@ -10,14 +10,17 @@ import {
   clearReportDraft,
   flushPhotoQueue,
   getReportDraft,
+  getQueuedUploadIssues,
   isReportSyncActive,
   queueFiles,
   queuedPhotoCount,
   queuedDraftPhotoCount,
   acknowledgeReportEvidenceRevision,
   registerBackgroundSync,
+  removeQueuedUploadIssue,
   saveReportDraft,
-  type LocalReportDraft
+  type LocalReportDraft,
+  type QueuedUploadIssue
 } from '../../api/offlineQueue';
 import {
   listPhotos,
@@ -215,6 +218,8 @@ export function DailyReportPage() {
   >('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [syncConflicts, setSyncConflicts] = useState(0);
+  const [queuedUploadIssues, setQueuedUploadIssues] = useState<QueuedUploadIssue[]>([]);
+  const [queuedUploadPending, setQueuedUploadPending] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -348,13 +353,14 @@ export function DailyReportPage() {
     const refreshQueuedCount = () => {
       void Promise.all([
         queuedPhotoCount(scope),
-        draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0
+        draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0,
+        getQueuedUploadIssues(scope)
       ])
-        .then(([count, photos]) => {
-          if (mounted && sameScope(getBrowserSession()?.scope, scope)) {
-            setQueuedUploads(count);
-            setQueuedDraftPhotos(photos);
-          }
+        .then(([count, photos, issues]) => {
+          if (!mounted || !sameScope(getBrowserSession()?.scope, scope)) return;
+          setQueuedUploads(count);
+          setQueuedDraftPhotos(photos);
+          setQueuedUploadIssues(issues);
         })
         .catch(() => {});
     };
@@ -409,6 +415,7 @@ export function DailyReportPage() {
     window.addEventListener('online', syncQueued);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('photo-queue-sync-complete', handleSync);
+    refreshQueuedCount();
     if (navigator.onLine) syncQueued();
     return () => {
       mounted = false;
@@ -641,6 +648,42 @@ export function DailyReportPage() {
       return null;
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function removeQueuedUpload(issue: QueuedUploadIssue) {
+    if (
+      !scope ||
+      queuedUploadPending ||
+      !window.confirm(`Remove the local queued copy of ${issue.name}?`)
+    )
+      return;
+    setQueuedUploadPending(true);
+    try {
+      await removeQueuedUploadIssue(scope, issue.id);
+      const [count, issues] = await Promise.all([
+        queuedPhotoCount(scope),
+        getQueuedUploadIssues(scope)
+      ]);
+      if (!sameScope(getBrowserSession()?.scope, scope)) return;
+      setQueuedUploads(count);
+      setQueuedUploadIssues(issues);
+    } catch {
+      setError('Unable to remove the local queued file.');
+    } finally {
+      setQueuedUploadPending(false);
+    }
+  }
+
+  async function retryQueuedUploads() {
+    if (queuedUploadPending || !isOnline) return;
+    setQueuedUploadPending(true);
+    try {
+      await flushPhotoQueue(true);
+    } catch {
+      setError('Unable to retry the queued uploads.');
+    } finally {
+      setQueuedUploadPending(false);
     }
   }
 
@@ -1002,6 +1045,42 @@ export function DailyReportPage() {
               Retry sync
             </button>
           </div>
+        ) : null}
+        {queuedUploadIssues.length ? (
+          <section
+            aria-label="Queued uploads needing attention"
+            className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm"
+          >
+            <h3 className="font-semibold">Queued uploads needing attention</h3>
+            <ul className="mt-2 space-y-2">
+              {queuedUploadIssues.map((issue) => (
+                <li key={issue.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {issue.name}. {issue.reason}
+                  </span>
+                  <button
+                    aria-label={`Remove queued file ${issue.name}`}
+                    className="button-secondary"
+                    disabled={queuedUploadPending}
+                    type="button"
+                    onClick={() => void removeQueuedUpload(issue)}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {queuedUploadIssues.some((issue) => issue.canRetry) ? (
+              <button
+                className="button-secondary mt-2"
+                type="button"
+                disabled={!isOnline || queuedUploadPending}
+                onClick={() => void retryQueuedUploads()}
+              >
+                Retry pending uploads
+              </button>
+            ) : null}
+          </section>
         ) : null}
         {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
