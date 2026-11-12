@@ -164,6 +164,7 @@ test('offline report photos and verified supervisor evidence survive rejection a
   });
   expect(submitted.items[0].supervisor_update_ids).toHaveLength(1);
   const number = submitted.items[0].report_number;
+  if (!number) throw new Error('The submitted report has no report number.');
   const evidencePath = `/api/v1/reports/${original.id}/supervisor-updates`;
   const evidence = await request.get(evidencePath, { headers });
   expect(evidence.ok()).toBe(true);
@@ -212,9 +213,18 @@ test('offline report photos and verified supervisor evidence survive rejection a
   await expect(reviewer.getByText(`Approved ${number}.`, { exact: true })).toBeVisible();
   const approved = await getReports();
   expect(approved.items[0].status).toBe('approved');
-  const pdf = await request.get(`/api/v1/reports/${original.id}/pdf`, { headers });
-  expect(pdf.ok()).toBe(true);
-  expect(pdf.headers()['content-type']).toContain('application/pdf');
-  expect((await pdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+  await page.reload();
+  const approvedCard = page.getByRole('article').filter({
+    has: page.getByText(number, { exact: true })
+  });
+  await expect(approvedCard).toHaveCount(1);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    approvedCard.getByRole('button', { name: 'Download PDF', exact: true }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe(`${number}.pdf`);
+  const pdf = readFileSync(await download.path());
+  expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(pdf.subarray(-128).toString()).toContain('%%EOF');
   await reviewer.close();
 });

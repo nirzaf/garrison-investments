@@ -256,5 +256,14 @@ for (const roleCase of cases) {
       await page.goto(roleCase.denied.route);
       await expect(page).toHaveURL(roleCase.denied.landing ?? '/dashboard');
     }
+
+    await page.goto('/delivery');
+    if (roleCase.links.some((label) => label === 'Launch readiness')) {
+      await expect(
+        page.getByRole('heading', { name: 'Launch readiness', exact: true, level: 2 })
+      ).toBeVisible();
+    } else {
+      await expect(page).toHaveURL('/dashboard');
+    }
   });
 }

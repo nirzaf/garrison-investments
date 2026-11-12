@@ -7,6 +7,7 @@ Start with the [project README](../README.md) for implemented features, roles, r
 | Question | Guide | Source to verify |
 | --- | --- | --- |
 | What does the portal implement? | [Features and roles](../README.md#implemented-features) | [Frontend routes](../frontend/src/App.tsx) and [API routers](../backend/app/api/v1/) |
+| Which features are in the release scope? | [Scope inventory awaiting owner approval](ACCEPTED_SCOPE.md) | [Launch readiness route](../frontend/src/pages/delivery/DeliveryPlanPage.tsx) and [release evidence](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) |
 | How do a request, a background task, and a protected file move through the system? | [System architecture](ARCHITECTURE.md) and [backend guide](../backend/ARCHITECTURE.md) | [FastAPI entry point](../backend/app/main.py), [Celery configuration](../backend/app/tasks/celery_app.py), [production Compose](../docker-compose.prod.yml), and [Nginx](../nginx/) |
 | Who can read, submit, or approve a record? | [Roles and permissions](ROLES_AND_PERMISSIONS.md) | [Permission definitions](../backend/app/utils/permissions.py), route dependencies, and [domain services](../backend/app/services/) |
 | Which endpoint, payload, or response does the UI use? | [OpenAPI contract](openapi.json) and [regeneration steps](../README.md#api-contract-changes) | [API routers and schemas](../backend/app/api/v1/) and the [generated frontend types](../frontend/src/api/schema.d.ts) |
