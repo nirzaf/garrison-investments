@@ -40,6 +40,8 @@ async def _archive_and_purge_logs() -> str:
     async with AsyncSessionLocal() as session:
         audit = AuditService(session)
         archived = await audit.archive_logs()
+        purge_enabled = audit.settings.log_purge_enabled
+        preview_count = len(await audit.preview_purge()) if not purge_enabled else 0
         purged = await audit.purge_logs()
         await audit.record(
             action="maintenance.logs_retention",
@@ -47,10 +49,21 @@ async def _archive_and_purge_logs() -> str:
             severity="INFO",
             entity_type="log_events",
             comments="Log archive/purge cycle completed",
-            context_payload={"archived": archived, "purged": purged},
+            context_payload={
+                "archived": archived,
+                "purged": purged,
+                "purge_enabled": purge_enabled,
+                "preview_count": preview_count,
+            },
         )
         await session.commit()
-    logger.info("logs_retention_completed", archived=archived, purged=purged)
+    logger.info(
+        "logs_retention_completed",
+        archived=archived,
+        purged=purged,
+        purge_enabled=purge_enabled,
+        preview_count=preview_count,
+    )
     return f"{archived} logs archived, {purged} logs purged"
 
 

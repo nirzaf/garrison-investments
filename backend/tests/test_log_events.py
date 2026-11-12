@@ -189,8 +189,23 @@ async def test_log_retention_archives_then_purges_old_logs() -> None:
         logs[0].archived_at = utc_now() - timedelta(days=400)
         await session.commit()
 
-        purged = await AuditService(session).purge_logs(archive_retention_days=365)
-        assert purged >= 1
+        audit = AuditService(session)
+        audit.settings = audit.settings.model_copy(update={"log_purge_enabled": True})
+        assert await audit.purge_logs(archive_retention_days=365) == 0
+
+        log = logs[0]
+        log.retention_until = utc_now() - timedelta(seconds=1)
+        await session.flush()
+        preview = await audit.preview_purge(archive_retention_days=365)
+        assert [row[0] for row in preview] == [log.id]
+        assert await AuditService(session).purge_logs(archive_retention_days=365) == 0
+
+        log.retention_until = None
+        await session.flush()
+        assert await audit.purge_logs(archive_retention_days=365) == 0
+        log.retention_until = utc_now() - timedelta(seconds=1)
+        await session.flush()
+        assert await audit.purge_logs(archive_retention_days=365) == 1
         await session.commit()
 
 

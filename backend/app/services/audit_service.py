@@ -203,16 +203,39 @@ class AuditService:
         )
         return int(type_cast(CursorResult[Any], result).rowcount or 0)
 
-    async def purge_logs(self, *, archive_retention_days: int | None = None) -> int:
-        purge_cutoff = utc_now() - self._retention_delta(
+    def _purge_candidates(self, archive_retention_days: int | None) -> Select:
+        now = utc_now()
+        purge_cutoff = now - self._retention_delta(
             archive_retention_days or self.settings.log_archive_retention_days
         )
-        result = await self.session.execute(
-            delete(ActivityLog).where(
+        return (
+            select(ActivityLog.id, ActivityLog.retention_until)
+            .where(
                 ActivityLog.storage_tier == "archive",
                 ActivityLog.deleted_at.is_(None),
+                ActivityLog.retention_until <= now,
                 func.coalesce(ActivityLog.archived_at, ActivityLog.created_at) < purge_cutoff,
             )
+            .order_by(ActivityLog.retention_until, ActivityLog.id)
+            .limit(1000)
+        )
+
+    async def preview_purge(
+        self, *, archive_retention_days: int | None = None
+    ) -> list[tuple[UUID, datetime]]:
+        rows = await self.session.execute(self._purge_candidates(archive_retention_days))
+        return [(row.id, row.retention_until) for row in rows]
+
+    async def purge_logs(self, *, archive_retention_days: int | None = None) -> int:
+        if not self.settings.log_purge_enabled:
+            return 0
+        candidates = (
+            self._purge_candidates(archive_retention_days)
+            .with_only_columns(ActivityLog.id)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.session.execute(
+            delete(ActivityLog).where(ActivityLog.id.in_(candidates))
         )
         return int(type_cast(CursorResult[Any], result).rowcount or 0)
 

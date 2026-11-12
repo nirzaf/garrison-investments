@@ -66,7 +66,11 @@ Typical event types include `api_request`, `security_event`, `user_action`, `sta
 
 ## Audit retention
 
-The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs archival and purge daily at 03:30 UTC. The default hot window is 30 days (`LOG_HOT_RETENTION_DAYS`), and the default archive retention is 365 days (`LOG_ARCHIVE_RETENTION_DAYS`). Archived rows remain queryable with `search --storage-tier archive`. `LOG_STREAM_POLL_SECONDS` defaults to one second.
+The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs the retention check daily at 03:30 UTC. The default hot window is 30 days (`LOG_HOT_RETENTION_DAYS`), and the default archive window is 365 days (`LOG_ARCHIVE_RETENTION_DAYS`). Archived rows remain in PostgreSQL and can be queried with `search --storage-tier archive`. `LOG_STREAM_POLL_SECONDS` defaults to one second.
+
+The scheduled job reports a bounded preview count by default. A row becomes a purge candidate after both the archive window and its recorded `retention_until` deadline expire. Rows without a deadline are retained. `LOG_PURGE_ENABLED` defaults to `false`. Enabling it requires the approved records policy, legacy deadline review, and recovery evidence.
+
+Run `python scripts/preview_audit_retention.py` from the backend directory to list candidate IDs and deadlines and count records with missing deadlines. The preview reads from a read-only transaction and omits event payloads.
 
 ## Grafana, Loki, and Alloy
 
