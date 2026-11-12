@@ -91,7 +91,7 @@ def test_legacy_workflow_invocation_is_rejected_before_token_read(protocol: list
 def test_missing_installed_verifier_blocks_candidate_download(tmp_path: Path) -> None:
     source = SCRIPT.read_text()
     start = source.index("\nverify_authorization() {\n")
-    end = source.index('\noperator=$(github "actions/runs/', start)
+    end = source.index('\ngithub "actions/runs/', start)
     result = subprocess.run(
         [
             "bash",

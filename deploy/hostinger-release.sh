@@ -23,6 +23,8 @@ run_id=$1
 sha=$2
 IFS= read -r token || die 'A GitHub Actions token is required on stdin.'
 [[ "$token" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'Invalid GitHub Actions token format.'
+IFS= read -r deploy_run_id || die 'A deployment workflow run ID is required on stdin.'
+[[ "$deploy_run_id" =~ ^[1-9][0-9]*$ ]] || die 'Invalid deployment workflow run ID.'
 
 exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
@@ -53,10 +55,10 @@ verify_authorization() {
       die 'The release verifier must be protected from runner writes.'
   done
   printf '%s\n' "$token" | /usr/bin/python3 -I "$verifier" \
-    --host-state "$state" --commit "$sha" --ci-run "$run_id" --operator "$operator" "$@"
+    --host-state "$state" --commit "$sha" --ci-run "$run_id" --deploy-run "$deploy_run_id" "$@"
 }
 
-operator=$(github "actions/runs/$run_id" | python3 -c '
+github "actions/runs/$run_id" | python3 -c '
 import json, sys
 r = json.load(sys.stdin)
 if not (
@@ -69,11 +71,7 @@ if not (
     and r["head_sha"] == sys.argv[2]
 ):
     sys.exit("The candidate does not match a successful CI push to main.")
-operator = (r.get("triggering_actor") or r.get("actor") or {}).get("login")
-if not operator:
-    sys.exit("The release operator could not be verified from GitHub.")
-print(operator)
-' "$repository" "$sha")
+' "$repository" "$sha"
 verify_main
 
 previous=$(readlink -f "$state/current")
@@ -295,8 +293,8 @@ with open(sys.argv[1]) as file:
 PY
 cat "$candidate/READINESS.json"
 
-printf 'Commit: %s\nCI run: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
-  "$sha" "$run_id" "$(date -u +%FT%TZ)" "$asset" "$expected_asset" "$expected_worker" \
+printf 'Commit: %s\nCI run: %s\nDeploy run: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+  "$sha" "$run_id" "$deploy_run_id" "$(date -u +%FT%TZ)" "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
 ln -sfn "$candidate" "$state/.current-next"
 mv -Tf "$state/.current-next" "$state/current"

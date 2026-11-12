@@ -354,6 +354,38 @@ def test_release_dispatch_uses_existing_green_ci(monkeypatch: pytest.MonkeyPatch
         contract.checked_run(11, SHA, None, ci=True)
 
 
+@pytest.mark.parametrize(
+    ("run_id", "sha", "status", "expected_operator"),
+    [
+        (12, SHA, "in_progress", "deploy-operator"),
+        (11, SHA, "in_progress", None),
+        (12, "0" * 40, "in_progress", None),
+        (12, SHA, "completed", None),
+    ],
+)
+def test_operator_comes_from_active_deployment_not_ci(
+    monkeypatch: pytest.MonkeyPatch,
+    run_id: int,
+    sha: str,
+    status: str,
+    expected_operator: str | None,
+) -> None:
+    def active_run(path: str, token: str | None) -> dict[str, Any]:
+        return {
+            **github_stub(path, token),
+            "status": status,
+            "actor": {"login": "initial-operator"},
+            "triggering_actor": {"login": "deploy-operator"},
+        }
+
+    monkeypatch.setattr(contract, "github_record", active_run)
+    if expected_operator is None:
+        with pytest.raises(contract.ContractError, match="GitHub run does not match"):
+            contract.deployment_operator(run_id, sha, None)
+    else:
+        assert contract.deployment_operator(run_id, sha, None) == expected_operator
+
+
 def ci_receipt(bundle: Bundle) -> dict[str, Any]:
     counts = {"passed": 2, "failed": 0, "skipped": 0, "warnings": 0}
     return {

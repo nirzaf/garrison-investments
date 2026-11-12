@@ -343,7 +343,9 @@ def github_record(path: str, token: str | None) -> dict[str, Any]:
     return result
 
 
-def checked_run(run_id: int, sha: str, token: str | None, *, ci: bool) -> dict[str, Any]:
+def checked_run(
+    run_id: int, sha: str, token: str | None, *, ci: bool, active: bool = False
+) -> dict[str, Any]:
     run = github_record(f"actions/runs/{run_id}", token)
     repository = run.get("head_repository") or {}
     require(
@@ -354,12 +356,23 @@ def checked_run(run_id: int, sha: str, token: str | None, *, ci: bool) -> dict[s
         and run.get("path")
         == (".github/workflows/ci.yml" if ci else ".github/workflows/deploy.yml")
         and run.get("event") in ({"push"} if ci else {"workflow_run", "workflow_dispatch"})
-        and run.get("status") == "completed"
-        and run.get("conclusion") == "success",
-        "GitHub run does not match the successful release candidate and workflow.",
+        and (
+            (not ci and run.get("status") == "in_progress")
+            if active
+            else (run.get("status") == "completed" and run.get("conclusion") == "success")
+        ),
+        "GitHub run does not match the required release candidate and workflow.",
         3,
     )
     return run
+
+
+def deployment_operator(run_id: int, sha: str, token: str | None) -> str:
+    run = checked_run(run_id, sha, token, ci=False, active=True)
+    actor = run.get("triggering_actor") or run.get("actor")
+    if not isinstance(actor, dict):
+        raise ContractError(3, "The deployment operator could not be verified from GitHub.")
+    return meaningful(actor.get("login"), "GitHub release operator")
 
 
 def approval_time(value: Any, now: datetime, label: str) -> datetime:
@@ -2230,7 +2243,7 @@ def host_main() -> None:
     parser.add_argument("--host-state", type=Path, required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--ci-run", type=int, required=True)
-    parser.add_argument("--operator", required=True)
+    parser.add_argument("--deploy-run", type=int, required=True)
     parser.add_argument("--schema-head", action="append")
     parser.add_argument("--backend-image")
     parser.add_argument("--frontend-image")
@@ -2280,7 +2293,7 @@ def host_main() -> None:
             expected_ci_run=args.ci_run,
             expected_config=host_configuration(state),
             expected_runtime=runtime,
-            actor=meaningful(args.operator, "GitHub release operator"),
+            actor=deployment_operator(args.deploy_run, source, token),
         )
         verdict = verifier.run(root / "release_manifest.json")
         print(json.dumps(verdict, sort_keys=True))
