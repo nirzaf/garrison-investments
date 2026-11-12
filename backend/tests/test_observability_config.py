@@ -122,6 +122,9 @@ def test_alloy_applies_second_stage_credential_redaction() -> None:
         )
         assert "$request_method $uri $server_protocol" in access_format
         assert "$request_uri" not in access_format and "$args" not in access_format
+        assert nginx.count("server {\n    access_log /var/log/nginx/access.log portal_access;") == (
+            nginx.count("server {")
+        )
 
 
 def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> None:
