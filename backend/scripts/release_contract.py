@@ -10,12 +10,14 @@ import os
 import re
 import stat
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 REPOSITORY = "nirzaf/garrison-investments"
@@ -34,15 +36,15 @@ FINAL_ROLES = {"business_sponsor", "finance_data_owner", "qa_lead", "operations_
 PREDEPLOY_KINDS = {"ci", "retention", "recovery", "observability", "uat", "data_reconciliation"}
 FINAL_KINDS = {"deployment", "runtime_readback", "observation", "handover"}
 LIVE_KINDS = {"retention", "recovery", "observability"}
+CI_TEST_JOBS = {
+    "backend": {"Backend tests (1/2)", "Backend tests (2/2)"},
+    "frontend": {"Frontend lint, types, tests and build"},
+    "browser": {"Browser regressions (1/2)", "Browser regressions (2/2)"},
+}
 CI_JOBS = {
     "Backend lint and types",
-    "Frontend lint, types, tests and build",
     "Compose files are valid",
-    "Backend tests (1/2)",
-    "Backend tests (2/2)",
-    "Browser regressions (1/2)",
-    "Browser regressions (2/2)",
-}
+} | set().union(*CI_TEST_JOBS.values())
 ROLE_IDS = {
     "admin",
     "general_manager",
@@ -329,6 +331,12 @@ class Evidence:
         self.protected = protected
 
     def load(self, ref: Any, *, parse: bool = False) -> Any:
+        return self._load(ref, strict_json if parse else None)
+
+    def load_junit(self, ref: Any) -> dict[str, int]:
+        return self._load(ref, junit_counts)
+
+    def _load(self, ref: Any, decoder: Callable[[bytes], Any] | None) -> Any:
         record = fields(ref, "path sha256 size_bytes", optional="sensitivity", label="artifact")
         location = self.root.joinpath(*safe_parts(record["path"]))
         expected_size = count(record["size_bytes"], "artifact size", minimum=1)
@@ -341,8 +349,8 @@ class Evidence:
                 "Evidence artifact size differs from its reference.",
                 3,
             )
-            if parse:
-                require(expected_size <= 4 * 1024 * 1024, "JSON evidence exceeds the size limit.")
+            if decoder:
+                require(expected_size <= 4 * 1024 * 1024, "Parsed evidence exceeds the size limit.")
                 raw = file.read(expected_size + 1)
                 observed = hashlib.sha256(raw).hexdigest()
             else:
@@ -351,7 +359,7 @@ class Evidence:
         require(
             observed == expected_hash, "Evidence artifact digest differs from its reference.", 3
         )
-        return strict_json(raw) if parse else expected_hash
+        return decoder(raw) if decoder else expected_hash
 
     def artifacts(self, references: Any, label: str) -> set[str]:
         result = set()
@@ -894,8 +902,56 @@ def run_url(run_id: int) -> str:
     return f"https://github.com/{REPOSITORY}/actions/runs/{run_id}"
 
 
+def junit_counts(raw: bytes) -> dict[str, int]:
+    """Count individual test results in the JUnit formats emitted by the CI runners."""
+    try:
+        report = raw.decode("utf-8-sig")
+        require(
+            not re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", report, re.IGNORECASE),
+            "JUnit XML may not contain DTDs or entity declarations.",
+            3,
+        )
+        root = ElementTree.fromstring(report)
+    except (UnicodeDecodeError, ElementTree.ParseError):
+        raise ContractError(3, "Invalid JUnit XML test report.") from None
+
+    require(root.tag in {"testsuite", "testsuites"}, "Invalid JUnit XML report root.", 3)
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+    totals = dict.fromkeys(("tests", "failures", "errors", "skipped"), 0)
+    outcomes = {"failure": "failures", "error": "errors", "skipped": "skipped"}
+    for suite in suites:
+        counts = dict.fromkeys(totals, 0)
+        for case in suite.findall("testcase"):
+            require(bool(case.get("name")), "JUnit test case is missing its name.", 3)
+            results = [outcomes[child.tag] for child in case if child.tag in outcomes]
+            require(len(results) <= 1, "JUnit test case has conflicting outcomes.", 3)
+            counts["tests"] += 1
+            if results:
+                counts[results[0]] += 1
+        for name, value in counts.items():
+            require(suite.get(name, str(value)) == str(value), "JUnit suite totals differ.", 3)
+            totals[name] += value
+
+    require(
+        totals["tests"] > 0 and totals["tests"] == sum(1 for _ in root.iter("testcase")),
+        "JUnit report must contain individual test cases in its suites.",
+        3,
+    )
+    for name, value in totals.items():
+        require(root.get(name, str(value)) == str(value), "JUnit report totals differ.", 3)
+    failed = totals["failures"] + totals["errors"]
+    skipped = totals["skipped"]
+    return {"passed": totals["tests"] - failed - skipped, "failed": failed, "skipped": skipped}
+
+
 def receipt_ci(
-    payload: Any, evidence: Evidence, sha: str, token: str | None, required_run: int | None
+    payload: Any,
+    evidence: Evidence,
+    sha: str,
+    token: str | None,
+    required_run: int | None,
+    *,
+    artifact_hashes: set[str] | None = None,
 ) -> None:
     data = fields(
         payload, "run_id run_url repository ref conclusion jobs suites checks", label="CI result"
@@ -942,26 +998,62 @@ def receipt_ci(
     )
 
     suites = set()
+    report_paths: set[str] = set()
+    report_hashes: set[str] = set()
     for value in items(data["suites"], "test suites"):
-        suite = fields(value, "name passed failed skipped warnings report", label="test suite")
-        name = exact(suite["name"], {"backend", "frontend", "browser"}, "test suite name")
+        suite = fields(value, "name passed failed skipped warnings reports", label="test suite")
+        name = exact(suite["name"], set(CI_TEST_JOBS), "test suite name")
         require(name not in suites, "Duplicate CI test suite.")
         suites.add(name)
+        # Runner warnings are reviewed separately because JUnit does not report them consistently.
+        count(suite["warnings"], f"{name} warnings")
         counts = {
             key: count(suite[key], f"{name} {key}", minimum=int(key == "passed"))
-            for key in ("passed", "failed", "skipped", "warnings")
+            for key in ("passed", "failed", "skipped")
         }
         require(
             counts["failed"] == counts["skipped"] == 0,
             "A CI suite has failures or unexplained skips.",
             4,
         )
-        require(
-            evidence.load(suite["report"], parse=True) == counts,
-            "Raw test report counts differ from the receipt.",
-            3,
-        )
-    require(suites == {"backend", "frontend", "browser"}, "Missing a mandatory test suite.", 3)
+        test_jobs = CI_TEST_JOBS[name]
+        expected_jobs = {job_id for job_id, job_name in jobs.items() if job_name in test_jobs}
+        report_jobs: set[int] = set()
+        reported = dict.fromkeys(counts, 0)
+        for value in items(suite["reports"], "JUnit job reports"):
+            row = fields(value, "job_id report", label="JUnit job report")
+            job_id = count(row["job_id"], "JUnit report job ID", minimum=1)
+            require(
+                job_id in expected_jobs and job_id not in report_jobs,
+                "JUnit report job is unexpected or duplicated.",
+                3,
+            )
+            report_jobs.add(job_id)
+            ref = fields(
+                row["report"],
+                "path sha256 size_bytes",
+                optional="sensitivity",
+                label="JUnit report",
+            )
+            path = "/".join(safe_parts(ref["path"]))
+            sha256 = digest(ref["sha256"], "JUnit report")
+            require(
+                path not in report_paths and sha256 not in report_hashes,
+                "JUnit report is reused across CI jobs.",
+                3,
+            )
+            require(
+                artifact_hashes is None or sha256 in artifact_hashes,
+                "JUnit report is missing from the classified receipt artifacts.",
+                3,
+            )
+            report_paths.add(path)
+            report_hashes.add(sha256)
+            for key, result in evidence.load_junit(ref).items():
+                reported[key] += result
+        require(report_jobs == expected_jobs, "A required CI job is missing its JUnit report.", 3)
+        require(reported == counts, "JUnit test report counts differ from the receipt.", 3)
+    require(suites == set(CI_TEST_JOBS), "Missing a mandatory test suite.", 3)
     assertions(
         data["checks"],
         {"lint", "typing", "openapi", "typescript_contract", "frontend_build", "compose"},
@@ -2302,7 +2394,14 @@ class Validation:
             "configuration_sha256": configuration,
         }
         if kind == "ci":
-            receipt_ci(result, self.evidence, self.sha, self.token, self.expected_ci_run)
+            receipt_ci(
+                result,
+                self.evidence,
+                self.sha,
+                self.token,
+                self.expected_ci_run,
+                artifact_hashes=artifact_hashes,
+            )
         elif kind == "retention":
             receipt_retention(
                 result,

@@ -52,9 +52,16 @@ jobs:
       - name: Generated API types are current
         run: npm run api:types:check
       - name: Vitest
-        run: npm test
+        run: npm test -- --reporter=default --reporter=junit --outputFile.junit="$RUNNER_TEMP/frontend.xml"
       - name: Build
         run: npm run build
+      - name: Upload Vitest report
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-${{ github.run_attempt }}-frontend
+          path: ${{ runner.temp }}/frontend.xml
+          if-no-files-found: error
 
   compose-validate:
     name: Compose files are valid
@@ -185,16 +192,25 @@ jobs:
         if: matrix.suite == 'backend'
         env:
           PYTEST_SHARD: ${{ matrix.shard }}
-        run: pytest -q -rs --durations=10 --garrison-shard "$PYTEST_SHARD"
+        run: pytest -q -rs --durations=10 --garrison-shard "$PYTEST_SHARD" --junitxml="$RUNNER_TEMP/test-report.xml"
       - name: Browser regressions
         if: matrix.suite == 'browser'
         working-directory: frontend
         env:
           BROWSER_SHARD: ${{ matrix.shard }}
-        run: npm run test:browser -- --shard="$BROWSER_SHARD/2" --workers=2 --reporter=list
+        run: |
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
+            npm run test:browser -- --shard="$BROWSER_SHARD/2" --workers=2 --reporter=list,junit
       - name: Remove the test S3 container
         if: always()
         run: |
           if docker container inspect garrison-ci-s3 >/dev/null 2>&1; then
             docker container rm --force garrison-ci-s3 >/dev/null
           fi
+      - name: Upload shard test report
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-${{ github.run_attempt }}-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-report.xml
+          if-no-files-found: error

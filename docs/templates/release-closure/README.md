@@ -10,6 +10,15 @@ These files are blank formats for the [operations guide](../../OPERATIONS_AND_DE
 
 File references contain `path`, `sha256`, and `size_bytes`. Use a relative path beneath the private evidence root and hash the exact bytes. Receipt artifact references also require `sensitivity` (`sanitized` or `restricted`). The signed subject for a decision, review or equivalence record is the SHA-256 of its UTF-8 JSON with sorted keys, no extra whitespace and `ensure_ascii=False`, excluding the approval pointer itself. Deployment and final acceptance approvals use the exact file digests of the unsigned subject and unsigned acceptance bundle respectively.
 
+For the CI receipt, download the five JUnit reports from the successful main push and its actual run attempt:
+
+```bash
+gh run download "$CI_RUN_ID" --pattern "ci-$CI_RUN_ATTEMPT-*" \
+  --dir "$PRIVATE_EVIDENCE_ROOT/ci-reports"
+```
+
+Record the GitHub job ID for each report. In each `results.suites` entry, list the suite totals and a `reports` array of `{ "job_id": ..., "report": ... }` references. Include both backend shards, both Chromium shards and the frontend report, each as a classified receipt artifact. The release reviewer confirms each artifact against the exact GitHub run, attempt and job before signing. The validator checks the JUnit hashes and counts and requires the suite totals to match. Record warnings separately from the same job output.
+
 For reconciliation, each exception population provides an attached `inventory_ref`, the `observed_ids`, and one `dispositions` entry per ID. The inventory records `source_sha`, `environment`, `configuration_sha256`, `population`, `tool`, `started_at`, `completed_at`, `exit_code` and `reports`. Use the script's module name without the `scripts.` prefix for `tool`. Record the actual scan interval within the reviewed receipt's execution window. Attach each report file to the receipt. Convert JSON Lines output to complete JSON arrays without changing or omitting rows, splitting at row boundaries to stay below the 4 MiB per-file limit. Retain the original output for review. The same stock report can supply both the reservations and approvals populations.
 
 For retention, attach the original JSON pages for `missing`, `unknown` and `shorter_than_policy` using the same cutoff and approved policy digest. Collect each category through its terminal page. The validator derives the exception IDs from the attached reports and compares them with `observed_ids`. It uses `update_id` for supervisor links, `approval_id` for approvals, `invoice_id` for payments, `candidate` for offline duplicates, `entity_type:entity_id` for media and `id` for retention. Reservation IDs use `finding:item_id:location_id` for stock drift and `finding:line_id` for request-line findings.

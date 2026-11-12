@@ -29,6 +29,7 @@ class Bundle:
         self.root.mkdir()
         self.trust = self.root.parent / "trusted.json"
         self.approvals: dict[str, Any] = {}
+        self.ci_artifacts: list[dict[str, Any]] = []
         self.recovery_artifacts: dict[str, list[dict[str, Any]]] = {}
         self.observation_artifacts: list[dict[str, Any]] = []
         self.inventory_artifacts: list[dict[str, Any]] = []
@@ -37,9 +38,11 @@ class Bundle:
         self.artifact["sensitivity"] = "sanitized"
 
     def write(self, name: str, value: Any) -> dict[str, Any]:
+        return self.write_bytes(name, json.dumps(value, sort_keys=True).encode())
+
+    def write_bytes(self, name: str, raw: bytes) -> dict[str, Any]:
         path = self.root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        raw = json.dumps(value, sort_keys=True).encode()
         path.write_bytes(raw)
         return {"path": name, "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}
 
@@ -109,6 +112,7 @@ class Bundle:
             "results": result,
             "artifacts": [
                 self.artifact,
+                *(self.ci_artifacts if kind == "ci" else []),
                 *(self.recovery_artifacts[phase] if kind == "recovery" else []),
                 *(self.observation_artifacts if kind == "observation" else []),
                 *(self.inventory_artifacts if kind == "data_reconciliation" else []),
@@ -404,26 +408,47 @@ def test_operator_comes_from_active_deployment_not_ci(
 
 
 def ci_receipt(bundle: Bundle) -> dict[str, Any]:
-    counts = {"passed": 2, "failed": 0, "skipped": 0, "warnings": 0}
+    jobs = [
+        {
+            "id": i,
+            "name": name,
+            "url": f"{contract.run_url(11)}/job/{i}",
+            "conclusion": "success",
+        }
+        for i, name in enumerate(sorted(contract.CI_JOBS), 1)
+    ]
+    suites = []
+    for suite, names in contract.CI_TEST_JOBS.items():
+        reports = []
+        for job in jobs:
+            if job["name"] not in names:
+                continue
+            job_id = job["id"]
+            raw = (
+                f'<testsuites><testsuite tests="1"><testcase name="test-job-{job_id}"/>'
+                "</testsuite></testsuites>"
+            ).encode()
+            report = bundle.write_bytes(f"artifacts/ci-job-{job_id}.xml", raw)
+            bundle.ci_artifacts.append({**report, "sensitivity": "sanitized"})
+            reports.append({"job_id": job_id, "report": report})
+        suites.append(
+            {
+                "name": suite,
+                "passed": len(reports),
+                "failed": 0,
+                "skipped": 0,
+                "warnings": 2 if suite == "backend" else 0,
+                "reports": reports,
+            }
+        )
     return {
         "run_id": 11,
         "run_url": contract.run_url(11),
         "repository": contract.REPOSITORY,
         "ref": "refs/heads/main",
         "conclusion": "success",
-        "jobs": [
-            {
-                "id": i,
-                "name": name,
-                "url": f"{contract.run_url(11)}/job/{i}",
-                "conclusion": "success",
-            }
-            for i, name in enumerate(sorted(contract.CI_JOBS), 1)
-        ],
-        "suites": [
-            {"name": name, **counts, "report": bundle.write(f"artifacts/{name}.json", counts)}
-            for name in ("backend", "frontend", "browser")
-        ],
+        "jobs": jobs,
+        "suites": suites,
         "checks": true(
             "lint", "typing", "openapi", "typescript_contract", "frontend_build", "compose"
         ),
@@ -439,6 +464,102 @@ def test_ci_receipt_requires_all_parallel_suites(tmp_path: Path, job: str) -> No
     receipt["jobs"] = [row for row in receipt["jobs"] if row["name"] != job]
     with pytest.raises(contract.ContractError, match="Required CI jobs are missing"):
         contract.receipt_ci(receipt, bundle.validator("predeploy").evidence, SHA, None, 11)
+
+
+def test_junit_counts_derive_results_from_actual_cases() -> None:
+    report = b"""<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="4" errors="1" failures="1">
+  <testsuite tests="4" errors="1" failures="1" skipped="1">
+    <testcase name="pass"/>
+    <testcase name="failure"><failure/></testcase>
+    <testcase name="error"><error/></testcase>
+    <testcase name="skip"><skipped/></testcase>
+  </testsuite>
+</testsuites>
+"""
+    assert contract.junit_counts(report) == {"passed": 1, "failed": 2, "skipped": 1}
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (b'{"passed": 1, "failed": 0, "skipped": 0}', "Invalid JUnit XML"),
+        (b"<testsuite", "Invalid JUnit XML"),
+        (b"<testsuite tests='1'/>", "JUnit suite totals differ"),
+        (b"<testsuites/>", "must contain individual test cases"),
+        (
+            b"<!DOCTYPE testsuite><testsuite><testcase name='example'/></testsuite>",
+            "DTD",
+        ),
+        (
+            b"<testsuite><testcase name='example'><error/><skipped/></testcase></testsuite>",
+            "conflicting outcomes",
+        ),
+    ],
+)
+def test_junit_rejects_invalid_or_summary_only_xml(raw: bytes, message: str) -> None:
+    with pytest.raises(contract.ContractError, match=message):
+        contract.junit_counts(raw)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "message"),
+    [
+        ("missing-shard", "missing its JUnit report"),
+        ("duplicate-job", "unexpected or duplicated"),
+        ("wrong-suite", "unexpected or duplicated"),
+        ("reused-path", "reused across CI jobs"),
+        ("reused-digest", "reused across CI jobs"),
+        ("tampered-file", "digest differs"),
+        ("unclassified-file", "missing from the classified receipt artifacts"),
+        ("incorrect-count", "counts differ from the receipt"),
+        ("concealed-failure", "counts differ from the receipt"),
+        ("concealed-skip", "counts differ from the receipt"),
+    ],
+)
+def test_ci_receipt_requires_hashed_job_reports_matching_totals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str, message: str
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    receipt = ci_receipt(bundle)
+    backend = next(suite for suite in receipt["suites"] if suite["name"] == "backend")
+    browser = next(suite for suite in receipt["suites"] if suite["name"] == "browser")
+    first, second = backend["reports"]
+    artifact_hashes = {artifact["sha256"] for artifact in bundle.ci_artifacts}
+    if scenario == "missing-shard":
+        backend["reports"].pop()
+    elif scenario == "duplicate-job":
+        second["job_id"] = first["job_id"]
+    elif scenario == "wrong-suite":
+        second["job_id"] = browser["reports"][0]["job_id"]
+    elif scenario == "reused-path":
+        second["report"]["path"] = first["report"]["path"]
+    elif scenario == "reused-digest":
+        raw = (bundle.root / first["report"]["path"]).read_bytes()
+        second["report"] = bundle.write_bytes("artifacts/copied-report.xml", raw)
+    elif scenario == "tampered-file":
+        path = bundle.root / first["report"]["path"]
+        path.write_bytes(path.read_bytes().replace(b"test-job", b"fake-job"))
+    elif scenario == "unclassified-file":
+        artifact_hashes.remove(first["report"]["sha256"])
+    elif scenario == "incorrect-count":
+        backend["passed"] += 1
+    else:
+        outcome = "error" if scenario == "concealed-failure" else "skipped"
+        raw = f'<testsuite><testcase name="altered"><{outcome}/></testcase></testsuite>'.encode()
+        first["report"] = bundle.write_bytes("artifacts/altered.xml", raw)
+        artifact_hashes.add(first["report"]["sha256"])
+
+    with pytest.raises(contract.ContractError, match=message):
+        contract.receipt_ci(
+            receipt,
+            bundle.validator("predeploy").evidence,
+            SHA,
+            None,
+            11,
+            artifact_hashes=artifact_hashes,
+        )
 
 
 def phase_results(
