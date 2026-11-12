@@ -262,16 +262,40 @@ test('supplier manager edits expiry, replaces evidence, and deactivates a suppli
     'import sys; from reportlab.pdfgen.canvas import Canvas; c=Canvas(sys.stdout.buffer); c.drawString(50, 700, "Synthetic TDS fixture"); c.save()'
   ]);
   const input = card.getByLabel('TDS document (30 MiB)', { exact: true });
-  for (const name of ['evidence.pdf', 'replacement.pdf']) {
-    await input.setInputFiles({ name, mimeType: 'application/pdf', buffer: pdf });
-    const uploaded = page.waitForResponse(
-      (response) => response.url().endsWith('/tds-document') && response.status() === 200
+  // The next action must use the upload receipt even while the register refresh is pending.
+  let releaseRegisterRefresh: (() => void) | undefined;
+  const registerRefresh = new Promise<void>((resolve) => {
+    releaseRegisterRefresh = resolve;
+  });
+  await page.route((url) => url.pathname === '/api/v1/suppliers', async (route) => {
+    await registerRefresh;
+    await route.continue();
+  });
+  try {
+    let uploadedRevision = 0;
+    for (const name of ['evidence.pdf', 'replacement.pdf']) {
+      await input.setInputFiles({ name, mimeType: 'application/pdf', buffer: pdf });
+      const uploaded = page.waitForResponse(
+        (response) => response.url().endsWith('/tds-document') && response.status() === 200
+      );
+      await card.getByRole('button', { name: 'Upload TDS document', exact: true }).click();
+      uploadedRevision = ((await (await uploaded).json()) as { revision: number }).revision;
+    }
+    await card.getByRole('button', { name: 'Deactivate supplier', exact: true }).click();
+    const deactivated = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        new URL(response.url()).pathname === `/api/v1/suppliers/${supplier.id}`
     );
-    await card.getByRole('button', { name: 'Upload TDS document', exact: true }).click();
-    await uploaded;
+    await card.getByRole('button', { name: 'Confirm deactivation', exact: true }).click();
+    const response = await deactivated;
+    expect(new URL(response.url()).searchParams.get('expected_revision')).toBe(
+      String(uploadedRevision)
+    );
+    expect(response.status()).toBe(200);
+  } finally {
+    releaseRegisterRefresh?.();
   }
-  await card.getByRole('button', { name: 'Deactivate supplier', exact: true }).click();
-  await card.getByRole('button', { name: 'Confirm deactivation', exact: true }).click();
   await expect(card).toHaveCount(0);
   await page.getByLabel('Supplier state', { exact: true }).selectOption('inactive');
   await expect(card).toContainText('Inactive');

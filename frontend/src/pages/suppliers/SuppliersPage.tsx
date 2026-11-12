@@ -178,7 +178,7 @@ export function SuppliersPage() {
                 supplier={supplier}
                 refresh={refresh}
                 canEdit={!editor}
-                onEdit={() => setEditor(supplier)}
+                onEdit={setEditor}
               />
             ))}
           </div>
@@ -315,7 +315,7 @@ function SupplierForm({
 }
 
 function SupplierCard({
-  supplier,
+  supplier: registerSupplier,
   canEdit,
   refresh,
   onEdit
@@ -323,8 +323,14 @@ function SupplierCard({
   supplier: SupplierRecord;
   canEdit: boolean;
   refresh: () => void;
-  onEdit: () => void;
+  onEdit: (supplier: SupplierRecord) => void;
 }) {
+  const [uploadedSupplier, setUploadedSupplier] = useState<SupplierRecord>();
+  // Keep the committed revision while the register refresh catches up.
+  const supplier =
+    uploadedSupplier && uploadedSupplier.revision > registerSupplier.revision
+      ? uploadedSupplier
+      : registerSupplier;
   const [file, setFile] = useState<File>();
   const [link, setLink] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -373,7 +379,7 @@ function SupplierCard({
         </p>
       )}
       <fieldset disabled={pending || !canEdit} className="flex flex-wrap items-end gap-2">
-        <button type="button" className={buttonClass} onClick={onEdit}>
+        <button type="button" className={buttonClass} onClick={() => onEdit(supplier)}>
           Edit supplier
         </button>
         {supplier.is_active && (
@@ -402,7 +408,7 @@ function SupplierCard({
               return;
             }
             void action(async () => {
-              await uploadSupplierTdsDocument(supplier.id, file);
+              setUploadedSupplier(await uploadSupplierTdsDocument(supplier.id, file));
               setFile(undefined);
               setLink('');
               if (input.current) input.current.value = '';
