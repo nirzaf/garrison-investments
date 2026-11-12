@@ -11,6 +11,8 @@ export async function listUsers(params: {
   active?: boolean;
   role?: string;
   search?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<UserListResponse> {
   const response = await apiClient.get<UserListResponse>('/users', { params });
   return response.data;

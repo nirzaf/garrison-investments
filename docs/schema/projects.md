@@ -26,6 +26,9 @@ Project identity, contract and client details, schedule, budget, and progress.
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
 | `deleted_at` | `timestamptz` | Yes | — |
+| `revision` | `integer` | No | `1` |
+
+Project metadata and team changes advance the revision under a project row lock. The project editor sends the revision it opened and receives a conflict if another edit committed first.
 
 ## Keys and constraints
 

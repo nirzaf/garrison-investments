@@ -56,3 +56,4 @@ class ProjectTask(TimestampMixin, SoftDeleteMixin, Base):
     )
     delay_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))

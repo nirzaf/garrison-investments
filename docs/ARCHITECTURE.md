@@ -34,6 +34,11 @@ The normal API prefix is `/api/v1`. Application and validation errors carry `det
 
 ## Workflow invariants
 
+### Project setup and scheduling
+
+- Project setup validates the full milestone and BOQ input before writing the project. Milestone names and BOQ codes must be unique after normalization. A BOQ milestone link must resolve within the submitted setup. PostgreSQL stores quantities and rates as decimals and the backend calculates the planned amount. [Project setup service](../backend/app/services/project_service.py) · [Project form](../frontend/src/pages/projects/ProjectCreateForm.tsx)
+- Project and task edit screens send the revision from the record they opened. The service serializes project edits, assignments, and task changes on the parent project. Existing project metadata and assignment API clients may omit the revision during transition. The task update endpoint requires it. A task keeps one predecessor in the same project, and the service rejects cycles. [Project endpoints](../backend/app/api/v1/projects.py) · [Timeline](../frontend/src/pages/projects/ProjectTimeline.tsx)
+
 ### Field reporting and offline recovery
 
 - Civil Supervisors draft and submit their own updates for assigned projects. Engineer report submission verifies selected updates from the same project and records who verified them. Official daily reports have their own draft, submission, and decision path. Report submission assigns the report number, and a rejection returns the report to draft with reviewer feedback. [Supervisor updates](../backend/app/services/reporting_service.py) · [Daily reports](../backend/app/services/report_service.py)

@@ -1,35 +1,59 @@
 import { apiClient } from './client';
+import { normalizeProjectCreate, type ProjectSetupDraft } from './projectSetup';
 import type { components } from './schema';
 
-export type BoqItemPayload = components['schemas']['BoqItemCreateRequest'];
-
-type ProjectCreateSchema = components['schemas']['ProjectCreateRequest'];
-
-export type ProjectPayload = ProjectCreateSchema & {
-  location?: string;
-  client_name?: string;
-  contract_number?: string;
-  milestones: NonNullable<ProjectCreateSchema['milestones']>;
-  boq_items: NonNullable<ProjectCreateSchema['boq_items']>;
-};
-
 export type ProjectRecord = components['schemas']['ProjectResponse'];
-
+export type ProjectDetail = components['schemas']['ProjectDetailResponse'];
+export type ProjectUpdatePayload = components['schemas']['ProjectUpdateRequest'];
+export type ProjectMember = components['schemas']['ProjectMemberResponse'];
+export type ProjectMemberPayload = components['schemas']['ProjectMemberCreateRequest'];
 export type ProjectListResponse = components['schemas']['ProjectListResponse'];
 export type ProjectTimelineResponse = components['schemas']['ProjectTimelineResponse'];
 export type ProjectTaskPayload = components['schemas']['ProjectTaskCreateRequest'];
 export type ProjectTaskRecord = components['schemas']['ProjectTaskResponse'];
+export type ProjectTaskUpdatePayload = components['schemas']['ProjectTaskUpdateRequest'];
 
 export async function listProjects(params: {
   status?: string;
   search?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<ProjectListResponse> {
   const response = await apiClient.get<ProjectListResponse>('/projects', { params });
   return response.data;
 }
 
-export async function createProject(payload: ProjectPayload): Promise<ProjectRecord> {
-  const response = await apiClient.post<ProjectRecord>('/projects', payload);
+export async function createProject(payload: ProjectSetupDraft): Promise<ProjectRecord> {
+  const response = await apiClient.post<ProjectRecord>(
+    '/projects',
+    normalizeProjectCreate(payload)
+  );
+  return response.data;
+}
+
+export async function getProject(projectId: string): Promise<ProjectDetail> {
+  const response = await apiClient.get<ProjectDetail>(`/projects/${projectId}`);
+  return response.data;
+}
+
+export async function updateProject(
+  projectId: string,
+  payload: ProjectUpdatePayload
+): Promise<ProjectRecord> {
+  const response = await apiClient.patch<ProjectRecord>(`/projects/${projectId}`, payload);
+  return response.data;
+}
+
+export async function listProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  const response = await apiClient.get<ProjectMember[]>(`/projects/${projectId}/members`);
+  return response.data;
+}
+
+export async function assignProjectMember(
+  projectId: string,
+  payload: ProjectMemberPayload
+): Promise<ProjectMember> {
+  const response = await apiClient.post<ProjectMember>(`/projects/${projectId}/members`, payload);
   return response.data;
 }
 
@@ -43,5 +67,17 @@ export async function createProjectTask(
   payload: ProjectTaskPayload
 ): Promise<ProjectTaskRecord> {
   const response = await apiClient.post<ProjectTaskRecord>(`/projects/${projectId}/tasks`, payload);
+  return response.data;
+}
+
+export async function updateProjectTask(
+  projectId: string,
+  taskId: string,
+  payload: ProjectTaskUpdatePayload
+): Promise<ProjectTaskRecord> {
+  const response = await apiClient.patch<ProjectTaskRecord>(
+    `/projects/${projectId}/tasks/${taskId}`,
+    payload
+  );
   return response.data;
 }

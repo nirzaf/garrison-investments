@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text, text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,7 @@ class Project(TimestampMixin, SoftDeleteMixin, Base):
     actual_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     client_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     contract_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     progress_percentage: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,
