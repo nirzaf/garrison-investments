@@ -60,6 +60,7 @@ export function OfflineIndicator() {
     window.addEventListener('offline', handleOffline);
 
     const cleanupSync = listenForSyncMessages();
+    if (navigator.onLine) void flushPhotoQueue().catch(() => {});
     void probeHealth();
     const interval = window.setInterval(() => void probeHealth(), 15_000);
 

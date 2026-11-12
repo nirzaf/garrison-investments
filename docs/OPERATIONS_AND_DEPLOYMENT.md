@@ -155,9 +155,11 @@ Check for `Restore status: executed` in the evidence. With no restore database U
 
 ### Offline storage upgrade
 
-The owner-aware worker upgrades the portal's IndexedDB to version 2. Have operators close older portal tabs and reopen the portal on the new build. Confirm the active worker has upgraded before testing account switches on shared devices. The older worker cannot open version 2. A worker already running before activation can finish requests it already sent, so wait for the older clients to close before accepting the rollout. Keep the owner-aware worker during rollback or disable offline sync until a compatible build is ready.
+The owner-aware worker upgrades the portal's IndexedDB to version 3. Have operators close older portal tabs and reopen the portal on the new build. Confirm the active worker has upgraded before testing account switches on shared devices. Older workers cannot open version 3. A worker already running before activation can finish requests it already sent, so wait for the older clients to close before accepting the rollout. Keep the owner-aware worker during rollback or disable offline sync until a compatible build is ready.
 
 The old `reportDrafts` and `photoQueue` stores and the `garrisons.supervisor-update-draft` local storage entry are quarantined. The app leaves them unread because ownership cannot be established from their keys. If the owner authorizes disposal, remove only these legacy entries for the portal origin after confirming that no older clients remain. Keep the owned stores and session state intact.
+
+Apply the report revision migration before activating the report API and frontend together. A legacy draft update without `expected_revision` returns a conflict and asks the editor to reload. Keep revision fields on rollback, and use only workers that verify ownership and preserve revision checks.
 
 ### Rollback
 

@@ -1796,6 +1796,10 @@
             ],
             "title": "Report Number"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "safety_incidents": {
             "title": "Safety Incidents",
             "type": "integer"
@@ -1851,6 +1855,7 @@
           "id",
           "project_id",
           "engineer_id",
+          "revision",
           "report_number",
           "report_date",
           "work_location",
@@ -1907,6 +1912,18 @@
             },
             "title": "Equipment Entries",
             "type": "array"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
           },
           "extra_fields": {
             "additionalProperties": true,

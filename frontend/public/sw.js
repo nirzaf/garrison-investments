@@ -1,8 +1,14 @@
+import { persistOwnedDraft } from './report-draft-sync.js';
+
 // The standalone drain uses the same owner, generation and claim checks as offlineQueue.ts.
-const CACHE_NAME = 'garrisons-app-shell-v3';
-const LEGACY_CACHES = new Set(['garrisons-app-shell-v1', 'garrisons-app-shell-v2']);
+const CACHE_NAME = 'garrisons-app-shell-v4';
+const LEGACY_CACHES = new Set([
+  'garrisons-app-shell-v1',
+  'garrisons-app-shell-v2',
+  'garrisons-app-shell-v3'
+]);
 const DB_NAME = 'garrisons-offline';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const REPORT_DRAFTS = 'ownedReportDrafts';
 const PHOTO_QUEUE = 'ownedPhotoQueue';
 const SUPERVISOR_DRAFTS = 'ownedSupervisorDrafts';
@@ -19,6 +25,7 @@ const STALE_CLAIM_MS = 5 * 60_000;
 const APP_SHELL = [
   '/',
   '/manifest.json',
+  '/report-draft-sync.js',
   '/brand/apple-touch-icon.png',
   '/brand/icon-192.png',
   '/brand/icon-512.png',
@@ -111,7 +118,8 @@ self.addEventListener('fetch', (event) => {
 function openOfflineDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
+      if (event.oldVersion >= 2) return;
       const db = request.result;
       db.createObjectStore(REPORT_DRAFTS, {
         keyPath: ['namespace', 'ownerUserId', 'localDraftId']
@@ -174,11 +182,47 @@ function readSession() {
   });
 }
 
-function withOwnedQueue(scope, mode, operation) {
-  return transaction([SESSION_STORE, PHOTO_QUEUE], mode, (tx, result) => {
+function withOwnedStore(scope, store, mode, operation) {
+  return transaction([SESSION_STORE, store], mode, (tx, result) => {
     const request = tx.objectStore(SESSION_STORE).get(scope.namespace);
     request.onsuccess = () => {
-      if (sameScope(request.result, scope)) operation(tx.objectStore(PHOTO_QUEUE), result);
+      if (sameScope(request.result, scope)) operation(tx.objectStore(store), result);
+    };
+  });
+}
+
+function withOwnedQueue(scope, mode, operation) {
+  return withOwnedStore(scope, PHOTO_QUEUE, mode, operation);
+}
+
+function initializeDraft(draft) {
+  return {
+    ...draft,
+    localRevision: draft.localRevision ?? 1,
+    lastSyncedLocalRevision: draft.lastSyncedLocalRevision ?? 0,
+    syncState: draft.syncState ?? 'local',
+    attempts: draft.attempts ?? 0,
+    retryAfter: draft.retryAfter ?? 0
+  };
+}
+
+function editReportDraft(scope, localDraftId, edit) {
+  return withOwnedStore(scope, REPORT_DRAFTS, 'readwrite', (drafts, result) => {
+    const request = drafts.get([scope.namespace, scope.ownerUserId, localDraftId]);
+    request.onsuccess = () => {
+      const updated = request.result && edit(initializeDraft(request.result));
+      if (!updated) return;
+      drafts.put(updated);
+      result(updated);
+    };
+  });
+}
+
+function readReportDraft(scope, localDraftId) {
+  return withOwnedStore(scope, REPORT_DRAFTS, 'readonly', (drafts, result) => {
+    const request = drafts.get([scope.namespace, scope.ownerUserId, localDraftId]);
+    request.onsuccess = () => {
+      if (request.result) result(initializeDraft(request.result));
     };
   });
 }
@@ -293,81 +337,203 @@ async function isVerifiedOwner(scope, accessToken, signal) {
   );
 }
 
-async function createReportFromQueue(payload, idempotencyKey, accessToken, signal) {
-  const response = await signedRequest('/reports', accessToken, signal, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+async function writeReport(path, payload, accessToken, signal, options) {
+  const response = await signedRequest(path, accessToken, signal, {
+    method: options.method,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
     body: JSON.stringify(payload)
   });
-  if (!response.ok) throw new Error('Unable to create queued daily report');
+  if (!response.ok)
+    throw Object.assign(new Error('Unable to synchronize the report draft.'), {
+      status: response.status
+    });
   return await response.json();
 }
 
-async function uploadQueuedFile(item, entityId, accessToken, signal) {
+async function syncReportDraft(scope, localDraftId, accessToken, signal) {
+  const lockName = `garrisons-draft-sync:${JSON.stringify([scope.namespace, scope.ownerUserId, localDraftId])}`;
+  if (self.navigator?.locks) {
+    await self.navigator.locks.request(lockName, () =>
+      persistReportDraft(scope, localDraftId, accessToken, signal, true)
+    );
+  } else {
+    await persistReportDraft(scope, localDraftId, accessToken, signal, false);
+  }
+}
+
+async function persistReportDraft(scope, localDraftId, accessToken, signal, hasLock) {
+  const claim = {
+    id: crypto.randomUUID(),
+    generation: scope.generation,
+    expiresAt: Date.now() + STALE_CLAIM_MS
+  };
+  const snapshot = await editReportDraft(scope, localDraftId, (draft) => {
+    if (
+      draft.syncState === 'conflict' ||
+      draft.syncState === 'blocked' ||
+      draft.retryAfter > Date.now()
+    )
+      return;
+    if (
+      !hasLock &&
+      draft.claim?.generation === scope.generation &&
+      draft.claim.expiresAt > Date.now()
+    )
+      return;
+    return { ...draft, claim };
+  });
+  if (!snapshot) return;
+
+  const patch = (change) =>
+    editReportDraft(scope, localDraftId, (draft) =>
+      draft.claim?.id === claim.id ? change(draft) : undefined
+    );
+  let outcome = 'local';
+  try {
+    if (!(await isVerifiedOwner(scope, accessToken, signal))) return;
+    let pending = snapshot;
+    for (let attempt = 0; pending && attempt < 3; attempt += 1) {
+      outcome = await persistOwnedDraft(pending, {
+        update: (id, payload, revision) =>
+          writeReport(
+            `/reports/${id}`,
+            { ...payload, expected_revision: revision },
+            accessToken,
+            signal,
+            { method: 'PUT' }
+          ),
+        create: (payload, key) =>
+          writeReport('/reports', payload, accessToken, signal, {
+            method: 'POST',
+            headers: { 'Idempotency-Key': key }
+          }),
+        rememberCreate: async (pendingCreate) =>
+          Boolean(await patch((draft) => ({ ...draft, pendingCreate }))),
+        acknowledge: async (revision, report) => {
+          await patch((draft) => ({
+            ...draft,
+            serverReport: { id: report.id, engineerId: report.engineer_id },
+            baseServerRevision: report.revision,
+            lastSyncedLocalRevision: revision,
+            pendingCreate: undefined
+          }));
+        },
+        status: (error) => error?.status,
+        cancelled: (error) => error?.name === 'AbortError'
+      });
+      if (outcome !== 'saved' || signal.aborted || !sameScope(await readSession(), scope)) break;
+      pending = await readReportDraft(scope, localDraftId);
+      if (!pending || pending.lastSyncedLocalRevision >= pending.localRevision) break;
+      outcome = 'local';
+    }
+  } finally {
+    await patch((draft) => {
+      const attempts = outcome === 'retry' ? draft.attempts + 1 : 0;
+      const retryAfter = attempts > 0 ? Date.now() + 1000 * 2 ** Math.min(attempts, 5) : 0;
+      return {
+        ...draft,
+        syncState: outcome,
+        attempts,
+        retryAfter: attempts >= 4 ? Number.MAX_SAFE_INTEGER : retryAfter,
+        claim: undefined
+      };
+    });
+  }
+}
+
+async function uploadQueuedFile(item, entityId, revision, accessToken, signal) {
   const formData = new FormData();
   formData.append('entity_type', item.entityType);
   formData.append('entity_id', entityId);
   formData.append('kind', item.kind);
+  formData.append('expected_report_revision', String(revision));
   formData.append('files', item.file);
   const response = await signedRequest('/photos/upload', accessToken, signal, {
     method: 'POST',
     headers: { 'Idempotency-Key': item.id },
     body: formData
   });
-  if (!response.ok) throw new Error('Unable to upload queued file');
+  if (!response.ok)
+    throw Object.assign(new Error('Unable to upload queued file.'), { status: response.status });
+  const committed = Number(response.headers.get('X-Report-Revision'));
+  return Number.isSafeInteger(committed) && committed > 0 ? committed : undefined;
 }
 
 async function drainPhotoQueue(scope, signal) {
+  const ownedDrafts = await withOwnedStore(scope, REPORT_DRAFTS, 'readonly', (drafts, result) => {
+    const request = drafts.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
+    request.onsuccess = () => result(request.result);
+  });
+  if (!ownedDrafts?.length) return;
+
+  const accessToken = await refreshAccessToken(scope, signal);
+  if (!accessToken) return;
+  for (const draft of ownedDrafts) {
+    if (signal.aborted || !sameScope(await readSession(), scope)) return;
+    await syncReportDraft(scope, draft.localDraftId, accessToken, signal);
+  }
+
   const queued = await withOwnedQueue(scope, 'readonly', (queue, result) => {
     const request = queue.index(OWNER_INDEX).getAll([scope.namespace, scope.ownerUserId]);
     request.onsuccess = () => result(request.result);
   });
-  const batches = planSyncBatches(queued ?? []);
-  if (!batches.length) return;
-
-  const accessToken = await refreshAccessToken(scope, signal);
-  if (!accessToken) return;
   let conflicts = 0;
-
-  for (const batch of batches) {
+  for (const batch of planSyncBatches(queued ?? [])) {
     if (!(await isVerifiedOwner(scope, accessToken, signal))) return;
-    const claimed = [];
-    for (const item of batch.items) {
-      const entry = await claimQueuedPhoto(scope, item.id);
-      if (entry) claimed.push(entry);
+    const first = batch.items[0];
+    const draft = await readReportDraft(scope, first.localDraftId);
+    if (!draft?.serverReport || draft.syncState !== 'saved') continue;
+    const entityId = draft.serverReport.id;
+    const response = await signedRequest(`/reports/${entityId}`, accessToken, signal);
+    if (!response.ok) continue;
+    const current = await response.json();
+    if (current.status !== 'draft' || current.revision !== draft.baseServerRevision) {
+      await editReportDraft(scope, first.localDraftId, (latest) => ({
+        ...latest,
+        syncState: 'conflict'
+      }));
+      conflicts += batch.items.length;
+      continue;
     }
-    if (!claimed.length) continue;
-
-    let entityId = batch.entityId;
-    try {
-      if (entityId.startsWith('local-')) {
-        const draftPayload = claimed.find((item) => item.draftPayload)?.draftPayload;
-        if (!draftPayload) throw new Error('Missing offline draft payload');
-        if (signal.aborted || !sameScope(await readSession(), scope)) return;
-        const report = await createReportFromQueue(draftPayload, entityId, accessToken, signal);
-        entityId = report.id;
-        await updateClaims(scope, claimed, { entityId });
-        if (report.status !== 'draft') {
-          conflicts += claimed.length;
-          await updateClaims(scope, claimed, { status: 'server_newer' });
-          continue;
+    let revision = current.revision;
+    for (const item of batch.items) {
+      if (signal.aborted || !sameScope(await readSession(), scope)) return;
+      const claimed = await claimQueuedPhoto(scope, item.id);
+      if (!claimed) continue;
+      try {
+        const committed = await uploadQueuedFile(claimed, entityId, revision, accessToken, signal);
+        await updateClaims(scope, [claimed]);
+        if (committed !== undefined) {
+          const advanced = await editReportDraft(scope, first.localDraftId, (latest) => {
+            if (latest.baseServerRevision !== revision) return;
+            if (committed !== revision + 1) return { ...latest, syncState: 'conflict' };
+            return { ...latest, baseServerRevision: committed };
+          });
+          if (advanced?.baseServerRevision !== committed) {
+            conflicts += 1;
+            break;
+          }
+          revision = committed;
+        }
+      } catch (error) {
+        const status = error?.status;
+        await updateClaims(scope, [claimed], {
+          entityId,
+          status:
+            status && status < 500 && status !== 408 && status !== 429 ? 'server_newer' : 'failed'
+        });
+        if (status === 401 || status === 403 || signal.aborted) return;
+        if (status === 409) {
+          await editReportDraft(scope, first.localDraftId, (latest) => ({
+            ...latest,
+            syncState: 'conflict'
+          }));
+          conflicts += 1;
+          break;
         }
       }
-
-      for (const item of claimed) {
-        if (signal.aborted || !sameScope(await readSession(), scope)) return;
-        try {
-          await uploadQueuedFile(item, entityId, accessToken, signal);
-          await updateClaims(scope, [item]);
-        } catch {
-          await updateClaims(scope, [item], { entityId, status: 'failed' });
-        }
-      }
-    } catch {
-      await updateClaims(scope, claimed, { entityId, status: 'failed' });
     }
   }
-
   if (signal.aborted || !sameScope(await readSession(), scope)) return;
   const clients = await self.clients.matchAll({ type: 'window' });
   clients.forEach((client) => client.postMessage({ type: 'SYNC_PHOTOS_DONE', scope, conflicts }));

@@ -762,3 +762,45 @@ async def test_project_manager_rejects_with_required_reason() -> None:
         assert rejected["status"] == "draft"
         assert rejected["rejection_comments"] == "Missing WIR evidence."
         assert any(item["decision"] == "rejected" for item in rejected["approval_history"])
+
+
+async def test_report_revision_rejects_stale_edit_and_requires_reload_for_legacy_client() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        headers = {"Authorization": f"Bearer {setup['engineer_token']}"}
+        payload = report_payload(setup["project_id"])
+        created = await client.post("/api/v1/reports", json=payload, headers=headers)
+        assert created.status_code == 201
+        report = created.json()
+        assert report["revision"] == 1
+        path = f"/api/v1/reports/{report['id']}"
+
+        legacy = await client.put(path, json=payload, headers=headers)
+        assert legacy.status_code == 409
+        assert legacy.json()["error_code"] == "DAILY_REPORT_REVISION_REQUIRED"
+
+        edited = await client.put(
+            path,
+            json={**payload, "expected_revision": 1, "work_completed": "Updated site progress"},
+            headers=headers,
+        )
+        assert edited.status_code == 200
+        assert edited.json()["revision"] == 2
+
+        stale = await client.put(
+            path,
+            json={**payload, "expected_revision": 1, "work_completed": "Older local draft"},
+            headers=headers,
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error_code"] == "DAILY_REPORT_REVISION_CONFLICT"
+        persisted = (await client.get(path, headers=headers)).json()
+        assert persisted["revision"] == 2
+        assert persisted["work_completed"] == "Updated site progress"
+        assert persisted["manpower_entries"] == edited.json()["manpower_entries"]
+
+        submitted = await client.post(f"{path}/submit", headers=headers)
+        assert submitted.status_code == 200
+        assert submitted.json()["revision"] == 3

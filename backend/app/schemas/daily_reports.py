@@ -63,7 +63,7 @@ class DailyReportCreateRequest(BaseModel):
 
 
 class DailyReportUpdateRequest(DailyReportCreateRequest):
-    pass
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class ReportManpowerResponse(ReportManpowerInput):
@@ -107,6 +107,7 @@ class DailyReportResponse(BaseModel):
     id: UUID
     project_id: UUID
     engineer_id: UUID
+    revision: int
     report_number: str | None
     report_date: date
     work_location: str

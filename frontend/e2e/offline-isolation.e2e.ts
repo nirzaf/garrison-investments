@@ -54,13 +54,7 @@ async function signOut(page: Page, roleLabel = 'Admin') {
   await expect(page).toHaveURL(/\/login$/);
 }
 
-async function queueReport(
-  page: Page,
-  context: BrowserContext,
-  projectId: string,
-  text: string,
-  filename: string
-) {
+async function fillReport(page: Page, projectId: string, text: string) {
   await page.getByRole('link', { name: 'Reports', exact: true }).click();
   await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(projectId);
   await page.getByLabel('Work area / location').fill('East wing');
@@ -71,6 +65,16 @@ async function queueReport(
   await page.getByLabel('Subcontractors').fill('None');
   await page.getByLabel('WIR number').fill('Not required');
   await page.getByPlaceholder('Trade', { exact: true }).fill('Carpenter');
+}
+
+async function queueReport(
+  page: Page,
+  context: BrowserContext,
+  projectId: string,
+  text: string,
+  filename: string
+) {
+  await fillReport(page, projectId, text);
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await context.setOffline(true);
   await page.getByLabel('Upload photos').setInputFiles({
@@ -87,14 +91,18 @@ async function getReports(request: APIRequestContext, token: string, projectId: 
     params: { project_id: projectId }
   });
   expect(response.ok()).toBe(true);
-  return (await response.json()).items as { id: string; work_completed: string }[];
+  return (await response.json()).items as {
+    id: string;
+    work_completed: string;
+    revision: number;
+  }[];
 }
 
 async function ownedRecordCount(page: Page, store: string): Promise<number> {
   return page.evaluate(
     async (name) =>
       new Promise<number>((resolve, reject) => {
-        const open = indexedDB.open('garrisons-offline', 2);
+        const open = indexedDB.open('garrisons-offline');
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const db = open.result;
@@ -257,4 +265,105 @@ test('standalone worker uploads only files owned by its verified account', async
       return { reports: reports.map((report) => report.work_completed), photos };
     })
     .toEqual({ reports: ['Verified owner report'], photos: ['verified.jpg'] });
+});
+
+test('text-only drafts recover a lost create response and preserve concurrent local and server edits', async ({
+  page,
+  context,
+  request
+}) => {
+  const account = seed();
+  const token = await signIn(page, account);
+  await fillReport(page, account.projectId, 'Original offline text');
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Daily report draft saved on this device.')).toBeVisible();
+  expect(await getReports(request, token, account.projectId)).toEqual([]);
+
+  let afterCreate!: () => void;
+  let releaseResponse!: () => void;
+  const committed = new Promise<void>((resolve) => {
+    afterCreate = resolve;
+  });
+  const delayed = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  let firstCreate = true;
+  await page.route('**/api/v1/reports', async (route) => {
+    if (route.request().method() !== 'POST' || !firstCreate) {
+      await route.continue();
+      return;
+    }
+    firstCreate = false;
+    const result = await route.fetch();
+    expect(result.status()).toBe(201);
+    afterCreate();
+    await delayed;
+    await route.abort();
+  });
+
+  await context.setOffline(false);
+  await committed;
+  await page.getByLabel('Work completed').fill('Edited while the first sync was in flight');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async () =>
+          new Promise<string>((resolve, reject) => {
+            const open = indexedDB.open('garrisons-offline');
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+              const db = open.result;
+              const tx = db.transaction('ownedReportDrafts', 'readonly');
+              const drafts = tx.objectStore('ownedReportDrafts').getAll();
+              tx.oncomplete = () => {
+                db.close();
+                resolve(drafts.result[0]?.payload.work_completed);
+              };
+              tx.onabort = () => {
+                db.close();
+                reject(tx.error);
+              };
+            };
+          })
+      )
+    )
+    .toBe('Edited while the first sync was in flight');
+  releaseResponse();
+  await page.getByRole('button', { name: 'Retry sync' }).click();
+
+  await expect
+    .poll(async () => {
+      const reports = await getReports(request, token, account.projectId);
+      return reports.map(({ work_completed, revision }) => ({ work_completed, revision }));
+    })
+    .toEqual([{ work_completed: 'Edited while the first sync was in flight', revision: 2 }]);
+  await page.reload();
+  await expect(page.getByLabel('Work completed')).toHaveValue(
+    'Edited while the first sync was in flight'
+  );
+
+  const [saved] = await getReports(request, token, account.projectId);
+  await context.setOffline(true);
+  await page.getByLabel('Work completed').fill('Stale device edit');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByText('Daily report draft saved on this device.')).toBeVisible();
+  const endpoint = `/api/v1/reports/${saved.id}`;
+  const headers = { Authorization: `Bearer ${token}` };
+  const prior = await (await request.get(endpoint, { headers })).json();
+  const changed = await request.put(endpoint, {
+    headers,
+    data: { ...prior, expected_revision: 2, work_completed: 'Current server edit' }
+  });
+  expect(changed.ok()).toBe(true);
+  await context.setOffline(false);
+  await expect(
+    page.getByText(
+      'The server report changed. Your local draft and queued uploads are still saved on this device.'
+    )
+  ).toBeVisible();
+  await expect(page.getByLabel('Work completed')).toHaveValue('Stale device edit');
+  expect(await getReports(request, token, account.projectId)).toEqual([
+    expect.objectContaining({ id: saved.id, revision: 3, work_completed: 'Current server edit' })
+  ]);
 });

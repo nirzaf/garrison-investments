@@ -29,6 +29,7 @@ class DailyReport(TimestampMixin, SoftDeleteMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     report_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
     report_date: Mapped[date] = mapped_column(Date, nullable=False)
     work_location: Mapped[str] = mapped_column(String(255), nullable=False)

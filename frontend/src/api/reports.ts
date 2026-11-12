@@ -46,14 +46,26 @@ export async function createDailyReport(
   return response.data;
 }
 
+export async function getDailyReport(
+  reportId: string,
+  scope?: OfflineScope
+): Promise<DailyReportRecord> {
+  const response = await apiClient.get<DailyReportRecord>(
+    `/reports/${reportId}`,
+    sessionRequestConfig(scope)
+  );
+  return response.data;
+}
+
 export async function updateDailyReport(
   reportId: string,
   payload: DailyReportPayload,
+  expectedRevision: number,
   scope?: OfflineScope
 ): Promise<DailyReportRecord> {
   const response = await apiClient.put<DailyReportRecord>(
     `/reports/${reportId}`,
-    payload,
+    { ...payload, expected_revision: expectedRevision },
     sessionRequestConfig(scope)
   );
   return response.data;

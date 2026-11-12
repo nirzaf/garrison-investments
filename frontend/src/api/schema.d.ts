@@ -2146,6 +2146,8 @@ export interface components {
             report_date: string;
             /** Report Number */
             report_number: string | null;
+            /** Revision */
+            revision: number;
             /** Safety Incidents */
             safety_incidents: number;
             /** Safety Notes */
@@ -2171,6 +2173,8 @@ export interface components {
             delay_notes?: string | null;
             /** Equipment Entries */
             equipment_entries?: components["schemas"]["ReportEquipmentInput"][];
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Extra Fields */
             extra_fields?: {
                 [key: string]: unknown;

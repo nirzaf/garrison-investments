@@ -1,6 +1,6 @@
 // Keep the schema in step with the standalone drain in public/sw.js.
 export const OFFLINE_DB = 'garrisons-offline';
-export const OFFLINE_DB_VERSION = 2;
+export const OFFLINE_DB_VERSION = 3;
 export const REPORT_DRAFTS = 'ownedReportDrafts';
 export const PHOTO_QUEUE = 'ownedPhotoQueue';
 export const SUPERVISOR_DRAFTS = 'ownedSupervisorDrafts';
@@ -30,7 +30,8 @@ export function sameScope(left: OfflineScope | null | undefined, right: OfflineS
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
+      if (event.oldVersion >= 2) return;
       const db = request.result;
       // The v1 stores, when present, remain quarantined. Their keys do not prove ownership.
       db.createObjectStore(REPORT_DRAFTS, {

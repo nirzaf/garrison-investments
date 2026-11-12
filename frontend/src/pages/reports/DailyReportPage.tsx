@@ -10,11 +10,13 @@ import {
   clearReportDraft,
   flushPhotoQueue,
   getReportDraft,
+  isReportSyncActive,
   queueFiles,
   queuedPhotoCount,
   queuedDraftPhotoCount,
   registerBackgroundSync,
-  saveReportDraft
+  saveReportDraft,
+  type LocalReportDraft
 } from '../../api/offlineQueue';
 import {
   listPhotos,
@@ -25,11 +27,10 @@ import {
 } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
-  createDailyReport,
+  getDailyReport,
   downloadReportPdf,
   listDailyReports,
   submitDailyReport,
-  updateDailyReport,
   type DailyReportPayload,
   type DailyReportRecord
 } from '../../api/reports';
@@ -208,7 +209,9 @@ export function DailyReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedReportId, setSavedReportId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
+  const [draftStatus, setDraftStatus] = useState<
+    LocalReportDraft['syncState'] | 'idle' | 'syncing'
+  >('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [syncConflicts, setSyncConflicts] = useState(0);
   const [draftHydrated, setDraftHydrated] = useState(false);
@@ -217,6 +220,7 @@ export function DailyReportPage() {
   const persistedDraftSnapshot = useRef(JSON.stringify(form));
   const serverSavedSnapshot = useRef(JSON.stringify(form));
   const draftKey = useRef<string | null>(null);
+  const baseRevision = useRef<number | undefined>(undefined);
 
   const getDraftKey = useCallback(() => {
     draftKey.current ??= `local-${crypto.randomUUID()}`;
@@ -235,7 +239,9 @@ export function DailyReportPage() {
             scope,
             payload,
             getDraftKey(),
-            savedReportId ? { id: savedReportId, engineerId: scope.ownerUserId } : undefined
+            savedReportId
+              ? { id: savedReportId, engineerId: scope.ownerUserId, revision: baseRevision.current }
+              : undefined
           )
         : Promise.resolve(false),
     [getDraftKey, savedReportId, scope]
@@ -269,11 +275,12 @@ export function DailyReportPage() {
         ) {
           draftKey.current = draft.localDraftId;
           setSavedReportId(draft.serverReport?.id ?? null);
+          baseRevision.current = draft.baseServerRevision;
           setForm(draft.payload);
           setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
           setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
           persistedDraftSnapshot.current = JSON.stringify(draft.payload);
-          setDraftStatus('local');
+          setDraftStatus(draft.syncState);
         }
         setDraftHydrated(true);
       })
@@ -315,12 +322,14 @@ export function DailyReportPage() {
       }, 800);
       return () => window.clearTimeout(timer);
     }
+    const continueSync = isReportSyncActive(scope);
     const save = () => {
       void saveLocalDraft(form)
         .then((saved) => {
           if (!saved || !active()) return;
           persistedDraftSnapshot.current = snapshot;
-          setDraftStatus('local');
+          setDraftStatus((current) => (current === 'conflict' ? current : 'local'));
+          if (continueSync && navigator.onLine) void flushPhotoQueue(true).catch(() => {});
         })
         .catch(onError);
     };
@@ -348,10 +357,39 @@ export function DailyReportPage() {
         })
         .catch(() => {});
     };
+    const refreshDraftState = () => {
+      const localDraftId = draftKey.current;
+      if (!localDraftId) return;
+      void getReportDraft(scope, localDraftId)
+        .then((draft) => {
+          if (
+            !draft ||
+            !mounted ||
+            !sameScope(getBrowserSession()?.scope, scope) ||
+            draftKey.current !== localDraftId
+          )
+            return;
+          setDraftStatus(draft.syncState);
+          if (draft.serverReport) {
+            setSavedReportId(draft.serverReport.id);
+            baseRevision.current = draft.baseServerRevision;
+            if (
+              draft.syncState === 'saved' &&
+              draft.lastSyncedLocalRevision >= draft.localRevision
+            ) {
+              serverSavedSnapshot.current = JSON.stringify(draft.payload);
+            }
+          }
+        })
+        .catch(() => {});
+    };
     const syncQueued = () => {
       setIsOnline(true);
       void flushPhotoQueue()
-        .then(refreshQueuedCount)
+        .then(() => {
+          refreshQueuedCount();
+          refreshDraftState();
+        })
         .catch(() => {});
     };
     const handleSync = (event: Event) => {
@@ -363,6 +401,7 @@ export function DailyReportPage() {
       ).detail;
       if (!sameScope(source, scope)) return;
       refreshQueuedCount();
+      refreshDraftState();
       setSyncConflicts(conflicts);
     };
     const handleOffline = () => setIsOnline(false);
@@ -463,7 +502,11 @@ export function DailyReportPage() {
     const hasLocalEdits =
       formHasDraftContent({ ...form, project_id: '' }) &&
       JSON.stringify(form) !== serverSavedSnapshot.current;
-    if (hasLocalEdits && !window.confirm('Replace the unsaved report in this form?')) return;
+    if (
+      hasLocalEdits &&
+      !window.confirm('Open the server draft? Other local drafts stay on this device.')
+    )
+      return;
 
     const payload = reportForm(report);
     const snapshot = JSON.stringify(payload);
@@ -471,8 +514,8 @@ export function DailyReportPage() {
     setErrors({});
     setIsSaving(true);
     setSavedReportId(report.id);
-    const previousDraftId = draftKey.current;
-    draftKey.current = null;
+    draftKey.current = draftKey.current && savedReportId === report.id ? draftKey.current : null;
+    baseRevision.current = report.revision;
     setForm(payload);
     setPhotoNames(payload.photo_refs.map(({ name }) => name).join('\n'));
     setAttachmentNames(payload.attachment_refs.map(({ name }) => name).join('\n'));
@@ -489,11 +532,17 @@ export function DailyReportPage() {
     );
     try {
       if (!scope) return;
-      if (previousDraftId) await clearReportDraft(scope, previousDraftId);
-      await saveReportDraft(scope, payload, getDraftKey(), {
-        id: report.id,
-        engineerId: report.engineer_id
-      });
+      await saveReportDraft(
+        scope,
+        payload,
+        getDraftKey(),
+        {
+          id: report.id,
+          engineerId: report.engineer_id,
+          revision: report.revision
+        },
+        true
+      );
       const files = await listPhotos({ entityType: 'daily_report', entityId: report.id });
       setUploadedFiles(files.items);
     } catch (loadError) {
@@ -508,24 +557,41 @@ export function DailyReportPage() {
     setIsSaving(true);
     setError(null);
     setNotice(null);
+    const localDraftId = getDraftKey();
     try {
       const payload = buildPayload();
-      let reportId = savedReportId;
-      if (reportId) {
-        await updateDailyReport(reportId, payload, scope);
-      } else {
-        const mightExist = draftKey.current !== null;
-        const key = getDraftKey();
-        await saveReportDraft(scope, payload, key);
-        reportId = (await createDailyReport(payload, key, scope)).id;
-        // A queued upload or an earlier save may already have created the draft with older fields.
-        if (mightExist) await updateDailyReport(reportId, payload, scope);
+      const saved = await saveReportDraft(
+        scope,
+        payload,
+        localDraftId,
+        savedReportId
+          ? { id: savedReportId, engineerId: scope.ownerUserId, revision: baseRevision.current }
+          : undefined
+      );
+      if (!saved) return null;
+      if (!navigator.onLine) {
+        setDraftStatus('local');
+        setNotice('Daily report draft saved on this device.');
+        return null;
       }
+      setDraftStatus('syncing');
+      await flushPhotoQueue(true);
+      const result = await getReportDraft(scope, localDraftId);
+      if (!result || !sameScope(getBrowserSession()?.scope, scope)) return null;
+      setDraftStatus(result.syncState);
+      if (result.syncState !== 'saved' || !result.serverReport) {
+        setError(
+          result.syncState === 'conflict'
+            ? 'The server report changed. Your local draft is still available.'
+            : 'The draft is saved locally. Resolve the issue or retry synchronization.'
+        );
+        return null;
+      }
+      const reportId = result.serverReport.id;
       setSavedReportId(reportId);
-      if (draftKey.current) await clearReportDraft(scope, draftKey.current);
+      baseRevision.current = result.baseServerRevision;
       serverSavedSnapshot.current = JSON.stringify(payload);
       persistedDraftSnapshot.current = JSON.stringify(payload);
-      setDraftStatus('idle');
       setNotice('Daily report draft saved.');
       await loadReports(payload.project_id);
       return reportId;
@@ -537,9 +603,55 @@ export function DailyReportPage() {
     }
   }
 
+  async function reloadServerDraft() {
+    if (!scope || !savedReportId) return;
+    try {
+      const latest = await getDailyReport(savedReportId, scope);
+      if (latest.status !== 'draft') {
+        setError(
+          'The server report is no longer editable. You can keep this draft or copy the text into a new one.'
+        );
+        return;
+      }
+      await resumeReport(latest);
+    } catch (loadError) {
+      setError(formatApiError(loadError, 'Unable to reload the server report.'));
+    }
+  }
+
+  function copyDraftText() {
+    if (
+      !window.confirm(
+        'Copy the report text into a new draft? Linked evidence will stay with the existing report.'
+      )
+    )
+      return;
+    draftKey.current = null;
+    baseRevision.current = undefined;
+    setSavedReportId(null);
+    setUploadedFiles([]);
+    setPhotoNames('');
+    setAttachmentNames('');
+    setError(null);
+    setDraftStatus('local');
+    setForm({
+      ...createEmptyPayload(),
+      project_id: form.project_id,
+      work_location: form.work_location,
+      work_completed: form.work_completed,
+      next_day_plan: form.next_day_plan,
+      safety_notes: form.safety_notes,
+      delay_notes: form.delay_notes
+    });
+  }
+
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!scope || !validate()) return;
+    if (!navigator.onLine) {
+      setError('Reconnect to submit this report. Your draft can be saved locally.');
+      return;
+    }
     const unchanged = JSON.stringify(buildPayload()) === serverSavedSnapshot.current;
     const reportId = savedReportId && unchanged ? savedReportId : await saveDraft();
     if (!reportId) return;
@@ -556,6 +668,7 @@ export function DailyReportPage() {
       setFailedUpload(null);
       setQueuedDraftPhotos(0);
       setSavedReportId(null);
+      baseRevision.current = undefined;
       if (draftKey.current) await clearReportDraft(scope, draftKey.current);
       draftKey.current = null;
       serverSavedSnapshot.current = JSON.stringify(resetForm);
@@ -789,11 +902,47 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
-        {syncConflicts > 0 ? (
-          <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
-            {syncConflicts} queued upload{syncConflicts > 1 ? 's were' : ' was'} skipped because the
-            report had already been submitted on the server. Review the report and re-attach the
-            files if they are still needed.
+        {draftStatus === 'conflict' || syncConflicts > 0 ? (
+          <div
+            className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm"
+            role="alert"
+          >
+            The server report changed. Your local draft and queued uploads are still saved on this
+            device.
+            <div className="mt-2 flex flex-wrap gap-2">
+              {savedReportId ? (
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => void reloadServerDraft()}
+                >
+                  Reload server draft
+                </button>
+              ) : null}
+              <button className="button-secondary" type="button" onClick={copyDraftText}>
+                Copy text into new draft
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {draftStatus === 'syncing' ? <p role="status">Syncing draft…</p> : null}
+        {draftStatus === 'saved' ? <p role="status">Draft saved to server.</p> : null}
+        {isOnline &&
+        (draftStatus === 'local' || draftStatus === 'retry' || draftStatus === 'blocked') ? (
+          <div role="status" className="flex flex-wrap items-center gap-2">
+            <p>
+              {draftStatus === 'blocked'
+                ? 'Draft sync needs attention.'
+                : 'Draft saved on this device.'}
+            </p>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={isSaving}
+              onClick={() => void saveDraft()}
+            >
+              Retry sync
+            </button>
           </div>
         ) : null}
         {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (

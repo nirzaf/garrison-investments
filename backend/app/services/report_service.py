@@ -95,8 +95,22 @@ class ReportService:
             if winner_id != report.id:
                 await self.session.rollback()
                 return await self.get_report(winner_id, actor)
+        return await self._commit_report_snapshot(report)
+
+    async def _commit_report_snapshot(self, report: DailyReport) -> DailyReport:
+        # Capture this write before releasing the lock. A subsequent edit is a new revision.
+        await self.session.flush()
+        await self.session.refresh(
+            report,
+            attribute_names=[
+                "manpower_entries",
+                "equipment_entries",
+                "material_consumption",
+                "approval_history",
+            ],
+        )
         await self.session.commit()
-        return await self._get_required(report.id)
+        return report
 
     async def update_report(
         self,
@@ -120,8 +134,22 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_SUBMITTED_LOCKED",
             )
+        await self._ensure_project_member(report.project_id, actor)
+        if payload.expected_revision is None:
+            raise AppException(
+                "Reload the report before editing so the current revision can be checked.",
+                status_code=409,
+                error_code="DAILY_REPORT_REVISION_REQUIRED",
+            )
+        if report.revision != payload.expected_revision:
+            raise AppException(
+                "The report changed since it was opened. Reload it before editing.",
+                status_code=409,
+                error_code="DAILY_REPORT_REVISION_CONFLICT",
+            )
         self._validate_report_date(payload.report_date, actor)
-        await self._ensure_project_member(payload.project_id, actor)
+        if payload.project_id != report.project_id:
+            await self._ensure_project_member(payload.project_id, actor)
         bound_ids = await self.supervisor_updates.bound_ids(report.id)
         if bound_ids and (
             payload.project_id != report.project_id
@@ -136,6 +164,7 @@ class ReportService:
             setattr(report, key, value)
         if report.status == "rejected":
             report.status = "draft"
+        report.revision += 1
         await self._replace_children(report, payload)
         await self.audit.record(
             action="daily_reports.updated",
@@ -143,8 +172,7 @@ class ReportService:
             entity_type="daily_reports",
             entity_id=report.id,
         )
-        await self.session.commit()
-        return await self._get_required(report.id)
+        return await self._commit_report_snapshot(report)
 
     async def submit_report(self, report_id: UUID, actor: User) -> DailyReport:
         self._ensure_engineer(actor)
@@ -182,6 +210,7 @@ class ReportService:
         try:
             previous_status = report.status
             report.status = "submitted"
+            report.revision += 1
             report.submitted_at = utc_now()
             report.rejection_comments = None
             await self._record_history(
@@ -240,6 +269,7 @@ class ReportService:
                 error_code="DAILY_REPORT_NOT_SUBMITTED",
             )
         previous_status = report.status
+        report.revision += 1
         report.status = "approved"
         report.approved_by = actor.id
         report.approved_at = utc_now()
@@ -305,6 +335,7 @@ class ReportService:
                 error_code="DAILY_REPORT_APPROVED_LOCKED",
             )
         previous_status = report.status
+        report.revision += 1
         if decision == "approved":
             report.status = "approved"
             report.approved_by = actor.id
@@ -367,6 +398,7 @@ class ReportService:
                 error_code="DAILY_REPORT_NOT_SUBMITTED",
             )
         previous_status = report.status
+        report.revision += 1
         report.status = "draft"
         report.rejection_comments = comments.strip()
         await self._record_history(
@@ -624,7 +656,12 @@ class ReportService:
 
     def _report_values(self, payload: DailyReportCreateRequest | DailyReportUpdateRequest) -> dict:
         values = payload.model_dump(
-            exclude={"manpower_entries", "equipment_entries", "material_consumption"}
+            exclude={
+                "manpower_entries",
+                "equipment_entries",
+                "material_consumption",
+                "expected_revision",
+            }
         )
         values["supervisor_update_ids"] = [
             str(update_id) for update_id in payload.supervisor_update_ids

@@ -3,6 +3,9 @@
 // `public/sw.js` keeps a standalone fallback for the no-window-client case and delegates
 // here whenever a window is open. Any change to the batching, claim, or idempotency rules
 // must be mirrored there — `planSyncBatches` is the shared, unit-tested seam.
+import axios from 'axios';
+import type { DraftSyncState, SyncDraft } from '../../public/report-draft-sync.js';
+import { getReportDraftSync } from './reportDraftSync';
 import { getMe } from './auth';
 import { getBrowserSession, isActiveOfflineScope } from './browserSession';
 import {
@@ -15,8 +18,13 @@ import {
   withOwnedOfflineData,
   type OfflineScope
 } from './offlineDb';
-import { uploadEntityFiles } from './photos';
-import { createDailyReport, type DailyReportPayload } from './reports';
+import { uploadEntityFilesWithRevision } from './photos';
+import {
+  createDailyReport,
+  getDailyReport,
+  updateDailyReport,
+  type DailyReportPayload
+} from './reports';
 
 /** A claim older than this is assumed dead (tab closed mid-upload) and may be reclaimed. */
 const STALE_CLAIM_MS = 5 * 60_000;
@@ -87,53 +95,126 @@ export function retryPatch(item: QueuedPhoto, resolvedEntityId: string): QueuedP
   return { ...item, entityId: resolvedEntityId, status: 'failed' };
 }
 
-type SavedReportReference = { id: string; engineerId: string };
+type SavedReportReference = { id: string; engineerId: string; revision?: number };
 
-type LocalReportDraft = {
+export type LocalReportDraft = SyncDraft & {
   namespace: string;
   ownerUserId: string;
-  localDraftId: string;
-  payload: DailyReportPayload;
-  serverReport?: SavedReportReference;
   savedAt: string;
+  syncState: DraftSyncState;
+  attempts: number;
+  retryAfter: number;
+  claim?: { id: string; generation: string; expiresAt: number };
 };
+
+function initializeDraft(draft: LocalReportDraft): LocalReportDraft {
+  return {
+    ...draft,
+    localRevision: draft.localRevision ?? 1,
+    lastSyncedLocalRevision: draft.lastSyncedLocalRevision ?? 0,
+    syncState: draft.syncState ?? 'local',
+    attempts: draft.attempts ?? 0,
+    retryAfter: draft.retryAfter ?? 0
+  };
+}
+
+async function editReportDraft(
+  scope: OfflineScope,
+  localDraftId: string,
+  edit: (previous: LocalReportDraft | undefined) => LocalReportDraft | undefined
+): Promise<LocalReportDraft | undefined> {
+  return withOwnedOfflineData<LocalReportDraft>(
+    scope,
+    REPORT_DRAFTS,
+    'readwrite',
+    (drafts, result) => {
+      const request = drafts.get([...ownerKey(scope), localDraftId]);
+      request.onsuccess = () => {
+        const previous = request.result
+          ? initializeDraft(request.result as LocalReportDraft)
+          : undefined;
+        const updated = edit(previous);
+        if (updated) {
+          drafts.put(updated);
+          result(updated);
+        }
+      };
+    }
+  );
+}
 
 export async function saveReportDraft(
   scope: OfflineScope,
   payload: DailyReportPayload,
   localDraftId: string,
-  serverReport?: SavedReportReference
+  serverReport?: SavedReportReference,
+  serverSnapshot = false
 ): Promise<boolean> {
-  const saved = await withOwnedOfflineData<boolean>(
-    scope,
-    REPORT_DRAFTS,
-    'readwrite',
-    (drafts, result) => {
-      drafts.put({
-        namespace: scope.namespace,
-        ownerUserId: scope.ownerUserId,
-        localDraftId,
-        payload,
-        serverReport,
-        savedAt: new Date().toISOString()
-      } satisfies LocalReportDraft);
-      result(true);
+  const saved = await editReportDraft(scope, localDraftId, (previous) => {
+    if (
+      previous &&
+      !serverSnapshot &&
+      JSON.stringify(previous.payload) === JSON.stringify(payload)
+    ) {
+      return previous;
     }
-  );
-  return saved === true;
+    const localRevision = (previous?.localRevision ?? 0) + 1;
+    return {
+      ...previous,
+      namespace: scope.namespace,
+      ownerUserId: scope.ownerUserId,
+      localDraftId,
+      payload,
+      serverReport: serverSnapshot ? serverReport : (previous?.serverReport ?? serverReport),
+      baseServerRevision: serverSnapshot
+        ? serverReport?.revision
+        : (previous?.baseServerRevision ?? serverReport?.revision),
+      savedAt: new Date().toISOString(),
+      localRevision,
+      lastSyncedLocalRevision: serverSnapshot
+        ? localRevision
+        : (previous?.lastSyncedLocalRevision ?? 0),
+      syncState: serverSnapshot
+        ? 'saved'
+        : previous?.syncState === 'conflict'
+          ? 'conflict'
+          : 'local',
+      attempts: 0,
+      retryAfter: 0,
+      pendingCreate: serverSnapshot ? undefined : previous?.pendingCreate
+    };
+  });
+  return saved !== undefined;
 }
 
-export async function getReportDraft(scope: OfflineScope): Promise<LocalReportDraft | undefined> {
-  return withOwnedOfflineData<LocalReportDraft>(
+function listReportDrafts(scope: OfflineScope): Promise<LocalReportDraft[] | undefined> {
+  return withOwnedOfflineData<LocalReportDraft[]>(
     scope,
     REPORT_DRAFTS,
     'readonly',
     (drafts, result) => {
       const request = drafts.index(OWNER_INDEX).getAll(ownerKey(scope));
+      request.onsuccess = () => result((request.result as LocalReportDraft[]).map(initializeDraft));
+    }
+  );
+}
+
+export async function getReportDraft(
+  scope: OfflineScope,
+  localDraftId?: string
+): Promise<LocalReportDraft | undefined> {
+  if (!localDraftId) {
+    const owned = await listReportDrafts(scope);
+    return owned?.sort((left, right) => right.savedAt.localeCompare(left.savedAt))[0];
+  }
+  return withOwnedOfflineData<LocalReportDraft>(
+    scope,
+    REPORT_DRAFTS,
+    'readonly',
+    (drafts, result) => {
+      const request = drafts.get([...ownerKey(scope), localDraftId]);
       request.onsuccess = () => {
-        const owned = request.result as LocalReportDraft[];
-        const latest = owned.sort((left, right) => right.savedAt.localeCompare(left.savedAt))[0];
-        if (latest) result(latest);
+        if (request.result) result(initializeDraft(request.result as LocalReportDraft));
       };
     }
   );
@@ -267,13 +348,37 @@ export function listenForSyncMessages() {
 }
 
 let currentFlush: { scope: OfflineScope; result: Promise<void> } | undefined;
+let retryTimer: { scope: OfflineScope; at: number; id: number } | undefined;
 
-export async function flushPhotoQueue(): Promise<void> {
+export function isReportSyncActive(scope: OfflineScope): boolean {
+  return sameScope(currentFlush?.scope, scope);
+}
+
+function scheduleRetry(scope: OfflineScope, at: number): void {
+  if (retryTimer && sameScope(retryTimer.scope, scope) && retryTimer.at <= at) return;
+  if (retryTimer) window.clearTimeout(retryTimer.id);
+  const id = window.setTimeout(
+    () => {
+      retryTimer = undefined;
+      if (navigator.onLine && sameScope(getBrowserSession()?.scope, scope)) {
+        void flushPhotoQueue().catch(() => {});
+      }
+    },
+    Math.max(at - Date.now(), 0)
+  );
+  retryTimer = { scope, at, id };
+}
+
+export async function flushPhotoQueue(force = false): Promise<void> {
   const scope = getBrowserSession()?.scope;
   if (!scope) return;
-  if (currentFlush && sameScope(currentFlush.scope, scope)) return currentFlush.result;
+  if (currentFlush && sameScope(currentFlush.scope, scope)) {
+    if (!force) return currentFlush.result;
+    await currentFlush.result;
+    if (!sameScope(getBrowserSession()?.scope, scope)) return;
+  }
 
-  const result = drainPhotoQueue(scope).finally(() => {
+  const result = drainPhotoQueue(scope, force).finally(() => {
     if (currentFlush?.result === result) currentFlush = undefined;
   });
   currentFlush = { scope, result };
@@ -346,7 +451,117 @@ async function canSync(scope: OfflineScope): Promise<boolean> {
   return (await isActiveOfflineScope(scope)) && sameScope(getBrowserSession()?.scope, scope);
 }
 
-async function drainPhotoQueue(scope: OfflineScope): Promise<void> {
+async function syncReportDraft(scope: OfflineScope, localDraftId: string, force: boolean) {
+  const lockName = `garrisons-draft-sync:${JSON.stringify([...ownerKey(scope), localDraftId])}`;
+  if (navigator.locks) {
+    await navigator.locks.request(lockName, () =>
+      persistReportDraft(scope, localDraftId, force, true)
+    );
+  } else {
+    await persistReportDraft(scope, localDraftId, force, false);
+  }
+}
+
+async function persistReportDraft(
+  scope: OfflineScope,
+  localDraftId: string,
+  force: boolean,
+  hasLock: boolean
+) {
+  const sync = await getReportDraftSync();
+  const claim = {
+    id: crypto.randomUUID(),
+    generation: scope.generation,
+    expiresAt: Date.now() + STALE_CLAIM_MS
+  };
+  const snapshot = await editReportDraft(scope, localDraftId, (draft) => {
+    if (
+      !draft ||
+      draft.syncState === 'conflict' ||
+      draft.syncState === 'blocked' ||
+      (!force && draft.retryAfter > Date.now())
+    )
+      return undefined;
+    if (
+      !hasLock &&
+      draft.claim?.generation === scope.generation &&
+      draft.claim.expiresAt > Date.now()
+    )
+      return undefined;
+    return { ...draft, claim };
+  });
+  if (!snapshot) return;
+
+  const patch = (change: (draft: LocalReportDraft) => LocalReportDraft) =>
+    editReportDraft(scope, localDraftId, (draft) =>
+      draft?.claim?.id === claim.id ? change(draft) : undefined
+    );
+  let outcome: DraftSyncState = 'local';
+  try {
+    if (!(await canSync(scope))) return;
+    const actor = await getMe(scope).catch(() => null);
+    if (actor?.id !== scope.ownerUserId || !(await canSync(scope))) return;
+    let pending: LocalReportDraft | undefined = snapshot;
+    for (let attempt = 0; pending && attempt < 3; attempt += 1) {
+      outcome = await sync.persistOwnedDraft(pending, {
+        update: (id, payload, revision) => updateDailyReport(id, payload, revision, scope),
+        create: (payload, key) => createDailyReport(payload, key, scope),
+        rememberCreate: async (pendingCreate) =>
+          Boolean(await patch((draft) => ({ ...draft, pendingCreate }))),
+        acknowledge: async (revision, report) => {
+          await patch((draft) => ({
+            ...draft,
+            serverReport: { id: report.id, engineerId: report.engineer_id },
+            baseServerRevision: report.revision,
+            lastSyncedLocalRevision: revision,
+            pendingCreate: undefined
+          }));
+        },
+        status: (error) => (axios.isAxiosError(error) ? error.response?.status : undefined),
+        cancelled: axios.isCancel
+      });
+      if (outcome !== 'saved' || !(await canSync(scope))) break;
+      pending = await getReportDraft(scope, localDraftId);
+      if (!pending || pending.lastSyncedLocalRevision >= pending.localRevision) break;
+      outcome = 'local';
+    }
+  } finally {
+    const final = await patch((draft) => {
+      const previousAttempts = force && draft.attempts >= 4 ? 0 : draft.attempts;
+      const attempts = outcome === 'retry' ? previousAttempts + 1 : 0;
+      const retryAfter = attempts > 0 ? Date.now() + 1000 * 2 ** Math.min(attempts, 5) : 0;
+      return {
+        ...draft,
+        syncState: outcome,
+        attempts,
+        retryAfter: attempts >= 4 ? Number.MAX_SAFE_INTEGER : retryAfter,
+        claim: undefined
+      };
+    });
+    if (final?.syncState === 'retry' && final.attempts < 4) scheduleRetry(scope, final.retryAfter);
+  }
+}
+
+export async function advanceDraftEvidenceRevision(
+  scope: OfflineScope,
+  localDraftId: string,
+  expected: number,
+  committed: number
+): Promise<boolean> {
+  const updated = await editReportDraft(scope, localDraftId, (draft) => {
+    if (!draft || draft.baseServerRevision !== expected) return undefined;
+    if (committed !== expected + 1) return { ...draft, syncState: 'conflict' };
+    return { ...draft, baseServerRevision: committed };
+  });
+  return updated?.baseServerRevision === committed;
+}
+
+async function drainPhotoQueue(scope: OfflineScope, force: boolean): Promise<void> {
+  let conflicts = 0;
+  for (const draft of (await listReportDrafts(scope)) ?? []) {
+    if (!(await canSync(scope))) return;
+    await syncReportDraft(scope, draft.localDraftId, force);
+  }
   const queued = await withOwnedOfflineData<QueuedPhoto[]>(
     scope,
     PHOTO_QUEUE,
@@ -356,54 +571,69 @@ async function drainPhotoQueue(scope: OfflineScope): Promise<void> {
       request.onsuccess = () => result(request.result as QueuedPhoto[]);
     }
   );
-  let conflicts = 0;
   for (const batch of planSyncBatches(queued ?? [])) {
     if (!(await canSync(scope))) return;
+    const first = batch.items[0];
+    const draft = await getReportDraft(scope, first.localDraftId);
+    if (!draft?.serverReport || draft.syncState !== 'saved') continue;
+    const entityId = draft.serverReport.id;
     const actor = await getMe(scope).catch(() => null);
     if (actor?.id !== scope.ownerUserId || !(await canSync(scope))) return;
-    const claimed: QueuedPhoto[] = [];
-    for (const item of batch.items) {
-      const entry = await claimQueuedPhoto(scope, item.id);
-      if (entry) claimed.push(entry);
+    const current = await getDailyReport(entityId, scope).catch(() => null);
+    if (!current) continue;
+    if (current.status !== 'draft' || current.revision !== draft.baseServerRevision) {
+      await editReportDraft(scope, first.localDraftId, (latest) =>
+        latest ? { ...latest, syncState: 'conflict' } : undefined
+      );
+      conflicts += batch.items.length;
+      continue;
     }
-    if (!claimed.length) continue;
 
-    let entityId = batch.entityId;
-    try {
-      if (batch.needsReportCreate) {
-        const draftPayload = claimed.find((item) => item.draftPayload)?.draftPayload;
-        if (!draftPayload) throw new Error('Missing offline draft payload');
-        if (!(await canSync(scope))) return;
-        const report = await createDailyReport(draftPayload, batch.entityId, scope);
-        entityId = report.id;
-        await updateClaims(scope, claimed, { entityId });
-        if (report.status !== 'draft') {
-          conflicts += claimed.length;
-          await updateClaims(scope, claimed, { status: 'server_newer' });
-          continue;
+    let revision = current.revision;
+    for (const item of batch.items) {
+      if (!(await canSync(scope))) return;
+      const claimed = await claimQueuedPhoto(scope, item.id);
+      if (!claimed) continue;
+      try {
+        const uploaded = await uploadEntityFilesWithRevision({
+          entityType: claimed.entityType,
+          entityId,
+          kind: claimed.kind,
+          files: [claimed.file],
+          idempotencyKey: claimed.id,
+          expectedReportRevision: revision,
+          scope
+        });
+        await updateClaims(scope, [claimed]);
+        if (uploaded.reportRevision !== undefined) {
+          const advanced = await advanceDraftEvidenceRevision(
+            scope,
+            first.localDraftId,
+            revision,
+            uploaded.reportRevision
+          );
+          if (!advanced) {
+            conflicts += 1;
+            break;
+          }
+          revision = uploaded.reportRevision;
+        }
+      } catch (error) {
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        await updateClaims(scope, [claimed], {
+          entityId,
+          status:
+            status && status < 500 && status !== 408 && status !== 429 ? 'server_newer' : 'failed'
+        });
+        if (status === 401 || status === 403 || axios.isCancel(error)) return;
+        if (status === 409) {
+          await editReportDraft(scope, first.localDraftId, (latest) =>
+            latest ? { ...latest, syncState: 'conflict' } : undefined
+          );
+          conflicts += 1;
+          break;
         }
       }
-
-      for (const item of claimed) {
-        if (!(await canSync(scope))) return;
-        try {
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(item.file);
-          await uploadEntityFiles({
-            entityType: item.entityType,
-            entityId,
-            kind: item.kind,
-            files: dataTransfer.files,
-            idempotencyKey: item.id,
-            scope
-          });
-          await updateClaims(scope, [item]);
-        } catch {
-          await updateClaims(scope, [item], { entityId, status: 'failed' });
-        }
-      }
-    } catch {
-      await updateClaims(scope, claimed, { entityId, status: 'failed' });
     }
   }
   if (await canSync(scope)) publishSyncResult(scope, conflicts);

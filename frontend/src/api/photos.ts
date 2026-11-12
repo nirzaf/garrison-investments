@@ -62,18 +62,30 @@ export async function uploadMediaFiles(
   return { uploaded, failed, errors };
 }
 
-export async function uploadEntityFiles(params: {
+type UploadEntityFiles = {
   entityType: string;
   entityId: string;
   kind: 'photo' | 'attachment';
   files: FileList | File[];
   idempotencyKey?: string;
   scope?: OfflineScope;
-}): Promise<PhotoRecord[]> {
+  expectedReportRevision?: number;
+};
+
+export async function uploadEntityFiles(params: UploadEntityFiles): Promise<PhotoRecord[]> {
+  return (await uploadEntityFilesWithRevision(params)).files;
+}
+
+export async function uploadEntityFilesWithRevision(
+  params: UploadEntityFiles
+): Promise<{ files: PhotoRecord[]; reportRevision?: number }> {
   const formData = new FormData();
   formData.append('entity_type', params.entityType);
   formData.append('entity_id', params.entityId);
   formData.append('kind', params.kind);
+  if (params.expectedReportRevision !== undefined) {
+    formData.append('expected_report_revision', String(params.expectedReportRevision));
+  }
   Array.from(params.files).forEach((file) => formData.append('files', file));
   const response = await apiClient.post<PhotoRecord[]>('/photos/upload', formData, {
     ...sessionRequestConfig(params.scope),
@@ -82,7 +94,11 @@ export async function uploadEntityFiles(params: {
       ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {})
     }
   });
-  return response.data;
+  const revision = Number(response.headers['x-report-revision']);
+  return {
+    files: response.data,
+    reportRevision: Number.isSafeInteger(revision) && revision > 0 ? revision : undefined
+  };
 }
 
 export async function listPhotos(
