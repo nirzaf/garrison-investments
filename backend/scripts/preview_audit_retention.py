@@ -22,18 +22,25 @@ async def preview() -> None:
             await session.execute(text("SET TRANSACTION READ ONLY"))
             service = AuditService(session)
             candidates = await service.preview_purge()
-            missing = await session.scalar(select(func.count(ActivityLog.id)).where(
-                ActivityLog.deleted_at.is_(None), ActivityLog.retention_until.is_(None),
-            ))
-            print(json.dumps({
-                "archive_retention_days": service.settings.log_archive_retention_days,
-                "purge_enabled": service.settings.log_purge_enabled,
-                "missing_deadlines": missing,
-                "candidate_batch": [
-                    {"id": str(event_id), "retention_until": deadline.isoformat()}
-                    for event_id, deadline in candidates
-                ],
-            }))
+            missing = await session.scalar(
+                select(func.count(ActivityLog.id)).where(
+                    ActivityLog.deleted_at.is_(None),
+                    ActivityLog.retention_until.is_(None),
+                )
+            )
+            print(
+                json.dumps(
+                    {
+                        "archive_retention_days": service.settings.log_archive_retention_days,
+                        "purge_enabled": service.settings.log_purge_enabled,
+                        "missing_deadlines": missing,
+                        "candidate_batch": [
+                            {"id": str(event_id), "retention_until": deadline.isoformat()}
+                            for event_id, deadline in candidates
+                        ],
+                    }
+                )
+            )
     finally:
         await engine.dispose()
 
