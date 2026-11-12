@@ -111,6 +111,37 @@ BUSINESS_TIMEZONE=Asia/Qatar
 4. The Operation Manager or delegated release approver signs off before production deployment.
 5. The production deployment applies Alembic migrations, starts the updated Compose services, and checks `/health`.
 
+### Production deployments from GitHub Actions
+
+GitHub-hosted runners run CI. A successful CI run for a push to `main` triggers
+`Deploy production` on the repository's self-hosted Hostinger runner with the
+`garrison-production` label. The deploy job uses the `Production` environment.
+The host checks the CI result and the current tip of `main` before activating the
+tested commit. Re-run the deployment job to retry the same commit while it remains
+the tip of `main`.
+
+The host keeps production configuration in the root-owned
+`/opt/garrison-portal/deploy` directory. Its `production.env` and `compose.vps.yml`
+contain the private environment and host-specific Compose settings. The override
+uses `GARRISON_FRONTEND_IMAGE` and `GARRISON_BACKEND_IMAGE` from each release's
+`.images.env`. The `current` symlink identifies the active release and supplies
+its image references for rollback. Each successful rollout writes a `DEPLOYED`
+receipt beside the exact source archive.
+
+On initial setup or after changing the host-side release script, install
+`deploy/hostinger-release.sh` as root at `/usr/local/sbin/garrison-deploy`.
+Run the GitHub runner service under a dedicated user with permission to invoke
+only that script through `sudo`. The user does not need access to Docker or
+the production environment file.
+
+Frontend-only updates publish the assets before switching the sign-in HTML.
+Application changes take encrypted backups before updating the app services.
+The automatic rollout checks public readiness and verifies the served HTML and
+JavaScript against the release image. It restores the previous application
+release if activation fails. Pending Alembic migrations and changes to
+PostgreSQL, Redis, object storage, or their volumes require the reviewed
+maintenance procedure before retrying the deployment.
+
 ### Upgrade an existing PostgreSQL 16 database
 
 Fresh environments initialize PostgreSQL 18.6 automatically. For an existing environment,
