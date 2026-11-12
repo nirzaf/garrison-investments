@@ -5,16 +5,20 @@ import { useSearchParams } from 'react-router-dom';
 import { getBrowserSession } from '../../api/browserSession';
 import { sameScope, type OfflineScope } from '../../api/offlineDb';
 import { formatApiError } from '../../api/errors';
+import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
 import {
   clearReportDraft,
   flushPhotoQueue,
   getReportDraft,
   queueFiles,
   queuedPhotoCount,
+  queuedDraftPhotoCount,
   registerBackgroundSync,
   saveReportDraft
 } from '../../api/offlineQueue';
-import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import {
+  listPhotos, prepareMediaFiles, uploadMediaFiles, type MediaUploadIntent, type PhotoRecord
+} from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createDailyReport,
@@ -188,6 +192,10 @@ export function DailyReportPage() {
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [failedUpload, setFailedUpload] = useState<{ entityId: string; items: MediaUploadIntent[] } | null>(null);
+  const [queuedDraftPhotos, setQueuedDraftPhotos] = useState(0);
+  const [uploadPending, setUploadPending] = useState(false);
+  const uploadInProgress = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -321,9 +329,12 @@ export function DailyReportPage() {
     if (!scope) return;
     let mounted = true;
     const refreshQueuedCount = () => {
-      void queuedPhotoCount(scope)
-        .then((count) => {
-          if (mounted && sameScope(getBrowserSession()?.scope, scope)) setQueuedUploads(count);
+      void Promise.all([queuedPhotoCount(scope), draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0])
+        .then(([count, photos]) => {
+          if (mounted && sameScope(getBrowserSession()?.scope, scope)) {
+            setQueuedUploads(count);
+            setQueuedDraftPhotos(photos);
+          }
         })
         .catch(() => {});
     };
@@ -456,6 +467,8 @@ export function DailyReportPage() {
     setPhotoNames(payload.photo_refs.map(({ name }) => name).join('\n'));
     setAttachmentNames(payload.attachment_refs.map(({ name }) => name).join('\n'));
     setUploadedFiles([]);
+    setFailedUpload(null);
+    setQueuedDraftPhotos(0);
     serverSavedSnapshot.current = snapshot;
     persistedDraftSnapshot.current = snapshot;
     setDraftStatus('idle');
@@ -529,6 +542,9 @@ export function DailyReportPage() {
       setForm(resetForm);
       setPhotoNames('');
       setAttachmentNames('');
+      setUploadedFiles([]);
+      setFailedUpload(null);
+      setQueuedDraftPhotos(0);
       setSavedReportId(null);
       if (draftKey.current) await clearReportDraft(scope, draftKey.current);
       draftKey.current = null;
@@ -559,65 +575,87 @@ export function DailyReportPage() {
     }
   }
 
+  async function recordUploads(entityId: string, items: MediaUploadIntent[], selectionErrors: string[]) {
+    if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
+    const result = await uploadMediaFiles('daily_report', entityId, items, scope);
+    if (!sameScope(getBrowserSession()?.scope, scope)) return;
+    setUploadedFiles((current) => [...current, ...result.uploaded.filter(
+      (file) => !current.some((existing) => existing.id === file.id)
+    )]);
+    setFailedUpload((current) => {
+      const previous = current?.entityId === entityId ? current.items : [];
+      const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
+      const next = [...untouched, ...result.failed];
+      return next.length ? { entityId, items: next } : null;
+    });
+    const errors = [...selectionErrors, ...result.errors];
+    if (errors.length) setError(errors.join(' '));
+    if (result.uploaded.length) {
+      setNotice(`${result.uploaded.length} file${result.uploaded.length === 1 ? '' : 's'} saved.`);
+    }
+  }
+
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!scope || !files?.length) return;
-    const fileList = Array.from(files);
-    if (kind === 'photo' && fileList.length > 5) {
-      setError('Maximum 5 photos allowed per report.');
-      return;
-    }
-    const maxSize = kind === 'photo' ? 10 * 1024 * 1024 : 60 * 1024 * 1024;
-    const label = kind === 'photo' ? '10 MB' : '60 MB';
-    if (fileList.some((f) => f.size > maxSize)) {
-      setError(`File size exceeds the ${label} limit.`);
-      return;
-    }
-    const payload = buildPayload();
-    if (!navigator.onLine) {
-      if (!validate()) return;
-      const localDraftId = getDraftKey();
-      const entityId = savedReportId ?? localDraftId;
-      try {
-        const saved = await saveLocalDraft(payload);
-        if (!saved) return;
-        const queued = await queueFiles(scope, {
-          entityType: 'daily_report',
-          entityId,
-          localDraftId,
-          draftPayload: savedReportId ? undefined : payload,
-          kind,
-          files
-        });
-        if (!queued) return;
-        void registerBackgroundSync();
-        const count = await queuedPhotoCount(scope);
-        if (!sameScope(getBrowserSession()?.scope, scope)) return;
-        setQueuedUploads(count);
-        setDraftStatus('local');
-        setNotice(`${files.length} file${files.length > 1 ? 's' : ''} queued for upload.`);
-      } catch {
-        setError('Unable to save these uploads offline.');
-      }
-      return;
-    }
-    const reportId = savedReportId ?? (await saveDraft());
-    if (!reportId) return;
-    setIsSaving(true);
+    if (!scope || !files?.length || uploadInProgress.current) return;
+    uploadInProgress.current = true;
+    setUploadPending(true);
     setError(null);
+    setNotice(null);
     try {
-      const uploaded = await uploadEntityFiles({
-        entityType: 'daily_report',
-        entityId: reportId,
-        kind,
-        files,
-        scope
-      });
-      setUploadedFiles([...uploadedFiles, ...uploaded]);
-      setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
-    } catch {
-      setError('Unable to upload the selected file.');
+      const serverPhotos = uploadedFiles.filter((file) => file.kind === 'photo').length;
+      const localDraftId = getDraftKey();
+      const queued = await queuedDraftPhotoCount(scope, localDraftId);
+      const { items, errors } = await prepareMediaFiles(
+        files, kind, MAX_REPORT_PHOTOS - serverPhotos - queued
+      );
+      if (errors.length) setError(errors.join(' '));
+      if (!items.length) return;
+      if (!navigator.onLine) {
+        if (!validate()) return;
+        const payload = buildPayload();
+        const entityId = savedReportId ?? localDraftId;
+        if (!await saveLocalDraft(payload)) return;
+        let queuedFilesCount = 0;
+        for (const entry of items) {
+          const saved = await queueFiles(scope, {
+            entityType: 'daily_report',
+            entityId,
+            localDraftId,
+            draftPayload: savedReportId ? undefined : payload,
+            kind: entry.kind,
+            files: [entry.file]
+          });
+          if (saved) queuedFilesCount += 1;
+        }
+        if (!queuedFilesCount || !sameScope(getBrowserSession()?.scope, scope)) return;
+        await registerBackgroundSync();
+        setQueuedUploads(await queuedPhotoCount(scope));
+        setQueuedDraftPhotos(await queuedDraftPhotoCount(scope, localDraftId));
+        setDraftStatus('local');
+        setNotice(`${queuedFilesCount} file${queuedFilesCount === 1 ? '' : 's'} queued for upload.`);
+        return;
+      }
+      const reportId = savedReportId ?? (await saveDraft());
+      if (reportId) await recordUploads(reportId, items, errors);
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to process the selected files.'));
     } finally {
-      setIsSaving(false);
+      uploadInProgress.current = false;
+      setUploadPending(false);
+    }
+  }
+
+  async function retryMediaUploads() {
+    if (!failedUpload || uploadInProgress.current) return;
+    uploadInProgress.current = true;
+    setUploadPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await recordUploads(failedUpload.entityId, failedUpload.items, []);
+    } finally {
+      uploadInProgress.current = false;
+      setUploadPending(false);
     }
   }
 
@@ -1153,23 +1191,36 @@ export function DailyReportPage() {
 
           <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Photos And Attachments" />
+            <p className="mb-3 text-sm text-theme-text-muted">
+              {uploadedFiles.filter((file) => file.kind === 'photo').length} of 5 photos saved
+              {queuedDraftPhotos > 0 ? ` · ${queuedDraftPhotos} photos queued for this draft` : ''}.
+              JPEG, PNG and HEIC photos or PDF, JPEG and PNG attachments, up to 10 MiB per file.
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Upload photos">
                 <input
-                  accept="image/jpeg,image/png,image/heic"
+                  accept={REPORT_PHOTO_ACCEPT}
                   capture="environment"
                   className="form-field"
+                  disabled={isSaving || uploadPending}
                   multiple
-                  onChange={(event) => void uploadFiles(event.target.files, 'photo')}
+                  onChange={(event) => {
+                    void uploadFiles(event.target.files, 'photo');
+                    event.target.value = '';
+                  }}
                   type="file"
                 />
               </Field>
               <Field label="Upload attachments">
                 <input
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept={PDF_IMAGE_ACCEPT}
                   className="form-field"
+                  disabled={isSaving || uploadPending}
                   multiple
-                  onChange={(event) => void uploadFiles(event.target.files, 'attachment')}
+                  onChange={(event) => {
+                    void uploadFiles(event.target.files, 'attachment');
+                    event.target.value = '';
+                  }}
                   type="file"
                 />
               </Field>
@@ -1201,6 +1252,11 @@ export function DailyReportPage() {
                 />
               </Field>
             </div>
+            {failedUpload ? (
+              <button className="form-field mt-3" disabled={uploadPending || !isOnline} onClick={() => void retryMediaUploads()} type="button">
+                Retry {failedUpload.items.length} failed file(s)
+              </button>
+            ) : null}
             {uploadedFiles.length > 0 ? (
               <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
@@ -1219,7 +1275,7 @@ export function DailyReportPage() {
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-60"
-              disabled={isSaving}
+              disabled={isSaving || uploadPending}
               onClick={() => void saveDraft()}
               type="button"
             >
@@ -1228,7 +1284,7 @@ export function DailyReportPage() {
             </button>
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-              disabled={isSaving}
+              disabled={isSaving || uploadPending}
               type="submit"
             >
               <Send className="h-4 w-4" />
@@ -1282,7 +1338,7 @@ export function DailyReportPage() {
                 (report.status === 'draft' || report.status === 'rejected') ? (
                   <button
                     className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-50"
-                    disabled={!draftHydrated || isSaving || savedReportId === report.id}
+                    disabled={!draftHydrated || isSaving || uploadPending || savedReportId === report.id}
                     onClick={() => void resumeReport(report)}
                     type="button"
                   >

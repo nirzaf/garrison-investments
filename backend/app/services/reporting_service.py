@@ -108,7 +108,7 @@ class ReportingService:
         payload: SupervisorUpdateCreateRequest,
         actor: User,
     ) -> SupervisorUpdate:
-        update = await self.updates.get_by_id(update_id)
+        update = await self.updates.get_by_id(update_id, for_update=True)
         if not update:
             raise NotFoundException("Supervisor update")
         if update.supervisor_id != actor.id:
@@ -143,7 +143,7 @@ class ReportingService:
         return update
 
     async def submit_supervisor_update(self, update_id: UUID, actor: User) -> SupervisorUpdate:
-        update = await self.updates.get_by_id(update_id)
+        update = await self.updates.get_by_id(update_id, for_update=True)
         if not update:
             raise NotFoundException("Supervisor update")
         if update.supervisor_id != actor.id:

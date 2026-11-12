@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PhotoResponse(BaseModel):
@@ -22,6 +22,9 @@ class PhotoResponse(BaseModel):
     taken_at: datetime | None
     uploaded_by: UUID | None
     processing_status: str
+    can_delete: bool = False
+    deleted_at: datetime | None = None
+    recoverable_until: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +32,10 @@ class PhotoResponse(BaseModel):
 class PhotoListResponse(BaseModel):
     items: list[PhotoResponse]
     total: int
+
+
+class PhotoDecisionRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class ProtectedFileUrlResponse(BaseModel):

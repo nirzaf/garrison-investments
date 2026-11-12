@@ -15,14 +15,16 @@ class SupervisorUpdateRepository:
         await self.session.flush()
         return update
 
-    async def get_by_id(self, update_id: UUID) -> SupervisorUpdate | None:
-        result = await self.session.execute(
-            select(SupervisorUpdate).where(
-                SupervisorUpdate.id == update_id,
-                SupervisorUpdate.deleted_at.is_(None),
-            )
+    async def get_by_id(
+        self, update_id: UUID, *, for_update: bool = False
+    ) -> SupervisorUpdate | None:
+        query = select(SupervisorUpdate).where(
+            SupervisorUpdate.id == update_id,
+            SupervisorUpdate.deleted_at.is_(None),
         )
-        return result.scalar_one_or_none()
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        return await self.session.scalar(query)
 
     async def lock_linked(self, update_ids: list[UUID]) -> list[SupervisorUpdate]:
         if not update_ids:

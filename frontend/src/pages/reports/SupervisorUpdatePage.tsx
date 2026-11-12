@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -13,7 +13,8 @@ import {
   saveSupervisorDraft
 } from '../../api/offlineQueue';
 import { formatApiError } from '../../api/errors';
-import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
+import { deletePhoto, listPhotos, prepareMediaFiles, uploadMediaFiles, type MediaUploadIntent, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createSupervisorUpdate,
@@ -28,9 +29,6 @@ import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
-const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
-const MAX_ATTACHMENT_SIZE = 60 * 1024 * 1024;
-const MAX_PHOTOS = 5;
 
 const updateSchema = z.object({
   project_id: z.string().min(1, 'Select a project.'),
@@ -116,6 +114,8 @@ export function SupervisorUpdatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [failedUpload, setFailedUpload] = useState<{ entityId: string; items: MediaUploadIntent[] } | null>(null);
+  const mediaWrite = useRef(false);
 
   const [draftHydrated, setDraftHydrated] = useState(false);
 
@@ -242,6 +242,7 @@ export function SupervisorUpdatePage() {
     setSavedDraft(update);
     setLastAutosavedAt(null);
     setUploadedFiles([]);
+    setFailedUpload(null);
     reset({
       project_id: update.project_id,
       update_date: update.update_date,
@@ -265,41 +266,64 @@ export function SupervisorUpdatePage() {
     }
   }
 
-  async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!scope || !files?.length) return;
+  async function recordUploads(entityId: string, items: MediaUploadIntent[], selectionErrors: string[]) {
+    if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
+    const result = await uploadMediaFiles('supervisor_update', entityId, items, scope);
+    if (!sameScope(getBrowserSession()?.scope, scope)) return;
+    setUploadedFiles((current) => [...current, ...result.uploaded.filter(
+      (file) => !current.some((existing) => existing.id === file.id)
+    )]);
+    setFailedUpload((current) => {
+      const previous = current?.entityId === entityId ? current.items : [];
+      const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
+      const next = [...untouched, ...result.failed];
+      return next.length ? { entityId, items: next } : null;
+    });
+    const errors = [...selectionErrors, ...result.errors];
+    if (errors.length) setError(errors.join(' '));
+    if (result.uploaded.length) {
+      setNotice(`${result.uploaded.length} file${result.uploaded.length === 1 ? '' : 's'} saved.`);
+    }
+  }
+
+  async function updateMedia(action: () => Promise<void>) {
+    if (mediaWrite.current) return;
+    mediaWrite.current = true;
     setIsSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const values = watch();
-      const update = savedDraft ?? (await persistDraft(values as UpdateFormValues, null, scope));
-      setSavedDraft(update);
-      const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
-      const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
-      const fileList = Array.from(files);
-      if (maxCount && fileList.length > maxCount) {
-        setError(`Maximum ${maxCount} photos allowed per update.`);
-        return;
-      }
-      if (fileList.some((f) => f.size > maxSize)) {
-        const label = kind === 'photo' ? '10 MB' : '60 MB';
-        setError(`File size exceeds the ${label} limit.`);
-        return;
-      }
-      const uploaded = await uploadEntityFiles({
-        entityType: 'supervisor_update',
-        entityId: update.id,
-        kind,
-        files,
-        scope
-      });
-      setUploadedFiles((prev) => [...prev, ...uploaded]);
-      setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
-    } catch (uploadError) {
-      setError(formatApiError(uploadError, 'Unable to upload files for the site update.'));
+      await action();
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to update site evidence.'));
     } finally {
+      mediaWrite.current = false;
       setIsSaving(false);
     }
+  }
+
+  async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
+    if (!scope || !files?.length) return;
+    await updateMedia(async () => {
+      const { items, errors } = await prepareMediaFiles(
+        files, kind, MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length
+      );
+      if (errors.length) setError(errors.join(' '));
+      if (!items.length) return;
+      const update = savedDraft ?? (await persistDraft(watch() as UpdateFormValues, null, scope));
+      setSavedDraft(update);
+      await recordUploads(update.id, items, errors);
+    });
+  }
+
+  async function removeFile(file: PhotoRecord) {
+    if (!savedDraft || savedDraft.status !== 'draft') return;
+    if (!window.confirm(`Remove ${file.original_name} from this site update (${savedDraft.id})?`)) return;
+    await updateMedia(async () => {
+      await deletePhoto(file.id);
+      setUploadedFiles((current) => current.filter((item) => item.id !== file.id));
+      setNotice(`${file.original_name} removed.`);
+    });
   }
 
   async function saveDraft(values: UpdateFormValues) {
@@ -334,6 +358,7 @@ export function SupervisorUpdatePage() {
       await submitSupervisorUpdate(draft.id, scope);
       setSavedDraft(null);
       setUploadedFiles([]);
+    setFailedUpload(null);
       setLastAutosavedAt(null);
       reset(createDefaultValues());
       await clearSupervisorDraft(scope);
@@ -448,10 +473,10 @@ export function SupervisorUpdatePage() {
                   <span>Upload photos</span>
                 </div>
                 <FileDropZone
-                  accept="image/jpeg,image/png,image/heic"
+                  accept={REPORT_PHOTO_ACCEPT}
                   capture="environment"
                   disabled={isSaving}
-                  hint="Max 5 photos at 10 MB each. JPG, PNG, or HEIC."
+                  hint={`${uploadedFiles.filter((file) => file.kind === 'photo').length} of 5 photos saved. JPEG, PNG or HEIC, up to 10 MiB each.`}
                   label="Drop photos here or tap to use camera"
                   multiple
                   onFiles={(files) => void uploadFiles(files, 'photo')}
@@ -463,15 +488,22 @@ export function SupervisorUpdatePage() {
                   <span>Upload attachments</span>
                 </div>
                 <FileDropZone
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept={PDF_IMAGE_ACCEPT}
                   disabled={isSaving}
-                  hint="Supporting documents up to 60 MB."
+                  hint="PDF, JPEG or PNG, up to 10 MiB per file."
                   label="Drop attachments here or tap to browse"
                   multiple
                   onFiles={(files) => void uploadFiles(files, 'attachment')}
                 />
               </div>
             </div>
+            {failedUpload ? (
+              <button className="form-field mt-3" disabled={isSaving} onClick={() => {
+                void updateMedia(() => recordUploads(failedUpload.entityId, failedUpload.items, []));
+              }} type="button">
+                Retry {failedUpload.items.length} failed file(s)
+              </button>
+            ) : null}
             {uploadedFiles.length > 0 ? (
               <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
@@ -480,7 +512,14 @@ export function SupervisorUpdatePage() {
                     key={file.id}
                   >
                     <span>{file.original_name}</span>
-                    <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                      {savedDraft?.status === 'draft' ? (
+                        <button className="form-field" disabled={isSaving} onClick={() => void removeFile(file)} type="button">
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>
