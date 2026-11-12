@@ -1175,6 +1175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Task */
+        patch: operations["update_project_task_api_v1_projects__project_id__tasks__task_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/timeline": {
         parameters: {
             query?: never;
@@ -2936,6 +2953,11 @@ export interface components {
             /** Reference Number */
             reference_number: string | null;
         };
+        /** PhotoDecisionRequest */
+        PhotoDecisionRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** PhotoListResponse */
         PhotoListResponse: {
             /** Items */
@@ -2945,10 +2967,17 @@ export interface components {
         };
         /** PhotoResponse */
         PhotoResponse: {
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
             /** Caption */
             caption: string | null;
             /** Compressed Path */
             compressed_path: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
             /**
              * Entity Id
              * Format: uuid
@@ -2973,6 +3002,8 @@ export interface components {
             original_name: string;
             /** Processing Status */
             processing_status: string;
+            /** Recoverable Until */
+            recoverable_until?: string | null;
             /** Size Bytes */
             size_bytes: number;
             /** Storage Path */
@@ -3077,6 +3108,8 @@ export interface components {
             name: string;
             /** Progress Percentage */
             progress_percentage: string;
+            /** Revision */
+            revision: number;
             /** Scope Of Work */
             scope_of_work: string;
             /** Start Date */
@@ -3098,6 +3131,8 @@ export interface components {
         };
         /** ProjectMemberCreateRequest */
         ProjectMemberCreateRequest: {
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Role In Project */
             role_in_project?: string | null;
             /**
@@ -3130,6 +3165,8 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /** User Name */
+            user_name?: string | null;
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -3163,6 +3200,8 @@ export interface components {
             name: string;
             /** Progress Percentage */
             progress_percentage: string;
+            /** Revision */
+            revision: number;
             /** Scope Of Work */
             scope_of_work: string;
             /** Start Date */
@@ -3256,15 +3295,54 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Revision */
+            revision: number;
             /** Sort Order */
             sort_order: number;
             /** Status */
             status: string;
         };
+        /** ProjectTaskUpdateRequest */
+        ProjectTaskUpdateRequest: {
+            /** Actual End Date */
+            actual_end_date?: string | null;
+            /** Actual Start Date */
+            actual_start_date?: string | null;
+            /** Baseline End Date */
+            baseline_end_date?: string | null;
+            /** Baseline Start Date */
+            baseline_start_date?: string | null;
+            /** Delay Reason */
+            delay_reason?: string | null;
+            /** Dependency Task Id */
+            dependency_task_id?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Planned End Date */
+            planned_end_date?: string | null;
+            /** Planned Start Date */
+            planned_start_date?: string | null;
+            /** Progress Percentage */
+            progress_percentage?: number | string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Status */
+            status?: string | null;
+        };
         /** ProjectTimelineResponse */
         ProjectTimelineResponse: {
             /** Milestones */
             milestones: components["schemas"]["MilestoneResponse"][];
+            /** Owner Names */
+            owner_names: {
+                [key: string]: string;
+            };
             project: components["schemas"]["ProjectResponse"];
             /** Tasks */
             tasks: components["schemas"]["ProjectTaskResponse"][];
@@ -3281,6 +3359,8 @@ export interface components {
             contract_number?: string | null;
             /** Description */
             description?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Location */
             location?: string | null;
             /** Name */
@@ -4615,7 +4695,9 @@ export interface operations {
     upload_document_version_api_v1_documents__document_id__versions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 document_id: string;
             };
@@ -6082,6 +6164,7 @@ export interface operations {
                 kind?: string | null;
                 limit?: number;
                 offset?: number;
+                deleted?: boolean;
             };
             header?: never;
             path?: never;
@@ -6184,7 +6267,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PhotoDecisionRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -6244,7 +6331,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PhotoDecisionRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6513,6 +6604,42 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTaskResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    update_project_task_api_v1_projects__project_id__tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

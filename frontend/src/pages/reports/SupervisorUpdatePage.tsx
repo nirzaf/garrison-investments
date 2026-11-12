@@ -14,7 +14,14 @@ import {
 } from '../../api/offlineQueue';
 import { formatApiError } from '../../api/errors';
 import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
-import { deletePhoto, listPhotos, prepareMediaFiles, uploadMediaFiles, type MediaUploadIntent, type PhotoRecord } from '../../api/photos';
+import {
+  deletePhoto,
+  listPhotos,
+  prepareMediaFiles,
+  uploadMediaFiles,
+  type MediaUploadIntent,
+  type PhotoRecord
+} from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createSupervisorUpdate,
@@ -28,7 +35,6 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
-
 
 const updateSchema = z.object({
   project_id: z.string().min(1, 'Select a project.'),
@@ -114,7 +120,10 @@ export function SupervisorUpdatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
-  const [failedUpload, setFailedUpload] = useState<{ entityId: string; items: MediaUploadIntent[] } | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{
+    entityId: string;
+    items: MediaUploadIntent[];
+  } | null>(null);
   const mediaWrite = useRef(false);
 
   const [draftHydrated, setDraftHydrated] = useState(false);
@@ -266,13 +275,18 @@ export function SupervisorUpdatePage() {
     }
   }
 
-  async function recordUploads(entityId: string, items: MediaUploadIntent[], selectionErrors: string[]) {
+  async function recordUploads(
+    entityId: string,
+    items: MediaUploadIntent[],
+    selectionErrors: string[]
+  ) {
     if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
     const result = await uploadMediaFiles('supervisor_update', entityId, items, scope);
     if (!sameScope(getBrowserSession()?.scope, scope)) return;
-    setUploadedFiles((current) => [...current, ...result.uploaded.filter(
-      (file) => !current.some((existing) => existing.id === file.id)
-    )]);
+    setUploadedFiles((current) => [
+      ...current,
+      ...result.uploaded.filter((file) => !current.some((existing) => existing.id === file.id))
+    ]);
     setFailedUpload((current) => {
       const previous = current?.entityId === entityId ? current.items : [];
       const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
@@ -306,7 +320,9 @@ export function SupervisorUpdatePage() {
     if (!scope || !files?.length) return;
     await updateMedia(async () => {
       const { items, errors } = await prepareMediaFiles(
-        files, kind, MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length
+        files,
+        kind,
+        MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length
       );
       if (errors.length) setError(errors.join(' '));
       if (!items.length) return;
@@ -318,7 +334,8 @@ export function SupervisorUpdatePage() {
 
   async function removeFile(file: PhotoRecord) {
     if (!savedDraft || savedDraft.status !== 'draft') return;
-    if (!window.confirm(`Remove ${file.original_name} from this site update (${savedDraft.id})?`)) return;
+    if (!window.confirm(`Remove ${file.original_name} from this site update (${savedDraft.id})?`))
+      return;
     await updateMedia(async () => {
       await deletePhoto(file.id);
       setUploadedFiles((current) => current.filter((item) => item.id !== file.id));
@@ -358,7 +375,7 @@ export function SupervisorUpdatePage() {
       await submitSupervisorUpdate(draft.id, scope);
       setSavedDraft(null);
       setUploadedFiles([]);
-    setFailedUpload(null);
+      setFailedUpload(null);
       setLastAutosavedAt(null);
       reset(createDefaultValues());
       await clearSupervisorDraft(scope);
@@ -498,9 +515,16 @@ export function SupervisorUpdatePage() {
               </div>
             </div>
             {failedUpload ? (
-              <button className="form-field mt-3" disabled={isSaving} onClick={() => {
-                void updateMedia(() => recordUploads(failedUpload.entityId, failedUpload.items, []));
-              }} type="button">
+              <button
+                className="form-field mt-3"
+                disabled={isSaving}
+                onClick={() => {
+                  void updateMedia(() =>
+                    recordUploads(failedUpload.entityId, failedUpload.items, [])
+                  );
+                }}
+                type="button"
+              >
                 Retry {failedUpload.items.length} failed file(s)
               </button>
             ) : null}
@@ -515,7 +539,12 @@ export function SupervisorUpdatePage() {
                     <div className="flex items-center gap-2">
                       <StatusBadge tone="success">{file.processing_status}</StatusBadge>
                       {savedDraft?.status === 'draft' ? (
-                        <button className="form-field" disabled={isSaving} onClick={() => void removeFile(file)} type="button">
+                        <button
+                          className="form-field"
+                          disabled={isSaving}
+                          onClick={() => void removeFile(file)}
+                          type="button"
+                        >
                           Remove
                         </button>
                       ) : null}

@@ -11,7 +11,11 @@ export type ProtectedFileUrl = components['schemas']['ProtectedFileUrlResponse']
 
 export type MediaUploadIntent = { file: File; kind: ReportFileKind; key: string };
 
-export async function prepareMediaFiles(files: FileList, kind: ReportFileKind, remainingSlots: number) {
+export async function prepareMediaFiles(
+  files: FileList | File[],
+  kind: ReportFileKind,
+  remainingSlots: number
+) {
   const items: MediaUploadIntent[] = [];
   const errors: string[] = [];
   for (const file of Array.from(files)) {
@@ -29,15 +33,27 @@ export async function prepareMediaFiles(files: FileList, kind: ReportFileKind, r
   return { items, errors };
 }
 
-export async function uploadMediaFiles(entityType: string, entityId: string, items: MediaUploadIntent[], scope?: OfflineScope) {
+export async function uploadMediaFiles(
+  entityType: string,
+  entityId: string,
+  items: MediaUploadIntent[],
+  scope?: OfflineScope
+) {
   const uploaded: PhotoRecord[] = [];
   const failed: MediaUploadIntent[] = [];
   const errors: string[] = [];
   for (const item of items) {
     try {
-      uploaded.push(...await uploadEntityFiles({
-        entityType, entityId, kind: item.kind, files: [item.file], idempotencyKey: item.key, scope
-      }));
+      uploaded.push(
+        ...(await uploadEntityFiles({
+          entityType,
+          entityId,
+          kind: item.kind,
+          files: [item.file],
+          idempotencyKey: item.key,
+          scope
+        }))
+      );
     } catch (error) {
       failed.push(item);
       errors.push(`${item.file.name} — ${formatApiError(error, 'Unable to upload file.')}`);
@@ -69,14 +85,17 @@ export async function uploadEntityFiles(params: {
   return response.data;
 }
 
-export async function listPhotos(params?: {
-  entityType?: string;
-  entityId?: string;
-  kind?: 'photo' | 'attachment';
-  limit?: number;
-  offset?: number;
-  deleted?: boolean;
-}, signal?: AbortSignal): Promise<PhotoListResponse> {
+export async function listPhotos(
+  params?: {
+    entityType?: string;
+    entityId?: string;
+    kind?: 'photo' | 'attachment';
+    limit?: number;
+    offset?: number;
+    deleted?: boolean;
+  },
+  signal?: AbortSignal
+): Promise<PhotoListResponse> {
   const response = await apiClient.get<PhotoListResponse>('/photos', {
     signal,
     params: {

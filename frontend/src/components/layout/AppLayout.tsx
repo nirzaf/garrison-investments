@@ -163,7 +163,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-theme-main text-theme-text-primary lg:grid lg:grid-cols-[256px_1fr]">
-      <aside className="sticky top-0 hidden h-screen border-r border-theme-border bg-theme-sidebar lg:block">
+      <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-theme-border bg-theme-sidebar lg:block">
         <ShellBrand />
         <SidebarNav items={visibleNavItems} />
       </aside>
@@ -176,7 +176,7 @@ export function AppLayout() {
             onClick={() => setIsSidebarOpen(false)}
             type="button"
           />
-          <aside className="relative h-full w-72 border-r border-theme-border bg-theme-sidebar shadow-xl">
+          <aside className="relative h-full w-72 overflow-y-auto border-r border-theme-border bg-theme-sidebar shadow-xl">
             <div className="flex items-center justify-between border-b border-theme-border pr-3">
               <ShellBrand />
               <button

@@ -94,9 +94,10 @@ async def seed(role: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["seed", "seed-supervisor", "serve"])
+    parser.add_argument("--role", choices=["admin", "store_keeper"], default="admin")
     args = parser.parse_args()
     configure()
     if args.command == "serve":
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
     else:
-        asyncio.run(seed("civil_supervisor" if args.command == "seed-supervisor" else "admin"))
+        asyncio.run(seed("civil_supervisor" if args.command == "seed-supervisor" else args.role))

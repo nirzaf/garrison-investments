@@ -3483,6 +3483,7 @@
           },
           "sort_order": {
             "default": 0,
+            "maximum": 2147483647.0,
             "minimum": 0.0,
             "title": "Sort Order",
             "type": "integer"
@@ -4232,6 +4233,24 @@
         "title": "PaymentResponse",
         "type": "object"
       },
+      "PhotoDecisionRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "PhotoDecisionRequest",
+        "type": "object"
+      },
       "PhotoListResponse": {
         "properties": {
           "items": {
@@ -4255,6 +4274,11 @@
       },
       "PhotoResponse": {
         "properties": {
+          "can_delete": {
+            "default": false,
+            "title": "Can Delete",
+            "type": "boolean"
+          },
           "caption": {
             "anyOf": [
               {
@@ -4276,6 +4300,18 @@
               }
             ],
             "title": "Compressed Path"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           },
           "entity_id": {
             "format": "uuid",
@@ -4321,6 +4357,18 @@
           "processing_status": {
             "title": "Processing Status",
             "type": "string"
+          },
+          "recoverable_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recoverable Until"
           },
           "size_bytes": {
             "title": "Size Bytes",
@@ -4541,6 +4589,7 @@
           },
           "status": {
             "default": "planning",
+            "minLength": 1,
             "title": "Status",
             "type": "string"
           },
@@ -4687,6 +4736,10 @@
             "title": "Progress Percentage",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "scope_of_work": {
             "title": "Scope Of Work",
             "type": "string"
@@ -4728,6 +4781,7 @@
           "client_name",
           "contract_number",
           "progress_percentage",
+          "revision",
           "created_by",
           "created_at",
           "members",
@@ -4761,6 +4815,18 @@
       },
       "ProjectMemberCreateRequest": {
         "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
           "role_in_project": {
             "anyOf": [
               {
@@ -4817,6 +4883,17 @@
             "format": "uuid",
             "title": "User Id",
             "type": "string"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
           }
         },
         "required": [
@@ -4932,6 +5009,10 @@
             "title": "Progress Percentage",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "scope_of_work": {
             "title": "Scope Of Work",
             "type": "string"
@@ -4973,6 +5054,7 @@
           "client_name",
           "contract_number",
           "progress_percentage",
+          "revision",
           "created_by",
           "created_at"
         ],
@@ -5122,12 +5204,14 @@
           },
           "sort_order": {
             "default": 0,
+            "maximum": 2147483647.0,
             "minimum": 0.0,
             "title": "Sort Order",
             "type": "integer"
           },
           "status": {
             "default": "not_started",
+            "minLength": 1,
             "title": "Status",
             "type": "string"
           }
@@ -5282,6 +5366,10 @@
             "title": "Project Id",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "sort_order": {
             "title": "Sort Order",
             "type": "integer"
@@ -5308,9 +5396,198 @@
           "progress_percentage",
           "delay_reason",
           "sort_order",
+          "revision",
           "created_at"
         ],
         "title": "ProjectTaskResponse",
+        "type": "object"
+      },
+      "ProjectTaskUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "baseline_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline End Date"
+          },
+          "baseline_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Start Date"
+          },
+          "delay_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Reason"
+          },
+          "dependency_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Task Id"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "planned_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End Date"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ProjectTaskUpdateRequest",
         "type": "object"
       },
       "ProjectTimelineResponse": {
@@ -5321,6 +5598,16 @@
             },
             "title": "Milestones",
             "type": "array"
+          },
+          "owner_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Owner Names",
+            "type": "object"
           },
           "project": {
             "$ref": "#/components/schemas/ProjectResponse"
@@ -5336,12 +5623,14 @@
         "required": [
           "project",
           "milestones",
-          "tasks"
+          "tasks",
+          "owner_names"
         ],
         "title": "ProjectTimelineResponse",
         "type": "object"
       },
       "ProjectUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "actual_end_date": {
             "anyOf": [
@@ -5405,6 +5694,18 @@
             ],
             "title": "Description"
           },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
           "location": {
             "anyOf": [
               {
@@ -5456,6 +5757,7 @@
           "status": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -8619,6 +8921,22 @@
               "format": "uuid",
               "title": "Document Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -12101,6 +12419,16 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "deleted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Deleted",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -12235,6 +12563,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PhotoDecisionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -12394,6 +12739,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PhotoDecisionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -12950,6 +13312,82 @@
           }
         ],
         "summary": "Create Project Task",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}": {
+      "patch": {
+        "operationId": "update_project_task_api_v1_projects__project_id__tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTaskUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Project Task Api V1 Projects  Project Id  Tasks  Task Id  Patch"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Project Task",
         "tags": [
           "Projects"
         ]

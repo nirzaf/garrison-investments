@@ -223,11 +223,20 @@ export async function queuedPhotoCount(scope: OfflineScope): Promise<number> {
   return count ?? 0;
 }
 
-export async function queuedDraftPhotoCount(scope: OfflineScope, localDraftId: string): Promise<number> {
-  const count = await withOwnedOfflineData<number>(scope, PHOTO_QUEUE, 'readonly', (queue, result) => {
-    const request = queue.index('byOwnerDraft').getAll([...ownerKey(scope), localDraftId]);
-    request.onsuccess = () => result((request.result as QueuedPhoto[]).filter((entry) => entry.kind === 'photo').length);
-  });
+export async function queuedDraftPhotoCount(
+  scope: OfflineScope,
+  localDraftId: string
+): Promise<number> {
+  const count = await withOwnedOfflineData<number>(
+    scope,
+    PHOTO_QUEUE,
+    'readonly',
+    (queue, result) => {
+      const request = queue.index('byOwnerDraft').getAll([...ownerKey(scope), localDraftId]);
+      request.onsuccess = () =>
+        result((request.result as QueuedPhoto[]).filter((entry) => entry.kind === 'photo').length);
+    }
+  );
   return count ?? 0;
 }
 

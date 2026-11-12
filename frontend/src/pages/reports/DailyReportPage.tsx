@@ -17,7 +17,11 @@ import {
   saveReportDraft
 } from '../../api/offlineQueue';
 import {
-  listPhotos, prepareMediaFiles, uploadMediaFiles, type MediaUploadIntent, type PhotoRecord
+  listPhotos,
+  prepareMediaFiles,
+  uploadMediaFiles,
+  type MediaUploadIntent,
+  type PhotoRecord
 } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
@@ -192,7 +196,10 @@ export function DailyReportPage() {
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
-  const [failedUpload, setFailedUpload] = useState<{ entityId: string; items: MediaUploadIntent[] } | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{
+    entityId: string;
+    items: MediaUploadIntent[];
+  } | null>(null);
   const [queuedDraftPhotos, setQueuedDraftPhotos] = useState(0);
   const [uploadPending, setUploadPending] = useState(false);
   const uploadInProgress = useRef(false);
@@ -329,7 +336,10 @@ export function DailyReportPage() {
     if (!scope) return;
     let mounted = true;
     const refreshQueuedCount = () => {
-      void Promise.all([queuedPhotoCount(scope), draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0])
+      void Promise.all([
+        queuedPhotoCount(scope),
+        draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0
+      ])
         .then(([count, photos]) => {
           if (mounted && sameScope(getBrowserSession()?.scope, scope)) {
             setQueuedUploads(count);
@@ -575,13 +585,18 @@ export function DailyReportPage() {
     }
   }
 
-  async function recordUploads(entityId: string, items: MediaUploadIntent[], selectionErrors: string[]) {
+  async function recordUploads(
+    entityId: string,
+    items: MediaUploadIntent[],
+    selectionErrors: string[]
+  ) {
     if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
     const result = await uploadMediaFiles('daily_report', entityId, items, scope);
     if (!sameScope(getBrowserSession()?.scope, scope)) return;
-    setUploadedFiles((current) => [...current, ...result.uploaded.filter(
-      (file) => !current.some((existing) => existing.id === file.id)
-    )]);
+    setUploadedFiles((current) => [
+      ...current,
+      ...result.uploaded.filter((file) => !current.some((existing) => existing.id === file.id))
+    ]);
     setFailedUpload((current) => {
       const previous = current?.entityId === entityId ? current.items : [];
       const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
@@ -601,12 +616,15 @@ export function DailyReportPage() {
     setUploadPending(true);
     setError(null);
     setNotice(null);
+    const selection = Array.from(files);
     try {
       const serverPhotos = uploadedFiles.filter((file) => file.kind === 'photo').length;
       const localDraftId = getDraftKey();
       const queued = await queuedDraftPhotoCount(scope, localDraftId);
       const { items, errors } = await prepareMediaFiles(
-        files, kind, MAX_REPORT_PHOTOS - serverPhotos - queued
+        selection,
+        kind,
+        MAX_REPORT_PHOTOS - serverPhotos - queued
       );
       if (errors.length) setError(errors.join(' '));
       if (!items.length) return;
@@ -614,7 +632,7 @@ export function DailyReportPage() {
         if (!validate()) return;
         const payload = buildPayload();
         const entityId = savedReportId ?? localDraftId;
-        if (!await saveLocalDraft(payload)) return;
+        if (!(await saveLocalDraft(payload))) return;
         let queuedFilesCount = 0;
         for (const entry of items) {
           const saved = await queueFiles(scope, {
@@ -632,7 +650,9 @@ export function DailyReportPage() {
         setQueuedUploads(await queuedPhotoCount(scope));
         setQueuedDraftPhotos(await queuedDraftPhotoCount(scope, localDraftId));
         setDraftStatus('local');
-        setNotice(`${queuedFilesCount} file${queuedFilesCount === 1 ? '' : 's'} queued for upload.`);
+        setNotice(
+          `${queuedFilesCount} file${queuedFilesCount === 1 ? '' : 's'} queued for upload.`
+        );
         return;
       }
       const reportId = savedReportId ?? (await saveDraft());
@@ -1253,7 +1273,12 @@ export function DailyReportPage() {
               </Field>
             </div>
             {failedUpload ? (
-              <button className="form-field mt-3" disabled={uploadPending || !isOnline} onClick={() => void retryMediaUploads()} type="button">
+              <button
+                className="form-field mt-3"
+                disabled={uploadPending || !isOnline}
+                onClick={() => void retryMediaUploads()}
+                type="button"
+              >
                 Retry {failedUpload.items.length} failed file(s)
               </button>
             ) : null}
@@ -1338,7 +1363,9 @@ export function DailyReportPage() {
                 (report.status === 'draft' || report.status === 'rejected') ? (
                   <button
                     className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-50"
-                    disabled={!draftHydrated || isSaving || uploadPending || savedReportId === report.id}
+                    disabled={
+                      !draftHydrated || isSaving || uploadPending || savedReportId === report.id
+                    }
                     onClick={() => void resumeReport(report)}
                     type="button"
                   >

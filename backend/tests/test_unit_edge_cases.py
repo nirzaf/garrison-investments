@@ -150,7 +150,7 @@ def test_document_file_validation_accepts_supported_magic_signatures(
     [
         ("tool.sh", b"#!/bin/sh", 422, "File type is blocked."),
         ("notes.txt", b"plain text", 422, "Unsupported document type."),
-        ("huge.pdf", b"%PDF-" + b"x" * MAX_DOCUMENT_SIZE, 413, "Document exceeds the 60 MB limit."),
+        ("huge.pdf", b"%PDF-" + b"x" * MAX_DOCUMENT_SIZE, 413, "Document exceeds the 60 MiB limit."),
     ],
 )
 def test_document_file_validation_rejects_blocked_unsupported_and_oversized_files(
@@ -197,6 +197,7 @@ def test_document_select_version_raises_when_active_version_is_missing() -> None
         ("photo", "site.jpg", b"\xff\xd8\xff\xe0body", "image/jpeg"),
         ("photo", "site.png", b"\x89PNG\r\n\x1a\nbody", "image/png"),
         ("attachment", "report.pdf", b"%PDF-1.4\nbody", "application/pdf"),
+        ("photo", "report.pdf", b"%PDF-1.4\nbody", "application/pdf"),
         ("photo", "capture.heic", b"xxxxftypheicbody", "image/heic"),
     ],
 )
@@ -214,7 +215,6 @@ def test_photo_file_validation_accepts_supported_photo_and_attachment_types(
 @pytest.mark.parametrize(
     ("kind", "filename", "data", "expected_code"),
     [
-        ("photo", "report.pdf", b"%PDF-1.4\nbody", "UNSUPPORTED_PHOTO_TYPE"),
         ("attachment", "capture.heic", b"xxxxftypheicbody", "UNSUPPORTED_ATTACHMENT_TYPE"),
         ("attachment", "script.py", b"print('bad')", "BLOCKED_FILE_TYPE"),
         ("photo", "huge.jpg", b"\xff\xd8\xff" + b"x" * MAX_FILE_SIZE, "FILE_TOO_LARGE"),
@@ -236,24 +236,23 @@ def test_photo_file_validation_rejects_wrong_kind_blocked_and_oversized_files(
 
 
 @pytest.mark.parametrize(
-    ("kind", "filename", "expected_kind"),
-    [(" PHOTO ", "site.jpg", "photo"), ("photo", "report.pdf", "attachment")],
+    ("kind", "expected_kind"),
+    [(" PHOTO ", "photo"), (" ATTACHMENT ", "attachment")],
 )
-def test_photo_kind_validation_normalizes_and_forces_pdf_to_attachment(
+def test_photo_kind_validation_normalizes_input(
     kind: str,
-    filename: str,
     expected_kind: str,
 ) -> None:
     service = PhotoService.__new__(PhotoService)
 
-    assert service._validate_kind(kind, filename) == expected_kind
+    assert service._validate_kind(kind) == expected_kind
 
 
 def test_photo_kind_validation_rejects_unknown_kind() -> None:
     service = PhotoService.__new__(PhotoService)
 
     with pytest.raises(AppException) as exc_info:
-        service._validate_kind("avatar", "site.jpg")
+        service._validate_kind("avatar")
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.error_code == "INVALID_FILE_KIND"

@@ -1,7 +1,7 @@
 """Add revisions for project and task edits.
 
 Revision ID: 202605310002
-Revises: 202605300003
+Revises: 202605310001
 """
 
 from collections.abc import Sequence
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "202605310002"
-down_revision: str | None = "202605300003"
+down_revision: str | None = "202605310001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
