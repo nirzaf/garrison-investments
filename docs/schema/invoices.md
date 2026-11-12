@@ -1,28 +1,52 @@
 # invoices
 
-Defined in `backend/app/models/finance.py`
+Supplier invoices linked to projects, with amounts, approval state, and payment status.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/finance.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `amount` | Numeric(14, 2) | NOT NULL | — | — | — |
-| `approved_at` | TimestampTZ | NULL | — | — | — |
-| `approved_by` | UUID | NULL | — | users.id | — |
-| `attachment_key` | String(500) | NULL | — | — | — |
-| `created_by` | UUID | NULL | — | users.id | — |
-| `due_date` | Date | NOT NULL | — | — | — |
-| `invoice_date` | Date | NOT NULL | — | — | — |
-| `invoice_number` | String(80) | NOT NULL | — | — | — |
-| `notes` | Text | NULL | — | — | — |
-| `payment_status` | String(30) | NOT NULL | unpaid | — | — |
-| `project_id` | UUID | NOT NULL | — | projects.id | — |
-| `status` | String(30) | NOT NULL | draft | — | — |
-| `supplier_id` | UUID | NULL | — | suppliers.id | — |
-| `tax_amount` | Numeric(14, 2) | NOT NULL | 0 | — | — |
-| `total_amount` | Numeric(14, 2) | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `invoice_number` | `varchar(80)` | No | — |
+| `project_id` | `uuid` | No | — |
+| `supplier_id` | `uuid` | Yes | — |
+| `invoice_date` | `date` | No | — |
+| `due_date` | `date` | No | — |
+| `amount` | `numeric(14, 2)` | No | — |
+| `tax_amount` | `numeric(14, 2)` | No | `0` |
+| `total_amount` | `numeric(14, 2)` | No | — |
+| `status` | `varchar(30)` | No | `'draft'` |
+| `payment_status` | `varchar(30)` | No | `'unpaid'` |
+| `attachment_key` | `varchar(500)` | Yes | — |
+| `created_by` | `uuid` | Yes | — |
+| `approved_by` | `uuid` | Yes | — |
+| `approved_at` | `timestamptz` | Yes | — |
+| `notes` | `text` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_invoices` | `PRIMARY KEY (id)` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_invoices_approved_by_users` | `(approved_by)` | [`users(id)`](users.md) | `SET NULL` |
+| `fk_invoices_created_by_users` | `(created_by)` | [`users(id)`](users.md) | `SET NULL` |
+| `fk_invoices_project_id_projects` | `(project_id)` | [`projects(id)`](projects.md) | `CASCADE` |
+| `fk_invoices_supplier_id_suppliers` | `(supplier_id)` | [`suppliers(id)`](suppliers.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_invoices_project` | `btree` | `project_id, status` | No | — |
+| `idx_invoices_supplier` | `btree` | `supplier_id` | No | — |
+| `uq_invoices_number` | `btree` | `invoice_number` | Yes | — |

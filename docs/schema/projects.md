@@ -1,27 +1,49 @@
 # projects
 
-Defined in `backend/app/models/project.py`
+Project identity, contract and client details, schedule, budget, and progress.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/project.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `actual_end_date` | Date | NULL | — | — | — |
-| `budget_amount` | Numeric(15, 2) | NULL | — | — | — |
-| `client_name` | String(200) | NULL | — | — | — |
-| `code` | String(20) | NOT NULL | — | — | — |
-| `contract_number` | String(50) | NULL | — | — | — |
-| `created_by` | UUID | NULL | — | users.id | — |
-| `description` | Text | NULL | — | — | — |
-| `location` | Text | NULL | — | — | — |
-| `name` | String(200) | NOT NULL | — | — | — |
-| `progress_percentage` | Numeric(5, 2) | NOT NULL | 0 | — | — |
-| `scope_of_work` | Text | NOT NULL | — | — | — |
-| `start_date` | Date | NULL | — | — | — |
-| `status` | String(30) | NOT NULL | planning | — | — |
-| `target_end_date` | Date | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `name` | `varchar(200)` | No | — |
+| `code` | `varchar(20)` | No | — |
+| `location` | `text` | Yes | — |
+| `description` | `text` | Yes | — |
+| `scope_of_work` | `text` | No | — |
+| `status` | `varchar(30)` | No | `'planning'` |
+| `budget_amount` | `numeric(15, 2)` | Yes | — |
+| `start_date` | `date` | Yes | — |
+| `target_end_date` | `date` | No | — |
+| `actual_end_date` | `date` | Yes | — |
+| `client_name` | `varchar(200)` | Yes | — |
+| `contract_number` | `varchar(50)` | Yes | — |
+| `progress_percentage` | `numeric(5, 2)` | No | `0` |
+| `created_by` | `uuid` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_projects` | `PRIMARY KEY (id)` |
+| `ck_projects_ck_projects_status_valid` | `CHECK ((status IN ('planning', 'active', 'on_hold', 'completed', 'cancelled')))` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_projects_created_by_users` | `(created_by)` | [`users(id)`](users.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_projects_code` | `btree` | `code` | No | — |
+| `idx_projects_status` | `btree` | `status` | No | `(deleted_at IS NULL)` |
+| `uq_projects_code_active` | `btree` | `code` | Yes | `(deleted_at IS NULL)` |

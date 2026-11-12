@@ -1,20 +1,39 @@
 # import_batches
 
-Defined in `backend/app/models/import_batch.py`
+Spreadsheet import status, row counts, validation errors, and results.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/import_batch.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `created_by` | UUID | NULL | — | users.id | — |
-| `error_count` | Integer | NOT NULL | 0 | — | — |
-| `file_name` | String(255) | NOT NULL | — | — | — |
-| `row_count` | Integer | NOT NULL | 0 | — | — |
-| `status` | String(30) | NOT NULL | — | — | — |
-| `summary` | JSONB | NULL | — | — | — |
-| `template_type` | String(40) | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `template_type` | `varchar(40)` | No | — |
+| `file_name` | `varchar(255)` | No | — |
+| `status` | `varchar(30)` | No | — |
+| `created_by` | `uuid` | Yes | — |
+| `row_count` | `integer` | No | `0` |
+| `error_count` | `integer` | No | `0` |
+| `summary` | `jsonb` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_import_batches` | `PRIMARY KEY (id)` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_import_batches_created_by_users` | `(created_by)` | [`users(id)`](users.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_import_batches_type` | `btree` | `template_type, created_at` | No | — |

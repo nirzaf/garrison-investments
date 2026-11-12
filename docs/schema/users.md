@@ -1,25 +1,41 @@
 # users
 
-Defined in `backend/app/models/user.py`
+Portal accounts, roles, profile fields, password hashes, and sign-in lockout state.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/user.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `designation` | String(100) | NULL | — | — | — |
-| `email` | String(255) | NOT NULL | — | — | YES |
-| `employee_code` | String(64) | NULL | — | — | — |
-| `failed_login_attempts` | Integer | NOT NULL | 0 | — | — |
-| `full_name` | String(255) | NOT NULL | — | — | — |
-| `is_active` | Boolean | NOT NULL | true | — | — |
-| `last_login_at` | TimestampTZ | NULL | — | — | — |
-| `locked_until` | TimestampTZ | NULL | — | — | — |
-| `must_change_password` | Boolean | NOT NULL | true | — | — |
-| `password_hash` | String(255) | NULL | — | — | — |
-| `phone` | String(32) | NULL | — | — | — |
-| `role` | String(64) | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `email` | `varchar(255)` | No | — |
+| `full_name` | `varchar(255)` | No | — |
+| `role` | `varchar(64)` | No | — |
+| `employee_code` | `varchar(64)` | Yes | — |
+| `phone` | `varchar(32)` | Yes | — |
+| `is_active` | `boolean` | No | `true` |
+| `must_change_password` | `boolean` | No | `true` |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
+| `password_hash` | `varchar(255)` | Yes | — |
+| `failed_login_attempts` | `integer` | No | `0` |
+| `locked_until` | `timestamptz` | Yes | — |
+| `last_login_at` | `timestamptz` | Yes | — |
+| `designation` | `varchar(100)` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_users` | `PRIMARY KEY (id)` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `ix_users_email_active` | `btree` | `email` | No | — |
+| `ix_users_role_active` | `btree` | `role` | No | `(deleted_at IS NULL)` |
+| `uq_users_email_active` | `btree` | `email` | Yes | `(deleted_at IS NULL)` |
+| `uq_users_employee_code_active` | `btree` | `employee_code` | Yes | `((deleted_at IS NULL) AND (employee_code IS NOT NULL))` |

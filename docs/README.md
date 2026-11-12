@@ -1,51 +1,26 @@
-# Construction Internal Portal — Documentation Index
+# Documentation map
 
-## Project Overview
+Start with the [project README](../README.md) for implemented features, roles, runtime diagrams, setup, and verification. Use this page to find the detailed guide and the code that defines each behavior.
 
-Internal portal for a construction company to manage daily site reporting, project monitoring, inventory and stores, approvals, and cross-department communication. Designed as a scalable, modular, mobile-responsive web application.
+## Find the right guide
 
-Inventory & Stores is a Phase 2 capability for consumable materials and trackable tools/items. It supports multiple physical storage locations such as warehouses and project site stores, current-location visibility for asset-tagged tools, approval-controlled issue/transfer workflows, low-stock alerts by location, supplier context, and full movement history.
+| Question | Guide | Source to verify |
+| --- | --- | --- |
+| What does the portal implement? | [Features and roles](../README.md#implemented-features) | [Frontend routes](../frontend/src/App.tsx) and [API routers](../backend/app/api/v1/) |
+| How do a request, a background task, and a protected file move through the system? | [System architecture](ARCHITECTURE.md) and [backend guide](../backend/ARCHITECTURE.md) | [FastAPI entry point](../backend/app/main.py), [Celery configuration](../backend/app/tasks/celery_app.py), [production Compose](../docker-compose.prod.yml), and [Nginx](../nginx/) |
+| Who can read, submit, or approve a record? | [Roles and permissions](ROLES_AND_PERMISSIONS.md) | [Permission definitions](../backend/app/utils/permissions.py), route dependencies, and [domain services](../backend/app/services/) |
+| Which endpoint, payload, or response does the UI use? | [OpenAPI contract](openapi.json) and [regeneration steps](../README.md#api-contract-changes) | [API routers and schemas](../backend/app/api/v1/) and the [generated frontend types](../frontend/src/api/schema.d.ts) |
+| What stores the data and enforces its constraints? | [Database schema index](schema/README.md) | [SQLAlchemy models](../backend/app/models/) and [Alembic migrations](../backend/alembic/versions/) |
+| How do I import existing records? | [Import templates and validation](import_templates/README.md) | [Import routes](../backend/app/api/v1/imports.py) and [import service](../backend/app/services/import_service.py) |
+| How do I validate a change locally or in CI? | [Verification commands](../README.md#verification) | [CI workflow](../.github/workflows/ci.yml), [Pytest suite](../backend/tests/), and [Chromium regressions](../frontend/e2e/) |
+| How does production deploy, and how do I recover it? | [Operations and deployment runbook](OPERATIONS_AND_DEPLOYMENT.md) | [Deployment workflow](../.github/workflows/deploy.yml), [host release script](../deploy/hostinger-release.sh), and [production Compose](../docker-compose.prod.yml) |
+| How is staging configured? | [Staging deployment guide](../STAGING_DEPLOYMENT.md) | [Staging Compose](../docker-compose.staging.yml) |
+| Where do I find audit events, service logs, or alerts? | [Logging and remote CLI](LOGGING_AND_REMOTE_CLI.md) | [Log routes](../backend/app/api/v1/logs.py), [CLI](../backend/scripts/log_cli.py), and [observability configuration](../observability/) |
+| What was known during the July 2026 review? | [Historical production readiness review](PRODUCTION_READINESS_REVIEW.md) | Use the [current operations runbook](OPERATIONS_AND_DEPLOYMENT.md) for present-day release evidence and acceptance. |
 
-## Document Index
+## Working with these docs
 
-This folder has been aggressively consolidated down to the core living artifacts representing the implemented codebase.
-
-| # | Document | Description |
-|---|----------|-------------|
-| 1 | [Architecture](ARCHITECTURE.md) | Codebase-derived architecture, layering rules, runtime boundaries, component tree, and API design. |
-| 2 | [User Roles And Permissions](ROLES_AND_PERMISSIONS.md) | Current code-derived RBAC roles, permissions, frontend visibility, and backend enforcement. |
-| 3 | [Operations and Deployment](OPERATIONS_AND_DEPLOYMENT.md) | Unified runbook for staging/prod deployment, CI/CD, backup/restore, alerts, UAT, and launch evidence. |
-| 4 | [Logging and Remote CLI](LOGGING_AND_REMOTE_CLI.md) | Centralized event logging, remote log search/streaming API, and `log_cli.py` usage. |
-| 5 | [Production Readiness Review](PRODUCTION_READINESS_REVIEW.md) | Final PRR verdict, security/DR review, and pre-release operations checklist. |
-| 6 | [PostgreSQL Schema Reference](schema/README.md) | Codebase-derived database schema with one file per table and linked relations. |
-| 7 | [Import Templates](import_templates/) | CSV templates for importing initial data (Users, BOQ, Projects, etc.). |
-
-## Quick Start (Development)
-
-```bash
-# Clone repo
-git clone <repo-url> && cd garrison-investments
-
-# Start all development services
-docker compose up -d
-
-# Run migrations
-docker compose exec backend alembic upgrade head
-
-# Seed sample data
-docker compose exec backend python scripts/seed.py
-
-# Frontend dev server (localhost:3000)
-cd frontend && npm install && npm run dev
-
-# API docs (localhost:8000/docs)
-open http://localhost:8000/docs
-```
-
-The current staging application is `https://erp.garrisons.lk`; Grafana is served at
-`https://erp.garrisons.lk/grafana/`. Environment-specific host, TLS, Compose project, and rollback
-details are maintained in [`STAGING_DEPLOYMENT.md`](../STAGING_DEPLOYMENT.md).
-
-Documentation scope was reconciled with the structured logging and self-hosted observability changes
-in July 2026. Schema and role documents are unchanged because these changes do not alter database
-tables or authorization policy.
+1. Read [repository agent instructions](../AGENTS.md), then follow the guide for the task. Use [the feature map](../README.md#implemented-features) to identify the module, and start with its entry point before tracing into services and storage.
+2. Check the executable sources in the table before relying on a behavioral, permission, schema, or deployment claim. API types describe the wire contract. Service checks describe which user can perform an action. Migrations describe what a deployed database enforces.
+3. Update the guide that owns the topic when behavior changes. Link to it from other pages. Keep setup and test commands in the root README, and keep deployment and recovery procedures in the operations runbook.
+4. Check paths, heading links, and diagrams after moving content. Record real deployment and UAT evidence through the runbook. The historical review and generated [knowledge graph report](../graphify-out/GRAPH_REPORT.md) are reference snapshots.

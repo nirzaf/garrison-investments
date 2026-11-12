@@ -1,3 +1,10 @@
+# Repository documentation
+
+Use the [documentation map](docs/README.md) to find the guide and code for the task.
+The [root README](README.md) covers features, architecture diagrams, local setup, and verification.
+Check the linked code, migrations, or workflows before updating a behavior claim. Keep changes in
+the guide that owns the topic and link to it from related pages.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

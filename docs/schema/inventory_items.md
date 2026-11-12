@@ -1,23 +1,44 @@
 # inventory_items
 
-Defined in `backend/app/models/inventory.py`
+Inventory catalog, units, thresholds, unit cost, and optional supplier.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/inventory.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `category` | String(80) | NOT NULL | — | — | — |
-| `is_active` | Boolean | NOT NULL | true | — | — |
-| `item_code` | String(60) | NULL | — | — | — |
-| `item_type` | String(30) | NOT NULL | — | — | — |
-| `minimum_stock` | Numeric(14, 3) | NOT NULL | 0 | — | — |
-| `name` | String(180) | NOT NULL | — | — | — |
-| `reorder_level` | Numeric(14, 3) | NOT NULL | 0 | — | — |
-| `supplier_id` | UUID | NULL | — | — | — |
-| `unit` | String(20) | NOT NULL | — | — | — |
-| `unit_cost` | Numeric(14, 2) | NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `name` | `varchar(180)` | No | — |
+| `item_code` | `varchar(60)` | Yes | — |
+| `category` | `varchar(80)` | No | — |
+| `item_type` | `varchar(30)` | No | — |
+| `unit` | `varchar(20)` | No | — |
+| `minimum_stock` | `numeric(14, 3)` | No | `0` |
+| `reorder_level` | `numeric(14, 3)` | No | `0` |
+| `unit_cost` | `numeric(14, 2)` | Yes | — |
+| `supplier_id` | `uuid` | Yes | — |
+| `is_active` | `boolean` | No | `true` |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_inventory_items` | `PRIMARY KEY (id)` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_inventory_items_supplier_id_suppliers` | `(supplier_id)` | [`suppliers(id)`](suppliers.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_inventory_items_category` | `btree` | `category` | No | — |
+| `idx_inventory_items_type` | `btree` | `item_type` | No | — |
+| `uq_inventory_items_code_active` | `btree` | `item_code` | Yes | `((item_code IS NOT NULL) AND (deleted_at IS NULL))` |

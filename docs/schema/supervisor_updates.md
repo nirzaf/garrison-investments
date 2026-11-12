@@ -1,29 +1,54 @@
 # supervisor_updates
 
-Defined in `backend/app/models/supervisor_update.py`
+Supervisor site updates with attendance, overtime, progress, and verification metadata.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/supervisor_update.py)
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `attachment_refs` | JSONB | NOT NULL | — | — | — |
-| `attendance_count` | Integer | NOT NULL | — | — | — |
-| `day_type` | String(20) | NOT NULL | weekday | — | — |
-| `delay_notes` | Text | NULL | — | — | — |
-| `overtime_hours` | Numeric(5, 2) | NOT NULL | 0 | — | — |
-| `progress_notes` | Text | NOT NULL | — | — | — |
-| `project_id` | UUID | NOT NULL | — | projects.id | — |
-| `required_notes` | Text | NOT NULL | — | — | — |
-| `status` | String(20) | NOT NULL | draft | — | — |
-| `submitted_at` | TimestampTZ | NULL | — | — | — |
-| `supervisor_id` | UUID | NOT NULL | — | users.id | — |
-| `update_date` | Date | NOT NULL | — | — | — |
-| `verification_notes` | Text | NULL | — | — | — |
-| `verified_at` | TimestampTZ | NULL | — | — | — |
-| `verified_by` | UUID | NULL | — | users.id | — |
-| `work_location` | String(255) | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `project_id` | `uuid` | No | — |
+| `supervisor_id` | `uuid` | No | — |
+| `update_date` | `date` | No | — |
+| `day_type` | `varchar(20)` | No | `'weekday'` |
+| `work_location` | `varchar(255)` | No | — |
+| `attendance_count` | `integer` | No | — |
+| `overtime_hours` | `numeric(5, 2)` | No | `0` |
+| `progress_notes` | `text` | No | — |
+| `delay_notes` | `text` | Yes | — |
+| `required_notes` | `text` | No | — |
+| `attachment_refs` | `jsonb` | No | — |
+| `status` | `varchar(20)` | No | `'draft'` |
+| `submitted_at` | `timestamptz` | Yes | — |
+| `verified_by` | `uuid` | Yes | — |
+| `verified_at` | `timestamptz` | Yes | — |
+| `verification_notes` | `text` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_supervisor_updates` | `PRIMARY KEY (id)` |
+| `ck_supervisor_updates_ck_supervisor_updates_status_valid` | `CHECK ((status IN ('draft', 'submitted', 'verified', 'rejected')))` |
+| `ck_supervisor_updates_day_type_valid` | `CHECK ((day_type IN ('weekday', 'friday', 'public_holiday')))` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_supervisor_updates_project_id_projects` | `(project_id)` | [`projects(id)`](projects.md) | `CASCADE` |
+| `fk_supervisor_updates_supervisor_id_users` | `(supervisor_id)` | [`users(id)`](users.md) | `CASCADE` |
+| `fk_supervisor_updates_verified_by_users` | `(verified_by)` | [`users(id)`](users.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_supervisor_updates_project_date` | `btree` | `project_id, update_date` | No | `(deleted_at IS NULL)` |
+| `idx_supervisor_updates_supervisor` | `btree` | `supervisor_id` | No | `(deleted_at IS NULL)` |
+| `uq_supervisor_update_draft_owner` | `btree` | `project_id, update_date, supervisor_id` | Yes | `((deleted_at IS NULL) AND (status IN ('draft', 'submitted')))` |

@@ -1,34 +1,64 @@
 # approvals
 
-Defined in `backend/app/models/approval.py`
+Approval inbox items with submitter, approver, delegation, escalation, and decision state.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/approval.py)
+
+The combination of `request_type` and `request_id` identifies the underlying workflow entity. The partial unique index covers open items in the pending, delegated, and escalated states.
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `amount` | Numeric(14, 2) | NULL | — | — | — |
-| `approver_id` | UUID | NULL | — | users.id | — |
-| `currency` | String(3) | NULL | — | — | — |
-| `decided_at` | TimestampTZ | NULL | — | — | — |
-| `decision_comments` | Text | NULL | — | — | — |
-| `delegated_to_id` | UUID | NULL | — | users.id | — |
-| `delegation_reason` | Text | NULL | — | — | — |
-| `due_at` | TimestampTZ | NOT NULL | — | — | — |
-| `escalated_at` | TimestampTZ | NULL | — | — | — |
-| `escalation_user_id` | UUID | NULL | — | users.id | — |
-| `override_reason` | Text | NULL | — | — | — |
-| `project_id` | UUID | NULL | — | projects.id | — |
-| `reminded_at` | TimestampTZ | NULL | — | — | — |
-| `request_id` | UUID | NOT NULL | — | — | — |
-| `request_type` | String(60) | NOT NULL | — | — | — |
-| `status` | String(30) | NOT NULL | pending | — | — |
-| `step_order` | Integer | NOT NULL | 1 | — | — |
-| `submitted_at` | TimestampTZ | NOT NULL | — | — | — |
-| `submitter_comments` | Text | NULL | — | — | — |
-| `submitter_id` | UUID | NULL | — | users.id | — |
-| `title` | String(200) | NOT NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `request_type` | `varchar(60)` | No | — |
+| `request_id` | `uuid` | No | — |
+| `project_id` | `uuid` | Yes | — |
+| `submitter_id` | `uuid` | Yes | — |
+| `approver_id` | `uuid` | Yes | — |
+| `delegated_to_id` | `uuid` | Yes | — |
+| `escalation_user_id` | `uuid` | Yes | — |
+| `status` | `varchar(30)` | No | `'pending'` |
+| `step_order` | `integer` | No | `1` |
+| `amount` | `numeric(14, 2)` | Yes | — |
+| `currency` | `varchar(3)` | Yes | — |
+| `title` | `varchar(200)` | No | — |
+| `submitter_comments` | `text` | Yes | — |
+| `decision_comments` | `text` | Yes | — |
+| `delegation_reason` | `text` | Yes | — |
+| `override_reason` | `text` | Yes | — |
+| `submitted_at` | `timestamptz` | No | — |
+| `due_at` | `timestamptz` | No | — |
+| `reminded_at` | `timestamptz` | Yes | — |
+| `escalated_at` | `timestamptz` | Yes | — |
+| `decided_at` | `timestamptz` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_approvals` | `PRIMARY KEY (id)` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_approvals_approver_id_users` | `(approver_id)` | [`users(id)`](users.md) | `SET NULL` |
+| `fk_approvals_delegated_to_id_users` | `(delegated_to_id)` | [`users(id)`](users.md) | `SET NULL` |
+| `fk_approvals_escalation_user_id_users` | `(escalation_user_id)` | [`users(id)`](users.md) | `SET NULL` |
+| `fk_approvals_project_id_projects` | `(project_id)` | [`projects(id)`](projects.md) | `SET NULL` |
+| `fk_approvals_submitter_id_users` | `(submitter_id)` | [`users(id)`](users.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_approvals_delegate_inbox` | `btree` | `delegated_to_id, status` | No | — |
+| `idx_approvals_due` | `btree` | `status, due_at` | No | — |
+| `idx_approvals_inbox` | `btree` | `approver_id, status` | No | — |
+| `idx_approvals_outbox` | `btree` | `submitter_id, status` | No | — |
+| `idx_approvals_request` | `btree` | `request_type, request_id` | No | — |
+| `uq_approvals_open_request` | `btree` | `request_type, request_id` | Yes | `((deleted_at IS NULL) AND (status IN ('pending', 'delegated', 'escalated')))` |

@@ -1,440 +1,182 @@
 # Operations and Deployment Guide
 
-This document serves as the unified runbook for environments, deployments, configuration, UAT sign-off, operations, backups, and launch evidence for the Construction Internal Portal.
+[Documentation index](README.md) · [Architecture](ARCHITECTURE.md) · [Staging](../STAGING_DEPLOYMENT.md) · [Logging and alerts](LOGGING_AND_REMOTE_CLI.md)
 
-## 1. Environments & Deployment Prerequisites
+Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore) and [launch evidence](#5-launch-evidence-capture--sign-off) cover recovery and sign-off.
 
-- **`staging`**: Deployment target for pre-production validation.
-- **`production`**: Deployment target for approved launch and release runs.
+## Environment and configuration
 
-### Deployment Prerequisites
-- Linux host or equivalent Docker runtime with Docker and Docker Compose installed.
-- DNS record for the production domain pointing to the host.
-- TLS certificate files under `nginx/ssl/` if HTTPS is enabled.
-- Production environment file copied to the repository root as `.env`.
-- Runtime access to Nginx, backend, Celery worker, Celery beat, PostgreSQL, Redis, and MinIO containers.
-- Compose defaults to digest-pinned Silo and mcli because the original MinIO Docker Hub images
-  are no longer available. The `minio` service name, S3 settings, and volume path stay the same.
-  Hosts using a local image or private mirror can set `OBJECT_STORAGE_IMAGE` and
-  `OBJECT_STORAGE_CLIENT_IMAGE`. Before switching an existing host, back up its storage volume
-  and verify application objects, backups, and Loki reads on an isolated copy. Keep the original
-  volume and image for rollback. See the [Silo migration guide](https://silo.pigsty.io/compatibility/migration/).
-- A Docker address pool that does not overlap the `backend_proxy` subnet
-  (`NGINX_BACKEND_PROXY_SUBNET`, default `172.29.254.0/29`). If it overlaps an existing network,
-  Compose fails with `invalid pool request: Pool overlaps with other one on this address space`;
-  change `NGINX_BACKEND_PROXY_SUBNET`, `NGINX_BACKEND_PROXY_DYNAMIC_RANGE` **and**
-  `NGINX_BACKEND_PROXY_IP` together so the trusted-proxy list still matches the proxy.
+| Environment | Source of truth | Entry point |
+| --- | --- | --- |
+| Development | [Local Compose](../docker-compose.yml) and [.env.example](../.env.example) | [Getting started](../README.md#getting-started) |
+| Staging | [Staging Compose](../docker-compose.staging.yml) and private `.env.staging` | [Staging runbook](../STAGING_DEPLOYMENT.md) |
+| Production | [Production Compose](../docker-compose.prod.yml), host override, and private environment file | [portal.garrisons.lk](https://portal.garrisons.lk) |
 
-**WARNING**: Do not commit production `.env` files, JWT private keys, SMTP credentials, database passwords, MinIO passwords, or backup encryption passwords.
+Use Docker with Compose v2. Keep production configuration and secrets on the host with restricted permissions. See [backend settings](../backend/app/config.py) and the matching Compose file for variable names, defaults, and service overrides.
 
-### Required `.env` Variables
+| Concern | Configuration to check |
+| --- | --- |
+| Environment and URLs | `APP_ENV=production`, `DEBUG=false`, `FRONTEND_BASE_URL`, and the allowed origins in `BACKEND_CORS_ORIGINS`. |
+| Database and queue | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`, and `REDIS_URL` must identify the environment's private services. URL-encode credentials embedded in URLs. |
+| Signing keys | Mount the matching RSA private/public files at `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`. Production startup validates the configured signing keys. |
+| Public ingress | Configure DNS and TLS for the portal and `GRAFANA_DOMAIN`. The host override supplies the production certificate mount. For a standalone Compose setup, the base file mounts `nginx/ssl/`. |
+| Object storage | Use the internal `MINIO_ENDPOINT` for the backend and the public portal authority in `MINIO_PUBLIC_ENDPOINT` with `MINIO_PUBLIC_SECURE=true` for browser URLs. Route `/portal-files/` through Nginx and preserve the original `Host`, including any non-default port. Both checked-in Nginx configs use `$http_host` on this route. |
+| Proxy trust | Base production Compose trusts loopback and the Nginx address from `NGINX_BACKEND_PROXY_IP`. When resolving Docker subnet overlap, adjust `NGINX_BACKEND_PROXY_SUBNET`, `NGINX_BACKEND_PROXY_DYNAMIC_RANGE`, and `NGINX_BACKEND_PROXY_IP` together. Review the ingress trust configuration when adding a proxy hop. |
+| Application email | Set `SMTP_FROM_EMAIL` to the authorized sender. For SMTP, `SMTP_FROM_NAME` controls the message display name. The useSend API payload supplies the sender address, so verify the display name at the provider. [EmailService](../backend/app/services/email_service.py) selects useSend when either `USESEND_API_URL` or `USESEND_API_KEY` is present, so configure the pair together. Confirm receipt of a real OTP after changing mail settings. |
+| Recovery and alerting | Set `BACKUP_ENCRYPTION_PASSWORD`, the Grafana administrator and database credentials, and the Loki object-store service credentials. See [alert delivery](LOGGING_AND_REMOTE_CLI.md#alert-delivery) for Grafana-specific settings. |
 
-Use production values for every placeholder before deployment.
+Compose defaults to digest-pinned Silo and its S3 client for new installations. Existing hosts may set `OBJECT_STORAGE_IMAGE` and `OBJECT_STORAGE_CLIENT_IMAGE`. Treat a provider or image change as stateful maintenance. Verify application objects, backup retrieval, and Loki reads on an isolated copy, and retain the original volume and image for rollback.
 
-```env
-APP_NAME="Construction Internal Portal"
-APP_ENV=production
-DEBUG=false
-API_V1_PREFIX=/api/v1
-BACKEND_CORS_ORIGINS=https://your-domain.example
-FRONTEND_BASE_URL=https://your-domain.example
+## Production deployments from GitHub Actions
 
-POSTGRES_DB=garrison_portal
-POSTGRES_USER=<production-db-user>
-POSTGRES_PASSWORD=<strong-production-db-password>
-DATABASE_URL=postgresql+asyncpg://<production-db-user>:<strong-production-db-password>@postgres:5432/garrison_portal
+[CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency and a host lock serialize releases.
 
-REDIS_URL=redis://redis:6379/0
+The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub, downloads that exact source revision, and builds the frontend. For runtime changes it checks that protected services, volumes, networks, and bootstrap files are unchanged, builds the backend, compares the candidate Alembic heads with the live revision, and takes encrypted backups of the application and Grafana databases before activation. It publishes the frontend index atomically, checks the publicly served sign-in HTML and JavaScript hashes, and calls public readiness. If activation fails, it attempts to restore the previous runtime and frontend. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and asset hash in `DEPLOYED`.
 
-MINIO_ENDPOINT=minio:9000
-MINIO_ROOT_USER=<production-minio-user>
-MINIO_ROOT_PASSWORD=<strong-production-minio-password>
-MINIO_BUCKET=portal-files
-MINIO_SECURE=false
+### Host bootstrap and runner maintenance
 
-JWT_ALGORITHM=RS256
-JWT_PRIVATE_KEY_PATH=/run/secrets/jwt_private_key
-JWT_PUBLIC_KEY_PATH=/run/secrets/jwt_public_key
-ACCESS_TOKEN_EXPIRE_MINUTES=15
-REFRESH_TOKEN_EXPIRE_HOURS=24
-OTP_EXPIRE_MINUTES=10
-ACCOUNT_LOCKOUT_MINUTES=30
-AUTH_FAILED_ATTEMPT_LIMIT=3
+Provision the existing stack and an initial active release before registering the production runner. The script expects the project `garrison-portal`, an active release under `/opt/garrison-portal/releases/`, and the `garrison-portal_frontend_dist` volume. Under `/opt/garrison-portal/deploy/`, keep the following root-controlled.
 
-SMTP_HOST=<smtp-host>
-SMTP_PORT=587
-SMTP_USERNAME=<smtp-username>
-SMTP_PASSWORD=<smtp-password>
-SMTP_USE_TLS=true
-SMTP_FROM_EMAIL=no-reply@garrisons.lk
-SMTP_FROM_NAME="Garrisons Investments"
-EXCEPTION_EMAIL_RECIPIENTS=admin@garrisons.lk
+| Host item | Purpose |
+| --- | --- |
+| `production.env` | Private configuration copied into each candidate release. |
+| `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
+| `current` | Link to the active release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
+| `deploy.lock` | Host-side serialization across release attempts. |
 
-REPORT_EMAIL_RECIPIENTS=admin@garrisons.lk
-REPORT_PDF_TEMPLATE_NAME=company-standard
+Install the reviewed script as root at `/usr/local/sbin/garrison-deploy` on initial setup and when updating the host script. The runner account needs only noninteractive `sudo` for that script. Keep the privileged script and production inputs outside the runner workspace.
 
-BACKUP_ENCRYPTION_PASSWORD=<strong-backup-encryption-password>
-BACKUP_LOCAL_DIR=/tmp/garrison-backups
-BACKUP_RETENTION_DAYS=30
-MONTHLY_BACKUP_RETENTION_MONTHS=12
+On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 
-MONITOR_ALERT_RECIPIENTS=admin@garrisons.lk
-
-# Optional overrides (defaults shown)
-EXCEPTION_EMAIL_ENABLED=true
-NOTIFICATION_RETENTION_DAYS=90
-LOG_HOT_RETENTION_DAYS=30
-LOG_ARCHIVE_RETENTION_DAYS=365
-LOG_STREAM_POLL_SECONDS=1.0
-LOG_INSTANCE_ID=<host-or-container-identifier>
-LOG_SOURCE_SERVICE=backend-api
-LOG_LEVEL=INFO
-LOG_HEALTHCHECKS=false
-
-GRAFANA_DOMAIN=logs.your-domain.example
-GRAFANA_ADMIN_USER=<grafana-admin-user>
-GRAFANA_ADMIN_PASSWORD=<strong-grafana-admin-password>
-GRAFANA_DB_PASSWORD=<strong-grafana-database-password>
-LOKI_MINIO_ACCESS_KEY=<loki-service-access-key>
-LOKI_MINIO_SECRET_KEY=<strong-loki-service-secret>
-TRUSTED_PROXY_IPS=127.0.0.1,::1
-BUSINESS_TIMEZONE=Asia/Qatar
+```bash
+state=/opt/garrison-portal/deploy
+release=$(readlink -f "$state/current")
+prod() {
+  docker compose --project-name garrison-portal --project-directory "$release" \
+    --env-file "$release/.env" --env-file "$release/.images.env" \
+    -f "$release/docker-compose.prod.yml" -f "$state/compose.vps.yml" "$@"
+}
 ```
 
----
+### Production maintenance
 
-## 2. Deployment Flow
+Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its initializer, the Grafana database initializer, Compose volumes, or networks require a reviewed maintenance window. Production CD blocks those changes before activation.
 
-1. Merge feature work through pull requests.
-2. CI runs backend lint, type checks, migrations, tests, frontend lint, formatting, tests, build, and Docker image build.
-3. The deployment owner runs the selected staging deployment process from the approved commit.
-4. The Operation Manager or delegated release approver signs off before production deployment.
-5. The production deployment applies Alembic migrations, starts the updated Compose services, and checks `/health`.
-
-### Production deployments from GitHub Actions
-
-GitHub-hosted runners run CI. A successful CI run for a push to `main` triggers
-`Deploy production` on the repository's self-hosted Hostinger runner with the
-`garrison-production` label. The deploy job uses the `Production` environment.
-The host checks the CI result and the current tip of `main` before activating the
-tested commit. Re-run the deployment job to retry the same commit while it remains
-the tip of `main`.
-
-The host keeps production configuration in the root-owned
-`/opt/garrison-portal/deploy` directory. Its `production.env` and `compose.vps.yml`
-contain the private environment and host-specific Compose settings. The override
-uses `GARRISON_FRONTEND_IMAGE` and `GARRISON_BACKEND_IMAGE` from each release's
-`.images.env`. The `current` symlink identifies the active release and supplies
-its image references for rollback. Each successful rollout writes a `DEPLOYED`
-receipt beside the exact source archive.
-
-On initial setup or after changing the host-side release script, install
-`deploy/hostinger-release.sh` as root at `/usr/local/sbin/garrison-deploy`.
-Run the GitHub runner service under a dedicated user with permission to invoke
-only that script through `sudo`. The user does not need access to Docker or
-the production environment file.
-
-Frontend-only updates publish the assets before switching the sign-in HTML.
-Application changes take encrypted backups before updating the app services.
-The automatic rollout checks public readiness and verifies the served HTML and
-JavaScript against the release image. It restores the previous application
-release if activation fails. Pending Alembic migrations and changes to
-PostgreSQL, Redis, object storage, or their volumes require the reviewed
-maintenance procedure before retrying the deployment.
+1. Identify the candidate SHA, successful CI run, deployed SHA, current database revision, and affected volumes. Review the migration, data repair prerequisites, and compatibility with the running application. Rehearse the exact change against an isolated restore.
+2. Record the backup object names and tested recovery plan. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
+3. Apply the approved migration or infrastructure change using the candidate's images and the host override. Compare the resulting Alembic revision and persistent resource layout with the plan before resuming writes.
+4. Verify health, data and permissions, relevant background jobs, and the affected browser workflow. Capture the deployment and restore evidence. If a rollback needs data recovery, account for writes after the recovery point before reopening traffic.
 
 ### Upgrade an existing PostgreSQL 16 database
 
-Fresh environments initialize PostgreSQL 18.6 automatically. For an existing environment,
-schedule a maintenance window and rehearse the migration in staging first. The PostgreSQL 18
-image mounts `pgdata` at `/var/lib/postgresql` and refuses to start when it detects the legacy
-PostgreSQL 16 data directory in that volume.
+Fresh volumes initialize with PostgreSQL 18.6. Existing PostgreSQL 16 data requires a major-version migration. The PostgreSQL 18 image mounts `pgdata` at `/var/lib/postgresql`.
 
-1. Record the current Compose project, database volume, and deployed revision. Stop application,
-   worker, and Grafana writes before taking the final backups. Keep PostgreSQL 16 available to
-   create and verify dumps of both the application database and Grafana's database. Capture the
-   roles and grants needed to restore their ownership and permissions.
-2. Create a fresh volume for PostgreSQL 18 and select it in a Compose override by setting
-   `volumes.pgdata.name` to the new volume's name. Keep the same Compose project and include the
-   override in every command for the upgraded environment.
-3. Start PostgreSQL 18, provision the required roles and empty databases, then restore both
-   dumps. Use PostgreSQL 18 client tools and fail the restore on any SQL error.
-4. Check the Alembic revision, compare representative record counts and permissions with the
-   source, and verify the application and Grafana before resuming writes. Keep the PostgreSQL 16
-   volume and backups. Before reopening writes, rollback is the prior revision with its original
-   volume. After reopening writes, account for any new data before rolling back.
+1. Record the Compose project, source volume, and deployed revision. Stop application, worker, and Grafana writes for the final cutover. With PostgreSQL 16 available, take and verify application and Grafana dumps and capture the roles and grants needed for restore.
+2. Create a fresh PostgreSQL 18 volume and set `volumes.pgdata.name` in the environment's Compose override. Use that override and the same Compose project throughout the rollout.
+3. Start PostgreSQL 18, provision the roles and empty databases, and restore both dumps using PostgreSQL 18 client tools with SQL errors fatal.
+4. Compare the Alembic revision, representative records, and permissions, then verify the app and Grafana before resuming writes. Keep the prior volume and backups. Before writes resume, the prior runtime can return to its original volume. Later rollback requires reconciling new data.
 
 ### Post-Deploy Verification
 
-Run these checks from the repository root on the deployment host:
+On the production host, with the [active Compose helper](#host-bootstrap-and-runner-maintenance) defined:
 
 ```bash
-docker compose -f docker-compose.prod.yml config --quiet
-docker compose -f docker-compose.prod.yml up -d --wait postgres
-docker compose -f docker-compose.prod.yml run --rm --no-deps --build backend alembic upgrade head
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps
-PORTAL_DOMAIN=portal.garrisons.lk
-curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health"
-curl --fail --resolve "${PORTAL_DOMAIN}:443:127.0.0.1" "https://${PORTAL_DOMAIN}/health/readiness"
-curl --fail "https://${GRAFANA_DOMAIN}/api/health"
-docker compose -f docker-compose.prod.yml run -T --rm --no-deps --pull never \
-  -v "$PWD/docs/import_templates:/docs/import_templates:ro" \
-  backend python scripts/validate_import_sources.py --check
-docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all
+cat "$release/DEPLOYED"
+prod ps --all
+curl --fail --silent --show-error https://portal.garrisons.lk/health
+curl --fail --silent --show-error https://portal.garrisons.lk/health/readiness
 ```
 
-Before starting production, create DNS for `GRAFANA_DOMAIN` and install a certificate whose SAN covers
-that hostname. The `grafana_db_init` and `loki_minio_init` jobs are idempotent and must exit successfully.
+Compare the receipt with the GitHub run and the intended SHA. The API readiness endpoint checks PostgreSQL connectivity. Check the queue, storage, and background jobs separately when the release affects them. Confirm the one-shot `grafana_db_init` and `loki_minio_init` jobs completed successfully when the stack was initialized or those jobs were rerun. If one fails, inspect its logs before starting dependent services. Verify Grafana `/api/health` through its configured HTTPS hostname. Test a fresh authenticated object preview and download if the release affects ingress or storage. For app changes, exercise the affected business workflow in the permitted environment and record the result.
 
-On an empty production database, have the deployment operator create the approved first administrator
-after migrating the schema. Run from an interactive terminal:
+On an empty production database after the schema is ready, create the approved first administrator in an interactive host terminal:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend python scripts/bootstrap_admin.py \
+prod exec backend python scripts/bootstrap_admin.py \
   --email admin@example.com --full-name "Portal Administrator"
 ```
 
-The command prompts for a temporary password, records the account creation, and requires the
-administrator to change the password after sign-in. Verify OTP delivery for the administrator as
-part of the launch check.
-Grafana, Loki, and Alloy must report healthy; none of their internal ports should be published.
+The command prompts for a temporary password and the account must change it after sign-in. Use the approved administrator address and confirm that it receives and can use a login OTP from the configured sender.
 
-Before changing a running environment, run the repository checks:
+### Local production Compose rehearsal
+
+Run the [repository verification commands](../README.md#verification) for the affected code. For configuration-only changes, render the production Compose model from the repository root:
 
 ```bash
-cd backend
-pytest -q tests/test_structured_logging.py tests/test_observability_config.py
-ruff check .
-mypy .
-
-cd ../frontend
-npm run lint
-npm run api:types:check
-npm test
-npm run build
-
-cd ..
 docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
-docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
 ```
 
-The Grafana database initializer uses PostgreSQL `ON_ERROR_STOP` and idempotent role/database checks.
-Any non-zero `grafana_db_init` or `loki_minio_init` exit is a deployment failure; inspect the job
-logs instead of manually bypassing the dependency.
-
-### Local production-compose rehearsal
-
-To rehearse the production stack on a workstation without touching a live environment:
-
-1. In a scratch copy of the release, copy `.env.example` to `.env`, set `APP_ENV=production`,
-   and configure test-only passwords and signing keys. Both Compose interpolation and the
-   service-level `env_file` must read this same `.env` file.
-2. Mount the generated RSA pair at the paths in `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`.
-   Put a test certificate in `nginx/ssl/` with the hostname in its SAN.
-3. In a Compose override, bind nginx to loopback, remap its ports, and move `NGINX_BACKEND_PROXY_SUBNET`,
-   `NGINX_BACKEND_PROXY_DYNAMIC_RANGE`, and `NGINX_BACKEND_PROXY_IP` together when the default
-   pool overlaps an existing Docker network.
-4. Use a unique Compose project name. Start PostgreSQL with `up -d --wait postgres`, run
-   `run --rm --no-deps --build backend alembic upgrade head`, then start the stack with
-   `up -d --build --wait`. Pass the same project name and both Compose files to every command.
-5. Verify `/` serves the SPA, `/health` returns ok, and a presigned `/portal-files/` object renders
-   in a same-origin iframe while `/` itself refuses framing.
-
-Presigned object URLs sign the exact `Host` header the browser sends. Both nginx configs forward
-`$http_host` (not `$host`) on `/portal-files/` so a `MINIO_PUBLIC_ENDPOINT` that includes a
-non-default port still validates; `$host` strips the port and MinIO rejects the request with
-`SignatureDoesNotMatch`.
-
----
+For a runtime rehearsal, use a scratch checkout with a unique Compose project, loopback-only host ports, test-only configuration, signing keys, and a TLS certificate for the test hostname. Start PostgreSQL, run `alembic upgrade head` in the backend image, then bring up the full stack. Keep the project, environment files, and overrides consistent across commands. Verify the SPA, readiness, and a fresh signed preview inside the same-origin iframe.
 
 ## 3. Operations, Backup & Restore
 
-### Scheduled Background Jobs (Celery Beat)
+### Scheduled jobs
 
-The Celery beat container runs these schedules automatically (defined in `backend/app/tasks/celery_app.py`, all times UTC):
+The [Celery Beat schedule](../backend/app/tasks/celery_app.py) is the source of truth. All listed times are UTC.
 
-| Task | Schedule | Purpose |
-| --- | --- | --- |
-| `dispatch_task_outbox` | Every minute | Queue report exports recorded by successful approvals |
-| `run_database_backup` | Daily 01:00 | Encrypted daily database backup to MinIO |
-| `run_database_backup` (monthly) | 1st of month 02:00 | Monthly archive backup |
-| `check_late_reports` | Hourly | Detect and notify late daily reports |
-| `process_approval_reminders` | Hourly | Send approval reminder notifications |
-| `check_low_stock` | Hourly | Low-stock inventory alerts |
-| `cleanup_old_notifications` | Daily 03:00 | Purge notifications older than `NOTIFICATION_RETENTION_DAYS` |
-| `archive_and_purge_logs` | Daily 03:30 | Move hot logs to archive tier and purge expired archives |
-| `check_supplier_tds_expiry` | Daily 04:00 | Alert on expiring supplier TDS documents |
+| Cadence | Jobs |
+| --- | --- |
+| Every minute | Dispatch the task outbox for report exports. |
+| Hourly | Check late reports and low stock, and process approval reminders. |
+| Daily | Database backups at 01:00, notification cleanup at 03:00, log archival and purge at 03:30, and supplier TDS expiry checks at 04:00. |
+| First day of the month at 02:00 | Monthly database backups. |
 
-### Backup Procedure
+### Backup and restore
 
-The backend container includes `scripts/backup.py`. Scheduled backups require
-`BACKUP_ENCRYPTION_PASSWORD`. The CLI also requires it unless the operator explicitly
-passes `--allow-unencrypted`, which records a warning before writing the backup.
+[backup.py](../backend/scripts/backup.py) creates encrypted PostgreSQL dumps for the application and Grafana and writes them to the configured S3 bucket. Daily application backups use `backups/daily/` and monthly backups use `backups/monthly/`. Grafana backups use `backups/grafana/daily/` and `backups/grafana/monthly/`. The default retention is 30 days for daily backups and 12 months for monthly backups. The application upload bucket and Loki operational log data require their own recovery decisions.
 
-* **Daily application and Grafana backup:**
-  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all`
-* **Monthly archive:**
-  `docker compose -f docker-compose.prod.yml exec -T backend python scripts/backup.py --target all --monthly`
-
-Application backups retain their existing prefixes. Grafana metadata is stored under
-`backups/grafana/daily` and `backups/grafana/monthly`. Daily backups are retained for 30 days and
-monthly archives for 12 months. Loki data is operational, retained for 14 days by the Compactor, and
-is not copied into a second backup.
-
-### Restore Test Procedure
-1. Download the latest encrypted backup from MinIO.
-2. Decrypt it using the configured backup encryption password.
-3. Restore into an isolated PostgreSQL database.
-4. Confirm the schema loads, core tables are queryable, and the application passes `/health`.
-5. Record the restore test date, operator, backup object name, and result.
-
-Run the same isolated restore procedure for the latest Grafana dump, then verify that its tables are
-readable. The dump preserves grants. Before restoring it, create the roles referenced by those grants
-in the isolated PostgreSQL instance as `NOLOGIN` roles. Keep the running Grafana instance connected
-to its normal database.
-
-Use the validation script to confirm the dump is readable:
-```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
-  python scripts/restore_dry_run.py \
-  --backup-file /tmp/latest-backup.sql.gz \
-  --output docs/launch_evidence/restore-dry-run.md
-```
-
-### Operational Alerts
-
-Phase 1 alert routing sends business-critical outages to Admin and the Operation Manager.
-Grafana uses SMTP by default. For an installation that uses useSend, configure the following
-in the private deployment environment file:
-
-```dotenv
-USESEND_API_URL=https://usesend.example.com/api/v1/emails
-USESEND_API_KEY=<useSend-api-key>
-SMTP_FROM_EMAIL=mailservice@garrisons.lk
-GRAFANA_SMTP_ENABLED=false
-GRAFANA_CONTACT_POINT_FILE=./observability/grafana/contact-points/usesend.yml
-GRAFANA_USESEND_RECIPIENTS_JSON='["admin@example.com","operations@example.com"]'
-```
-
-Use an HTTPS API URL, an authorized sender, and a JSON array of the approved alert recipients.
-Recreate Grafana after changing the environment file and verify delivery of firing and resolved
-notifications before disabling `EXCEPTION_EMAIL_ENABLED`.
-
-Run the independent HTTP monitor from a location with access to the portal and its configured SMTP relay:
+Run a backup on demand through the active Compose helper:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
-  python scripts/health_monitor.py \
-  --url https://portal.example.com/health \
-  --url https://portal.example.com/health/readiness \
-  --alert-to admin@example.com,operations@example.com
+prod exec -T backend python scripts/backup.py --target all
 ```
 
-### Remote Log Access
+Add `--monthly` for the monthly prefix. Record both uploaded object names. To prove recovery, download both encrypted objects to a restricted working directory, decrypt each to a `.sql.gz` file using the configured secret and `openssl enc -d -aes-256-cbc -pbkdf2`, and restore to separate empty databases in an isolated PostgreSQL instance. Prepare roles referenced by the dumps as `NOLOGIN` roles where appropriate. Verify the application schema and representative records and check Grafana's restored metadata. Keep the recovery exercise separate from production data and credentials.
 
-Use the remote log CLI from the backend container or a trusted operator workstation to search and stream centralized application logs:
+[restore_dry_run.py](../backend/scripts/restore_dry_run.py) inspects a decrypted plain SQL or gzip SQL dump, records its hash, and can execute the restore using `psql` with fatal SQL errors. From a prepared backend environment with the disposable database URL in `RESTORE_DATABASE_URL` and a securely stored decrypted dump:
 
 ```bash
 cd backend
-python scripts/log_cli.py --base-url https://portal.example.com --token-file .log-token search --severity ERROR
+python scripts/restore_dry_run.py \
+  --backup-file /path/to/decrypted-backup.sql.gz \
+  --output /path/to/recovery-evidence.md
 ```
 
-For full login, search, filter, archive, and live tail usage, see [LOGGING_AND_REMOTE_CLI.md](./LOGGING_AND_REMOTE_CLI.md).
+Check for `Restore status: executed` in the evidence. With no restore database URL, the receipt is `validated-only`. Include the backup object name, timestamp, operator, target isolation, and verified results with the receipt.
 
-### Payment overage report
+### Data checks and repairs
 
-Run this read-only command to list active invoices whose active payments exceed the invoice total.
-It emits one JSON line per invoice for finance review.
-
-```bash
-docker compose -f docker-compose.prod.yml exec -T backend \
-  python scripts/report_payment_overages.py --i-understand
-```
-
-### Offline draft duplicate review
-
-Run `python scripts/repair_offline_duplicates.py` from the backend to list candidate pairs.
-The default mode reads the database and prints IDs for review. To consolidate a reviewed pair,
-stop portal writes and run the same command with `--apply --keep KEEP_ID --duplicate DUPLICATE_ID`.
-The script rechecks both drafts, moves their photo and retry references, and soft-deletes the
-duplicate in one transaction. Production reads and writes require `--i-understand`.
-
-### Inventory reservation review
-
-Run `python scripts/report_inventory_reservation_drift.py --i-understand` from the production
-backend to list balances for review. Compare the recorded balance with the open request quantities
-and manual reserve movements before reconciling inventory.
-
-Migration `202605300003_repair_inventory_reservations` recomputes the two derived columns —
-`material_request_lines.reserved_quantity` and `inventory_location_stock.reserved_qty` — from the
-open request quantities and the manual reserve movements, then validates the stock balance checks
-so they cover historical rows too. It prints `rows_recomputed=` per table and is safe to re-run
-(a second pass reports `0`).
-
-A negative `on_hand_qty` cannot be derived from any record, so `VALIDATE CONSTRAINT` aborts and the
-migration rolls back rather than inventing stock. Reconcile those balances with the drift report
-above, then re-run `alembic upgrade head`.
+| Case | Operator action |
+| --- | --- |
+| Import source shape | Use the [import validation guide](import_templates/README.md). If using a backend container, mount the templates at `/docs/import_templates` or pass the source explicitly. |
+| Historical invoice overpayments | Run `prod exec -T backend python scripts/report_payment_overages.py --i-understand`. Use the read-only output to reconcile payments with Finance. |
+| Duplicate offline drafts | Run `prod exec -T backend python scripts/repair_offline_duplicates.py --i-understand` to list candidates. Consolidation requires a maintenance window, a reviewed pair, and `--apply --keep <uuid> --duplicate <uuid>`. The script moves photo and retry references and soft-deletes the duplicate in one transaction. |
+| Inventory reservation drift | Run `prod exec -T backend python scripts/report_inventory_reservation_drift.py --i-understand` to compare recorded balances with the derived reservations. Migration `202605300003` repairs derived reservations and validates existing stock constraints. Reconcile any legacy negative on-hand values before retrying a migration blocked by that constraint. |
 
 ### Rollback
-1. Identify the last known good Git commit.
-2. Check out the known good commit on the host.
-3. Rebuild and restart with `docker compose -f docker-compose.prod.yml up -d --build`.
-4. Apply backward-compatible migrations (or downgrade if safe).
-5. Verify `/health`.
-6. If the observability stack is the failure source, set `EXCEPTION_EMAIL_ENABLED=true`, stop
-   Grafana/Loki/Alloy, and continue incident diagnosis from rotated Docker JSON logs.
 
----
+After failed activation, check the release script output, the active release receipt, readiness, and the served assets to confirm the previous release recovered. For a rollback after a successful release, use the retained known-good runtime and frontend with the same host override. Verify that they support the current schema and persistent data before activation. When data recovery is required, follow the reviewed recovery plan and record the recovery point. Use the [container log fallback](LOGGING_AND_REMOTE_CLI.md#incident-fallback) if the observability stack is unavailable.
 
-## 4. UAT Scenarios & Launch Readiness
+## User acceptance
 
-### Seed Data
-For a new staging environment, configure a temporary `SEED_DEFAULT_PASSWORD` in its private
-environment file, then run:
-```bash
-docker compose exec backend python scripts/seed.py
-```
-### UAT Scenarios
-1. **Admin** logs in, creates a user, updates the role, and verifies audit entries.
-2. **Operation Manager** opens dashboard, confirms active projects, reports, documents, and notifications.
-3. **Project Manager** reviews reports, rejects/approves, and tests PDF exports.
-4. **Civil Engineer** submits reports, updates rejected reports, uploads photos, checks validation.
-5. **Civil Supervisor** submits a site update.
-6. **Mobile validation** on iOS Safari and Android Chrome.
-
-### Blocker Classification
-| Severity | Action |
-| --- | --- |
-| **Blocker** (Data loss, broken submit) | Must be fixed before sign-off |
-| **High** (Failed exports, permission leak) | Must be fixed or formally accepted by MD |
-| **Medium** (Layout defect, copy issue) | Can ship with tracked follow-up |
-| **Low** (Cosmetic polish) | Backlog candidate |
-
----
+Use sample data only in an approved non-production environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). At launch or when affected, verify account creation, permission and project scope, daily report submission and review, document and photo access, signed previews, exports, and login mail. Include iOS Safari and Android Chrome when validating mobile capture and offline retries. Record the tested role, scenario, result, and any accepted issue.
 
 ## 5. Launch Evidence Capture & Sign-Off
 
-Record deployment runs, approvers, health checks, backup objects, and sign-offs in a durable record:
+Record the target, source SHA, CI and deployment run URLs, actual approver, application and Grafana backup objects, isolated restore evidence, and UAT result. Record the Operation Manager's approval for launch. Capture the GitHub deployment job result alongside the launch sign-off. Include the applicable approval when an environment or acceptance step was waived.
+
+[launch_evidence.py](../backend/scripts/launch_evidence.py) checks the supplied URLs and records hashes for attached evidence files. Run it from a trusted checkout using private output paths and the actual release values:
 
 ```bash
-mkdir -p docs/launch_evidence
-docker compose -f docker-compose.prod.yml run -T --rm --no-deps --pull never \
-  -v "$PWD/docs:/docs" \
-  backend python scripts/launch_evidence.py \
-  --target production \
-  --output /docs/launch_evidence/production-launch.md \
-  --health-url https://portal.example.com/health \
-  --readiness-url https://portal.example.com/health/readiness \
-  --approver "Operation Manager" \
-  --backup-object backups/daily/application-YYYYMMDDTHHMMSSZ.sql.gz.enc \
-  --restore-log /docs/launch_evidence/restore-dry-run.md \
-  --uat-signoff /docs/launch_signoff/uat.md
+cd backend
+python scripts/launch_evidence.py --target production \
+  --output /path/to/private/production-launch.md \
+  --health-url https://portal.garrisons.lk/health \
+  --readiness-url https://portal.garrisons.lk/health/readiness \
+  --commit "$RELEASE_SHA" --run-url "$DEPLOY_RUN_URL" --approver "$APPROVER" \
+  --backup-object "$APPLICATION_BACKUP_OBJECT" \
+  --restore-log /path/to/private/restore-evidence.md \
+  --uat-signoff /path/to/private/uat.md
 ```
 
-### Sign-Off Checklist
-* Production deployment approver is the Operation Manager.
-* Staging deployment completed from the current commit.
-* `/health` and `/health/readiness` return healthy responses.
-* Daily backup completed successfully.
-* Restore dry run completed.
-* Browser/device UAT completed.
+The script records the supplied backup object name. Attach the Grafana backup reference and the actual restore results to the sign-off record.

@@ -237,11 +237,3 @@ npm run api:types
 | [`observability/`](observability/) | Alloy and Loki configuration, Grafana dashboards, provisioning, and alert contact points. |
 | [`deploy/`](deploy/) and [`.github/workflows/`](.github/workflows/) | Host release script, CI, and production deployment workflow. |
 | [`docs/`](docs/) | Architecture, access rules, operations, API contract, schema reference, and import templates. |
-
-## Further reading
-
-- [Architecture](docs/ARCHITECTURE.md) and [database schema](docs/schema/README.md)
-- [Roles and permissions](docs/ROLES_AND_PERMISSIONS.md) and [import templates](docs/import_templates/)
-- [Operations, deployment, backup, and UAT](docs/OPERATIONS_AND_DEPLOYMENT.md)
-- [Staging deployment](STAGING_DEPLOYMENT.md) and [remote log CLI](docs/LOGGING_AND_REMOTE_CLI.md)
-- [Historical production readiness review](docs/PRODUCTION_READINESS_REVIEW.md)

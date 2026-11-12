@@ -1,19 +1,35 @@
 # material_request_lines
 
-Defined in `backend/app/models/inventory.py`
+Requested, reserved, and issued quantities for each material request line.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/inventory.py)
+
+`reserved_quantity` records the line’s remaining reservation. The [inventory service](../../backend/app/services/inventory_service.py) updates it when issuing or releasing stock.
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `issued_quantity` | Numeric(14, 3) | NOT NULL | 0 | — | — |
-| `item_id` | UUID | NOT NULL | — | inventory_items.id | — |
-| `quantity` | Numeric(14, 3) | NOT NULL | — | — | — |
-| `request_id` | UUID | NOT NULL | — | material_requests.id | — |
-| `reserved_quantity` | Numeric(14, 3) | NOT NULL | 0 | — | — |
-| `unit_cost` | Numeric(14, 2) | NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `request_id` | `uuid` | No | — |
+| `item_id` | `uuid` | No | — |
+| `quantity` | `numeric(14, 3)` | No | — |
+| `reserved_quantity` | `numeric(14, 3)` | No | `0` |
+| `issued_quantity` | `numeric(14, 3)` | No | `0` |
+| `unit_cost` | `numeric(14, 2)` | Yes | — |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_material_request_lines` | `PRIMARY KEY (id)` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_material_request_lines_item_id_inventory_items` | `(item_id)` | [`inventory_items(id)`](inventory_items.md) | `RESTRICT` |
+| `fk_material_request_lines_request_id_material_requests` | `(request_id)` | [`material_requests(id)`](material_requests.md) | `CASCADE` |

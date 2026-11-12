@@ -1,29 +1,52 @@
 # photos
 
-Defined in `backend/app/models/photo.py`
+Original media and generated renditions for reports, updates, and other supported entities.
+
+[Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/photo.py)
+
+The [photo service](../../backend/app/services/photo_service.py) uses `entity_type` and `entity_id` to associate files with their parents. Original, compressed, and thumbnail paths are object-storage keys.
 
 ## Columns
 
-| Column | Type | Nullable | Default | Foreign Key | Index/Key |
-|---|---|---|---|---|---|
-| `id` | UUID | — | uuid_generate_v4() | — | PRIMARY KEY |
-| `caption` | Text | NULL | — | — | — |
-| `compressed_path` | String(500) | NULL | — | — | — |
-| `entity_id` | UUID | NOT NULL | — | — | — |
-| `entity_type` | String(30) | NOT NULL | — | — | — |
-| `filename` | String(255) | NOT NULL | — | — | — |
-| `height` | Integer | NULL | — | — | — |
-| `kind` | String(20) | NOT NULL | photo | — | — |
-| `mime_type` | String(80) | NOT NULL | — | — | — |
-| `original_name` | String(255) | NOT NULL | — | — | — |
-| `processing_status` | String(20) | NOT NULL | ready | — | — |
-| `size_bytes` | BigInteger | NOT NULL | — | — | — |
-| `storage_path` | String(500) | NOT NULL | — | — | — |
-| `taken_at` | TimestampTZ | NULL | — | — | — |
-| `thumbnail_path` | String(500) | NULL | — | — | — |
-| `uploaded_by` | UUID | NULL | — | users.id | — |
-| `width` | Integer | NULL | — | — | — |
-| `created_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `updated_at` | TimestampTZ | NOT NULL | now() | — | — |
-| `deleted_at` | TimestampTZ | NULL | — | — | — |
+| Column | PostgreSQL type | Nullable | Server default |
+| --- | --- | --- | --- |
+| `id` | `uuid` | No | `uuid_generate_v4()` |
+| `filename` | `varchar(255)` | No | — |
+| `original_name` | `varchar(255)` | No | — |
+| `storage_path` | `varchar(500)` | No | — |
+| `compressed_path` | `varchar(500)` | Yes | — |
+| `thumbnail_path` | `varchar(500)` | Yes | — |
+| `mime_type` | `varchar(80)` | No | — |
+| `size_bytes` | `bigint` | No | — |
+| `width` | `integer` | Yes | — |
+| `height` | `integer` | Yes | — |
+| `entity_type` | `varchar(30)` | No | — |
+| `entity_id` | `uuid` | No | — |
+| `kind` | `varchar(20)` | No | `'photo'` |
+| `caption` | `text` | Yes | — |
+| `taken_at` | `timestamptz` | Yes | — |
+| `uploaded_by` | `uuid` | Yes | — |
+| `processing_status` | `varchar(20)` | No | `'ready'` |
+| `created_at` | `timestamptz` | No | `now()` |
+| `updated_at` | `timestamptz` | No | `now()` |
+| `deleted_at` | `timestamptz` | Yes | — |
 
+## Keys and constraints
+
+| Constraint | Rule |
+| --- | --- |
+| `pk_photos` | `PRIMARY KEY (id)` |
+| `ck_photos_ck_photos_kind_valid` | `CHECK ((kind IN ('photo', 'attachment')))` |
+
+## Foreign keys
+
+| Constraint | Local columns | Referenced columns | On delete |
+| --- | --- | --- | --- |
+| `fk_photos_uploaded_by_users` | `(uploaded_by)` | [`users(id)`](users.md) | `SET NULL` |
+
+## Indexes
+
+| Index | Method | Keys | Unique | Predicate |
+| --- | --- | --- | --- | --- |
+| `idx_photos_date` | `btree` | `created_at DESC` | No | — |
+| `idx_photos_entity` | `btree` | `entity_type, entity_id` | No | `(deleted_at IS NULL)` |
