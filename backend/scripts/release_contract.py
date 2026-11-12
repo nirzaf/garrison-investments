@@ -1390,6 +1390,155 @@ def verify_repair(
     )
 
 
+RECONCILIATION_TOOLS = {
+    "supervisor_links": "report_supervisor_verification",
+    "reservations": "report_inventory_reservation_drift",
+    "approvals": "report_inventory_reservation_drift",
+    "payments": "report_payment_overages",
+    "offline": "repair_offline_duplicates",
+    "media_quota": "report_media_quota_drift",
+    "retention": "preview_audit_retention",
+}
+
+
+def reconciliation_finding(population: str, value: Any) -> str | None:
+    require(isinstance(value, dict), "Invalid reconciliation finding.")
+    if population in {"reservations", "approvals"}:
+        finding = exact(
+            value.get("finding"),
+            {
+                "stock_reservation_drift",
+                "cancelled_request_with_open_approval",
+                "cancelled_request_with_reserved_line",
+                "open_reservation_without_stock",
+                "open_reservation_over_remaining",
+            },
+            "inventory finding",
+        )
+        if finding == "cancelled_request_with_open_approval":
+            return (
+                meaningful(value.get("approval_id"), "approval ID")
+                if population == "approvals"
+                else None
+            )
+        if population == "approvals":
+            return None
+        if finding == "stock_reservation_drift":
+            item = meaningful(value.get("item_id"), "stock item ID")
+            location = meaningful(value.get("location_id"), "stock location ID")
+            return f"{finding}:{item}:{location}"
+        return f"{finding}:{meaningful(value.get('line_id'), 'reservation line ID')}"
+    if population == "media_quota":
+        entity = exact(
+            value.get("entity_type"), {"daily_report", "supervisor_update"}, "media owner type"
+        )
+        return f"{entity}:{meaningful(value.get('entity_id'), 'media owner ID')}"
+    key = {"supervisor_links": "update_id", "payments": "invoice_id", "offline": "candidate"}
+    return meaningful(value.get(key[population]), "observed exception ID")
+
+
+def retention_exception_ids(pages: list[Any], policy_sha256: str, completed: datetime) -> set[str]:
+    categories = {"missing", "unknown", "shorter_than_policy"}
+    totals: dict[str, int] = {}
+    seen: dict[str, set[str]] = {category: set() for category in categories}
+    cursors: dict[str, str | None] = {}
+    cutoff = None
+    for page in pages:
+        require(isinstance(page, dict), "Invalid retention inventory page.")
+        category = exact(page.get("category"), categories, "retention exception category")
+        page_cutoff = utc(page.get("cutoff_utc"), "retention inventory cutoff")
+        cutoff = cutoff or page_cutoff
+        counts = page.get("counts")
+        require(isinstance(counts, dict), "Missing retention inventory totals.")
+        total = count(counts.get(category), "retention exception total")
+        require(
+            page["policy_sha256"] == policy_sha256
+            and cutoff == page_cutoff
+            and cutoff <= completed
+            and totals.setdefault(category, total) == total
+            and (category not in cursors or cursors[category] is not None),
+            "Retention inventory pages differ from the policy, cutoff or population.",
+            3,
+        )
+        ids = []
+        for row in items(page.get("rows"), "retention inventory rows", minimum=0):
+            require(isinstance(row, dict), "Invalid retention exception row.")
+            ids.append(meaningful(row.get("id"), "retention exception ID"))
+        previous = cursors.get(category)
+        cursor = page["next_after"]
+        require(
+            ids == sorted(set(ids))
+            and (previous is None or bool(ids and ids[0] > previous))
+            and (cursor is None or bool(ids and ids[-1] == cursor)),
+            "Retention inventory has repeated or invalid page boundaries.",
+            3,
+        )
+        seen[category].update(ids)
+        cursors[category] = cursor
+    require(
+        set(totals) == categories
+        and all(
+            cursors[category] is None and len(seen[category]) == totals[category]
+            for category in categories
+        ),
+        "Retention exception inventory is incomplete.",
+        3,
+    )
+    return set().union(*seen.values())
+
+
+def inventory_exception_ids(
+    ref: Any,
+    population: str,
+    approvals: Approvals,
+    identity: dict[str, str],
+    retention_policy_sha256: str,
+    artifact_hashes: set[str],
+    receipt_window: tuple[datetime, datetime],
+) -> set[str]:
+    inventory = fields(
+        approvals.evidence.load(ref, parse=True),
+        "source_sha environment configuration_sha256 population tool started_at completed_at "
+        "exit_code reports",
+        label="read-only exception inventory",
+    )
+    require(
+        all(inventory[key] == value for key, value in identity.items())
+        and inventory["population"] == population
+        and inventory["tool"] == RECONCILIATION_TOOLS[population]
+        and type(inventory["exit_code"]) is int
+        and inventory["exit_code"] == 0,
+        "Legacy inventory execution differs from its release, population or tool.",
+        3,
+    )
+    started, completed = check_execution(
+        inventory["started_at"], inventory["completed_at"], approvals.now, "legacy inventory"
+    )
+    require(
+        receipt_window[0] <= started <= completed <= receipt_window[1],
+        "Legacy inventory was collected outside its reviewed receipt window.",
+        3,
+    )
+    reports = []
+    for report in items(inventory["reports"], "legacy inventory reports"):
+        require(
+            approvals.evidence.load(report) in artifact_hashes,
+            "Legacy inventory report must be attached to the reviewed receipt.",
+            3,
+        )
+        reports.append(approvals.evidence.load(report, parse=True))
+    if population == "retention":
+        return retention_exception_ids(reports, retention_policy_sha256, completed)
+    observed = set()
+    for report in reports:
+        for row in items(report, "read-only report rows", minimum=0):
+            exception = reconciliation_finding(population, row)
+            if exception is not None:
+                require(exception not in observed, "Duplicate finding in read-only report.", 3)
+                observed.add(exception)
+    return observed
+
+
 def receipt_reconciliation(
     payload: Any,
     approved: dict[str, Any],
@@ -1397,6 +1546,8 @@ def receipt_reconciliation(
     approvals: Approvals,
     identity: dict[str, str],
     artifact_hashes: set[str],
+    retention_policy_sha256: str,
+    receipt_window: tuple[datetime, datetime],
 ) -> None:
     data = fields(
         payload,
@@ -1433,18 +1584,9 @@ def receipt_reconciliation(
             4,
         )
     require(seen == expected_sources.keys(), "An approved import source lacks reconciliation.", 3)
-    kinds = {
-        "supervisor_links",
-        "reservations",
-        "approvals",
-        "payments",
-        "offline",
-        "media_quota",
-        "retention",
-    }
     populations = data["exceptions"]
     require(
-        isinstance(populations, dict) and set(populations) == kinds,
+        isinstance(populations, dict) and set(populations) == RECONCILIATION_TOOLS.keys(),
         "Legacy exception inventory is incomplete.",
         3,
     )
@@ -1459,6 +1601,19 @@ def receipt_reconciliation(
             3,
         )
         remaining = strings(row["observed_ids"], "observed exception IDs", minimum=0)
+        require(
+            remaining == inventory_exception_ids(
+                row["inventory_ref"],
+                name,
+                approvals,
+                identity,
+                retention_policy_sha256,
+                artifact_hashes,
+                receipt_window,
+            ),
+            "Reconciliation exception IDs differ from the attached read-only findings.",
+            3,
+        )
         role = "records_owner" if name == "retention" else "finance_data_owner"
         owner = records_owner if name == "retention" else approved["signatories"][role]
         for value in items(row["dispositions"], "legacy exception dispositions", minimum=0):
@@ -2205,6 +2360,8 @@ class Validation:
                 self.approvals,
                 receipt_identity,
                 artifact_hashes,
+                self.decisions["D-28-POLICY"]["policy_ref"]["sha256"],
+                (start, end),
             )
         elif kind == "deployment":
             deployed = fields(

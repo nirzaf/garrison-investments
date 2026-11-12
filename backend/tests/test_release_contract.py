@@ -31,6 +31,7 @@ class Bundle:
         self.approvals: dict[str, Any] = {}
         self.recovery_artifacts: dict[str, list[dict[str, Any]]] = {}
         self.observation_artifacts: list[dict[str, Any]] = []
+        self.inventory_artifacts: list[dict[str, Any]] = []
         self.sequence = 0
         self.artifact = self.write("artifacts/report.json", {"actual": "Synthetic fixture"})
         self.artifact["sensitivity"] = "sanitized"
@@ -110,6 +111,7 @@ class Bundle:
                 self.artifact,
                 *(self.recovery_artifacts[phase] if kind == "recovery" else []),
                 *(self.observation_artifacts if kind == "observation" else []),
+                *(self.inventory_artifacts if kind == "data_reconciliation" else []),
             ],
         }
         row["review"] = self.approval(
@@ -666,6 +668,47 @@ def ledger(phase: str) -> list[dict[str, Any]]:
     return result
 
 
+def reconciliation_inventory(
+    bundle: Bundle, population: str, policy_hash: str, *, rows: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    label = population if rows is None else f"{population}-observed"
+    if population == "retention":
+        reports = [
+            bundle.write(
+                f"artifacts/retention-{category}.json",
+                {
+                    "category": category,
+                    "cutoff_utc": STAGE_START.isoformat(),
+                    "policy_sha256": policy_hash,
+                    "counts": {category: 0},
+                    "rows": [],
+                    "next_after": None,
+                },
+            )
+            for category in ("missing", "unknown", "shorter_than_policy")
+        ]
+    else:
+        reports = [bundle.write(f"artifacts/{label}-report.json", rows or [])]
+    ref = bundle.write(
+        f"artifacts/{label}-inventory.json",
+        {
+            "source_sha": SHA,
+            "environment": "test",
+            "configuration_sha256": CONFIG,
+            "population": population,
+            "tool": contract.RECONCILIATION_TOOLS[population],
+            "started_at": STAGE_START.isoformat(),
+            "completed_at": STAGE_END.isoformat(),
+            "exit_code": 0,
+            "reports": reports,
+        },
+    )
+    bundle.inventory_artifacts.extend(
+        {**artifact, "sensitivity": "restricted"} for artifact in [ref, *reports]
+    )
+    return ref
+
+
 def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
     decisions = decision_values(bundle)
     decision_refs = {}
@@ -747,18 +790,16 @@ def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
             "imports": [
                 {"source_sha256": bundle.artifact["sha256"], "rows": 1, "control_totals": totals()}
             ],
-            "exceptions": dict.fromkeys(
-                (
-                    "supervisor_links",
-                    "reservations",
-                    "approvals",
-                    "payments",
-                    "offline",
-                    "media_quota",
-                    "retention",
-                ),
-                {"inventory_ref": bundle.artifact, "observed_ids": [], "dispositions": []},
-            ),
+            "exceptions": {
+                population: {
+                    "inventory_ref": reconciliation_inventory(
+                        bundle, population, decisions["D-28-POLICY"]["policy_ref"]["sha256"]
+                    ),
+                    "observed_ids": [],
+                    "dispositions": [],
+                }
+                for population in contract.RECONCILIATION_TOOLS
+            },
             "assertions": true("least_privilege", "launch_data", "legacy_owner_review"),
         },
     )
@@ -953,6 +994,7 @@ def test_final_requires_scheduled_activity_evidence(
         ("protected_exception", "", ""),
         ("protected_exception", "missing", "unresolved case"),
         ("protected_exception", "wrong owner", "named owner approval"),
+        ("protected_exception", "omitted finding", "differ from the attached read-only findings"),
         ("repaired", "", ""),
         ("repaired", "different plan", "approved plan, backup, or execution window"),
     ],
@@ -963,6 +1005,8 @@ def test_reconciliation_checks_owner_disposition_and_repair(
     bundle = Bundle(tmp_path)
     data = manifest(bundle)
     business = json.loads((bundle.root / "decisions/D-33-BUSINESS.json").read_text())
+    retention = json.loads((bundle.root / "decisions/D-28-POLICY.json").read_text())
+    policy_hash = retention["policy_ref"]["sha256"]
     reference = next(
         ref
         for ref in data["receipts"]
@@ -971,7 +1015,11 @@ def test_reconciliation_checks_owner_disposition_and_repair(
     result = json.loads((bundle.root / reference["path"]).read_text())["results"]
     identity = {"source_sha": SHA, "environment": "test", "configuration_sha256": CONFIG}
     population = result["exceptions"]["payments"]
-    population["observed_ids"] = ["fixture-invoice"]
+    inventory = reconciliation_inventory(
+        bundle, "payments", policy_hash, rows=[{"invoice_id": "fixture-invoice"}]
+    )
+    population["inventory_ref"] = inventory
+    population["observed_ids"] = [] if problem == "omitted finding" else ["fixture-invoice"]
     disposition = {
         "exception_id": "fixture-invoice",
         "status": status,
@@ -1020,7 +1068,7 @@ def test_reconciliation_checks_owner_disposition_and_repair(
                 {
                     **identity,
                     "population": "payments",
-                    "inventory_sha256": bundle.artifact["sha256"],
+                    "inventory_sha256": inventory["sha256"],
                     "disposition": disposition,
                 }
             ),
@@ -1038,7 +1086,9 @@ def test_reconciliation_checks_owner_disposition_and_repair(
             "Fixture Records Owner",
             bundle.validator("predeploy").approvals,
             identity,
-            {bundle.artifact["sha256"]},
+            {ref["sha256"] for ref in bundle.inventory_artifacts},
+            policy_hash,
+            (STAGE_START, STAGE_END),
         )
 
     if reason:
@@ -1046,6 +1096,28 @@ def test_reconciliation_checks_owner_disposition_and_repair(
             validate()
     else:
         validate()
+
+
+def test_retention_inventory_requires_all_pages_for_each_exception_category() -> None:
+    policy_hash = "a" * 64
+    cutoff = STAGE_START.isoformat()
+    pages = [
+        {
+            "category": category,
+            "cutoff_utc": cutoff,
+            "policy_sha256": policy_hash,
+            "counts": {category: 2 if category == "missing" else 0},
+            "rows": [{"id": "fixture-001"}] if category == "missing" else [],
+            "next_after": "fixture-001" if category == "missing" else None,
+        }
+        for category in ("missing", "unknown", "shorter_than_policy")
+    ]
+    with pytest.raises(contract.ContractError, match="Retention exception inventory is incomplete"):
+        contract.retention_exception_ids(pages, policy_hash, STAGE_END)
+    pages.append({**pages[0], "rows": [{"id": "fixture-002"}], "next_after": None})
+    assert contract.retention_exception_ids(pages, policy_hash, STAGE_END) == {
+        "fixture-001", "fixture-002"
+    }
 
 
 def test_uat_matrix_requires_the_specified_role_on_each_device(tmp_path: Path) -> None:
