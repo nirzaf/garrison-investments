@@ -11,6 +11,7 @@ from app.models.daily_report import (
     ReportManpower,
     ReportMaterialConsumption,
 )
+from app.models.supervisor_update import SupervisorUpdate
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.daily_report_repository import DailyReportRepository
@@ -104,7 +105,7 @@ class ReportService:
         actor: User,
     ) -> DailyReport:
         self._ensure_engineer(actor)
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         if report.engineer_id != actor.id:
             raise NotFoundException("Daily report")
         if report.status == "approved":
@@ -121,6 +122,16 @@ class ReportService:
             )
         self._validate_report_date(payload.report_date, actor)
         await self._ensure_project_member(payload.project_id, actor)
+        bound_ids = await self.supervisor_updates.bound_ids(report.id)
+        if bound_ids and (
+            payload.project_id != report.project_id
+            or not bound_ids.issubset(payload.supervisor_update_ids)
+        ):
+            raise AppException(
+                "Keep verified supervisor updates and their project on this report.",
+                status_code=409,
+                error_code="SUPERVISOR_UPDATE_VERIFICATION_LOCKED",
+            )
         for key, value in self._report_values(payload).items():
             setattr(report, key, value)
         if report.status == "rejected":
@@ -392,6 +403,14 @@ class ReportService:
         await self._ensure_report_access(report, actor)
         return report
 
+    async def list_supervisor_evidence(
+        self, report_id: UUID, actor: User
+    ) -> list[SupervisorUpdate]:
+        report = await self.get_report(report_id, actor)
+        return await self.supervisor_updates.list_report_evidence(
+            report.id, report.project_id, self._supervisor_update_ids(report)
+        )
+
     async def list_reports(
         self,
         *,
@@ -461,14 +480,40 @@ class ReportService:
             ],
         )
 
+    @staticmethod
+    def _supervisor_update_ids(report: DailyReport) -> list[UUID]:
+        try:
+            return [UUID(update_id) for update_id in report.supervisor_update_ids]
+        except ValueError as exc:
+            raise AppException(
+                "The report contains an invalid supervisor update reference.",
+                status_code=422,
+                error_code="INVALID_SUPERVISOR_UPDATE_REFERENCE",
+            ) from exc
+
     async def _verify_supervisor_updates(self, report: DailyReport, actor: User) -> None:
-        for update_id in report.supervisor_update_ids:
-            supervisor_update = await self.supervisor_updates.get_by_id(UUID(update_id))
-            if not supervisor_update or supervisor_update.project_id != report.project_id:
+        update_ids = self._supervisor_update_ids(report)
+        updates = await self.supervisor_updates.lock_linked(update_ids)
+        if len(updates) != len(update_ids) or any(
+            update.project_id != report.project_id for update in updates
+        ):
+            raise AppException(
+                "Select distinct supervisor updates from this project.",
+                status_code=422,
+                error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
+            )
+        for supervisor_update in updates:
+            if supervisor_update.status == "verified":
+                if supervisor_update.verified_report_id == report.id:
+                    continue
                 raise AppException(
-                    "Supervisor update does not belong to this project.",
-                    status_code=422,
-                    error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
+                    "This supervisor update is already verified for a different or unknown report.",
+                    status_code=409,
+                    error_code=(
+                        "SUPERVISOR_UPDATE_VERIFICATION_UNRESOLVED"
+                        if supervisor_update.verified_report_id is None
+                        else "SUPERVISOR_UPDATE_ALREADY_VERIFIED"
+                    ),
                 )
             if supervisor_update.status != "submitted":
                 raise AppException(
@@ -479,6 +524,7 @@ class ReportService:
             supervisor_update.status = "verified"
             supervisor_update.verified_by = actor.id
             supervisor_update.verified_at = utc_now()
+            supervisor_update.verified_report_id = report.id
 
     async def _ensure_project_member(self, project_id: UUID, actor: User):
         project = await self.projects.get_by_id(project_id)

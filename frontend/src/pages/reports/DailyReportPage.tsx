@@ -23,7 +23,11 @@ import {
   type DailyReportPayload,
   type DailyReportRecord
 } from '../../api/reports';
-import { listSupervisorUpdates, type SupervisorUpdateRecord } from '../../api/supervisorUpdates';
+import {
+  listReportSupervisorUpdates,
+  listSupervisorUpdates,
+  type SupervisorUpdateRecord
+} from '../../api/supervisorUpdates';
 import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
@@ -316,13 +320,27 @@ export function DailyReportPage() {
       setSupervisorUpdates([]);
       return;
     }
+    let active = true;
     void Promise.all([
       listSupervisorUpdates({ project_id: form.project_id, status: 'submitted' }),
+      savedReportId ? listReportSupervisorUpdates(savedReportId) : Promise.resolve([]),
       loadReports(form.project_id)
     ])
-      .then(([updateResponse]) => setSupervisorUpdates(updateResponse.items))
-      .catch(() => setError('Unable to load supervisor updates.'));
-  }, [form.project_id, loadReports]);
+      .then(([submitted, linked]) => {
+        if (!active) return;
+        const updates = new Map(submitted.items.map((update) => [update.id, update]));
+        for (const update of linked) {
+          if (update.project_id === form.project_id) updates.set(update.id, update);
+        }
+        setSupervisorUpdates([...updates.values()]);
+      })
+      .catch(() => {
+        if (active) setError('Unable to load supervisor updates.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.project_id, loadReports, savedReportId]);
 
   useEffect(() => {
     if (!focusedReportId) return;
@@ -761,6 +779,7 @@ export function DailyReportPage() {
                   >
                     <input
                       checked={form.supervisor_update_ids.includes(update.id)}
+                      disabled={update.status === 'verified'}
                       className="mt-1"
                       onChange={(event) => {
                         const selected = event.target.checked
@@ -777,6 +796,11 @@ export function DailyReportPage() {
                       <span className="line-clamp-2 text-theme-text-muted">
                         {update.progress_notes}
                       </span>
+                      {update.status === 'verified' && (
+                        <span className="block text-theme-text-muted">
+                          Verified evidence retained on this report
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}

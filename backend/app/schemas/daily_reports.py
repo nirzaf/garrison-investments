@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ReportManpowerInput(BaseModel):
@@ -53,6 +53,13 @@ class DailyReportCreateRequest(BaseModel):
     equipment_entries: list[ReportEquipmentInput] = Field(default_factory=list)
     material_consumption: list[ReportMaterialConsumptionInput] = Field(default_factory=list)
     extra_fields: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("supervisor_update_ids")
+    @classmethod
+    def unique_supervisor_updates(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("Each supervisor update may be selected only once.")
+        return values
 
 
 class DailyReportUpdateRequest(DailyReportCreateRequest):

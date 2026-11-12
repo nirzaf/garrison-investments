@@ -14,9 +14,11 @@ from app.schemas.daily_reports import (
     DailyReportResponse,
     DailyReportUpdateRequest,
 )
+from app.schemas.supervisor_updates import SupervisorUpdateResponse
 from app.services.idempotency import validate_key
 from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
 from app.services.report_service import ReportService
+from app.services.reporting_service import ReportingService
 from app.utils.permissions import PERMISSION_REPORTS_VIEW
 
 router = APIRouter(prefix="/reports", tags=["Daily Reports"])
@@ -85,6 +87,14 @@ async def download_report_pdf(
         media_type=PDF_CONTENT_TYPE,
         headers={"Content-Disposition": f'attachment; filename="{export.file_name}"'},
     )
+
+
+@router.get("/{report_id}/supervisor-updates", response_model=list[SupervisorUpdateResponse])
+async def list_report_supervisor_updates(
+    report_id: UUID, current_user: CanViewReports, session: DbSession
+) -> list[SupervisorUpdateResponse]:
+    updates = await ReportService(session).list_supervisor_evidence(report_id, current_user)
+    return await ReportingService(session).describe_updates(updates)
 
 
 @router.put("/{report_id}", response_model=DailyReportResponse)

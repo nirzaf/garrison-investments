@@ -508,6 +508,15 @@ export function SupervisorUpdatePage() {
                 <p className="mt-3 line-clamp-3 text-sm text-theme-text-secondary">
                   {update.progress_notes}
                 </p>
+                {update.verified_at && (
+                  <p className="mt-2 text-xs text-theme-text-muted">
+                    Verified {new Date(update.verified_at).toLocaleString()}
+                    {update.verified_by_name ? ` by ${update.verified_by_name}` : ''}
+                    {update.verified_report_id && (
+                      <span className="block">Linked report {update.verified_report_id}</span>
+                    )}
+                  </p>
+                )}
                 {update.status === 'draft' && update.supervisor_id === user?.id ? (
                   <button
                     className="mt-3 text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"

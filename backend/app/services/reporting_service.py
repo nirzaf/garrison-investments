@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +9,7 @@ from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
-from app.schemas.supervisor_updates import SupervisorUpdateCreateRequest
+from app.schemas.supervisor_updates import SupervisorUpdateCreateRequest, SupervisorUpdateResponse
 from app.services.audit_service import AuditService
 from app.services.authorization import COMPANY_WIDE_ROLES, accessible_project_ids
 from app.utils.exceptions import AppException, NotFoundException
@@ -32,6 +33,27 @@ class ReportingService:
         self.projects = ProjectRepository(session)
         self.updates = SupervisorUpdateRepository(session)
         self.audit = AuditService(session)
+
+    async def describe_updates(
+        self, updates: list[SupervisorUpdate]
+    ) -> list[SupervisorUpdateResponse]:
+        verifier_ids = {update.verified_by for update in updates if update.verified_by is not None}
+        names: dict[UUID, str] = {}
+        if verifier_ids:
+            result = await self.session.execute(
+                select(User.id, User.full_name).where(User.id.in_(verifier_ids))
+            )
+            names = {user_id: full_name for user_id, full_name in result}
+        return [
+            SupervisorUpdateResponse.model_validate(update).model_copy(
+                update={
+                    "verified_by_name": names.get(update.verified_by)
+                    if update.verified_by is not None
+                    else None
+                }
+            )
+            for update in updates
+        ]
 
     async def create_supervisor_update(
         self,

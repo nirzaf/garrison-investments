@@ -12,10 +12,21 @@ export type SupervisorUpdateListResponse = components['schemas']['SupervisorUpda
 export async function listSupervisorUpdates(params: {
   project_id?: string;
   status?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<SupervisorUpdateListResponse> {
   const response = await apiClient.get<SupervisorUpdateListResponse>('/supervisor-updates', {
     params
   });
+  return response.data;
+}
+
+export async function listReportSupervisorUpdates(
+  reportId: string
+): Promise<SupervisorUpdateRecord[]> {
+  const response = await apiClient.get<SupervisorUpdateRecord[]>(
+    `/reports/${reportId}/supervisor-updates`
+  );
   return response.data;
 }
 

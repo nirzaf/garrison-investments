@@ -23,7 +23,8 @@ async def list_supervisor_updates(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SupervisorUpdateListResponse:
-    updates, total = await ReportingService(session).list_supervisor_updates(
+    service = ReportingService(session)
+    updates, total = await service.list_supervisor_updates(
         current_user=current_user,
         project_id=project_id,
         status=status,
@@ -31,7 +32,7 @@ async def list_supervisor_updates(
         offset=offset,
     )
     return SupervisorUpdateListResponse(
-        items=[SupervisorUpdateResponse.model_validate(update) for update in updates],
+        items=await service.describe_updates(updates),
         total=total,
     )
 
