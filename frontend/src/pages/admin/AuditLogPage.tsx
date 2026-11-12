@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { getAuditLogs } from '../../api/audit';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useDebouncedSearch } from '../../useDebouncedSearch';
 
 const actionOptions = [
   '',
@@ -26,17 +27,18 @@ function readableAction(action: string) {
 
 export function AuditLogPage() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedSearch(search);
   const [action, setAction] = useState('');
   const [entityType, setEntityType] = useState('');
 
   const filters = useMemo(
     () => ({
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       action: action || undefined,
       entity_type: entityType || undefined,
       limit: 100
     }),
-    [action, entityType, search]
+    [action, entityType, debouncedSearch]
   );
 
   const { data, isLoading, isError } = useQuery({

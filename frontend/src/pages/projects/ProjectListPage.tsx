@@ -12,6 +12,7 @@ import {
 } from '../../api/projects';
 import { listUsers, type UserRecord } from '../../api/users';
 import { useAuth } from '../../context/useAuth';
+import { useDebouncedSearch } from '../../useDebouncedSearch';
 
 const initialProject: ProjectPayload = {
   name: '',
@@ -68,6 +69,7 @@ export function ProjectListPage() {
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedSearch(search);
   const [form, setForm] = useState<ProjectPayload>(initialProject);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [timelineProjectId, setTimelineProjectId] = useState('');
@@ -79,9 +81,9 @@ export function ProjectListPage() {
   const filters = useMemo(
     () => ({
       status: status || undefined,
-      search: search || undefined
+      search: debouncedSearch || undefined
     }),
-    [search, status]
+    [debouncedSearch, status]
   );
 
   const loadProjects = useCallback(async () => {

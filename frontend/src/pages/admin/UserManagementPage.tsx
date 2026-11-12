@@ -10,6 +10,7 @@ import {
   type UserRecord
 } from '../../api/users';
 import { useAuth } from '../../context/useAuth';
+import { useDebouncedSearch } from '../../useDebouncedSearch';
 
 const roles = [
   'admin',
@@ -47,6 +48,7 @@ export function UserManagementPage() {
   const [activeFilter, setActiveFilter] = useState('active');
   const [roleFilter, setRoleFilter] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedSearch(search);
   const [form, setForm] = useState<CreateUserPayload>(initialForm);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,9 +64,9 @@ export function UserManagementPage() {
     () => ({
       active: activeFilter === 'all' ? undefined : activeFilter === 'active',
       role: roleFilter || undefined,
-      search: search || undefined
+      search: debouncedSearch || undefined
     }),
-    [activeFilter, roleFilter, search]
+    [activeFilter, roleFilter, debouncedSearch]
   );
 
   const loadUsers = useCallback(async () => {
