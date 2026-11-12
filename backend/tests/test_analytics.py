@@ -100,6 +100,17 @@ async def test_management_analytics_and_exports_are_restricted() -> None:
         )
         assert export.status_code == 200
         assert export.content.startswith(b"PK")
+        with ZipFile(BytesIO(export.content)) as workbook:
+            metadata = ElementTree.fromstring(workbook.read("docProps/custom.xml"))
+        assert "cumulative" in "".join(metadata.itertext())
+
+        reversed_dates = {"date_from": "2026-05-31", "date_to": "2026-05-30"}
+        for path in ANALYTICS_PATHS:
+            invalid = await client.get(
+                path, params=reversed_dates, headers={"Authorization": f"Bearer {manager_token}"}
+            )
+            assert invalid.status_code == 422
+            assert invalid.json()["error_code"] == "INVALID_ANALYTICS_DATE_RANGE"
 
         for path in ANALYTICS_PATHS:
             blocked = await client.get(path, headers={"Authorization": f"Bearer {engineer_token}"})
