@@ -722,7 +722,18 @@ class InventoryService:
         if payload.movement_type == "receive":
             if not payload.to_location_id:
                 raise AppException("Receive requires destination.", status_code=422)
-            stock = await self._get_or_create_stock(payload.item_id, payload.to_location_id)
+            destination_id = await self.session.scalar(
+                select(StorageLocation.id)
+                .where(
+                    StorageLocation.id == payload.to_location_id,
+                    StorageLocation.deleted_at.is_(None),
+                    StorageLocation.is_active.is_(True),
+                )
+                .with_for_update(read=True)
+            )
+            if destination_id is None:
+                raise NotFoundException("Eligible receipt destination")
+            stock = await self._get_or_create_stock(payload.item_id, destination_id)
             stock.on_hand_qty += payload.quantity
         elif payload.movement_type == "transfer":
             if not payload.from_location_id or not payload.to_location_id:

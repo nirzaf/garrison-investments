@@ -229,6 +229,16 @@ async def test_analytics_summary_and_exports_respect_project_scope() -> None:
                     movement_type=movement_type,
                 )
             )
+        for movement_type in ("issue", "consume"):
+            session.add(
+                InventoryMovement(
+                    item_id=shared.id,
+                    project_id=assigned.id,
+                    quantity=Decimal("90.000"),
+                    movement_type=movement_type,
+                    deleted_at=utc_now(),
+                )
+            )
         await session.commit()
         await session.refresh(member)
         membership_id = member.id

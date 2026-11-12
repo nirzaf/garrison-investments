@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { Download } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -7,11 +8,13 @@ import {
   downloadExport,
   getAnalyticsSummary,
   type AnalyticsExport,
-  type AnalyticsFilters
+  type AnalyticsFilters,
+  type AnalyticsSummary
 } from '../../api/analytics';
 import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
 
 const exportOptions: [AnalyticsExport, string][] = [
@@ -28,10 +31,18 @@ const filterFields = [
 ] as const;
 
 export function AnalyticsPage() {
+  const { user } = useAuth();
+  const [lastSuccessful, setLastSuccessful] = useState<{
+    ownerId: string | undefined;
+    data: AnalyticsSummary;
+    filters: AnalyticsFilters;
+    projectName: string;
+  } | null>(null);
   const [draft, setDraft] = useState<AnalyticsFilters>({});
   const [filters, setFilters] = useState<AnalyticsFilters>({});
   const [projectSearch, setProjectSearch] = useState('');
   const [selectedProjectName, setSelectedProjectName] = useState('');
+  const [appliedProjectName, setAppliedProjectName] = useState('');
   const [dateError, setDateError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const exporting = useRef(new Set<AnalyticsExport>());
@@ -43,9 +54,27 @@ export function AnalyticsPage() {
   });
   const summary = useQuery({
     queryKey: ['analytics-summary', filters],
-    queryFn: () => getAnalyticsSummary(filters),
-    placeholderData: keepPreviousData
+    queryFn: () => getAnalyticsSummary(filters)
   });
+
+  const failureStatus = isAxiosError(summary.error) ? summary.error.response?.status : undefined;
+  const accessDenied = failureStatus === 401 || failureStatus === 403;
+  const previous = lastSuccessful?.ownerId === user?.id ? lastSuccessful : null;
+  if ((accessDenied || !previous) && lastSuccessful) {
+    setLastSuccessful(null);
+  } else if (
+    summary.isSuccess &&
+    (previous?.data !== summary.data || previous.filters !== filters)
+  ) {
+    setLastSuccessful({
+      ownerId: user?.id,
+      data: summary.data,
+      filters,
+      projectName: appliedProjectName
+    });
+  }
+  const displayed = accessDenied ? undefined : (summary.data ?? previous?.data);
+  const showingPrevious = displayed !== undefined && (summary.isPending || summary.isError);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,6 +83,7 @@ export function AnalyticsPage() {
       return;
     }
     setDateError(null);
+    setAppliedProjectName(draft.project_id ? selectedProjectName : '');
     setFilters({
       project_id: draft.project_id || undefined,
       date_from: draft.date_from || undefined,
@@ -64,7 +94,7 @@ export function AnalyticsPage() {
   }
 
   async function exportData(path: AnalyticsExport) {
-    if (exporting.current.has(path)) return;
+    if (!summary.isSuccess || exporting.current.has(path)) return;
     exporting.current.add(path);
     setPending([...exporting.current]);
     setExportError(null);
@@ -79,14 +109,14 @@ export function AnalyticsPage() {
   }
 
   const progressData =
-    summary.data?.projects.map((project) => ({
+    displayed?.projects.map((project) => ({
       name: project.project_name,
       Progress: Number(project.progress_percentage),
       Reports: project.report_count
     })) ?? [];
 
   const materialData =
-    summary.data?.material_usage.map((item) => ({
+    displayed?.material_usage.map((item) => ({
       name: item.item_name,
       Issued: Number(item.issued_quantity),
       Consumed: Number(item.consumed_quantity)
@@ -103,7 +133,7 @@ export function AnalyticsPage() {
           {exportOptions.map(([path, label]) => (
             <button
               className="inline-flex items-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary disabled:opacity-50"
-              disabled={pending.includes(path) || summary.isPlaceholderData}
+              disabled={pending.includes(path) || !summary.isSuccess}
               key={path}
               onClick={() => void exportData(path)}
               type="button"
@@ -177,6 +207,7 @@ export function AnalyticsPage() {
             onClick={() => {
               setDraft({});
               setFilters({});
+              setAppliedProjectName('');
               setDateError(null);
               setProjectSearch('');
             }}
@@ -194,8 +225,24 @@ export function AnalyticsPage() {
           {exportError}
         </p>
       )}
-      {summary.isFetching && summary.data && (
-        <p role="status">Refreshing analytics. The previous results are still visible.</p>
+      {showingPrevious && previous && (
+        <p role="status">
+          {summary.isFetching ? 'Refreshing analytics. ' : ''}
+          Showing the last successful results for{' '}
+          {[
+            previous.projectName || 'all accessible projects',
+            previous.filters.date_from && `from ${previous.filters.date_from}`,
+            previous.filters.date_to && `through ${previous.filters.date_to}`,
+            previous.filters.location && `location ${previous.filters.location}`,
+            previous.filters.department && `scope or category ${previous.filters.department}`
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          .
+        </p>
+      )}
+      {summary.isFetching && !showingPrevious && summary.data && (
+        <p role="status">Refreshing analytics.</p>
       )}
       {summary.isError && (
         <div className="alert-error px-3 py-2" role="alert">
@@ -205,7 +252,7 @@ export function AnalyticsPage() {
           </button>
         </div>
       )}
-      {summary.data ? (
+      {displayed ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-theme-border bg-theme-card p-4">
             <h3 className="text-base font-semibold text-theme-text-primary">Project progress</h3>
@@ -221,7 +268,7 @@ export function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="mt-2 space-y-2">
-                  {summary.data.projects.map((project) => (
+                  {displayed.projects.map((project) => (
                     <p className="text-xs text-theme-text-muted" key={project.project_id}>
                       {project.project_name}: {project.report_count} reports,{' '}
                       {project.invoice_total} invoiced

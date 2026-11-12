@@ -69,6 +69,11 @@ test('store requester selects company project and fulfills chosen quantities acr
     code: `R-${mark}`,
     location_type: 'warehouse'
   });
+  const otherLocation = await create('/inventory/locations', {
+    name: `Second store ${mark}`,
+    code: `S-${mark}`,
+    location_type: 'warehouse'
+  });
   const items = [];
   for (const label of ['Cement', 'Sand']) {
     const item = await create('/inventory/items', {
@@ -95,6 +100,53 @@ test('store requester selects company project and fulfills chosen quantities acr
   expect(project.ok()).toBe(true);
   const { code: projectCode } = await project.json();
   await storePage.goto('/materials');
+  await storePage.getByRole('textbox', { name: 'Search inventory' }).fill(items[0].name);
+  await storePage.getByRole('button', { name: new RegExp(items[0].name) }).click();
+  const receive = storePage.getByRole('form', { name: 'Receive stock' });
+  const destination = receive.getByRole('combobox', { name: 'Receipt destination' });
+  const quantity = receive.getByPlaceholder('Quantity');
+  const notes = receive.getByPlaceholder('Notes');
+  const receiveButton = receive.getByRole('button', { name: 'Receive stock' });
+  await expect(destination).toHaveValue('');
+  await quantity.fill('0.0001');
+  await notes.fill('Browser receipt');
+  await receiveButton.click();
+  expect(
+    await destination.evaluate((select: HTMLSelectElement) => select.validity.valueMissing)
+  ).toBe(true);
+
+  await destination.selectOption(otherLocation.id);
+  await receiveButton.click();
+  await expect(receive.getByRole('alert')).toContainText(/3 decimal places/);
+  await expect(destination).toHaveValue(otherLocation.id);
+  await expect(quantity).toHaveValue('0.0001');
+  await expect(notes).toHaveValue('Browser receipt');
+
+  await quantity.fill('2.125');
+  const received = storePage.waitForResponse(
+    (reply) => reply.url().endsWith('/inventory/movements') && reply.request().method() === 'POST'
+  );
+  await receiveButton.click();
+  const receipt = await received;
+  expect(receipt.status()).toBe(201);
+  expect(await receipt.json()).toMatchObject({
+    item_id: items[0].id,
+    to_location_id: otherLocation.id,
+    quantity: '2.125'
+  });
+  await expect(destination).toHaveValue('');
+  await expect(quantity).toHaveValue('');
+  const receivedRow = storePage.getByRole('row').filter({
+    has: storePage.getByRole('rowheader', { name: otherLocation.name })
+  });
+  await expect(receivedRow.getByRole('cell')).toHaveText(['2.125', '0.000', '2.125']);
+  await storePage.getByRole('combobox', { name: 'Filter by location' }).selectOption(location.id);
+  await expect(receivedRow).toHaveCount(0);
+  const sourceRow = storePage.getByRole('row').filter({
+    has: storePage.getByRole('rowheader', { name: location.name, exact: true })
+  });
+  await expect(sourceRow.getByRole('cell')).toHaveText(['12.000', '0.000', '12.000']);
+
   await storePage.getByLabel('Search eligible projects').fill(projectCode);
   await expect(
     storePage
@@ -191,20 +243,51 @@ test('store requester selects company project and fulfills chosen quantities acr
   await adminPage.close();
 });
 
-test('analytics shows errors and retains applied controls through retry', async ({ page }) => {
-  await signIn(page, seed('admin'));
-  let fail = true;
-  await page.route('**/api/v1/analytics/summary**', (route) =>
-    fail
-      ? route.fulfill({ status: 500, json: { detail: 'Analytics unavailable for this check' } })
-      : route.continue()
-  );
+test('analytics preserves labelled results and filters through a failed refresh', async ({
+  page
+}) => {
+  const account = seed('admin');
+  const headers = await signIn(page, account);
+  const project = await page.request.get(`/api/v1/projects/${account.projectId}`, { headers });
+  expect(project.ok()).toBe(true);
+  const { name: projectName } = await project.json();
+
+  let failure: 'initial' | 'filter' | 'denied' | null = 'initial';
+  await page.route('**/api/v1/analytics/summary**', (route) => {
+    if (failure === 'denied') {
+      return route.fulfill({ status: 403, json: { detail: 'Access to analytics was removed' } });
+    }
+    if (failure) {
+      return route.fulfill({
+        status: 400,
+        json: { detail: 'Analytics unavailable for this check' }
+      });
+    }
+    return route.continue();
+  });
   await page.goto('/analytics');
   await expect(page.getByRole('alert').filter({ hasText: 'Analytics unavailable' })).toBeVisible();
+  failure = null;
+  await page.getByRole('button', { name: 'Retry' }).click();
+  const fixtureSummary = page.getByText(`${projectName}: 0 reports, 0 invoiced`, { exact: true });
+  await expect(fixtureSummary).toBeVisible();
+
+  failure = 'filter';
   await page.getByLabel('Project-panel location').fill('Unknown fixture location');
-  fail = false;
   await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Analytics unavailable' })).toBeVisible();
+  await expect(
+    page
+      .getByRole('status')
+      .filter({ hasText: 'last successful results for all accessible projects' })
+  ).toBeVisible();
+  await expect(fixtureSummary).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Material XLSX' })).toBeDisabled();
+
+  failure = null;
+  await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByText('No project data')).toBeVisible();
+  await expect(fixtureSummary).toHaveCount(0);
   await page.route('**/api/v1/export/material-usage**', (route) => {
     expect(new URL(route.request().url()).searchParams.has('location')).toBe(false);
     return route.fulfill({
@@ -218,4 +301,13 @@ test('analytics shows errors and retains applied controls through retry', async 
     page.getByRole('alert').filter({ hasText: /invalid export file|Unable to download/ })
   ).toBeVisible();
   await expect(page.getByLabel('Project-panel location')).toHaveValue('Unknown fixture location');
+
+  failure = 'denied';
+  await page.getByLabel('Project-panel location').fill('Denied fixture location');
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Access to analytics was removed' })
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Project progress' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Summary PDF' })).toBeDisabled();
 });

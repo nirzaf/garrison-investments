@@ -310,7 +310,11 @@ class AnalyticsService:
                     0,
                 ),
             )
-            .outerjoin(InventoryMovement, InventoryMovement.item_id == InventoryItem.id)
+            .outerjoin(
+                InventoryMovement,
+                (InventoryMovement.item_id == InventoryItem.id)
+                & InventoryMovement.deleted_at.is_(None),
+            )
             .where(InventoryItem.deleted_at.is_(None))
         )
         if project_scope is not None:

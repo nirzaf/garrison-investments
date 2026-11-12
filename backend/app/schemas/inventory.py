@@ -83,7 +83,11 @@ class MovementCreateRequest(BaseModel):
     movement_type: str = Field(
         pattern="^(receive|reserve|issue|transfer|return|consume|adjustment|wastage|damaged)$"
     )
-    quantity: Decimal = Field(description="Positive, or negative for a stock adjustment.")
+    quantity: Decimal = Field(
+        max_digits=14,
+        decimal_places=3,
+        description="Positive, or negative for a stock adjustment. Up to three decimal places.",
+    )
     from_location_id: UUID | None = None
     to_location_id: UUID | None = None
     project_id: UUID | None = None

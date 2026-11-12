@@ -7,11 +7,12 @@ import pytest
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.inventory import StorageLocation
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password
+from app.utils.security import hash_password, utc_now
 
 pytestmark = pytest.mark.asyncio
 
@@ -187,6 +188,52 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         )
         assert stock_response.status_code == 200
         assert stock_response.json()[0]["available_qty"] == "10.000"
+
+        async with AsyncSessionLocal() as session:
+            unavailable_destinations = [
+                StorageLocation(
+                    name="Inactive store",
+                    code=f"OFF-{uuid4().hex[:6]}",
+                    location_type="warehouse",
+                    is_active=False,
+                ),
+                StorageLocation(
+                    name="Archived store",
+                    code=f"DEL-{uuid4().hex[:6]}",
+                    location_type="warehouse",
+                    deleted_at=utc_now(),
+                ),
+            ]
+            session.add_all(unavailable_destinations)
+            await session.flush()
+            unavailable_ids = [str(row.id) for row in unavailable_destinations]
+            await session.commit()
+
+        store_headers = {"Authorization": f"Bearer {store_token}"}
+        receipt = {"item_id": item["id"], "movement_type": "receive", "quantity": "1.000"}
+        for destination in [*unavailable_ids, str(uuid4())]:
+            refused = await client.post(
+                "/api/v1/inventory/movements",
+                headers=store_headers,
+                json={**receipt, "to_location_id": destination},
+            )
+            assert refused.status_code == 404, refused.text
+            assert "Eligible receipt destination" in refused.json()["detail"]
+
+        too_small = await client.post(
+            "/api/v1/inventory/movements",
+            headers=store_headers,
+            json={**receipt, "to_location_id": location["id"], "quantity": "0.0001"},
+        )
+        assert too_small.status_code == 422
+        after_refusal = await client.get(
+            f"/api/v1/inventory/items/{item['id']}/stock", headers=store_headers
+        )
+        assert after_refusal.json() == stock_response.json()
+        item_movements = await client.get(
+            "/api/v1/inventory/movements", headers=store_headers, params={"item_id": item["id"]}
+        )
+        assert [row["id"] for row in item_movements.json()] == [receive_response.json()["id"]]
 
         request_response = await client.post(
             "/api/v1/inventory/requests",

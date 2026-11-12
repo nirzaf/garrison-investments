@@ -18,7 +18,8 @@ import {
   listMaterialRequests,
   listMovements,
   listSuppliers,
-  receiveStock
+  receiveStock,
+  type InventoryItemRecord
 } from '../../api/inventory';
 import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
@@ -35,7 +36,8 @@ export function InventoryPage() {
   const [searchParams] = useSearchParams();
   const focusedRequestId = searchParams.get('materialRequestId');
   const queryClient = useQueryClient();
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [pickedItem, setPickedItem] = useState<InventoryItemRecord>();
+  const receiveInFlight = useRef(false);
   const [stockLocation, setStockLocation] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
@@ -104,7 +106,7 @@ export function InventoryPage() {
     queryFn: () => listProjects({ status: 'active' }),
     enabled: canManageInventory && (user?.permissions?.includes('projects:read') ?? false)
   });
-  const selectedItem = items.data?.find((item) => item.id === selectedItemId) ?? items.data?.[0];
+  const selectedItem = pickedItem ?? items.data?.[0];
   const stock = useQuery({
     queryKey: ['inventory-stock', selectedItem?.id],
     queryFn: () => listItemStock(selectedItem!.id),
@@ -297,7 +299,12 @@ export function InventoryPage() {
                 <button
                   className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-theme-main"
                   key={item.id}
-                  onClick={() => setSelectedItemId(item.id)}
+                  aria-pressed={item.id === selectedItem?.id}
+                  disabled={receiveMutation.isPending}
+                  onClick={() => {
+                    setPickedItem(item);
+                    setStockLocation('');
+                  }}
                   type="button"
                 >
                   <span>
@@ -345,7 +352,13 @@ export function InventoryPage() {
                 </select>
               </label>
               {stock.isPending && <p role="status">Loading stock balances…</p>}
-              {stock.isError && <p role="alert">Unable to load stock balances.</p>}
+              {stock.isError && (
+                <p role="alert">
+                  {stock.data
+                    ? 'Unable to refresh stock balances. Showing the last loaded balances.'
+                    : 'Unable to load stock balances.'}
+                </p>
+              )}
               {stock.isSuccess && balances.length === 0 && (
                 <p>No recorded balances for this selection.</p>
               )}
@@ -389,12 +402,14 @@ export function InventoryPage() {
               {selectedItem ? `Receive ${selectedItem.name}` : 'Select an item to receive stock.'}
             </p>
             <form
+              aria-label="Receive stock"
               className="mt-3 space-y-3"
               onSubmit={async (event) => {
                 event.preventDefault();
+                if (!selectedItem || receiveInFlight.current) return;
                 const element = event.currentTarget;
                 const form = new FormData(element);
-                if (!selectedItem || receiveMutation.isPending) return;
+                receiveInFlight.current = true;
                 try {
                   await receiveMutation.mutateAsync({
                     item_id: selectedItem.id,
@@ -405,27 +420,37 @@ export function InventoryPage() {
                   element.reset();
                 } catch {
                   /* The mutation error is shown below the form. */
+                } finally {
+                  receiveInFlight.current = false;
                 }
               }}
             >
-              <LocationSelect
-                locations={locations.data?.filter((location) => location.is_active) ?? []}
-                name="location_id"
-                label="Receipt destination"
-                required
-              />
-              <input className="form-field" name="quantity" placeholder="Quantity" required />
-              <input className="form-field" name="notes" placeholder="Notes" />
+              <fieldset className="min-w-0 space-y-3" disabled={receiveMutation.isPending}>
+                <LocationSelect
+                  locations={locations.data?.filter((location) => location.is_active) ?? []}
+                  name="location_id"
+                  label="Receipt destination"
+                  required
+                />
+                <input className="form-field" name="quantity" placeholder="Quantity" required />
+                <input className="form-field" name="notes" placeholder="Notes" />
+              </fieldset>
+              {locations.isError && <p role="alert">Unable to load receipt destinations.</p>}
               {receiveMutation.isError && (
                 <p role="alert">
                   {formatApiError(receiveMutation.error, 'Unable to receive stock.')}
                 </p>
               )}
               <button
-                disabled={!selectedItem || receiveMutation.isPending}
+                disabled={
+                  !selectedItem ||
+                  locations.isPending ||
+                  locations.isError ||
+                  receiveMutation.isPending
+                }
                 className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
               >
-                Receive stock
+                {receiveMutation.isPending ? 'Receiving…' : 'Receive stock'}
               </button>
             </form>
           </div>
@@ -768,7 +793,7 @@ function LocationSelect({
   required?: boolean;
 }) {
   return (
-    <select className="form-field" name={name} required={required}>
+    <select aria-label={label} className="form-field" name={name} required={required}>
       <option value="">{label} location</option>
       {locations.map((location) => (
         <option key={location.id} value={location.id}>
