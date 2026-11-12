@@ -204,6 +204,29 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
     assert completion["duration_ms"] >= 0
 
 
+def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> None:
+    app = create_app()
+
+    @app.get("/fixture-failure")
+    async def fixture_failure():
+        raise RuntimeError("Synthetic request failure.")
+
+    capfd.readouterr()
+    response = TestClient(app, raise_server_exceptions=False).get("/fixture-failure")
+    assert response.status_code == 500
+    records = [
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
+    ]
+    completion = [record for record in records if record.get("message") == "http_request_completed"]
+    assert len(completion) == 1
+    failure = next(
+        record for record in records if record.get("message") == "unhandled_request_exception"
+    )
+    assert completion[0]["status_code"] == 500
+    assert completion[0]["duration_ms"] >= 0
+    assert completion[0]["request_id"] == failure["request_id"] == response.headers["X-Request-ID"]
+
+
 def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -> None:
     _configure()
     capfd.readouterr()
