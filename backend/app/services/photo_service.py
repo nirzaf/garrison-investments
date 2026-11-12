@@ -16,10 +16,15 @@ from app.repositories.photo_repository import PhotoRepository
 from app.services.audit_service import AuditService
 from app.services.authorization import accessible_project_ids, ensure_entity_access
 from app.services.idempotency import bind, resolve_or_reserve
-from app.services.report_service import ReportService
+from app.services.report_service import DAILY_REPORT_READ_ROLES, ReportService
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
-from app.utils.permissions import ROLE_ADMIN
+from app.utils.permissions import (
+    PERMISSION_REPORTS_SUBMIT,
+    ROLE_ADMIN,
+    ROLE_CIVIL_ENGINEER,
+    ensure_permission,
+)
 from app.utils.security import utc_now
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -54,6 +59,7 @@ class PhotoService:
         actor: User,
         idempotency_key: str | None = None,
     ) -> Photo:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         self._validate_entity_type(entity_type)
         normalized_kind = self._validate_kind(kind, file.filename or "")
         if idempotency_key:
@@ -176,12 +182,15 @@ class PhotoService:
                     error_code="INVALID_FILE_KIND",
                 )
             kind = normalized_kind
+        if actor.role not in DAILY_REPORT_READ_ROLES:
+            return [], 0
         return await self.photos.list_recent(
             entity_type=entity_type,
             kind=kind,
             limit=limit,
             offset=offset,
             project_ids=await accessible_project_ids(self.session, actor),
+            engineer_id=actor.id if actor.role == ROLE_CIVIL_ENGINEER else None,
         )
 
     async def get(self, photo_id: UUID, *, actor: User) -> Photo:
@@ -209,6 +218,7 @@ class PhotoService:
         )
 
     async def delete(self, photo_id: UUID, actor: User) -> None:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         photo = await self.get(photo_id, actor=actor)
         if photo.entity_type == "daily_report":
             report = await ReportService(self.session).get_report_for_export(photo.entity_id)

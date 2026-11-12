@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from fastapi.responses import Response
 
-from app.api.dependencies import CurrentUser, DbSession
+from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.models.user import User
 from app.schemas.daily_reports import (
     DailyReportCreateRequest,
     DailyReportDecisionRequest,
@@ -16,13 +17,15 @@ from app.schemas.daily_reports import (
 from app.services.idempotency import validate_key
 from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
 from app.services.report_service import ReportService
+from app.utils.permissions import PERMISSION_REPORTS_VIEW
 
 router = APIRouter(prefix="/reports", tags=["Daily Reports"])
+CanViewReports = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_VIEW))]
 
 
 @router.get("", response_model=DailyReportListResponse)
 async def list_reports(
-    current_user: CurrentUser,
+    current_user: CanViewReports,
     session: DbSession,
     project_id: Annotated[UUID | None, Query()] = None,
     status: Annotated[str | None, Query()] = None,
@@ -60,7 +63,7 @@ async def create_report(
 @router.get("/{report_id}", response_model=DailyReportResponse)
 async def get_report(
     report_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanViewReports,
     session: DbSession,
 ) -> DailyReportResponse:
     report = await ReportService(session).get_report(report_id, current_user)
@@ -70,7 +73,7 @@ async def get_report(
 @router.get("/{report_id}/pdf")
 async def download_report_pdf(
     report_id: UUID,
-    current_user: CurrentUser,
+    current_user: CanViewReports,
     session: DbSession,
 ) -> Response:
     export, pdf_bytes = await ReportExportService(session).get_or_create_pdf(

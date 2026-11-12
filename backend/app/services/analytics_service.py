@@ -18,6 +18,7 @@ from app.models.inventory import InventoryItem, InventoryMovement
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.analytics import AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow
+from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.finance_service import FINANCE_ROLES, NON_BILLABLE_INVOICE_STATUSES
 from app.utils.exceptions import AppException
 from app.utils.permissions import ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER
@@ -48,9 +49,9 @@ class AnalyticsService:
         location: str | None = None,
         department: str | None = None,
     ) -> AnalyticsSummaryResponse:
-        self.ensure_management_access(actor)
-        projects = await self._project_rows(project_id, date_from, date_to, location, department)
-        usage = await self._material_rows(project_id, date_from, date_to, department)
+        project_scope = await self._project_scope(actor, project_id)
+        projects = await self._project_rows(project_scope, date_from, date_to, location, department)
+        usage = await self._material_rows(project_scope, date_from, date_to, department)
         return AnalyticsSummaryResponse(projects=projects, material_usage=usage)
 
     async def project_progress_export(
@@ -63,9 +64,8 @@ class AnalyticsService:
         location: str | None = None,
         department: str | None = None,
     ) -> bytes:
-        rows = await self._project_rows_for_export(
-            actor, project_id, date_from, date_to, location, department
-        )
+        project_scope = await self._project_scope(actor, project_id)
+        rows = await self._project_rows(project_scope, date_from, date_to, location, department)
         return build_xlsx(
             "Project Progress",
             [["Project", "Progress %", "Reports", "Invoice Total", "Paid Total"]]
@@ -90,8 +90,8 @@ class AnalyticsService:
         date_to: date | None = None,
         department: str | None = None,
     ) -> bytes:
-        self.ensure_management_access(actor)
-        rows = await self._material_rows(project_id, date_from, date_to, department)
+        project_scope = await self._project_scope(actor, project_id)
+        rows = await self._material_rows(project_scope, date_from, date_to, department)
         return build_xlsx(
             "Material Usage",
             [["Item", "Issued Quantity", "Consumed Quantity"]]
@@ -166,21 +166,16 @@ class AnalyticsService:
         )
         return object_key
 
-    async def _project_rows_for_export(
-        self,
-        actor: User,
-        project_id: UUID | None,
-        date_from: date | None,
-        date_to: date | None,
-        location: str | None,
-        department: str | None,
-    ) -> list[ProjectAnalyticsRow]:
+    async def _project_scope(self, actor: User, project_id: UUID | None) -> list[UUID] | None:
         self.ensure_management_access(actor)
-        return await self._project_rows(project_id, date_from, date_to, location, department)
+        if project_id is not None:
+            await ensure_project_access(self.session, project_id, actor)
+            return [project_id]
+        return await accessible_project_ids(self.session, actor)
 
     async def _project_rows(
         self,
-        project_id: UUID | None,
+        project_scope: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
         location: str | None,
@@ -226,8 +221,8 @@ class AnalyticsService:
             invoice_total,
             paid_total,
         ).where(Project.deleted_at.is_(None))
-        if project_id:
-            query = query.where(Project.id == project_id)
+        if project_scope is not None:
+            query = query.where(Project.id.in_(project_scope))
         if location:
             query = query.where(func.lower(Project.location).like(f"%{location.lower()}%"))
         if department:
@@ -247,7 +242,7 @@ class AnalyticsService:
 
     async def _material_rows(
         self,
-        project_id: UUID | None,
+        project_scope: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
         department: str | None,
@@ -272,8 +267,11 @@ class AnalyticsService:
             .outerjoin(InventoryMovement, InventoryMovement.item_id == InventoryItem.id)
             .where(InventoryItem.deleted_at.is_(None))
         )
-        if project_id:
-            query = query.where(InventoryMovement.project_id == project_id)
+        if project_scope is not None:
+            projects = select(Project.id).where(
+                Project.id.in_(project_scope), Project.deleted_at.is_(None)
+            )
+            query = query.where(InventoryMovement.project_id.in_(projects))
         if date_from:
             query = query.where(func.date(InventoryMovement.created_at) >= date_from)
         if date_to:

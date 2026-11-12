@@ -34,6 +34,7 @@ from app.utils.security import utc_now
 from app.utils.time import business_today
 
 REPORT_STATUSES = {"draft", "submitted", "approved", "rejected"}
+DAILY_REPORT_READ_ROLES = COMPANY_WIDE_ROLES | {ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
 IDEMPOTENCY_ROUTE = "reports.create"
 
 
@@ -412,13 +413,12 @@ class ReportService:
                 await self._ensure_project_member(project_id, actor)
         elif actor.role == ROLE_CIVIL_ENGINEER and project_id:
             await self._ensure_project_member(project_id, actor)
-        elif actor.role not in COMPANY_WIDE_ROLES:
-            if actor.role != ROLE_CIVIL_ENGINEER:
-                raise AppException(
-                    "You do not have access to daily reports.",
-                    status_code=403,
-                    error_code="DAILY_REPORT_FORBIDDEN",
-                )
+        elif actor.role not in DAILY_REPORT_READ_ROLES:
+            raise AppException(
+                "You do not have access to daily reports.",
+                status_code=403,
+                error_code="DAILY_REPORT_FORBIDDEN",
+            )
         return await self.reports.list_reports(
             project_id=project_id,
             project_ids=project_ids,
@@ -494,7 +494,7 @@ class ReportService:
     async def _ensure_report_access(self, report: DailyReport, actor: User) -> None:
         if actor.role == ROLE_CIVIL_ENGINEER and report.engineer_id == actor.id:
             return
-        if actor.role in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        if actor.role in COMPANY_WIDE_ROLES:
             return
         if actor.role == ROLE_PROJECT_MANAGER:
             await self._ensure_project_member(report.project_id, actor)

@@ -1,6 +1,9 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 from uuid import uuid4
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 import httpx
 import pytest
@@ -9,11 +12,21 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.daily_report import DailyReport
 from app.models.finance import Invoice, Payment
+from app.models.inventory import InventoryItem, InventoryMovement
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.tasks.report import generate_excel_export
 from app.utils.security import hash_password, utc_now
+from tests.test_blocking_io_offload import pdf_text
+
+ANALYTICS_PATHS = (
+    "/api/v1/analytics/summary",
+    "/api/v1/export/project-progress",
+    "/api/v1/export/material-usage",
+    "/api/v1/export/management-summary",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -88,11 +101,10 @@ async def test_management_analytics_and_exports_are_restricted() -> None:
         assert export.status_code == 200
         assert export.content.startswith(b"PK")
 
-        blocked = await client.get(
-            "/api/v1/analytics/summary",
-            headers={"Authorization": f"Bearer {engineer_token}"},
-        )
-        assert blocked.status_code == 403
+        for path in ANALYTICS_PATHS:
+            blocked = await client.get(path, headers={"Authorization": f"Bearer {engineer_token}"})
+            assert blocked.status_code == 403, path
+            assert blocked.json()["error_code"] == "ANALYTICS_FORBIDDEN"
 
 
 def test_generate_excel_export_requires_actor_id() -> None:
@@ -152,6 +164,126 @@ async def create_project(admin: User, *, location: str = "Doha") -> Project:
         await session.commit()
         await session.refresh(project)
         return project
+
+
+def xlsx_rows(data: bytes) -> list[list[str]]:
+    with ZipFile(BytesIO(data)) as archive:
+        sheet = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+    return [
+        [cell.text or "" for cell in row.findall("{*}c/{*}is/{*}t")]
+        for row in sheet.findall("{*}sheetData/{*}row")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_analytics_summary_and_exports_respect_project_scope() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    manager, manager_password = await create_user("project_manager")
+    accounts, accounts_password = await create_user("accounts")
+    assigned = await create_project(admin)
+    unassigned = await create_project(admin)
+    removed = await create_project(admin)
+    await add_invoice(assigned, Decimal("123.00"))
+    await add_invoice(unassigned, Decimal("789.00"))
+    suffix = uuid4().hex[:8]
+    shared_name = f"Shared material {suffix}"
+    other_name = f"Other material {suffix}"
+
+    async with AsyncSessionLocal() as session:
+        member = ProjectMember(project_id=assigned.id, user_id=manager.id)
+        shared = InventoryItem(
+            name=shared_name, category="Civil", item_type="consumable", unit="kg"
+        )
+        other = InventoryItem(name=other_name, category="Civil", item_type="consumable", unit="kg")
+        session.add_all(
+            [member, ProjectMember(project_id=removed.id, user_id=manager.id), shared, other]
+        )
+        (await session.get_one(Project, removed.id)).deleted_at = utc_now()
+        await session.flush()
+        for item, project_id, quantity, movement_type in (
+            (shared, assigned.id, "2.500", "issue"),
+            (shared, assigned.id, "1.000", "consume"),
+            (shared, unassigned.id, "31.000", "issue"),
+            (shared, unassigned.id, "17.000", "consume"),
+            (shared, removed.id, "50.000", "issue"),
+            (shared, None, "9.000", "issue"),
+            (other, unassigned.id, "43.000", "issue"),
+        ):
+            session.add(
+                InventoryMovement(
+                    item_id=item.id,
+                    project_id=project_id,
+                    quantity=Decimal(quantity),
+                    movement_type=movement_type,
+                )
+            )
+        await session.commit()
+        await session.refresh(member)
+        membership_id = member.id
+
+    async with create_test_client() as client:
+        manager_token = await login_for_token(client, manager, manager_password)
+        manager_headers = {"Authorization": f"Bearer {manager_token}"}
+        for params in ({}, {"project_id": str(assigned.id)}):
+            summary, progress, material, pdf = [
+                await client.get(path, headers=manager_headers, params=params)
+                for path in ANALYTICS_PATHS
+            ]
+            assert [response.status_code for response in (summary, progress, material, pdf)] == [
+                200,
+                200,
+                200,
+                200,
+            ]
+            data = summary.json()
+            assert [(row["project_id"], row["invoice_total"]) for row in data["projects"]] == [
+                (str(assigned.id), "123.00")
+            ]
+            assert [
+                (row["item_name"], row["issued_quantity"], row["consumed_quantity"])
+                for row in data["material_usage"]
+            ] == [(shared_name, "2.500", "1.000")]
+            assert xlsx_rows(progress.content)[1:] == [[assigned.name, "25.00", "0", "123.00", "0"]]
+            assert xlsx_rows(material.content)[1:] == [[shared_name, "2.500", "1.000"]]
+            assert pdf.content.startswith(b"%PDF-")
+            text = pdf_text(pdf.content)
+            for allowed in (assigned.name, shared_name, "123.00", "2.500"):
+                assert allowed in text
+            for forbidden in (unassigned.name, removed.name, other_name, "789.00", "31.000"):
+                assert forbidden not in text
+
+        for path in ANALYTICS_PATHS:
+            denied = await client.get(
+                path, headers=manager_headers, params={"project_id": str(unassigned.id)}
+            )
+            assert denied.status_code == 403, path
+            assert denied.json()["error_code"] == "PROJECT_FORBIDDEN"
+
+        async with AsyncSessionLocal() as session:
+            (await session.get_one(ProjectMember, membership_id)).deleted_at = utc_now()
+            await session.commit()
+
+        empty = await client.get(ANALYTICS_PATHS[0], headers=manager_headers)
+        assert empty.status_code == 200
+        assert empty.json() == {"projects": [], "material_usage": []}
+
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        company = await client.get(
+            ANALYTICS_PATHS[0], headers={"Authorization": f"Bearer {accounts_token}"}
+        )
+        assert company.status_code == 200
+        assert {str(assigned.id), str(unassigned.id)} <= {
+            row["project_id"] for row in company.json()["projects"]
+        }
+        assert (
+            next(
+                row["issued_quantity"]
+                for row in company.json()["material_usage"]
+                if row["item_name"] == shared_name
+            )
+            == "92.500"
+        )
 
 
 async def add_invoice(

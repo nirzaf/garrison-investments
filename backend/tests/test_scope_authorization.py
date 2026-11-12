@@ -120,7 +120,7 @@ async def test_photo_idor_is_closed_for_every_read_and_delete_path() -> None:
         assert owner_url.status_code == 200
 
 
-async def test_recent_photo_feed_is_project_scoped() -> None:
+async def test_recent_photo_feed_is_project_and_owner_scoped() -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
@@ -154,6 +154,117 @@ async def test_recent_photo_feed_is_project_scoped() -> None:
         )
         assert accounts_feed.status_code == 200
         assert photo_id in {item["id"] for item in accounts_feed.json()["items"]}
+
+        supervisor = auth(team_a["supervisor_token"])
+        supervisor_feed = await client.get("/api/v1/photos", params=PHOTO_FEED, headers=supervisor)
+        assert supervisor_feed.status_code == 200
+        assert supervisor_feed.json() == {"items": [], "total": 0}
+        update_files = await client.get(
+            "/api/v1/photos",
+            params={
+                "entity_type": "supervisor_update",
+                "entity_id": team_a["supervisor_update_id"],
+            },
+            headers=supervisor,
+        )
+        assert update_files.status_code == 200
+
+        # Project membership alone must not reveal another engineer's report evidence.
+        engineer = await client.get("/api/v1/auth/me", headers=auth(team_b["engineer_token"]))
+        membership = await client.post(
+            f"/api/v1/projects/{team_a['project_id']}/members",
+            json={"user_id": engineer.json()["id"], "role_in_project": "civil_engineer"},
+            headers=auth(team_a["op_token"]),
+        )
+        assert membership.status_code == 201, membership.text
+        _, own_photo_id = await upload_report_photo(client, team_b)
+        feed = await client.get(
+            "/api/v1/photos", params=PHOTO_FEED, headers=auth(team_b["engineer_token"])
+        )
+        assert feed.status_code == 200
+        ids = {item["id"] for item in feed.json()["items"]}
+        assert own_photo_id in ids
+        assert photo_id not in ids
+
+
+async def test_accounts_can_read_listed_reports_and_evidence() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        team_a, team_b = await two_teams(client)
+        report_id, photo_id = await upload_report_photo(client, team_a)
+        other_report_id, _ = await upload_report_photo(client, team_b)
+        accounts_email, accounts_password = await create_user("accounts")
+        accounts = auth(await login_for_token(client, accounts_email, accounts_password))
+
+        for team, expected_id in ((team_a, report_id), (team_b, other_report_id)):
+            reports = await client.get(
+                "/api/v1/reports", params={"project_id": team["project_id"]}, headers=accounts
+            )
+            assert reports.status_code == 200
+            assert {item["id"] for item in reports.json()["items"]} == {expected_id}
+            detail = await client.get(f"/api/v1/reports/{expected_id}", headers=accounts)
+            assert detail.status_code == 200
+            assert detail.json()["id"] == expected_id
+
+        photo_list = await client.get(
+            "/api/v1/photos",
+            params={"entity_type": "daily_report", "entity_id": report_id},
+            headers=accounts,
+        )
+        assert photo_list.status_code == 200
+        assert {item["id"] for item in photo_list.json()["items"]} == {photo_id}
+        photo = await client.get(f"/api/v1/photos/{photo_id}", headers=accounts)
+        assert photo.status_code == 200
+        for variant in ("download", "thumbnail"):
+            link = await client.get(f"/api/v1/photos/{photo_id}/{variant}", headers=accounts)
+            assert link.status_code == 200
+            assert link.json()["expires_in_seconds"] > 0
+
+        draft_pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=accounts)
+        assert draft_pdf.status_code == 409
+        assert draft_pdf.json()["error_code"] == "REPORT_EXPORT_REQUIRES_APPROVAL"
+        denied_update = await client.put(
+            f"/api/v1/reports/{report_id}",
+            json=report_payload(team_a["project_id"]),
+            headers=accounts,
+        )
+        assert denied_update.status_code == 403
+        denied_submit = await client.post(f"/api/v1/reports/{report_id}/submit", headers=accounts)
+        assert denied_submit.status_code == 403
+        denied_upload = await client.post(
+            "/api/v1/photos/upload",
+            data={"entity_type": "daily_report", "entity_id": report_id, "kind": "photo"},
+            files={"files": ("site.jpg", jpeg_bytes(), "image/jpeg")},
+            headers=accounts,
+        )
+        assert denied_upload.status_code == 403
+        denied_delete = await client.delete(f"/api/v1/photos/{photo_id}", headers=accounts)
+        assert denied_delete.status_code == 403
+
+        submitted = await client.post(
+            f"/api/v1/reports/{report_id}/submit", headers=auth(team_a["engineer_token"])
+        )
+        assert submitted.status_code == 200, submitted.text
+        decision = {"comments": "Ready for archive.", "target_covered": True}
+        denied_approval = await client.post(
+            f"/api/v1/reports/{report_id}/approve", json=decision, headers=accounts
+        )
+        assert denied_approval.status_code == 403
+        approved = await client.post(
+            f"/api/v1/reports/{report_id}/approve",
+            json=decision,
+            headers=auth(team_a["manager_token"]),
+        )
+        assert approved.status_code == 200, approved.text
+
+        pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=accounts)
+        assert pdf.status_code == 200
+        assert pdf.headers["content-type"] == "application/pdf"
+        assert pdf.content.startswith(b"%PDF-") and pdf.content.rstrip().endswith(b"%%EOF")
+        for outsider in (team_b["manager_token"], team_b["engineer_token"]):
+            pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=auth(outsider))
+            assert pdf.status_code == 404
 
 
 async def test_recent_feed_rejects_non_report_entity_types() -> None:

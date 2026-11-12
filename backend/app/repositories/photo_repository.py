@@ -60,20 +60,22 @@ class PhotoRepository:
         limit: int = 100,
         offset: int = 0,
         project_ids: list[UUID] | None = None,
+        engineer_id: UUID | None = None,
     ) -> tuple[list[Photo], int]:
         query: Select = select(Photo).where(Photo.deleted_at.is_(None))
         if entity_type:
             query = query.where(Photo.entity_type == entity_type)
         if kind:
             query = query.where(Photo.kind == kind)
-        if project_ids is not None:
-            # None means company-wide. Otherwise the feed is limited to daily reports in
-            # the actor's projects; an empty list deliberately matches nothing.
+        if project_ids is not None or engineer_id is not None:
             query = query.join(DailyReport, DailyReport.id == Photo.entity_id).where(
                 Photo.entity_type == "daily_report",
                 DailyReport.deleted_at.is_(None),
-                DailyReport.project_id.in_(project_ids),
             )
+        if project_ids is not None:
+            query = query.where(DailyReport.project_id.in_(project_ids))
+        if engineer_id is not None:
+            query = query.where(DailyReport.engineer_id == engineer_id)
         total = await self.session.scalar(
             select(func.count()).select_from(query.with_only_columns(Photo.id).subquery())
         )
