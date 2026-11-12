@@ -4,11 +4,13 @@ import argparse
 import gzip
 import hashlib
 import os
+import shutil
 import subprocess
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 SQL_MARKERS = ("CREATE TABLE", "ALTER TABLE", "COPY ", "INSERT INTO", "SET ")
 
@@ -43,38 +45,40 @@ def inspect_backup(path: Path) -> dict[str, Any]:
     }
 
 
-def restore_backup(backup_path: Path, database_url: str) -> None:
+def restore_backup(backup_path: Path, database_url: str, *, quiet: bool = False) -> None:
+    parts = urlsplit(database_url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    environment = os.environ.copy()
+    if parts.password is not None:
+        environment["PGPASSWORD"] = unquote(parts.password)
+        credentials, host = parts.netloc.rsplit("@", 1)
+        parts = parts._replace(netloc=f"{credentials.split(':', 1)[0]}@{host}")
+    command = [
+        "psql",
+        "--set",
+        "ON_ERROR_STOP=on",
+        "--single-transaction",
+        "--dbname",
+        parts.geturl(),
+    ]
     if backup_path.suffix == ".gz":
-        with tempfile.NamedTemporaryFile(suffix=".sql") as temp_file:
-            with gzip.open(backup_path, "rb") as source:
-                temp_file.write(source.read())
+        with (
+            tempfile.NamedTemporaryFile(suffix=".sql") as temp_file,
+            gzip.open(backup_path, "rb") as source,
+        ):
+            shutil.copyfileobj(source, temp_file)
             temp_file.flush()
             subprocess.run(
-                [
-                    "psql",
-                    "--set",
-                    "ON_ERROR_STOP=on",
-                    "--single-transaction",
-                    "--dbname",
-                    database_url,
-                    "--file",
-                    temp_file.name,
-                ],
+                [*command, "--file", temp_file.name],
                 check=True,
+                env=environment,
+                capture_output=quiet,
             )
     else:
         subprocess.run(
-            [
-                "psql",
-                "--set",
-                "ON_ERROR_STOP=on",
-                "--single-transaction",
-                "--dbname",
-                database_url,
-                "--file",
-                str(backup_path),
-            ],
+            [*command, "--file", str(backup_path)],
             check=True,
+            env=environment,
+            capture_output=quiet,
         )
 
 

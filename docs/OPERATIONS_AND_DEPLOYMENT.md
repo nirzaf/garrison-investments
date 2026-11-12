@@ -144,6 +144,30 @@ python scripts/restore_dry_run.py \
 
 Check for `Restore status: executed` in the evidence. With no restore database URL, the receipt is `validated-only`. Include the backup object name, timestamp, operator, target isolation, and verified results with the receipt.
 
+### Independent database and file recovery drill
+
+Agree on the backup destination, key custodian, retained evidence, recovery point and recovery time targets before accepting a release. Use a destination that remains accessible if the portal host and its object storage are unavailable. Keep the manifest private because it includes object identifiers. Store deployment configuration and keys through the approved recovery procedure.
+
+[The backup-set tool](../backend/scripts/backup_set.py) captures the application database and required files. It reads database references from the same PostgreSQL snapshot as the dump. The set includes active and superseded document versions, report PDFs, current invoice and supplier attachments, and photo originals and generated variants for active and recoverable records. If policy retains replaced attachment objects, supply their keys from the approved inventory with `--extra-objects`. Supply `BACKUP_GRAFANA_DATABASE_URL` in the private environment to include the Grafana database. Capture during a recorded write pause that also covers the object store and any Grafana database included in the set.
+
+From the authorized backend environment, set `BACKUP_ENCRYPTION_PASSWORD` privately. Create a new set directory on the approved destination and verify its encrypted artifacts.
+
+```bash
+python -m scripts.backup_set capture \
+  --source-sha "$RELEASE_SHA" \
+  --consistency-note "$WRITE_PAUSE_EVIDENCE" \
+  --destination /private/independent-storage/backup-set
+python -m scripts.backup_set verify /private/independent-storage/backup-set
+```
+
+The `verify` command checks artifact presence, size and SHA-256. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
+
+```bash
+python -m scripts.backup_set restore /private/independent-storage/backup-set
+```
+
+The restore checks decrypted bytes before writing and checks the resulting schema, database references, and restored object checksums. Start the isolated application and open the required protected files under authorized and forbidden accounts. Include the backup set identity, source SHA, schema head, UTC timings, missing or corrupt artifact tests, key access, and actual recovery results in the release evidence. Local fixtures establish tool behavior. The release still requires a drill with the approved destination, retained data scope, operator, and measured targets.
+
 ### Data checks and repairs
 
 | Case | Operator action |

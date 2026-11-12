@@ -22,17 +22,21 @@ def normalize_pg_url(database_url: str) -> str:
     return database_url
 
 
-def create_dump(database_url: str, output_path: Path) -> None:
+def create_dump(database_url: str, output_path: Path, *, snapshot: str | None = None) -> None:
     parts = urlsplit(normalize_pg_url(database_url))
     environment = os.environ.copy()
     if parts.password is not None:
         environment["PGPASSWORD"] = unquote(parts.password)
         credentials, host = parts.netloc.rsplit("@", 1)
         parts = parts._replace(netloc=f"{credentials.split(':', 1)[0]}@{host}")
-    command = ["pg_dump", "--format=plain", "--no-owner", parts.geturl()]
-    with gzip.open(output_path, "wb") as compressed, subprocess.Popen(
-        command, stdout=subprocess.PIPE, env=environment
-    ) as dump:
+    command = ["pg_dump", "--format=plain", "--no-owner"]
+    if snapshot is not None:
+        command.extend(("--snapshot", snapshot))
+    command.append(parts.geturl())
+    with (
+        gzip.open(output_path, "wb") as compressed,
+        subprocess.Popen(command, stdout=subprocess.PIPE, env=environment) as dump,
+    ):
         assert dump.stdout is not None
         shutil.copyfileobj(dump.stdout, compressed)
         exit_status = dump.wait()
