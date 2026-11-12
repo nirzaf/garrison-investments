@@ -147,7 +147,9 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_REVISION_CONFLICT",
             )
-        self._validate_report_date(payload.report_date, actor)
+        # The report date was accepted when the official number was assigned.
+        if not report.report_number or payload.report_date != report.report_date:
+            self._validate_report_date(payload.report_date, actor)
         if payload.project_id != report.project_id:
             await self._ensure_project_member(payload.project_id, actor)
         bound_ids = await self.supervisor_updates.bound_ids(report.id)
@@ -185,7 +187,8 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_LOCKED",
             )
-        self._validate_report_date(report.report_date, actor)
+        if not report.report_number:
+            self._validate_report_date(report.report_date, actor)
         project = await self._ensure_project_member(report.project_id, actor)
         await self._verify_supervisor_updates(report, actor)
         if not report.report_number:

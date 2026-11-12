@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 import httpx
@@ -317,7 +318,9 @@ async def test_non_engineer_cannot_create_daily_report() -> None:
         assert response.status_code == 403
 
 
-async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence() -> None:
+async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
@@ -330,6 +333,19 @@ async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence() -
         url = f"/api/v1/reports/{created.json()['id']}"
         submitted = await client.post(f"{url}/submit", headers=engineer)
         assert submitted.status_code == 200
+
+        first_draft = await client.post(
+            "/api/v1/reports", json={**payload, "supervisor_update_ids": []}, headers=engineer
+        )
+        assert first_draft.status_code == 201
+        next_business_day = date.fromisoformat(payload["report_date"]) + timedelta(days=1)
+        monkeypatch.setattr("app.services.report_service.business_today", lambda: next_business_day)
+
+        old_unsubmitted = await client.post(
+            f"/api/v1/reports/{first_draft.json()['id']}/submit", headers=engineer
+        )
+        assert old_unsubmitted.status_code == 422
+        assert old_unsubmitted.json()["error_code"] == "DAILY_REPORT_PAST_DATE_REQUIRES_ADMIN"
 
         rejected = await client.post(f"{url}/reject", json={"comments": "Revise"}, headers=manager)
         assert rejected.status_code == 200
@@ -353,6 +369,7 @@ async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence() -
         resubmitted = await client.post(f"{url}/submit", headers=engineer)
         assert resubmitted.status_code == 200, resubmitted.json()
         assert resubmitted.json()["report_number"] == submitted.json()["report_number"]
+        assert resubmitted.json()["report_date"] == payload["report_date"]
         assert resubmitted.json()["supervisor_update_ids"] == payload["supervisor_update_ids"]
         evidence_after = await client.get(f"{url}/supervisor-updates", headers=manager)
         assert evidence_after.json() == [retained]
