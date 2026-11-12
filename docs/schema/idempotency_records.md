@@ -4,7 +4,7 @@ Request keys and resource references used to deduplicate retried writes.
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/idempotency_record.py)
 
-The [idempotency service](../../backend/app/services/idempotency.py) scopes a key by user and route. It reserves the key before creating the resource and binds `resource_id` in the same transaction. The resource fields can refer to different kinds of records.
+The [idempotency service](../../backend/app/services/idempotency.py) scopes a key by user and route. It reserves the key before creating the resource and binds `resource_id` in the same transaction. Selected material quantity commands also persist a canonical request fingerprint and their result. The same key and payload return that result, while a changed payload conflicts.
 
 ## Columns
 
@@ -16,6 +16,8 @@ The [idempotency service](../../backend/app/services/idempotency.py) scopes a ke
 | `route` | `varchar(100)` | No | — |
 | `resource_type` | `varchar(50)` | Yes | — |
 | `resource_id` | `uuid` | Yes | — |
+| `request_fingerprint` | `varchar(64)` | Yes | — |
+| `response_json` | `jsonb` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |
 
 ## Keys and constraints

@@ -14,6 +14,7 @@ Project material requests, including the source storage location and estimated c
 | `requester_id` | `uuid` | Yes | — |
 | `from_location_id` | `uuid` | Yes | — |
 | `status` | `varchar(30)` | No | `'requested'` |
+| `revision` | `integer` | No | `1` |
 | `total_estimated_cost` | `numeric(14, 2)` | No | `0` |
 | `notes` | `text` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |

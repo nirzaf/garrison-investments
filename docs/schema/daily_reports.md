@@ -4,7 +4,7 @@ Engineer-authored daily site reports, with workflow status, referenced updates, 
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/daily_report.py)
 
-The [report service](../../backend/app/services/report_service.py) assigns `report_number` on submission. The unique index applies once the number is present. The revision advances on report edits and workflow transitions.
+The [report service](../../backend/app/services/report_service.py) assigns `report_number` on submission. The unique index applies once the number is present. The revision advances on report edits, workflow transitions, and linked media changes.
 
 ## Columns
 
