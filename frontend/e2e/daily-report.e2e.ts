@@ -116,7 +116,20 @@ test('photos selected offline on one draft sync to one report, which can still b
     attachment_refs: [{ name: 'inspection-notes.pdf', kind: 'file' }]
   });
 
+  await page.reload();
+  const reportCard = page.getByRole('article').filter({ hasText: 'East wing' });
+  await reportCard.getByRole('button', { name: 'Resume report' }).click();
+  await expect(page.getByLabel('Work completed')).toHaveValue('Set and inspected the formwork.');
+  await expect(page.getByText('inspection.jpg', { exact: true })).toBeVisible();
   await page.getByLabel('Next-day plan').fill('Pour concrete after inspection.');
+  await context.setOffline(true);
+  try {
+    await expect(page.getByText(/^Local draft active\./)).toBeVisible();
+  } finally {
+    await context.setOffline(false);
+  }
+  await page.reload();
+  await expect(page.getByLabel('Next-day plan')).toHaveValue('Pour concrete after inspection.');
   await page.getByRole('button', { name: 'Submit report' }).click();
   await expect(page.getByText(/^Daily report .* submitted\.$/)).toBeVisible();
   const submitted = await getReports();

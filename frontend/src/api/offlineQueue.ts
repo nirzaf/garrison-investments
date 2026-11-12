@@ -103,10 +103,16 @@ async function store<T>(
   });
 }
 
-export async function saveReportDraft(payload: DailyReportPayload, draftKey: string | null) {
+type SavedReportReference = { id: string; engineerId: string };
+
+export async function saveReportDraft(
+  payload: DailyReportPayload,
+  draftKey: string | null,
+  serverReport?: SavedReportReference
+) {
   await store(REPORT_DRAFTS, 'readwrite', (drafts) =>
     drafts.put(
-      { payload, draftKey, savedAt: new Date().toISOString(), syncStatus: 'local' },
+      { payload, draftKey, serverReport, savedAt: new Date().toISOString(), syncStatus: 'local' },
       'daily-report'
     )
   );
@@ -115,6 +121,7 @@ export async function saveReportDraft(payload: DailyReportPayload, draftKey: str
 export async function getReportDraft(): Promise<{
   payload: DailyReportPayload;
   draftKey?: string | null;
+  serverReport?: SavedReportReference;
   savedAt: string;
   syncStatus: string;
 } | null> {
@@ -297,9 +304,7 @@ async function drainPhotoQueue() {
           });
           await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.delete(item.id));
         } catch {
-          await store(PHOTO_QUEUE, 'readwrite', (queue) =>
-            queue.put(retryPatch(item, entityId))
-          );
+          await store(PHOTO_QUEUE, 'readwrite', (queue) => queue.put(retryPatch(item, entityId)));
         }
       }
     } catch {

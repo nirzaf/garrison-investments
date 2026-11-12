@@ -12,7 +12,7 @@ import {
   registerBackgroundSync,
   saveReportDraft
 } from '../../api/offlineQueue';
-import { uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createDailyReport,
@@ -88,6 +88,56 @@ function parseRefs(value: string, kind: string) {
     .map((name) => ({ name, kind }));
 }
 
+function restoreRefs(refs: DailyReportRecord['photo_refs'], defaultKind: string) {
+  return refs.flatMap(({ name, kind }) =>
+    typeof name === 'string' ? [{ name, kind: typeof kind === 'string' ? kind : defaultKind }] : []
+  );
+}
+
+function reportForm(report: DailyReportRecord): DailyReportPayload {
+  return {
+    project_id: report.project_id,
+    report_date: report.report_date,
+    work_location: report.work_location,
+    manpower_total: report.manpower_total,
+    overtime_hours: report.overtime_hours,
+    work_completed: report.work_completed,
+    progress_percentage: report.progress_percentage,
+    safety_incidents: report.safety_incidents,
+    safety_notes: report.safety_notes,
+    wir_status: report.wir_status,
+    inspection_status: report.inspection_status,
+    delay_notes: report.delay_notes,
+    next_day_plan: report.next_day_plan,
+    supervisor_update_ids: report.supervisor_update_ids,
+    photo_refs: restoreRefs(report.photo_refs, 'photo'),
+    attachment_refs: restoreRefs(report.attachment_refs, 'file'),
+    manpower_entries: report.manpower_entries.map(({ trade, count, overtime_hours }) => ({
+      trade,
+      count,
+      overtime_hours
+    })),
+    equipment_entries: report.equipment_entries.map(
+      ({ equipment_name, quantity, hours_used, remarks }) => ({
+        equipment_name,
+        quantity,
+        hours_used,
+        remarks
+      })
+    ),
+    material_consumption: report.material_consumption.map(
+      ({ boq_item_id, material_name, quantity, unit, remarks }) => ({
+        boq_item_id,
+        material_name,
+        quantity,
+        unit,
+        remarks
+      })
+    ),
+    extra_fields: { ...emptyPayload.extra_fields, ...report.extra_fields }
+  };
+}
+
 function withManpowerTotals(form: DailyReportPayload): DailyReportPayload {
   const totals = form.manpower_entries.reduce(
     (total, entry) => ({
@@ -130,6 +180,7 @@ const t = (str: string) => str;
 
 export function DailyReportPage() {
   const { user } = useAuth();
+  const currentUserId = user?.id;
   const [searchParams] = useSearchParams();
   const focusedReportId = searchParams.get('reportId');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -164,6 +215,17 @@ export function DailyReportPage() {
     [form.project_id, projects]
   );
   const canSubmitReports = user?.permissions?.includes('reports:submit') ?? false;
+  const saveLocalDraft = useCallback(
+    (payload: DailyReportPayload) =>
+      saveReportDraft(
+        payload,
+        draftKey.current,
+        savedReportId && currentUserId
+          ? { id: savedReportId, engineerId: currentUserId }
+          : undefined
+      ),
+    [currentUserId, savedReportId]
+  );
 
   const loadReports = useCallback(async (projectId?: string) => {
     const response = await listDailyReports({ project_id: projectId || undefined });
@@ -181,8 +243,13 @@ export function DailyReportPage() {
 
   useEffect(() => {
     void getReportDraft().then((draft) => {
-      if (draft?.payload && formHasDraftContent(draft.payload)) {
+      if (
+        draft?.payload &&
+        (!draft.serverReport || draft.serverReport.engineerId === currentUserId) &&
+        formHasDraftContent(draft.payload)
+      ) {
         draftKey.current = draft.draftKey ?? null;
+        setSavedReportId(draft.serverReport?.id ?? null);
         setForm(draft.payload);
         setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
         setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
@@ -192,7 +259,7 @@ export function DailyReportPage() {
       setDraftHydrated(true);
     });
     void queuedPhotoCount().then(setQueuedUploads);
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!draftHydrated) return;
@@ -210,13 +277,13 @@ export function DailyReportPage() {
       return () => window.clearTimeout(timer);
     }
     const timer = window.setTimeout(() => {
-      void saveReportDraft(form, draftKey.current).then(() => {
+      void saveLocalDraft(form).then(() => {
         persistedDraftSnapshot.current = snapshot;
         setDraftStatus('local');
       });
     }, 800);
     const interval = window.setInterval(() => {
-      void saveReportDraft(form, draftKey.current).then(() => {
+      void saveLocalDraft(form).then(() => {
         persistedDraftSnapshot.current = JSON.stringify(form);
         setDraftStatus('local');
       });
@@ -225,7 +292,7 @@ export function DailyReportPage() {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
-  }, [draftHydrated, form]);
+  }, [draftHydrated, form, saveLocalDraft]);
 
   useEffect(() => {
     const syncQueued = () => {
@@ -321,6 +388,42 @@ export function DailyReportPage() {
     });
   }
 
+  async function resumeReport(report: DailyReportRecord) {
+    const hasLocalEdits =
+      formHasDraftContent({ ...form, project_id: '' }) &&
+      JSON.stringify(form) !== serverSavedSnapshot.current;
+    if (hasLocalEdits && !window.confirm('Replace the unsaved report in this form?')) return;
+
+    const payload = reportForm(report);
+    const snapshot = JSON.stringify(payload);
+    setError(null);
+    setErrors({});
+    setIsSaving(true);
+    setSavedReportId(report.id);
+    draftKey.current = null;
+    setForm(payload);
+    setPhotoNames(payload.photo_refs.map(({ name }) => name).join('\n'));
+    setAttachmentNames(payload.attachment_refs.map(({ name }) => name).join('\n'));
+    setUploadedFiles([]);
+    serverSavedSnapshot.current = snapshot;
+    persistedDraftSnapshot.current = snapshot;
+    setDraftStatus('idle');
+    setNotice(
+      report.rejection_comments
+        ? `Review feedback: ${report.rejection_comments}`
+        : 'Report reopened.'
+    );
+    try {
+      await saveReportDraft(payload, null, { id: report.id, engineerId: report.engineer_id });
+      const files = await listPhotos({ entityType: 'daily_report', entityId: report.id });
+      setUploadedFiles(files.items);
+    } catch (loadError) {
+      setError(formatApiError(loadError, 'Unable to load the saved report or its attachments.'));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function saveDraft() {
     if (!validate()) return null;
     setIsSaving(true);
@@ -357,6 +460,7 @@ export function DailyReportPage() {
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!validate()) return;
     const unchanged = JSON.stringify(buildPayload()) === serverSavedSnapshot.current;
     const reportId = savedReportId && unchanged ? savedReportId : await saveDraft();
     if (!reportId) return;
@@ -416,7 +520,7 @@ export function DailyReportPage() {
     if (!navigator.onLine) {
       if (!validate()) return;
       const entityId = savedReportId ?? getDraftKey();
-      await saveReportDraft(payload, draftKey.current);
+      await saveLocalDraft(payload);
       await queueFiles({
         entityType: 'daily_report',
         entityId,
@@ -1015,7 +1119,10 @@ export function DailyReportPage() {
                   onChange={(event) => {
                     const names = event.target.value;
                     setAttachmentNames(names);
-                    setForm((current) => ({ ...current, attachment_refs: parseRefs(names, 'file') }));
+                    setForm((current) => ({
+                      ...current,
+                      attachment_refs: parseRefs(names, 'file')
+                    }));
                   }}
                   placeholder="inspection.pdf"
                   value={attachmentNames}
@@ -1098,6 +1205,18 @@ export function DailyReportPage() {
                 <p className="mt-1 text-xs text-theme-text-muted">
                   {report.progress_percentage}% progress
                 </p>
+                {canSubmitReports &&
+                report.engineer_id === currentUserId &&
+                (report.status === 'draft' || report.status === 'rejected') ? (
+                  <button
+                    className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-50"
+                    disabled={!draftHydrated || isSaving || savedReportId === report.id}
+                    onClick={() => void resumeReport(report)}
+                    type="button"
+                  >
+                    Resume report
+                  </button>
+                ) : null}
                 {report.status === 'approved' ? (
                   <button
                     className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main"
