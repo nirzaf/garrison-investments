@@ -89,7 +89,13 @@ test('store requester selects company project and fulfills chosen quantities acr
     });
   }
 
+  const project = await adminPage.request.get(`/api/v1/projects/${admin.projectId}`, {
+    headers: adminHeaders
+  });
+  expect(project.ok()).toBe(true);
+  const { code: projectCode } = await project.json();
   await storePage.goto('/materials');
+  await storePage.getByLabel('Search eligible projects').fill(projectCode);
   await expect(
     storePage
       .getByRole('combobox', { name: 'Request project' })
@@ -123,11 +129,15 @@ test('store requester selects company project and fulfills chosen quantities acr
   const approval = (await outbox.json()).items.find(
     (item: { request_id: string }) => item.request_id === request.id
   );
-  const decision = await adminPage.request.post(`/api/v1/approvals/${approval.id}/override`, {
-    headers: adminHeaders,
-    data: { decision: 'approved', reason: 'Isolated browser verification' }
-  });
-  expect(decision.ok()).toBe(true);
+  const workflowLink = `/approvals?tab=workflow&approvalId=${approval.id}`;
+  await adminPage.goto(workflowLink);
+  const workflow = adminPage.getByRole('article').filter({ hasText: request.request_number });
+  await workflow.getByPlaceholder('Override reason').fill('Isolated browser verification');
+  await workflow.getByRole('button', { name: 'Override', exact: true }).click();
+  await expect(workflow).toContainText('override_approved');
+  await adminPage.reload();
+  await expect(workflow).toContainText('override_approved');
+  await expect(workflow.getByRole('button', { name: 'Override', exact: true })).toHaveCount(0);
 
   await storePage.goto(`/materials?materialRequestId=${request.id}`);
   const card = storePage.locator('article').filter({ hasText: request.request_number });

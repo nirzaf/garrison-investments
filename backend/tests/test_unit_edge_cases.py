@@ -347,7 +347,12 @@ def test_finance_attachment_validation_accepts_supported_files(
     [
         ("invoice.exe", b"MZ", 422, "File type is blocked."),
         ("invoice.txt", b"plain text", 422, "Unsupported invoice attachment type."),
-        ("huge.pdf", b"%PDF-" + b"x" * MAX_INVOICE_FILE_SIZE, 413, "File exceeds the 10 MB limit."),
+        (
+            "huge.pdf",
+            b"%PDF-" + b"x" * MAX_INVOICE_FILE_SIZE,
+            413,
+            "File exceeds the 10 MiB limit.",
+        ),
     ],
 )
 def test_finance_attachment_validation_rejects_blocked_unsupported_and_oversized_files(

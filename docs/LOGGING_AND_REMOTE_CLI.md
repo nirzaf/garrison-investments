@@ -116,6 +116,8 @@ Use rotated Docker logs while the collection pipeline is being restored. On prod
 prod logs --since 30m backend celery_worker celery_beat
 ```
 
+Treat raw Nginx error logs as restricted. An upstream error can include its original signed URL before Alloy redacts collected output. Use the redacted Loki view for sharing incident excerpts.
+
 The [standalone HTTP monitor](../backend/scripts/health_monitor.py) can probe an external URL from a host with SMTP relay access. Grafana alerting and this monitor use separate delivery paths.
 
 ## Verify logging changes
