@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import { AlertTriangle, Check, Forward, ShieldCheck, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -93,20 +94,20 @@ export function ApprovalInboxPage() {
   }
 
   function isEntityPending(entityKey: string) {
-    return Object.keys(pendingActions).some((key) => key.startsWith(`${entityKey}:`));
+    return pendingActions[entityKey] === true;
   }
 
-  async function runAction(actionKey: string, action: () => Promise<void>) {
-    if (pendingActionsRef.current.has(actionKey)) return;
-    pendingActionsRef.current.add(actionKey);
-    setPendingActions((current) => ({ ...current, [actionKey]: true }));
+  async function runAction(entityKey: string, action: () => Promise<void>) {
+    if (pendingActionsRef.current.has(entityKey)) return;
+    pendingActionsRef.current.add(entityKey);
+    setPendingActions((current) => ({ ...current, [entityKey]: true }));
     try {
       await action();
     } finally {
-      pendingActionsRef.current.delete(actionKey);
+      pendingActionsRef.current.delete(entityKey);
       setPendingActions((current) => {
         const next = { ...current };
-        delete next[actionKey];
+        delete next[entityKey];
         return next;
       });
     }
@@ -172,6 +173,20 @@ export function ApprovalInboxPage() {
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [focusedReportId, reports, tab]);
 
+  async function showDecisionError(cause: unknown, fallback: string) {
+    const detail = formatApiError(cause, fallback);
+    if (isAxiosError(cause) && cause.response?.status === 409) {
+      await loadReports();
+      setError((current) =>
+        ['The approval changed while this page was open.', detail, current]
+          .filter(Boolean)
+          .join(' ')
+      );
+      return;
+    }
+    setError(detail);
+  }
+
   async function approve(report: DailyReportRecord) {
     setError(null);
     setNotice(null);
@@ -187,8 +202,8 @@ export function ApprovalInboxPage() {
       );
       setNotice(`Approved ${updated.report_number}.`);
       await loadReports();
-    } catch {
-      setError('Unable to approve the report.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to approve the report.');
     }
   }
 
@@ -212,8 +227,8 @@ export function ApprovalInboxPage() {
       });
       setNotice(`Report override ${payload.decision}.`);
       await loadReports();
-    } catch {
-      setError('Unable to override the report.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to override the report.');
     }
   }
 
@@ -229,8 +244,8 @@ export function ApprovalInboxPage() {
       await rejectDailyReport(report.id, comments);
       setNotice('Report rejected and returned to draft.');
       await loadReports();
-    } catch {
-      setError('Unable to reject the report.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to reject the report.');
     }
   }
 
@@ -241,8 +256,8 @@ export function ApprovalInboxPage() {
       await approveGenericApproval(approval.id, commentsByApproval[approval.id]);
       setNotice('Approval completed.');
       await loadReports();
-    } catch {
-      setError('Unable to approve the workflow item.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to approve the workflow item.');
     }
   }
 
@@ -258,8 +273,8 @@ export function ApprovalInboxPage() {
       await rejectGenericApproval(approval.id, comments);
       setNotice('Approval rejected.');
       await loadReports();
-    } catch {
-      setError('Unable to reject the workflow item.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to reject the workflow item.');
     }
   }
 
@@ -278,8 +293,8 @@ export function ApprovalInboxPage() {
       });
       setNotice('Approval delegated.');
       await loadReports();
-    } catch {
-      setError('Unable to delegate the workflow item.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to delegate the workflow item.');
     }
   }
 
@@ -298,8 +313,8 @@ export function ApprovalInboxPage() {
       });
       setNotice(`Approval override ${payload.decision}.`);
       await loadReports();
-    } catch {
-      setError('Unable to override the workflow item.');
+    } catch (cause) {
+      await showDecisionError(cause, 'Unable to override the workflow item.');
     }
   }
 
@@ -413,7 +428,10 @@ export function ApprovalInboxPage() {
         </div>
       ) : null}
       {error ? (
-        <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm">
+        <div
+          className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm"
+          role="alert"
+        >
           <AlertTriangle className="h-4 w-4" />
           <span>{error}</span>
         </div>
@@ -532,7 +550,7 @@ export function ApprovalInboxPage() {
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={isEntityPending(`approval:${approval.id}`)}
                             onClick={() =>
-                              void runAction(`approval:${approval.id}:delegate`, () =>
+                              void runAction(`approval:${approval.id}`, () =>
                                 delegateWorkflow(approval)
                               )
                             }
@@ -584,7 +602,7 @@ export function ApprovalInboxPage() {
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={isEntityPending(`approval:${approval.id}`)}
                             onClick={() =>
-                              void runAction(`approval:${approval.id}:override`, () =>
+                              void runAction(`approval:${approval.id}`, () =>
                                 overrideWorkflow(approval)
                               )
                             }
@@ -604,9 +622,7 @@ export function ApprovalInboxPage() {
                       className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isEntityPending(`approval:${approval.id}`)}
                       onClick={() =>
-                        void runAction(`approval:${approval.id}:reject`, () =>
-                          rejectWorkflow(approval)
-                        )
+                        void runAction(`approval:${approval.id}`, () => rejectWorkflow(approval))
                       }
                       type="button"
                     >
@@ -619,9 +635,7 @@ export function ApprovalInboxPage() {
                       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isEntityPending(`approval:${approval.id}`)}
                       onClick={() =>
-                        void runAction(`approval:${approval.id}:approve`, () =>
-                          approveWorkflow(approval)
-                        )
+                        void runAction(`approval:${approval.id}`, () => approveWorkflow(approval))
                       }
                       type="button"
                     >
@@ -788,7 +802,7 @@ export function ApprovalInboxPage() {
                       className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isEntityPending(`report:${report.id}`)}
                       onClick={() =>
-                        void runAction(`report:${report.id}:override`, () => overrideReport(report))
+                        void runAction(`report:${report.id}`, () => overrideReport(report))
                       }
                       type="button"
                     >
@@ -803,7 +817,7 @@ export function ApprovalInboxPage() {
                 <button
                   className="btn-reject inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isEntityPending(`report:${report.id}`)}
-                  onClick={() => void runAction(`report:${report.id}:reject`, () => reject(report))}
+                  onClick={() => void runAction(`report:${report.id}`, () => reject(report))}
                   type="button"
                 >
                   <X className="h-4 w-4" />
@@ -812,9 +826,7 @@ export function ApprovalInboxPage() {
                 <button
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isEntityPending(`report:${report.id}`)}
-                  onClick={() =>
-                    void runAction(`report:${report.id}:approve`, () => approve(report))
-                  }
+                  onClick={() => void runAction(`report:${report.id}`, () => approve(report))}
                   type="button"
                 >
                   <Check className="h-4 w-4" />
