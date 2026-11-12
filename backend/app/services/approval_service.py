@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.approval import Approval
 from app.models.finance import Invoice
 from app.models.inventory import MaterialRequest
+from app.models.notification import Notification
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.approval_repository import ApprovalRepository
@@ -38,6 +39,8 @@ from app.utils.security import utc_now
 
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
 ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
+APPROVAL_REMINDER_TITLE = "Approval reminder"
+APPROVAL_ESCALATION_TITLE = "Approval escalated"
 
 # Roles that may actually decide each request type. Delegation must not hand decision
 # power to someone the owning workflow would reject: `_apply_entity_decision` writes the
@@ -526,7 +529,7 @@ class ApprovalService:
             if recipient_id and approval.reminded_at is None and approval.due_at <= now:
                 await self.notifications.create(
                     user_id=recipient_id,
-                    title="Approval reminder",
+                    title=APPROVAL_REMINDER_TITLE,
                     body=append_link(
                         f"{approval.title} is still waiting for approval.",
                         label="Open approval",
@@ -545,7 +548,7 @@ class ApprovalService:
             ):
                 await self.notifications.create(
                     user_id=approval.escalation_user_id,
-                    title="Approval escalated",
+                    title=APPROVAL_ESCALATION_TITLE,
                     body=append_link(
                         f"{approval.title} has been pending for more than 48 hours.",
                         label="Open approval",
@@ -560,6 +563,30 @@ class ApprovalService:
                 escalated += 1
         await self.session.commit()
         return reminded, escalated
+
+    async def can_deliver_scheduled_email(self, notification: Notification) -> bool:
+        if (
+            notification.notification_type != "approval"
+            or notification.reference_type != "approvals"
+            or notification.title not in {APPROVAL_REMINDER_TITLE, APPROVAL_ESCALATION_TITLE}
+        ):
+            return True
+        if notification.reference_id is None:
+            return False
+        approval = await self.approvals.get_by_id(notification.reference_id)
+        if approval is None:
+            return False
+        if approval.request_type != "material_request":
+            return True
+
+        # Hold the same parent-before-approval locks as cancellation through the email attempt.
+        try:
+            approval = await self._get(approval.id, for_update=True)
+        except NotFoundException:
+            return False
+        return approval.status in APPROVAL_PENDING_STATUSES and (
+            await self._material_request_status(approval.request_id) == "requested"
+        )
 
     async def _get(self, approval_id: UUID, *, for_update: bool = False) -> Approval:
         approval = await self.approvals.get_by_id(approval_id)

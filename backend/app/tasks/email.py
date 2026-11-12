@@ -33,6 +33,9 @@ def send_email_notification(notification_id: str | None = None) -> str:
 
 
 async def _send_email_notification(notification_id: str) -> str:
+    # ApprovalService creates notifications through the service that queues this task.
+    from app.services.approval_service import ApprovalService
+
     async with AsyncSessionLocal() as session:
         notifications = NotificationRepository(session)
         users = UserRepository(session)
@@ -45,6 +48,14 @@ async def _send_email_notification(notification_id: str) -> str:
             notification.email_status = "skipped"
             await session.commit()
             logger.info("email_muted", notification_id=notification_id)
+            return "notification email skipped"
+
+        if not await ApprovalService(session).can_deliver_scheduled_email(notification):
+            await session.refresh(notification, ["email_status"])
+            if notification.email_status != "sent":
+                notification.email_status = "skipped"
+            await session.commit()
+            logger.info("approval_email_no_longer_actionable", notification_id=notification_id)
             return "notification email skipped"
 
         user = await users.get_by_id(notification.user_id)

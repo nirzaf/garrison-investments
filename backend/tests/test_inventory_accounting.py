@@ -34,7 +34,9 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.inventory import LocationCreateRequest, MaterialQuantityCommand
 from app.services.approval_service import ApprovalService
+from app.services.email_service import EmailDeliveryError
 from app.services.inventory_service import InventoryService
+from app.tasks.email import _send_email_notification
 from app.utils.exceptions import AppException
 from app.utils.security import hash_password, utc_now
 from tests.concurrency_helpers import SessionOperation, error_codes, race_sessions, status_counts
@@ -363,6 +365,46 @@ async def test_cancel_and_overdue_reminder_serialize(cancel_first: bool) -> None
             [] if cancel_first else ["Approval escalated", "Approval reminder"]
         )
     await assert_cancelled_without_stock_effect(fixture, decisions=1)
+
+
+async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(on_hand=Decimal("10"), quantity=Decimal("4"), status="requested")
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
+    monkeypatch.setattr("app.tasks.email.send_email_notification.delay", lambda _id: None)
+    attempts: list[str] = []
+
+    def reject_delivery(self: object, *, recipients: list[str], subject: str, body: str) -> int:
+        assert recipients == [approver.email]
+        attempts.append(subject)
+        return 0
+
+    monkeypatch.setattr("app.tasks.email.EmailService.send", reject_delivery)
+    async with AsyncSessionLocal() as session:
+        await ApprovalService(session).send_reminders_and_escalations()
+        notifications = await session.scalars(
+            select(Notification).where(Notification.reference_id == approval_id)
+        )
+        deliveries = {notification.title: str(notification.id) for notification in notifications}
+    assert deliveries.keys() == {"Approval reminder", "Approval escalated"}
+
+    with pytest.raises(EmailDeliveryError):
+        await _send_email_notification(deliveries["Approval reminder"])
+    assert attempts == ["Approval reminder"]
+    async with AsyncSessionLocal() as session:
+        await InventoryService(session).cancel_request(fixture.request.id, fixture.engineer)
+
+    for notification_id in deliveries.values():
+        assert await _send_email_notification(notification_id) == "notification email skipped"
+    assert attempts == ["Approval reminder"]
+    async with AsyncSessionLocal() as session:
+        email_statuses = await session.scalars(
+            select(Notification.email_status).where(Notification.reference_id == approval_id)
+        )
+        assert email_statuses.all() == ["skipped", "skipped"]
 
 
 async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None:
