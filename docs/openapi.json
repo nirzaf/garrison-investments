@@ -2727,18 +2727,6 @@
             ],
             "title": "Amount"
           },
-          "attachment_key": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attachment Key"
-          },
           "due_date": {
             "format": "date",
             "title": "Due Date",
@@ -2786,6 +2774,7 @@
           "tax_amount": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -2829,6 +2818,20 @@
       },
       "InvoiceResponse": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "correct",
+                "resubmit",
+                "approve",
+                "reject",
+                "record_payment"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "amount": {
             "title": "Amount",
             "type": "string"
@@ -2910,6 +2913,16 @@
             ],
             "title": "Notes"
           },
+          "outstanding_amount": {
+            "readOnly": true,
+            "title": "Outstanding Amount",
+            "type": "string"
+          },
+          "paid_total": {
+            "readOnly": true,
+            "title": "Paid Total",
+            "type": "string"
+          },
           "payment_status": {
             "title": "Payment Status",
             "type": "string"
@@ -2926,6 +2939,21 @@
             "title": "Project Id",
             "type": "string"
           },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2941,6 +2969,17 @@
               }
             ],
             "title": "Supplier Id"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
           },
           "tax_amount": {
             "title": "Tax Amount",
@@ -2968,13 +3007,121 @@
           "approved_by",
           "approved_at",
           "notes",
-          "payments"
+          "revision",
+          "payments",
+          "paid_total",
+          "outstanding_amount"
         ],
         "title": "InvoiceResponse",
         "type": "object"
       },
-      "InvoiceUpdateRequest": {
+      "InvoiceSupplierOption": {
         "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "InvoiceSupplierOption",
+        "type": "object"
+      },
+      "InvoiceSupplierOptionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceSupplierOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InvoiceSupplierOptionsResponse",
+        "type": "object"
+      },
+      "InvoiceUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_number": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Number"
+          },
           "notes": {
             "anyOf": [
               {
@@ -2997,6 +3144,33 @@
               }
             ],
             "title": "Status"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Amount"
           }
         },
         "title": "InvoiceUpdateRequest",
@@ -6686,6 +6860,10 @@
             "title": "Rating",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "tax_registration_number": {
             "title": "Tax Registration Number",
             "type": "string"
@@ -6700,6 +6878,18 @@
               }
             ],
             "title": "Tds Certificate Number"
+          },
+          "tds_days_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "title": "Tds Days Remaining"
           },
           "tds_document_key": {
             "anyOf": [
@@ -6740,12 +6930,15 @@
           "tds_expiry_date",
           "tds_document_key",
           "compliance_status",
-          "is_active"
+          "is_active",
+          "revision",
+          "tds_days_remaining"
         ],
         "title": "SupplierResponse",
         "type": "object"
       },
       "SupplierUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "anyOf": [
@@ -6808,6 +7001,18 @@
               }
             ],
             "title": "Email"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
           },
           "is_active": {
             "anyOf": [
@@ -9978,6 +10183,92 @@
           }
         ],
         "summary": "Budget Summary",
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/supplier-options": {
+      "get": {
+        "operationId": "list_supplier_options_api_v1_finance_supplier_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceSupplierOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Supplier Options Api V1 Finance Supplier Options Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Supplier Options",
         "tags": [
           "Finance"
         ]
@@ -14604,6 +14895,23 @@
               "format": "uuid",
               "title": "Supplier Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Revision"
             }
           }
         ],

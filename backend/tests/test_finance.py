@@ -563,7 +563,7 @@ async def test_approved_invoice_cannot_be_resubmitted_or_approved_again() -> Non
 
 async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission() -> None:
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
+    admin, admin_password = await create_user("admin")
     accounts, accounts_password = await create_user("accounts")
     manager, manager_password = await create_user("operation_manager")
     project, supplier = await create_project_and_supplier(admin)
@@ -571,7 +571,8 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
     async with create_test_client() as client:
         accounts_token = await login_for_token(client, accounts, accounts_password)
         manager_token = await login_for_token(client, manager, manager_password)
-        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+        admin_token = await login_for_token(client, admin, admin_password)
+        invoice = await create_invoice_via_api(client, admin_token, project, supplier)
 
         rejected = await patch_status(client, manager_token, invoice["id"], "rejected")
         assert rejected.status_code == 200, rejected.text
@@ -596,6 +597,18 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
             approval_id = pending.id
             await session.commit()
 
+        approval_url = f"/api/v1/approvals/{approval_id}"
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        creator_view = await client.get(approval_url, headers=admin_headers)
+        assert creator_view.status_code == 200
+        assert creator_view.json()["allowed_actions"] == []
+        creator_decision = await client.post(
+            f"{approval_url}/override",
+            json={"decision": "approved", "reason": "Creator cannot decide the new cycle."},
+            headers=admin_headers,
+        )
+        assert creator_decision.status_code == 403
+
         direct, inbox = await asyncio.gather(
             patch_status(client, manager_token, invoice["id"], "approved"),
             client.post(
@@ -611,6 +624,7 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
         updated_invoice = await session.get(Invoice, UUID(invoice["id"]))
         assert approval is not None and approval.status == "approved"
         assert updated_invoice is not None and updated_invoice.status == "approved"
+        assert updated_invoice.revision == resubmitted.json()["revision"] + 1
 
 
 async def test_finance_supplier_options_are_minimal_paged_and_independent_of_management() -> None:

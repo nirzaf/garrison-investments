@@ -148,7 +148,7 @@ test('store requester selects company project and fulfills chosen quantities acr
   await expect(card.getByRole('alert')).toContainText('Retry the same quantities');
   await expect(cement).toHaveValue('4');
   await card.getByRole('button', { name: 'Reserve selected' }).click();
-  expect(reserveAttempts).toHaveLength(2);
+  await expect.poll(() => reserveAttempts.length).toBe(2);
   expect(reserveAttempts[0].key).toBeTruthy();
   expect(reserveAttempts[0]).toEqual(reserveAttempts[1]);
   await expect(card).toContainText('partially_reserved');

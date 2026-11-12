@@ -175,6 +175,8 @@ test('offline report photos and verified supervisor evidence survive rejection a
   const inbox = `/approvals?tab=reports&reportId=${original.id}`;
   await reviewer.goto(inbox);
   const submittedCard = reviewer.getByRole('article').filter({ hasText: number ?? '' });
+  await submittedCard.getByText('Supervisor evidence', { exact: true }).click();
+  await submittedCard.getByText(/Linked supervisor evidence/).click();
   await expect(submittedCard.getByText('Checked the formwork before handover.')).toBeVisible();
   await submittedCard
     .getByLabel('Approval or rejection comments')

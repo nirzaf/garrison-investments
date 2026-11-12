@@ -226,6 +226,7 @@ class ApprovalService:
                         Invoice.id.in_(invoice_ids),
                         Invoice.deleted_at.is_(None),
                         Invoice.status == "submitted",
+                        Invoice.created_by.is_distinct_from(actor.id),
                     )
                 )
             )
@@ -414,7 +415,7 @@ class ApprovalService:
                 status_code=403,
                 error_code="APPROVAL_FORBIDDEN",
             )
-        await self._ensure_entity_actionable(approval)
+        await self._ensure_entity_actionable(approval, actor)
         eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
         query = select(User).where(
             User.role.in_(eligible),
@@ -424,6 +425,14 @@ class ApprovalService:
         )
         if approval.submitter_id:
             query = query.where(User.id != approval.submitter_id)
+        if approval.request_type == "invoice":
+            query = query.where(
+                User.id.is_distinct_from(
+                    select(Invoice.created_by)
+                    .where(Invoice.id == approval.request_id)
+                    .scalar_subquery()
+                )
+            )
         if approval.project_id is None:
             query = query.where(User.role != ROLE_PROJECT_MANAGER)
             return list(await self.session.scalars(query.order_by(User.full_name.asc()).limit(200)))
@@ -469,7 +478,7 @@ class ApprovalService:
                 status_code=403,
                 error_code="APPROVAL_FORBIDDEN",
             )
-        await self._ensure_entity_actionable(approval)
+        await self._ensure_entity_actionable(approval, actor)
         approval.status = f"override_{decision}"
         approval.override_reason = reason
         approval.decided_at = utc_now()
@@ -590,7 +599,7 @@ class ApprovalService:
                 status_code=403,
                 error_code="APPROVAL_FORBIDDEN",
             )
-        await self._ensure_entity_actionable(approval)
+        await self._ensure_entity_actionable(approval, actor)
         return approval
 
     async def _material_request_status(self, request_id: UUID) -> str | None:
@@ -600,7 +609,7 @@ class ApprovalService:
             )
         )
 
-    async def _ensure_entity_actionable(self, approval: Approval) -> None:
+    async def _ensure_entity_actionable(self, approval: Approval, actor: User) -> None:
         if approval.request_type in {"daily_report", "document"}:
             raise AppException(
                 "Decide this record in its owning workflow.",
@@ -608,12 +617,22 @@ class ApprovalService:
                 error_code="APPROVAL_REQUIRES_OWNING_WORKFLOW",
             )
         if approval.request_type == "invoice":
-            invoice_status = await self.session.scalar(
-                select(Invoice.status).where(
-                    Invoice.id == approval.request_id, Invoice.deleted_at.is_(None)
+            invoice = (
+                await self.session.execute(
+                    select(Invoice.status, Invoice.created_by).where(
+                        Invoice.id == approval.request_id, Invoice.deleted_at.is_(None)
+                    )
                 )
-            )
-            if invoice_status != "submitted":
+            ).one_or_none()
+            if invoice is None:
+                raise NotFoundException("Invoice")
+            if invoice.created_by == actor.id:
+                raise AppException(
+                    "The invoice creator cannot decide it.",
+                    status_code=403,
+                    error_code="APPROVAL_FORBIDDEN",
+                )
+            if invoice.status != "submitted":
                 raise AppException(
                     "Only submitted invoices can be decided.",
                     status_code=409,
@@ -703,9 +722,16 @@ class ApprovalService:
                 status_code=403,
                 error_code="DELEGATION_TO_SELF_FORBIDDEN",
             )
-        if approval.submitter_id and delegate.id == approval.submitter_id:
+        invoice_creator = (
+            await self.session.scalar(
+                select(Invoice.created_by).where(Invoice.id == approval.request_id)
+            )
+            if approval.request_type == "invoice"
+            else None
+        )
+        if delegate.id in {approval.submitter_id, invoice_creator}:
             raise AppException(
-                "The submitter cannot approve their own request.",
+                "The creator or submitter cannot approve their own request.",
                 status_code=403,
                 error_code="DELEGATION_TO_SUBMITTER_FORBIDDEN",
             )
@@ -808,7 +834,16 @@ class ApprovalService:
                     status_code=409,
                     error_code="INVOICE_STATUS_TRANSITION_INVALID",
                 )
+            if decision == "rejected" and any(
+                payment.deleted_at is None for payment in invoice.payments
+            ):
+                raise AppException(
+                    "This invoice has recorded payments and requires an accounting reversal.",
+                    status_code=409,
+                    error_code="INVOICE_HAS_PAYMENTS",
+                )
             invoice.status = "approved" if decision == "approved" else "rejected"
+            invoice.revision += 1
             if decision == "approved":
                 invoice.approved_by = actor.id
                 invoice.approved_at = utc_now()

@@ -554,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/finance/supplier-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Supplier Options */
+        get: operations["list_supplier_options_api_v1_finance_supplier_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/batches": {
         parameters: {
             query?: never;
@@ -2448,8 +2465,6 @@ export interface components {
         InvoiceCreateRequest: {
             /** Amount */
             amount: number | string;
-            /** Attachment Key */
-            attachment_key?: string | null;
             /**
              * Due Date
              * Format: date
@@ -2486,6 +2501,8 @@ export interface components {
         };
         /** InvoiceResponse */
         InvoiceResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("correct" | "resubmit" | "approve" | "reject" | "record_payment")[];
             /** Amount */
             amount: string;
             /** Approved At */
@@ -2515,6 +2532,10 @@ export interface components {
             invoice_number: string;
             /** Notes */
             notes: string | null;
+            /** Outstanding Amount */
+            readonly outstanding_amount: string;
+            /** Paid Total */
+            readonly paid_total: string;
             /** Payment Status */
             payment_status: string;
             /** Payments */
@@ -2524,21 +2545,58 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Project Name */
+            project_name?: string | null;
+            /** Revision */
+            revision: number;
             /** Status */
             status: string;
             /** Supplier Id */
             supplier_id: string | null;
+            /** Supplier Name */
+            supplier_name?: string | null;
             /** Tax Amount */
             tax_amount: string;
             /** Total Amount */
             total_amount: string;
         };
+        /** InvoiceSupplierOption */
+        InvoiceSupplierOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** InvoiceSupplierOptionsResponse */
+        InvoiceSupplierOptionsResponse: {
+            /** Items */
+            items: components["schemas"]["InvoiceSupplierOption"][];
+            /** Total */
+            total: number;
+        };
         /** InvoiceUpdateRequest */
         InvoiceUpdateRequest: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Invoice Number */
+            invoice_number?: string | null;
             /** Notes */
             notes?: string | null;
             /** Status */
             status?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /** Tax Amount */
+            tax_amount?: number | string | null;
         };
         /** LocationCreateRequest */
         LocationCreateRequest: {
@@ -3716,10 +3774,14 @@ export interface components {
             phone: string;
             /** Rating */
             rating: string;
+            /** Revision */
+            revision: number;
             /** Tax Registration Number */
             tax_registration_number: string;
             /** Tds Certificate Number */
             tds_certificate_number: string | null;
+            /** Tds Days Remaining */
+            readonly tds_days_remaining: number | null;
             /** Tds Document Key */
             tds_document_key: string | null;
             /** Tds Expiry Date */
@@ -3737,6 +3799,8 @@ export interface components {
             contact_person?: string | null;
             /** Email */
             email?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */
@@ -5127,6 +5191,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetSummaryResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_supplier_options_api_v1_finance_supplier_options_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceSupplierOptionsResponse"];
                 };
             };
             /** @description Invalid request */
@@ -7232,7 +7329,9 @@ export interface operations {
     };
     deactivate_supplier_api_v1_suppliers__supplier_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                expected_revision?: number | null;
+            };
             header?: never;
             path: {
                 supplier_id: string;
