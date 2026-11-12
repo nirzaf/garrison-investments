@@ -27,6 +27,9 @@ Supplier invoices linked to projects, with amounts, approval state, and payment 
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
 | `deleted_at` | `timestamptz` | Yes | — |
+| `revision` | `integer` | No | `1` |
+
+Invoice decisions, corrections, attachment changes, and payments advance the revision while holding the invoice row lock. Older invoice status and notes requests may omit a revision. New correction fields require it.
 
 ## Keys and constraints
 

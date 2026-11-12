@@ -26,6 +26,9 @@ Supplier contact, commercial terms, and tax compliance information.
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
 | `deleted_at` | `timestamptz` | Yes | — |
+| `revision` | `integer` | No | `1` |
+
+Supplier edits, deactivation, and TDS uploads advance the revision. Deactivation sets `is_active` to false and keeps the row and TDS reference accessible to supplier managers. Invoices can still display the supplier on historical records. Previously soft-deleted suppliers retain their existing stored state.
 
 ## Keys and constraints
 

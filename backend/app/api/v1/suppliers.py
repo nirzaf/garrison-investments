@@ -94,6 +94,9 @@ async def deactivate_supplier(
     supplier_id: UUID,
     current_user: CanManageSuppliers,
     session: DbSession,
+    expected_revision: Annotated[int | None, Query(ge=1)] = None,
 ) -> SupplierResponse:
-    supplier = await SupplierService(session).deactivate_supplier(supplier_id, current_user)
+    supplier = await SupplierService(session).deactivate_supplier(
+        supplier_id, current_user, expected_revision=expected_revision
+    )
     return SupplierResponse.model_validate(supplier)

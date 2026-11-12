@@ -1,10 +1,14 @@
 from datetime import date
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+from app.utils.time import business_today
 
 
 class SupplierCreateRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(min_length=2, max_length=200)
     category: str = Field(min_length=2, max_length=80)
     rating: str = Field(min_length=1, max_length=20)
@@ -20,6 +24,9 @@ class SupplierCreateRequest(BaseModel):
 
 
 class SupplierUpdateRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    expected_revision: int | None = Field(default=None, ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
     category: str | None = Field(default=None, min_length=2, max_length=80)
     rating: str | None = Field(default=None, min_length=1, max_length=20)
@@ -35,6 +42,26 @@ class SupplierUpdateRequest(BaseModel):
         default=None, pattern="^(compliant|pending|expired|blocked)$"
     )
     is_active: bool | None = None
+
+    @field_validator(
+        "name",
+        "category",
+        "rating",
+        "payment_terms",
+        "contact_person",
+        "phone",
+        "email",
+        "address",
+        "tax_registration_number",
+        "compliance_status",
+        "is_active",
+        mode="before",
+    )
+    @classmethod
+    def require_non_null_field(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("This field cannot be cleared.")
+        return value
 
 
 class SupplierResponse(BaseModel):
@@ -53,8 +80,14 @@ class SupplierResponse(BaseModel):
     tds_document_key: str | None
     compliance_status: str
     is_active: bool
+    revision: int
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def tds_days_remaining(self) -> int | None:
+        return (self.tds_expiry_date - business_today()).days if self.tds_expiry_date else None
 
 
 class SupplierListResponse(BaseModel):

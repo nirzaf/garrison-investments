@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, String, Text, text
+from sqlalchemy import Boolean, Date, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,3 +30,4 @@ class Supplier(TimestampMixin, SoftDeleteMixin, Base):
     tds_document_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     compliance_status: Mapped[str] = mapped_column(String(30), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))

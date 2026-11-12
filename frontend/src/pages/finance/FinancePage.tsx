@@ -1,261 +1,549 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Receipt } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { formatApiError } from '../../api/errors';
 import {
-  createInvoice,
   createPayment,
+  getBudgetSummary,
+  getInvoice,
   getInvoiceAttachmentUrl,
   listInvoices,
-  uploadInvoiceAttachment
+  updateInvoice,
+  uploadInvoiceAttachment,
+  type InvoiceRecord
 } from '../../api/finance';
-import { listProjects } from '../../api/projects';
-import { listSuppliers } from '../../api/inventory';
 import { businessDate } from '../../businessDate';
-import { EmptyState } from '../../components/shared/EmptyState';
-import { StatusBadge } from '../../components/shared/StatusBadge';
+import { FinancePicker } from './FinancePicker';
+import { InvoiceForm } from './InvoiceForm';
+
+const pageSize = 25;
+const actionClass = 'rounded-md border border-theme-border px-3 py-2 text-sm disabled:opacity-50';
+const submitClass =
+  'rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50';
 
 export function FinancePage() {
-  const [searchParams] = useSearchParams();
-  const focusedInvoiceId = searchParams.get('invoiceId');
+  const [params, setParams] = useSearchParams();
+  const invoiceId = params.get('invoiceId');
+  const [projectId, setProjectId] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(0);
+  const [creating, setCreating] = useState(false);
   const queryClient = useQueryClient();
-  const invoiceRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
-  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
-  const invoices = useQuery({ queryKey: ['invoices'], queryFn: listInvoices });
-  const projects = useQuery({ queryKey: ['projects'], queryFn: () => listProjects({}) });
-  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
-  const createInvoiceMutation = useMutation({
-    mutationFn: createInvoice,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['invoices'] })
-  });
-  const createPaymentMutation = useMutation({
-    mutationFn: ({ invoiceId, amount }: { invoiceId: string; amount: string }) =>
-      createPayment(invoiceId, {
-        payment_date: businessDate(),
-        amount,
-        method: 'bank_transfer'
+  const invoices = useQuery({
+    queryKey: ['invoices', 'list', projectId, status, page],
+    queryFn: () =>
+      listInvoices({
+        project_id: projectId || undefined,
+        status: status || undefined,
+        limit: pageSize,
+        offset: page * pageSize
       }),
-    onSuccess: (_data, variables) => {
-      // Drop the typed amount so the input re-defaults to the new outstanding balance.
-      setPaymentAmounts((current) => {
-        const next = { ...current };
-        delete next[variables.invoiceId];
-        return next;
-      });
-      void queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    }
+    placeholderData: keepPreviousData
   });
-  const uploadAttachmentMutation = useMutation({
-    mutationFn: ({ invoiceId, file }: { invoiceId: string; file: File }) =>
-      uploadInvoiceAttachment(invoiceId, file),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+  const budget = useQuery({
+    queryKey: ['finance', 'budget', projectId],
+    queryFn: () => getBudgetSummary(projectId),
+    enabled: Boolean(projectId)
+  });
+  const detail = useQuery({
+    queryKey: ['invoice-detail', invoiceId],
+    queryFn: () => getInvoice(invoiceId!),
+    enabled: Boolean(invoiceId)
   });
 
-  async function openAttachment(invoiceId: string) {
-    const { url } = await getInvoiceAttachmentUrl(invoiceId);
-    window.open(url, '_blank', 'noopener,noreferrer');
+  function focus(id?: string) {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (id) next.set('invoiceId', id);
+      else next.delete('invoiceId');
+      return next;
+    });
   }
 
-  useEffect(() => {
-    if (!focusedInvoiceId) return;
-    const element = invoiceRefs.current[focusedInvoiceId];
-    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [focusedInvoiceId, invoices.data?.items]);
+  function refresh(invoice: InvoiceRecord) {
+    queryClient.setQueryData(['invoice-detail', invoice.id], invoice);
+    void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    void queryClient.invalidateQueries({ queryKey: ['approvals'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance', 'budget', invoice.project_id] });
+    void queryClient.invalidateQueries({ queryKey: ['analytics'] });
+  }
 
   return (
-    <section className="space-y-6">
-      <div>
-        <p className="text-sm font-medium text-brand-600">Accounts</p>
-        <h2 className="text-2xl font-semibold text-theme-text-primary">Invoices And Payments</h2>
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold text-theme-text-primary">Invoices and payments</h2>
+        {!creating && (
+          <button type="button" className={submitClass} onClick={() => setCreating(true)}>
+            New invoice
+          </button>
+        )}
       </div>
-
-      <form
-        className="rounded-lg border border-theme-border bg-theme-card p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const form = new FormData(event.currentTarget);
-          createInvoiceMutation.mutate({
-            invoice_number: String(form.get('invoice_number')),
-            project_id: String(form.get('project_id')),
-            supplier_id: String(form.get('supplier_id') || ''),
-            invoice_date: String(form.get('invoice_date')),
-            due_date: String(form.get('due_date')),
-            amount: String(form.get('amount')),
-            tax_amount: String(form.get('tax_amount') || '0'),
-            notes: String(form.get('notes') || '')
-          });
-          event.currentTarget.reset();
-        }}
-      >
-        <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-          <Receipt className="h-4 w-4" />
-          New invoice
-        </h3>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <input
-            className="form-field"
-            name="invoice_number"
-            placeholder="Invoice number"
-            required
-          />
-          <select className="form-field" name="project_id" required>
-            <option value="">Project</option>
-            {projects.data?.items.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          <select className="form-field" name="supplier_id">
-            <option value="">Supplier</option>
-            {suppliers.data?.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </option>
-            ))}
-          </select>
-          <input className="form-field" name="invoice_date" required type="date" />
-          <input className="form-field" name="due_date" required type="date" />
-          <input className="form-field" name="amount" placeholder="Amount" required type="number" />
-          <input className="form-field" name="tax_amount" placeholder="Tax" type="number" />
-          <input className="form-field md:col-span-2" name="notes" placeholder="Notes" />
-        </div>
-        <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-          Submit invoice
-        </button>
-      </form>
-
-      {invoices.data && invoices.data.items.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border border-theme-border bg-theme-card">
-          <table className="min-w-full divide-y divide-theme-border text-sm">
-            <thead className="bg-theme-main text-left text-xs uppercase tracking-wide text-theme-text-muted">
-              <tr>
-                <th className="px-4 py-3">Invoice</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3">Attachment</th>
-                <th className="px-4 py-3">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-theme-border">
-              {invoices.data.items.map((invoice) => {
-                const paidTotal = invoice.payments.reduce(
-                  (sum, payment) => sum + Number(payment.amount),
-                  0
-                );
-                const outstanding = Math.max(0, Number(invoice.total_amount) - paidTotal);
-                const amountValue = paymentAmounts[invoice.id] ?? outstanding.toFixed(2);
-                const paymentBlocked =
-                  invoice.status !== 'approved' || invoice.payment_status === 'paid';
-                return (
-                <tr
-                  className={invoice.id === focusedInvoiceId ? 'bg-theme-main' : undefined}
-                  key={invoice.id}
-                  ref={(element) => {
-                    invoiceRefs.current[invoice.id] = element;
-                  }}
-                >
-                  <td className="px-4 py-3 font-medium text-theme-text-primary">
-                    {invoice.invoice_number}
-                  </td>
-                  <td className="px-4 py-3 text-theme-text-secondary">{invoice.total_amount}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone="info">{invoice.status}</StatusBadge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge tone={invoice.payment_status === 'paid' ? 'success' : 'warning'}>
-                      {invoice.payment_status}
-                    </StatusBadge>
-                    {invoice.payments.length > 0 ? (
-                      <p className="mt-1 text-xs text-theme-text-muted">
-                        {invoice.payments.length} payment{invoice.payments.length > 1 ? 's' : ''}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      <input
-                        accept=".pdf,image/png,image/jpeg"
-                        className="text-xs"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file)
-                            uploadAttachmentMutation.mutate({ invoiceId: invoice.id, file });
-                        }}
-                        type="file"
-                      />
-                      {invoice.attachment_key ? (
-                        <button
-                          className="text-left text-xs font-semibold text-brand-600"
-                          onClick={() => void openAttachment(invoice.id)}
-                          type="button"
-                        >
-                          View attachment
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-2">
-                      <input
-                        aria-label={`Payment amount for ${invoice.invoice_number}`}
-                        className="form-field text-xs"
-                        disabled={paymentBlocked}
-                        min="0"
-                        onChange={(event) =>
-                          setPaymentAmounts((current) => ({
-                            ...current,
-                            [invoice.id]: event.target.value
-                          }))
-                        }
-                        step="0.01"
-                        type="number"
-                        value={amountValue}
-                      />
-                      <button
-                        className="rounded-md border border-theme-border px-3 py-2 text-xs font-semibold text-theme-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={
-                          paymentBlocked ||
-                          createPaymentMutation.isPending ||
-                          amountValue.trim() === '' ||
-                          Number(amountValue) <= 0
-                        }
-                        onClick={() =>
-                          createPaymentMutation.mutate({
-                            invoiceId: invoice.id,
-                            amount: amountValue
-                          })
-                        }
-                        type="button"
-                      >
-                        Record payment
-                      </button>
-                      {createPaymentMutation.isError &&
-                      createPaymentMutation.variables?.invoiceId === invoice.id ? (
-                        <p className="alert-error rounded px-2 py-1 text-xs" role="alert">
-                          {formatApiError(
-                            createPaymentMutation.error,
-                            'Unable to record the payment.'
-                          )}
-                        </p>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyState
-          title="No invoices"
-          description="Create an invoice to start finance tracking."
+      {creating && (
+        <InvoiceForm
+          onCancel={() => setCreating(false)}
+          onSaved={(invoice) => {
+            refresh(invoice);
+            setCreating(false);
+            focus(invoice.id);
+          }}
         />
       )}
+      <div className="rounded-lg border border-theme-border bg-theme-card p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FinancePicker
+            kind="project"
+            label="Project filter"
+            value={projectId}
+            onChange={(id) => {
+              setProjectId(id);
+              setPage(0);
+            }}
+          />
+          <div>
+            <label className="block text-sm" htmlFor="invoice-status-filter">
+              Invoice status filter
+            </label>
+            <select
+              id="invoice-status-filter"
+              className="form-field mt-1 w-full"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setPage(0);
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        {projectId && (
+          <div className="mt-4 border-t border-theme-border pt-3">
+            <h3 className="font-semibold">Project budget and billable invoices</h3>
+            <p className="text-xs text-theme-text-secondary">
+              Billable invoices exclude drafts and rejected invoices. Payments reflect recorded
+              payments for the project.
+            </p>
+            {budget.isPending && <p role="status">Loading budget summary…</p>}
+            {budget.isError && (
+              <p role="alert">
+                {formatApiError(budget.error, 'Unable to load project budget.')}{' '}
+                <button type="button" className="underline" onClick={() => void budget.refetch()}>
+                  Retry budget
+                </button>
+              </p>
+            )}
+            {budget.data && (
+              <dl className="mt-2 grid grid-cols-2 gap-2 text-sm lg:grid-cols-4">
+                {(
+                  [
+                    ['Project budget', budget.data.budget_amount],
+                    ['Billable invoices', budget.data.invoiced_total],
+                    ['Recorded payments', budget.data.paid_total],
+                    ['Remaining budget', budget.data.remaining_budget]
+                  ] as const
+                ).map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd className="font-semibold">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        )}
+      </div>
+      {invoiceId && (
+        <div
+          className="rounded-lg border border-theme-border bg-theme-card p-4"
+          aria-label="Invoice details"
+          role="region"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">{detail.data?.invoice_number ?? 'Invoice details'}</h3>
+            <button type="button" className={actionClass} onClick={() => focus()}>
+              Close invoice details
+            </button>
+          </div>
+          {detail.isPending && <p role="status">Loading invoice…</p>}
+          {detail.isFetching && detail.data && <p role="status">Refreshing invoice details…</p>}
+          {detail.isError && (
+            <p role="alert">
+              {formatApiError(detail.error, 'Unable to open invoice.')}{' '}
+              <button type="button" className="underline" onClick={() => void detail.refetch()}>
+                Retry details
+              </button>
+            </p>
+          )}
+          {detail.isError && detail.data && (
+            <p className="text-sm">Showing the last loaded invoice details.</p>
+          )}
+          {detail.data && (
+            <InvoiceDetails
+              key={invoiceId}
+              invoice={detail.data}
+              refresh={refresh}
+              reload={() => void detail.refetch()}
+            />
+          )}
+        </div>
+      )}
+      <div className="rounded-lg border border-theme-border bg-theme-card p-4">
+        {invoices.isPending && <p role="status">Loading invoices…</p>}
+        {invoices.isError && (
+          <p role="alert">
+            {formatApiError(invoices.error, 'Unable to load invoices.')}{' '}
+            <button type="button" className="underline" onClick={() => void invoices.refetch()}>
+              Retry invoices
+            </button>
+          </p>
+        )}
+        {invoices.isFetching && invoices.data && <p role="status">Refreshing invoice list…</p>}
+        {invoices.isError && invoices.data && (
+          <p className="text-sm">Showing the last loaded invoices.</p>
+        )}
+        {invoices.data && (
+          <>
+            {invoices.data.items.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <caption className="mb-2 text-left font-semibold">Invoice register</caption>
+                  <thead className="bg-theme-main">
+                    <tr>
+                      {['Invoice', 'Project', 'Supplier', 'Total', 'Outstanding', 'Status'].map(
+                        (heading) => (
+                          <th key={heading} scope="col" className="p-2">
+                            {heading}
+                          </th>
+                        )
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-theme-border">
+                    {invoices.data.items.map((invoice) => (
+                      <tr key={invoice.id}>
+                        <td className="p-2">
+                          <button
+                            type="button"
+                            className="font-semibold text-brand-600 hover:underline"
+                            onClick={() => focus(invoice.id)}
+                          >
+                            {invoice.invoice_number}
+                          </button>
+                        </td>
+                        <td className="p-2">{invoice.project_name || '—'}</td>
+                        <td className="p-2">{invoice.supplier_name || '—'}</td>
+                        <td className="p-2">{invoice.total_amount}</td>
+                        <td className="p-2">{invoice.outstanding_amount}</td>
+                        <td className="p-2 capitalize">{invoice.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No invoices match the selected filters.</p>
+            )}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span>{invoices.data.total} matching invoices</span>
+              <div className="flex gap-2">
+                <button
+                  className={actionClass}
+                  type="button"
+                  disabled={!page || invoices.isFetching}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Previous invoices
+                </button>
+                <button
+                  className={actionClass}
+                  type="button"
+                  disabled={(page + 1) * pageSize >= invoices.data.total || invoices.isFetching}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next invoices
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </section>
+  );
+}
+
+function InvoiceDetails({
+  invoice,
+  refresh,
+  reload
+}: {
+  invoice: InvoiceRecord;
+  refresh: (invoice: InvoiceRecord) => void;
+  reload: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<File>();
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [decisionNotes, setDecisionNotes] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
+  const locked = useRef(false);
+  const actions = invoice.allowed_actions ?? [];
+
+  async function mutate(action: () => Promise<InvoiceRecord>, done?: () => void) {
+    if (locked.current) return;
+    locked.current = true;
+    setPending(true);
+    setError('');
+    try {
+      refresh(await action());
+      done?.();
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to complete invoice action.'));
+    } finally {
+      locked.current = false;
+      setPending(false);
+    }
+  }
+
+  function decide(status: 'approved' | 'rejected' | 'submitted') {
+    void mutate(
+      () =>
+        updateInvoice(invoice.id, {
+          status,
+          expected_revision: invoice.revision,
+          ...(status === 'rejected' && decisionNotes.trim() ? { notes: decisionNotes.trim() } : {})
+        }),
+      () => {
+        setRejecting(false);
+        setDecisionNotes('');
+      }
+    );
+  }
+
+  function pay(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void mutate(
+      () =>
+        createPayment(invoice.id, {
+          amount: paymentAmount ?? invoice.outstanding_amount,
+          payment_date: businessDate(),
+          method: 'bank_transfer'
+        }),
+      () => setPaymentAmount(null)
+    );
+  }
+
+  async function downloadAttachment() {
+    if (locked.current) return;
+    locked.current = true;
+    setPending(true);
+    setError('');
+    try {
+      const { url } = await getInvoiceAttachmentUrl(invoice.id);
+      setDownloadUrl(url);
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to open the attachment.'));
+    } finally {
+      locked.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+        {(
+          [
+            ['Project', invoice.project_name],
+            ['Supplier', invoice.supplier_name],
+            ['Invoice date', invoice.invoice_date],
+            ['Due date', invoice.due_date],
+            ['Amount', invoice.amount],
+            ['Tax', invoice.tax_amount],
+            ['Total', invoice.total_amount],
+            ['Paid', invoice.paid_total],
+            ['Outstanding', invoice.outstanding_amount],
+            ['Invoice status', invoice.status],
+            ['Payment status', invoice.payment_status]
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd className="font-semibold">{value || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+      {invoice.notes && <p className="text-sm">Notes {invoice.notes}</p>}
+      {error && (
+        <div className="alert-error rounded-md p-2 text-sm" role="alert">
+          <p>{error}</p>
+          <button className="underline" type="button" onClick={reload}>
+            Refresh invoice
+          </button>
+        </div>
+      )}
+      {editing ? (
+        <InvoiceForm
+          invoice={invoice}
+          onCancel={() => setEditing(false)}
+          onSaved={(saved) => {
+            refresh(saved);
+            setEditing(false);
+          }}
+        />
+      ) : (
+        <fieldset disabled={pending} className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {actions.includes('correct') && (
+              <button className={actionClass} type="button" onClick={() => setEditing(true)}>
+                Correct invoice
+              </button>
+            )}
+            {actions.includes('resubmit') && (
+              <button className={submitClass} type="button" onClick={() => decide('submitted')}>
+                Resubmit invoice
+              </button>
+            )}
+            {actions.includes('approve') && (
+              <button className={submitClass} type="button" onClick={() => decide('approved')}>
+                Approve invoice
+              </button>
+            )}
+            {actions.includes('reject') && (
+              <button
+                className={actionClass}
+                type="button"
+                onClick={() => setRejecting(!rejecting)}
+              >
+                Reject invoice
+              </button>
+            )}
+          </div>
+          {rejecting && actions.includes('reject') && (
+            <div className="space-y-2">
+              <label className="block text-sm">
+                Rejection notes
+                <textarea
+                  className="form-field mt-1 w-full"
+                  value={decisionNotes}
+                  onChange={(event) => setDecisionNotes(event.target.value)}
+                />
+              </label>
+              <button type="button" className={actionClass} onClick={() => decide('rejected')}>
+                Confirm rejection
+              </button>
+            </div>
+          )}
+          {actions.includes('record_payment') && (
+            <form className="flex flex-wrap items-end gap-2" onSubmit={pay}>
+              <label className="block text-sm">
+                Payment amount
+                <input
+                  required
+                  className="form-field mt-1 w-full"
+                  inputMode="decimal"
+                  value={paymentAmount ?? invoice.outstanding_amount}
+                  onChange={(event) => setPaymentAmount(event.target.value)}
+                />
+              </label>
+              <button type="submit" className={submitClass}>
+                Record payment
+              </button>
+            </form>
+          )}
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block text-sm">
+              Invoice attachment (10 MiB)
+              <input
+                ref={fileInput}
+                className="form-field mt-1 w-full"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(event) => setAttachment(event.target.files?.[0])}
+              />
+            </label>
+            <button
+              className={actionClass}
+              type="button"
+              disabled={!attachment}
+              onClick={() => {
+                if (!attachment) return;
+                if (attachment.size > 10 * 1024 * 1024) {
+                  setError('Invoice attachments must be 10 MiB or smaller.');
+                  return;
+                }
+                void mutate(
+                  () => uploadInvoiceAttachment(invoice.id, attachment),
+                  () => {
+                    setAttachment(undefined);
+                    setDownloadUrl('');
+                    if (fileInput.current) fileInput.current.value = '';
+                  }
+                );
+              }}
+            >
+              Upload attachment
+            </button>
+            {invoice.attachment_key && (
+              <button
+                className={actionClass}
+                type="button"
+                onClick={() => void downloadAttachment()}
+              >
+                Get attachment link
+              </button>
+            )}
+            {downloadUrl && (
+              <a
+                href={downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm underline"
+              >
+                Open attachment
+              </a>
+            )}
+          </div>
+        </fieldset>
+      )}
+      {pending && (
+        <p role="status" className="text-sm">
+          Processing invoice action…
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <caption className="mb-1 text-left font-semibold">Payment history</caption>
+          <thead className="bg-theme-main">
+            <tr>
+              {['Date', 'Amount', 'Method', 'Reference'].map((heading) => (
+                <th className="p-2" scope="col" key={heading}>
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-theme-border">
+            {invoice.payments.map((payment) => (
+              <tr key={payment.id}>
+                <td className="p-2">{payment.payment_date}</td>
+                <td className="p-2">{payment.amount}</td>
+                <td className="p-2">{payment.method.replace(/_/g, ' ')}</td>
+                <td className="p-2">{payment.reference_number || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!invoice.payments.length && <p className="text-sm">No recorded payments.</p>}
+      </div>
+    </div>
   );
 }
