@@ -41,6 +41,8 @@ Compare the exact candidate's Actions run with recent runs that cover the same t
 
 The backend suite and Chromium browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. Each Chromium shard runs two workers on separate test files with synthetic accounts and projects. The browser jobs type-check the browser tests and build the production bundle. The required frontend job type-checks the application. Each test belongs to exactly one shard. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
+Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
+
 For deployment, measure time awaiting approval or a runner separately from the phase timings in the host release log. Reuse the reviewed, SHA-tagged staging images when available. The host checks their image IDs and served hashes against the exact release authorization before activation. An edit limited to the backend architecture guide can reuse the running backend image. The release script reads the frontend image hashes in one container before checking the served bytes after activation.
 
 ### Host bootstrap and runner maintenance
