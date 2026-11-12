@@ -60,7 +60,7 @@ if not source <= capture or not destination <= publish or source & publish or de
     sys.exit("Capture and publisher credential inputs must be explicit and isolated.")
 PY
 
-exec 9>"$state/deploy.lock"
+exec 9>>"$state/deploy.lock"
 flock -n 9 || die 'The deployment or maintenance lock is held.'
 release=$(readlink -f "$state/current")
 [[ "$release" == "$base/releases/"* && -f "$release/SOURCE_COMMIT" ]] ||
@@ -91,6 +91,8 @@ phase=spool
 created=0
 paused=0
 writers=()
+common=(-v "$policy:/policy.json:ro" -v "$auth_key:/recovery-key:ro"
+  -e BACKUP_AUTH_KEY_FILE=/recovery-key -e "BACKUP_AUTH_KEY_ID=$key_id")
 remove_run() {
   protected_directory "$run" 077 && rm -rf -- "$run"
 }
@@ -157,13 +159,19 @@ with NamedTemporaryFile(mode="w", dir=root, prefix=".attempt-", delete=False) as
     json.dump(record, output, sort_keys=True)
 Path(output.name).replace(Path(root) / "last-attempt.json")
 PY
+  if ! timeout "$((publish_minutes * 60))" docker run --rm --env-file "$publisher_env" \
+    "${common[@]}" -v "$recovery/last-attempt.json:/receipts/last-attempt.json:ro" \
+    -v "$template:/capture-inventory.json:ro" "$image" \
+    python -m scripts.backup_set publish-attempt /receipts/last-attempt.json \
+    --policy /policy.json --inventory /capture-inventory.json; then
+    printf '%s\n' 'Scheduled recovery attempt was recorded locally but status publication failed.' >&2
+    (( status != 0 )) || status=1
+  fi
   exit "$status"
 }
 trap finish EXIT
 trap 'exit 1' INT TERM
 
-common=(-v "$policy:/policy.json:ro" -v "$auth_key:/recovery-key:ro"
-  -e BACKUP_AUTH_KEY_FILE=/recovery-key -e "BACKUP_AUTH_KEY_ID=$key_id")
 publish_capture() {
   protected_directory "$run/set" 077 || die 'Pending recovery set is not a private directory.'
   private_file "$run/set/manifest.json"

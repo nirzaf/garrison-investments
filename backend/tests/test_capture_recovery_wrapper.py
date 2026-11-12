@@ -69,6 +69,34 @@ elif 'publish' in args:
     volume = next(arg for arg in args if arg.endswith(':/receipts'))
     root = pathlib.Path(volume.removesuffix(':/receipts'))
     (root / 'latest-success.json').write_text(set_id)
+    remote = pathlib.Path(os.environ['FIXTURE_REMOTE'])
+    (remote / f'complete-{set_id}').write_bytes((set_path / 'application.sql.gz.enc').read_bytes())
+elif 'publish-attempt' in args:
+    assert args[args.index('--env-file') + 1] == os.environ['RECOVERY_PUBLISH_ENV']
+    assert args[args.index('publish-attempt'):] == [
+        'publish-attempt', '/receipts/last-attempt.json', '--policy', '/policy.json',
+        '--inventory', '/capture-inventory.json',
+    ]
+    root = pathlib.Path(os.environ['FIXTURE_EVIDENCE'])
+    receipt = root / 'last-attempt.json'
+    assert [args[i + 1] for i, arg in enumerate(args) if arg == '-v'] == [
+        f"{os.environ['RECOVERY_POLICY']}:/policy.json:ro",
+        f"{os.environ['BACKUP_AUTH_KEY_FILE']}:/recovery-key:ro",
+        f'{receipt}:/receipts/last-attempt.json:ro',
+        f"{os.environ['RECOVERY_CAPTURE_TEMPLATE']}:/capture-inventory.json:ro",
+    ]
+    assert 'BACKUP_AUTH_KEY_FILE=/recovery-key' in args
+    assert 'BACKUP_AUTH_KEY_ID=fixture' in args
+    raw = receipt.read_bytes()
+    attempt = json.loads(raw)
+    assert state['garrison-portal-backend-1'] and state['garrison-portal-nginx-1']
+    if attempt['phase'] == 'resume':
+        assert not state['garrison-portal-grafana-1']
+    if os.environ.get('FIXTURE_FAILURE') == 'status':
+        sys.exit(1)
+    remote = pathlib.Path(os.environ['FIXTURE_REMOTE'])
+    with (remote / 'attempts.jsonl').open('ab') as output:
+        output.write(raw + b'\n')
 else:
     sys.exit(2)
 """
@@ -88,6 +116,7 @@ class ScheduledCapture:
     before: dict[str, bool]
     writer_state: Path
     events: Path
+    remote: Path
 
     def run(
         self, failure: str = "", *, now: str = "2026-11-12T17:00:00Z"
@@ -105,11 +134,19 @@ def scheduled_capture(tmp_path: Path) -> ScheduledCapture:
     commands = tmp_path / "bin"
     commands.mkdir()
     executable(commands, "docker", DOCKER)
-    executable(commands, "flock", "#!/bin/bash\n[[ $* == '-n 9' ]]\n")
+    executable(
+        commands,
+        "flock",
+        "#!/bin/bash\n[[ $* == '-n 9' && ${FIXTURE_FAILURE:-} != lock ]]\n",
+    )
     executable(
         commands,
         "timeout",
-        '#!/bin/bash\nshift\nexec "$@"\n',
+        """#!/bin/bash
+if [[ " $* " == *' publish-attempt '* && "$1" != 60 ]]; then exit 2; fi
+shift
+exec "$@"
+""",
     )
     executable(
         commands,
@@ -141,12 +178,20 @@ match sys.argv[2]:
     state.write_text(json.dumps(before))
     events = tmp_path / "events.txt"
     events.write_text("")
+    remote = tmp_path / "remote"
+    remote.mkdir()
+    evidence = base / "recovery" / "scheduled"
     configuration = tmp_path / "nonsecret-configuration"
     configuration.mkdir(mode=0o700)
     files = {
         "RECOVERY_POLICY": "{}",
         "RECOVERY_CAPTURE_TEMPLATE": json.dumps(
-            {"source_sha": SHA, "image_digests": {"backend": IMAGE}}
+            {
+                "source_sha": SHA,
+                "source_environment": "production",
+                "configuration_sha256": "c" * 64,
+                "image_digests": {"backend": IMAGE},
+            }
         ),
         "RECOVERY_CAPTURE_ENV": "\n".join(
             f"{key}=fixture"
@@ -184,6 +229,8 @@ match sys.argv[2]:
         FIXTURE_WRITER_STATE=str(state),
         FIXTURE_IMAGE=IMAGE,
         FIXTURE_EVENTS=str(events),
+        FIXTURE_EVIDENCE=str(evidence),
+        FIXTURE_REMOTE=str(remote),
         FIXTURE_RELEASE=str(release),
     )
     shell = (
@@ -193,7 +240,7 @@ match sys.argv[2]:
     )
     fixture = tmp_path / "wrapper.sh"
     fixture.write_text(shell)
-    return ScheduledCapture(fixture, env, base / "recovery" / "scheduled", before, state, events)
+    return ScheduledCapture(fixture, env, evidence, before, state, events, remote)
 
 
 @pytest.mark.parametrize(
@@ -202,20 +249,40 @@ match sys.argv[2]:
 def test_capture_wrapper_preserves_writer_state_and_failure_receipts(
     scheduled_capture: ScheduledCapture, failure: str, phase: str
 ) -> None:
-    result = scheduled_capture.run(failure)
     evidence = scheduled_capture.evidence
+    latest_success = evidence / "latest-success.json"
+    remote = scheduled_capture.remote
+    if failure == "resume":
+        result = scheduled_capture.run(now="2026-11-12T16:00:00Z")
+        assert result.returncode == 0, result.stderr
+        assert latest_success.read_text() == "1"
+
+    result = scheduled_capture.run(failure)
     assert (result.returncode == 0) == (not failure), result.stderr
-    assert (evidence / "latest-success.json").exists() == (not failure)
-    assert json.loads((evidence / "last-attempt.json").read_text())["phase"] == phase
+    assert latest_success.exists() == (failure != "capture")
+    receipt = (evidence / "last-attempt.json").read_bytes()
+    assert (remote / "attempts.jsonl").read_bytes().splitlines()[-1] == receipt
+    assert json.loads(receipt)["phase"] == phase
     before = scheduled_capture.before.copy()
     if failure == "resume":
         before["garrison-portal-grafana-1"] = False
     assert json.loads(scheduled_capture.writer_state.read_text()) == before
     scratch = evidence / ".scheduled-capture"
     if failure == "resume":
-        assert (scratch / "set" / "manifest.json").read_text() == "1"
+        assert result.returncode == 1
+        assert json.loads(receipt)["outcome"] == "fail"
+        assert latest_success.read_text() == "1"
+        assert (remote / "complete-1").read_bytes() == b"fixture data"
+        assert not (remote / "complete-2").exists()
+        assert (scratch / "set" / "manifest.json").read_text() == "2"
         assert scheduled_capture.run().returncode != 0
-        assert scheduled_capture.events.read_text().splitlines() == ["stop:4", "capture:1"]
+        assert scheduled_capture.events.read_text().splitlines() == [
+            "stop:4",
+            "capture:1",
+            "publish:1",
+            "stop:4",
+            "capture:2",
+        ]
     else:
         assert not any(path.is_dir() for path in evidence.iterdir())
 
@@ -275,6 +342,50 @@ def test_failed_publication_retries_the_same_capture_without_pausing_writers_aga
         "publish:2",
         "publish:2",
     ]
+
+
+def test_status_transport_failure_keeps_local_receipt_and_verified_set(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    evidence = scheduled_capture.evidence
+    remote = scheduled_capture.remote
+    result = scheduled_capture.run(now="2026-11-12T16:00:00Z")
+    assert result.returncode == 0, result.stderr
+    published_attempt = (remote / "attempts.jsonl").read_bytes()
+    previous_backup = (remote / "complete-1").read_bytes()
+
+    result = scheduled_capture.run("status")
+    assert result.returncode == 1
+    attempt = json.loads((evidence / "last-attempt.json").read_bytes())
+    assert (attempt["phase"], attempt["outcome"]) == ("complete", "pass")
+    assert (evidence / "latest-success.json").read_text() == "2"
+    assert (remote / "complete-2").read_bytes() == b"fixture data"
+    assert (remote / "complete-1").read_bytes() == previous_backup
+    assert (remote / "attempts.jsonl").read_bytes() == published_attempt
+    assert not (evidence / ".scheduled-capture").exists()
+
+
+def test_lock_failure_leaves_previous_attempt_and_backup_unchanged(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    result = scheduled_capture.run()
+    assert result.returncode == 0, result.stderr
+    evidence = scheduled_capture.evidence
+    remote = scheduled_capture.remote
+    lock = evidence.parents[1] / "deploy" / "deploy.lock"
+    lock.write_text("existing owner")
+    paths = (
+        lock,
+        evidence / "last-attempt.json",
+        evidence / "latest-success.json",
+        remote / "attempts.jsonl",
+        remote / "complete-1",
+        scheduled_capture.events,
+    )
+    before = [path.read_bytes() for path in paths]
+
+    assert scheduled_capture.run("lock").returncode != 0
+    assert [path.read_bytes() for path in paths] == before
 
 
 @pytest.mark.parametrize("symlink", [False, True])

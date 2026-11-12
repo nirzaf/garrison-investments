@@ -234,10 +234,11 @@ def test_acknowledgement_is_tied_to_a_delivered_incident(tmp_path: Path) -> None
     )
 
 
-def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state(
+@pytest.fixture
+def backup_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+):
     from types import SimpleNamespace
 
     from scripts import backup_set_contract, backup_set_storage
@@ -263,13 +264,39 @@ def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state
         snapshot_at_utc=now - timedelta(minutes=10),
         remote_verified_at_utc=now - timedelta(minutes=9),
     )
+    attempt = SimpleNamespace(
+        source_environment="staging",
+        policy_revision="1",
+        policy_sha256="a" * 64,
+        configuration_sha256="b" * 64,
+        started_at_utc=now - timedelta(minutes=11),
+        completed_at_utc=now - timedelta(minutes=8),
+        phase="complete",
+        outcome="pass",
+    )
     monkeypatch.setattr(backup_set_storage, "read_latest_publication", lambda *_a, **_k: evidence)
+    monkeypatch.setattr(
+        backup_set_storage, "read_latest_scheduled_attempt", lambda *_a, **_k: attempt
+    )
     approved_policy = SimpleNamespace(
         source_environment="staging",
+        revision="1",
         rpo_minutes=20,
+        backup_interval_minutes=16,
         maximum_publication_delay_minutes=2,
     )
     monkeypatch.setattr(backup_set_contract, "read_policy", lambda _: (approved_policy, "a" * 64))
+    return now, policy, approved_policy, attempt, evidence
+
+
+def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    backup_probe,
+) -> None:
+    from scripts import backup_set_storage
+
+    now, policy, approved_policy, _, evidence = backup_probe
     state = monitor.MonitorState(profile_sha256="test")
     state_file = tmp_path / "state.json"
     approved = profile()
@@ -304,6 +331,150 @@ def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state
     monkeypatch.setattr(backup_set_storage, "read_latest_publication", invalid)
     assert check(now).category == "backup_receipt_unavailable_or_invalid"
     assert state.checks["recovery"].last_verified_digest == "c" * 64
+
+
+@pytest.mark.parametrize(
+    ("phase", "category"),
+    [("publication", "backup_attempt_failed"), ("resume", "backup_resume_failed")],
+)
+def test_failed_scheduled_backup_alerts_with_a_fresh_publication_and_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    backup_probe,
+    phase: str,
+    category: str,
+) -> None:
+    from scripts import backup_set_storage
+
+    now, policy, _, attempt, publication = backup_probe
+    approved = profile(backup=policy, probe_interval_seconds=20)
+    state = monitor.MonitorState(profile_sha256="test")
+    state_file = tmp_path / "state.json"
+    reads = []
+    deliveries = []
+
+    def read_attempt(*args, **kwargs):
+        assert args == (policy.policy_file,)
+        assert kwargs == {
+            "key_file": policy.key_file,
+            "key_id": policy.key_id,
+            "timeout": approved.timeout_seconds,
+            "expected_policy_sha256": policy.policy_sha256,
+        }
+        reads.append("attempt")
+        return attempt
+
+    def read_publication(*_args, **_kwargs):
+        reads.append("publication")
+        return publication
+
+    def send(check_id, event, message_id, recipient):
+        assert check_id == policy.check_id
+        deliveries.append((event, message_id, recipient))
+        if len(deliveries) == 1:
+            raise OSError("synthetic refusal")
+        return message_id
+
+    monkeypatch.setattr(backup_set_storage, "read_latest_scheduled_attempt", read_attempt)
+    monkeypatch.setattr(backup_set_storage, "read_latest_publication", read_publication)
+
+    def check(seconds):
+        at = now + timedelta(seconds=seconds)
+        result = monitor.check_backup(policy, "staging", at, approved.timeout_seconds)
+        return monitor.observe(approved, state, state_file, policy.check_id, result, at, send)
+
+    assert check(0).result.category == "backup_current"
+    previous = state.checks[policy.check_id].last_verified_snapshot
+    assert reads == ["attempt", "publication"]
+    attempt.outcome = "fail"
+    attempt.phase = phase
+    attempt.started_at_utc = now + timedelta(seconds=1)
+    attempt.completed_at_utc = now + timedelta(seconds=5)
+    first_failure = check(20)
+    assert first_failure.result.category == category and first_failure.event is None
+    assert first_failure.result.digest is None and first_failure.result.snapshot_at is None
+    assert check(40).delivery == "failed"
+    retried = check(60)
+    assert retried.event == "initial" and retried.delivery == "accepted"
+    assert deliveries[0] == deliveries[1]
+    assert reads == ["attempt", "publication", "attempt", "attempt", "attempt"]
+    assert state.checks[policy.check_id].last_verified_snapshot == previous
+    assert state.checks[policy.check_id].last_verified_digest == "c" * 64
+
+    attempt.outcome = "pass"
+    attempt.phase = "complete"
+    attempt.started_at_utc = now + timedelta(seconds=60)
+    attempt.completed_at_utc = now + timedelta(seconds=65)
+    publication.snapshot_at_utc = now + timedelta(seconds=61)
+    publication.remote_verified_at_utc = now + timedelta(seconds=64)
+    publication.manifest_sha256 = "d" * 64
+    assert check(80).event is None
+    recovered = check(100)
+    assert recovered.event == "resolved" and recovered.delivery == "accepted"
+    assert recovered.result.category == "backup_current"
+    saved = monitor.load_state(state_file, "test").checks[policy.check_id]
+    assert saved.last_verified_snapshot == publication.snapshot_at_utc
+    assert saved.last_verified_digest == "d" * 64
+
+    # A cleanup retry can re-verify an immutable set without publishing a new receipt.
+    attempt.started_at_utc = now + timedelta(seconds=101)
+    attempt.completed_at_utc = now + timedelta(seconds=105)
+    repeated = check(120)
+    assert repeated.result.category == "backup_current" and repeated.event is None
+    assert repeated.result.snapshot_at == publication.snapshot_at_utc
+    assert repeated.result.digest == publication.manifest_sha256
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError, ValueError])
+def test_unavailable_or_unauthenticated_attempt_cannot_hide_behind_a_fresh_backup(
+    monkeypatch: pytest.MonkeyPatch, backup_probe, error: type[Exception]
+) -> None:
+    from scripts import backup_set_storage
+
+    now, policy, *_ = backup_probe
+
+    def missing_or_tampered(*_args, **_kwargs):
+        raise error("private-synthetic-storage-details")
+
+    monkeypatch.setattr(backup_set_storage, "read_latest_scheduled_attempt", missing_or_tampered)
+    result = monitor.check_backup(policy, "staging", now, 4)
+    assert not result.ok and result.category == "backup_attempt_unavailable_or_invalid"
+    assert "private-synthetic-storage-details" not in result.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_environment", "production"),
+        ("policy_revision", "2"),
+        ("policy_sha256", "e" * 64),
+        ("configuration_sha256", "e" * 64),
+        ("started_at_utc", timedelta(minutes=-7)),
+        ("completed_at_utc", timedelta(minutes=1)),
+        ("phase", "resume"),
+    ],
+)
+def test_mismatched_scheduled_attempt_is_unhealthy(backup_probe, field: str, value) -> None:
+    now, policy, _, attempt, _ = backup_probe
+    setattr(attempt, field, now + value if isinstance(value, timedelta) else value)
+    result = monitor.check_backup(policy, "staging", now, 4)
+    assert not result.ok and result.category == "backup_attempt_mismatch"
+
+
+def test_backup_attempt_overdue_uses_approved_cadence_from_completion(backup_probe) -> None:
+    now, policy, approved_policy, attempt, publication = backup_probe
+    due = now + timedelta(minutes=1)
+    attempt.completed_at_utc = due - timedelta(
+        minutes=approved_policy.backup_interval_minutes
+        + approved_policy.maximum_publication_delay_minutes
+    )
+    attempt.started_at_utc = attempt.completed_at_utc - timedelta(minutes=2)
+    assert due - publication.snapshot_at_utc < timedelta(
+        minutes=policy.rpo_minutes - policy.alert_margin_minutes
+    )
+    assert monitor.check_backup(policy, "staging", due - timedelta(seconds=1), 4).ok
+    result = monitor.check_backup(policy, "staging", due, 4)
+    assert not result.ok and result.category == "backup_attempt_overdue"
 
 
 def test_failed_primary_retries_only_failed_recipients_and_escalates_to_substitute(

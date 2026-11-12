@@ -183,6 +183,8 @@ The [scheduled capture service](../deploy/backup-set.service) invokes the [captu
 
 The wrapper uses one private `.scheduled-capture` workspace under `/opt/garrison-portal/recovery/scheduled/`. It removes that workspace after verified publication and writer recovery. When publication fails after writers resume, the next run retries the same signed set before creating another capture. If its publication deadline has passed, the active release changed, or writer recovery is unverified, review `last-attempt.json` and resolve the pending set with the recovery operator. Review historical `capture-*` directories separately before reclaiming their disk space.
 
+The scheduler signs and publishes `last-scheduled-attempt.json` to the approved recovery prefix after writer recovery. The publisher needs write and readback access to this status object, and the independent monitor needs read access. Verify the first scheduled attempt record before switching the monitor. A failed attempt can trigger an alert while the previous successful set is still within the recovery point objective. If status publication fails, the scheduler exits with a failure and keeps the local `last-attempt.json` for investigation. Only a verified complete set advances backup freshness.
+
 When rotating the authentication key or changing the policy revision, use a new approved destination prefix. Keep the previous prefix and escrow the exact policy bytes, key ID, authentication key and decryption material until the retained sets expire. Verify a complete set under the new policy before changing the monitor. Preview expired sets with the separate retention command; apply only the reviewed plan using authorized retention credentials.
 
 ```bash

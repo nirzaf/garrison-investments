@@ -120,6 +120,8 @@ Treat raw Nginx error logs as restricted. An upstream error can include its orig
 
 Run the [independent monitor](../backend/scripts/health_monitor.py) on the approved host outside the portal's failure domain. Use the [unsigned template](templates/monitor-profile.unsigned.json) to prepare the D-30 profile for owner review. The approved profile binds the environment, HTTPS readiness targets, allowed hosts, timings, sender and recipient groups, responders, and any bounded maintenance windows. Supply SMTP credentials for STARTTLS or implicit TLS, or a useSend key for the approved HTTPS endpoint, through the monitor's private environment. The production profile also requires the authenticated freshness check against the independent recovery destination. Give the monitor only the read-only backup credentials and the independently managed receipt authentication key.
 
+The backup check authenticates the latest scheduled attempt before checking the last verified complete set. A failed writer restart, an unavailable attempt record, or a status older than the approved backup interval plus publication allowance produces a failed check. Use the scheduler receipt to investigate and let the monitor verify a successful scheduled attempt and a fresh complete set before resolving the incident.
+
 Keep an existing owner-only directory for incident state and write each structured receipt to a separate private path. The command exits nonzero for a failed check or delivery and rejects corrupt state or an overlapping invocation.
 
 ```bash

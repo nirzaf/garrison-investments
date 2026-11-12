@@ -47,22 +47,27 @@ from scripts.backup_set_contract import (
     AuthenticationRecord,
     BackupSetError,
     CaptureEvidence,
+    CaptureInventoryIdentity,
     PublicationReceipt,
     RecoveryPolicy,
     RetentionAuthorization,
     RetentionCandidate,
     RetentionPlan,
+    ScheduledAttempt,
+    ScheduledAttemptReceipt,
     authentication_key,
     canonical_bytes,
     read_policy,
     require_relative_path,
     sign_publication_receipt,
+    sign_scheduled_attempt,
 )
 from scripts.backup_set_storage import (
     CHUNK,
     COMPLETE,
     IDENTITY,
     MAX_MANIFEST_BYTES,
+    MAX_SCHEDULED_ATTEMPT_BYTES,
     RecoveryStore,
     complete_receipt,
     retention_candidates,
@@ -732,6 +737,37 @@ def publish(source: Path, policy_data: tuple[RecoveryPolicy, str], receipt_path:
     print(f"Published and independently verified backup set {set_id}.")
 
 
+def publish_attempt(
+    source: Path, policy_data: tuple[RecoveryPolicy, str], inventory_path: Path
+) -> None:
+    policy, policy_sha256 = policy_data
+    try:
+        attempt = ScheduledAttempt.model_validate_json(
+            metadata_bytes(source, MAX_SCHEDULED_ATTEMPT_BYTES)
+        )
+        inventory = CaptureInventoryIdentity.model_validate_json(
+            metadata_bytes(inventory_path, CHUNK)
+        )
+        if (
+            attempt.source_sha != inventory.source_sha
+            or inventory.source_environment != policy.source_environment
+        ):
+            raise BackupSetError("Scheduled backup attempt differs from the approved inventory.")
+        receipt = ScheduledAttemptReceipt(
+            **attempt.model_dump(),
+            source_environment=policy.source_environment,
+            policy_revision=policy.revision,
+            policy_sha256=policy_sha256,
+            configuration_sha256=inventory.configuration_sha256,
+        )
+    except ValueError:
+        raise BackupSetError("Scheduled backup attempt or inventory is invalid.") from None
+    key_file, key_id = key_settings()
+    raw = sign_scheduled_attempt(receipt, key=authentication_key(key_file, key_id), key_id=key_id)
+    RecoveryStore(policy.destination_identity).put_scheduled_attempt(raw)
+    print("Published and independently verified scheduled backup attempt status.")
+
+
 def fetch(set_id: str, policy_data: tuple[RecoveryPolicy, str], destination: Path) -> None:
     policy, policy_sha256 = policy_data
     store = RecoveryStore(policy.destination_identity)
@@ -1160,6 +1196,10 @@ def main() -> None:
     schedule_args = subcommands.add_parser("schedule")
     schedule_args.add_argument("--policy", type=Path, required=True)
     schedule_args.add_argument("--output", type=Path, required=True)
+    attempt_args = subcommands.add_parser("publish-attempt")
+    attempt_args.add_argument("source", type=Path)
+    attempt_args.add_argument("--policy", type=Path, required=True)
+    attempt_args.add_argument("--inventory", type=Path, required=True)
     for operation in ("retention-preview", "retention-apply"):
         retention_args = subcommands.add_parser(operation)
         retention_args.add_argument("--policy", type=Path, required=True)
@@ -1210,6 +1250,9 @@ def main() -> None:
             return
         if args.command == "publish" and policy:
             publish(args.source, policy, args.receipt)
+            return
+        if args.command == "publish-attempt" and policy:
+            publish_attempt(args.source, policy, args.inventory)
             return
         if args.command == "fetch" and policy:
             fetch(args.source, policy, args.destination)

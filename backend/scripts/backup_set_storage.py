@@ -7,6 +7,7 @@ import os
 import re
 from collections.abc import Iterator
 from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from time import monotonic
 from typing import BinaryIO
@@ -21,8 +22,10 @@ from scripts.backup_set_contract import (
     DestinationIdentity,
     PublicationReceipt,
     RecoveryPolicy,
+    ScheduledAttemptReceipt,
     read_policy,
     verify_publication_receipt,
+    verify_scheduled_attempt,
 )
 
 COMPLETE = "complete.json"
@@ -30,6 +33,8 @@ IDENTITY = "manifest.sha256"
 MISSING = {"NoSuchKey", "NoSuchObject"}
 CHUNK = 1024 * 1024
 MAX_MANIFEST_BYTES = 64 * CHUNK
+MAX_SCHEDULED_ATTEMPT_BYTES = 16 * 1024
+SCHEDULED_ATTEMPT = "last-scheduled-attempt.json"
 
 
 class RecoveryStore:
@@ -147,6 +152,21 @@ class RecoveryStore:
         if not self.verify(key, digest, size):
             raise BackupSetError("Independent backup artifact is missing after publication.")
 
+    @property
+    def scheduled_attempt_key(self) -> str:
+        return f"{self.destination.prefix}/{SCHEDULED_ATTEMPT}"
+
+    def put_scheduled_attempt(self, raw: bytes) -> None:
+        if not 0 < len(raw) <= MAX_SCHEDULED_ATTEMPT_BYTES:
+            raise BackupSetError("Scheduled backup attempt metadata exceeds its allowed size.")
+        # The scheduler's host lock serializes updates to this single status object.
+        key = self.scheduled_attempt_key
+        self.client.put_object(
+            self.destination.bucket, key, BytesIO(raw), len(raw), content_type="application/json"
+        )
+        if self.read(key, MAX_SCHEDULED_ATTEMPT_BYTES) != raw:
+            raise BackupSetError("Scheduled backup attempt failed independent readback.")
+
     def complete_keys(self) -> Iterator[str]:
         prefix = self.destination.prefix + "/"
         pattern = re.compile(r"[a-f0-9]{32}/complete\.json")
@@ -233,3 +253,32 @@ def read_latest_publication(
     if latest is None:
         raise BackupSetError("No authenticated independent backup set is complete.")
     return latest
+
+
+def read_latest_scheduled_attempt(
+    policy_path: Path,
+    *,
+    key_file: Path,
+    key_id: str,
+    timeout: float = 60,
+    expected_policy_sha256: str | None = None,
+) -> ScheduledAttemptReceipt:
+    """Read the latest attempt status separately from the last verified recovery point."""
+    policy, policy_sha256 = read_policy(policy_path)
+    if expected_policy_sha256 is not None and policy_sha256 != expected_policy_sha256:
+        raise BackupSetError("Independent backup policy differs from its approved digest.")
+    store = RecoveryStore(policy.destination_identity, timeout=timeout)
+    deadline = monotonic() + timeout
+    raw = store.read(store.scheduled_attempt_key, MAX_SCHEDULED_ATTEMPT_BYTES)
+    if monotonic() >= deadline:
+        raise BackupSetError("Scheduled backup attempt check exceeded its time limit.")
+    if raw is None:
+        raise BackupSetError("Independent scheduled backup attempt receipt is missing.")
+    receipt = verify_scheduled_attempt(raw, key_file=key_file, key_id=key_id)
+    if (
+        receipt.source_environment != policy.source_environment
+        or receipt.policy_revision != policy.revision
+        or receipt.policy_sha256 != policy_sha256
+    ):
+        raise BackupSetError("Scheduled backup attempt does not match the approved scope.")
+    return receipt

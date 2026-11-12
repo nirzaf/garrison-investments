@@ -14,7 +14,7 @@ import smtplib
 import ssl
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -571,17 +571,49 @@ def observe(
 
 def check_backup(profile: BackupCheck, environment: str, now: datetime, timeout: int) -> Result:
     from scripts.backup_set_contract import read_policy
-    from scripts.backup_set_storage import read_latest_publication
+    from scripts.backup_set_storage import read_latest_publication, read_latest_scheduled_attempt
 
     try:
         policy, policy_sha = read_policy(profile.policy_file)
         if (
             policy_sha != profile.policy_sha256
+            or policy.revision != profile.policy_revision
             or policy.rpo_minutes != profile.rpo_minutes
             or policy.source_environment != environment
         ):
             return Result(ok=False, category="backup_policy_mismatch")
         with deadline(timeout):
+            # Attempt status tracks scheduler failures independently of the recovery point.
+            try:
+                attempt = read_latest_scheduled_attempt(
+                    profile.policy_file,
+                    key_file=profile.key_file,
+                    key_id=profile.key_id,
+                    timeout=timeout,
+                    expected_policy_sha256=profile.policy_sha256,
+                )
+            except Exception:
+                return Result(ok=False, category="backup_attempt_unavailable_or_invalid")
+            now = max(now, datetime.now(UTC))
+            if (
+                attempt.source_environment != environment
+                or attempt.policy_revision != profile.policy_revision
+                or attempt.policy_sha256 != profile.policy_sha256
+                or attempt.configuration_sha256 != profile.configuration_sha256
+                or not attempt.started_at_utc <= attempt.completed_at_utc <= now
+            ):
+                return Result(ok=False, category="backup_attempt_mismatch")
+            if attempt.outcome == "fail":
+                category = (
+                    "backup_resume_failed" if attempt.phase == "resume" else "backup_attempt_failed"
+                )
+                return Result(ok=False, category=category)
+            if attempt.outcome != "pass" or attempt.phase != "complete":
+                return Result(ok=False, category="backup_attempt_mismatch")
+            if now - attempt.completed_at_utc >= timedelta(
+                minutes=policy.backup_interval_minutes + policy.maximum_publication_delay_minutes
+            ):
+                return Result(ok=False, category="backup_attempt_overdue")
             receipt = read_latest_publication(
                 profile.policy_file,
                 key_file=profile.key_file,

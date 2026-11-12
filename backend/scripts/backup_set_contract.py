@@ -203,13 +203,64 @@ class PublicationReceipt(BaseModel):
         return self
 
 
-class SignedPublicationReceipt(BaseModel):
+class ScheduledAttempt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    receipt: PublicationReceipt
+    source_sha: str = Field(pattern=SOURCE_SHA)
+    started_at_utc: AwareDatetime
+    completed_at_utc: AwareDatetime
+    phase: Literal[
+        "preflight",
+        "spool",
+        "quiescence",
+        "capture",
+        "resume",
+        "publication",
+        "cleanup",
+        "complete",
+    ]
+    outcome: Literal["pass", "fail"]
+
+    @model_validator(mode="after")
+    def validate_attempt(self) -> Self:
+        if (
+            self.started_at_utc.utcoffset() != timedelta(0)
+            or self.completed_at_utc.utcoffset() != timedelta(0)
+            or self.completed_at_utc < self.started_at_utc
+        ):
+            raise ValueError("Scheduled backup attempt requires ordered UTC timestamps.")
+        if self.outcome == "pass" and self.phase != "complete":
+            raise ValueError("Only a complete scheduled backup attempt can pass.")
+        return self
+
+
+class ScheduledAttemptReceipt(ScheduledAttempt):
+    source_environment: str = Field(min_length=1, max_length=100)
+    policy_revision: str = Field(min_length=1, max_length=100)
+    policy_sha256: str = Field(pattern=HEX_SHA256)
+    configuration_sha256: str = Field(pattern=HEX_SHA256)
+
+
+class CaptureInventoryIdentity(BaseModel):
+    source_sha: str = Field(pattern=SOURCE_SHA)
+    source_environment: str = Field(min_length=1)
+    configuration_sha256: str = Field(pattern=HEX_SHA256)
+
+
+class SignedReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     key_id: str = Field(pattern=r"^[a-zA-Z0-9_.-]{1,80}$")
     algorithm: Literal["HMAC-SHA256"]
     signature: str = Field(pattern=HEX_SHA256)
+
+
+class SignedPublicationReceipt(SignedReceipt):
+    receipt: PublicationReceipt
+
+
+class SignedScheduledAttemptReceipt(SignedReceipt):
+    receipt: ScheduledAttemptReceipt
 
 
 class RetentionCandidate(BaseModel):
@@ -256,13 +307,35 @@ def authentication_key(key_file: Path, key_id: str) -> bytes:
     return key
 
 
+def receipt_signature(receipt: BaseModel, key: bytes, domain: str) -> str:
+    payload = domain.encode("ascii") + b"\x00" + canonical_bytes(receipt)
+    return hmac.digest(key, payload, "sha256").hex()
+
+
 def sign_publication_receipt(receipt: PublicationReceipt, *, key: bytes, key_id: str) -> bytes:
-    signature = hmac.digest(key, b"publication\x00" + canonical_bytes(receipt), "sha256").hex()
     return canonical_bytes(
         SignedPublicationReceipt(
-            receipt=receipt, key_id=key_id, algorithm=AUTH_ALGORITHM, signature=signature
+            receipt=receipt,
+            key_id=key_id,
+            algorithm=AUTH_ALGORITHM,
+            signature=receipt_signature(receipt, key, "publication"),
         )
     )
+
+
+def verify_receipt_signature(
+    signed: SignedPublicationReceipt | SignedScheduledAttemptReceipt,
+    raw: bytes,
+    *,
+    key_file: Path,
+    key_id: str,
+    domain: str,
+) -> None:
+    if signed.key_id != key_id:
+        raise BackupSetError("Unknown backup authentication key identifier.")
+    expected = receipt_signature(signed.receipt, authentication_key(key_file, key_id), domain)
+    if canonical_bytes(signed) != raw or not hmac.compare_digest(signed.signature, expected):
+        raise BackupSetError(f"Backup {domain} receipt authentication failed.")
 
 
 def verify_publication_receipt(raw: bytes, *, key_file: Path, key_id: str) -> PublicationReceipt:
@@ -270,14 +343,29 @@ def verify_publication_receipt(raw: bytes, *, key_file: Path, key_id: str) -> Pu
         signed = SignedPublicationReceipt.model_validate_json(raw)
     except ValueError:
         raise BackupSetError("Backup publication receipt has an invalid format.") from None
-    if signed.key_id != key_id:
-        raise BackupSetError("Unknown backup authentication key identifier.")
-    key = authentication_key(key_file, key_id)
-    expected = hmac.digest(
-        key, b"publication\x00" + canonical_bytes(signed.receipt), "sha256"
-    ).hex()
-    if canonical_bytes(signed) != raw or not hmac.compare_digest(signed.signature, expected):
-        raise BackupSetError("Backup publication receipt authentication failed.")
+    verify_receipt_signature(signed, raw, key_file=key_file, key_id=key_id, domain="publication")
+    return signed.receipt
+
+
+def sign_scheduled_attempt(receipt: ScheduledAttemptReceipt, *, key: bytes, key_id: str) -> bytes:
+    return canonical_bytes(
+        SignedScheduledAttemptReceipt(
+            receipt=receipt,
+            key_id=key_id,
+            algorithm=AUTH_ALGORITHM,
+            signature=receipt_signature(receipt, key, "scheduled-attempt"),
+        )
+    )
+
+
+def verify_scheduled_attempt(raw: bytes, *, key_file: Path, key_id: str) -> ScheduledAttemptReceipt:
+    try:
+        signed = SignedScheduledAttemptReceipt.model_validate_json(raw)
+    except ValueError:
+        raise BackupSetError("Scheduled backup attempt receipt has an invalid format.") from None
+    verify_receipt_signature(
+        signed, raw, key_file=key_file, key_id=key_id, domain="scheduled-attempt"
+    )
     return signed.receipt
 
 

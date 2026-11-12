@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO
@@ -15,7 +17,9 @@ from scripts.backup_set_contract import (
     FailureDomains,
     RecoveryPolicy,
     RetentionRules,
+    ScheduledAttemptReceipt,
     canonical_bytes,
+    sign_scheduled_attempt,
     verify_publication_receipt,
 )
 
@@ -114,6 +118,8 @@ def recovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 class FixtureStore:
+    scheduled_attempt_key = f"app/test/{backup_set_storage.SCHEDULED_ATTEMPT}"
+
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.writes: list[str] = []
@@ -125,6 +131,10 @@ class FixtureStore:
 
     def read(self, key: str, limit: int) -> bytes | None:
         return self.objects.get(key)
+
+    def put_scheduled_attempt(self, raw: bytes) -> None:
+        self.writes.append(self.scheduled_attempt_key)
+        self.objects[self.scheduled_attempt_key] = raw
 
     def verify(self, key: str, digest: str, size: int, *, output: BinaryIO | None = None) -> bool:
         data = self.objects.get(key)
@@ -255,6 +265,181 @@ def test_corrupt_publication_cannot_refresh_success(recovery, remote, tmp_path: 
     backup_set.write_authenticated_manifest(directory, manifest, TEST_KEY, KEY_ID)
     with pytest.raises(BackupSetError, match="reserved for a different manifest"):
         backup_set.publish(directory, policy, receipt_file)
+
+
+@pytest.fixture
+def scheduled_attempt(recovery, tmp_path: Path) -> tuple[Path, Path]:
+    _, manifest, _, _, _ = recovery
+    attempt = tmp_path / "last-attempt.json"
+    attempt.write_text(
+        json.dumps(
+            {
+                "source_sha": manifest.source_sha,
+                "started_at_utc": manifest.captured_from.isoformat(),
+                "completed_at_utc": manifest.captured_to.isoformat(),
+                "phase": "resume",
+                "outcome": "fail",
+            }
+        )
+    )
+    inventory = tmp_path / "capture-inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "source_sha": manifest.source_sha,
+                "source_environment": manifest.source_environment,
+                "configuration_sha256": manifest.configuration_sha256,
+                "image_digests": manifest.image_digests,
+            }
+        )
+    )
+    return attempt, inventory
+
+
+def test_cli_publishes_authenticated_status_without_changing_last_good(
+    recovery,
+    remote: FixtureStore,
+    scheduled_attempt: tuple[Path, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory, manifest, policy_data, policy_path, key_file = recovery
+    latest = tmp_path / "latest-success.json"
+    backup_set.publish(directory, policy_data, latest)
+    prior_success = latest.read_bytes()
+    prior_objects = dict(remote.objects)
+    remote.writes.clear()
+    attempt, inventory = scheduled_attempt
+    monkeypatch.delenv("BACKUP_ENCRYPTION_PASSWORD", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backup_set",
+            "publish-attempt",
+            str(attempt),
+            "--policy",
+            str(policy_path),
+            "--inventory",
+            str(inventory),
+        ],
+    )
+    backup_set.main()
+    receipt = backup_set_storage.read_latest_scheduled_attempt(
+        policy_path, key_file=key_file, key_id=KEY_ID, expected_policy_sha256=policy_data[1]
+    )
+    assert receipt.phase == "resume" and receipt.outcome == "fail"
+    assert receipt.source_sha == manifest.source_sha
+    assert receipt.source_environment == manifest.source_environment
+    assert receipt.configuration_sha256 == manifest.configuration_sha256
+    assert receipt.policy_revision == policy_data[0].revision
+    assert receipt.started_at_utc == manifest.captured_from
+    assert receipt.completed_at_utc == manifest.captured_to
+    assert remote.writes == [remote.scheduled_attempt_key]
+    assert set(remote.objects) == prior_objects.keys() | {remote.scheduled_attempt_key}
+    assert all(remote.objects[key] == value for key, value in prior_objects.items())
+    assert latest.read_bytes() == prior_success
+    last_good = backup_set_storage.read_latest_publication(
+        policy_path, key_file=key_file, key_id=KEY_ID
+    )
+    assert last_good.backup_set_id == manifest.backup_set_id
+
+    attempt_data = json.loads(attempt.read_bytes())
+    attempt_data.update(
+        phase="complete",
+        outcome="pass",
+        completed_at_utc=(receipt.completed_at_utc + timedelta(minutes=1)).isoformat(),
+    )
+    attempt.write_text(json.dumps(attempt_data))
+    backup_set.main()
+    latest_attempt = backup_set_storage.read_latest_scheduled_attempt(
+        policy_path, key_file=key_file, key_id=KEY_ID
+    )
+    assert latest_attempt.outcome == "pass" and latest_attempt.phase == "complete"
+    assert latest_attempt.completed_at_utc > receipt.completed_at_utc
+    assert remote.writes == [remote.scheduled_attempt_key] * 2
+    assert latest.read_bytes() == prior_success
+
+
+@pytest.mark.parametrize(
+    ("record", "field", "value"),
+    [
+        ("attempt", "phase", "unknown"),
+        ("attempt", "outcome", "pass"),
+        ("attempt", "notes", "arbitrary text"),
+        ("attempt", "completed_at_utc", "2000-01-01T00:00:00+01:00"),
+        ("attempt", "completed_at_utc", "2000-01-01T00:00:00Z"),
+        ("inventory", "source_environment", "other-environment"),
+        ("inventory", "source_sha", "d" * 40),
+    ],
+)
+def test_scheduled_attempt_rejects_invalid_inputs_before_publication(
+    recovery,
+    remote: FixtureStore,
+    scheduled_attempt: tuple[Path, Path],
+    record: str,
+    field: str,
+    value: str,
+) -> None:
+    _, _, policy_data, _, _ = recovery
+    attempt, inventory = scheduled_attempt
+    target = attempt if record == "attempt" else inventory
+    edited = json.loads(target.read_bytes())
+    edited[field] = value
+    target.write_text(json.dumps(edited))
+    with pytest.raises(BackupSetError, match="invalid|differs from the approved inventory"):
+        backup_set.publish_attempt(attempt, policy_data, inventory)
+    assert not remote.writes
+
+
+@pytest.mark.parametrize(
+    ("scenario", "message"),
+    [
+        ("missing", "receipt is missing"),
+        ("tampered", "authentication failed"),
+        ("unknown-key", "Unknown backup authentication key"),
+        ("other-policy", "does not match the approved scope"),
+        ("wrong-environment", "does not match the approved scope"),
+        ("wrong-revision", "does not match the approved scope"),
+        ("expected-policy-drift", "differs from its approved digest"),
+    ],
+)
+def test_independent_reader_rejects_invalid_scheduled_attempt(
+    recovery,
+    remote: FixtureStore,
+    scheduled_attempt: tuple[Path, Path],
+    scenario: str,
+    message: str,
+) -> None:
+    _, _, policy_data, policy_path, key_file = recovery
+    attempt, inventory = scheduled_attempt
+    backup_set.publish_attempt(attempt, policy_data, inventory)
+    key = remote.scheduled_attempt_key
+    signed = remote.objects[key]
+    expected_digest = None
+    key_id = KEY_ID
+    if scenario == "missing":
+        del remote.objects[key]
+    elif scenario == "tampered":
+        remote.objects[key] = signed.replace(b'"phase":"resume"', b'"phase":"capture"')
+    elif scenario == "unknown-key":
+        key_id = "unknown-key"
+    elif scenario == "expected-policy-drift":
+        expected_digest = "0" * 64
+    else:
+        field, replacement = {
+            "other-policy": ("policy_sha256", "0" * 64),
+            "wrong-environment": ("source_environment", "wrong-environment"),
+            "wrong-revision": ("policy_revision", "different-revision"),
+        }[scenario]
+        modified = json.loads(signed)["receipt"]
+        modified[field] = replacement
+        receipt = ScheduledAttemptReceipt.model_validate(modified)
+        remote.objects[key] = sign_scheduled_attempt(receipt, key=TEST_KEY, key_id=KEY_ID)
+    with pytest.raises(BackupSetError, match=message):
+        backup_set_storage.read_latest_scheduled_attempt(
+            policy_path, key_file=key_file, key_id=key_id, expected_policy_sha256=expected_digest
+        )
 
 
 def test_retention_protects_held_daily_monthly_and_last_good(
