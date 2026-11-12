@@ -1,5 +1,7 @@
 import json
 import logging
+import subprocess
+import sys
 from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import Mock
@@ -289,3 +291,20 @@ def test_celery_lifecycle_logs_context_without_args_or_results(monkeypatch) -> N
     assert "args" not in started.kwargs
     assert "kwargs" not in started.kwargs
     assert log_context_dict() == {}
+
+
+def test_celery_worker_logging_setup_preserves_task_json() -> None:
+    worker_startup = """
+import structlog
+from app.tasks.celery_app import celery_app
+
+celery_app.log.setup_logging_subsystem(loglevel="INFO", colorize=False)
+structlog.get_logger("celery.task").warning("task_retried", task_id="synthetic-task")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", worker_startup], check=True, capture_output=True, text=True
+    )
+    records = [json.loads(line) for line in result.stderr.splitlines() if line.startswith("{")]
+    task_log = next(record for record in records if record.get("message") == "task_retried")
+    assert task_log["task_id"] == "synthetic-task"
+    assert task_log["source_service"] == "celery"

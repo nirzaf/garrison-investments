@@ -15,6 +15,7 @@ from app.utils.redaction import redact_payload
 _configured = False
 _standard_context: dict[str, str] = {}
 
+
 def _inject_standard_fields(
     _: Any,
     method_name: str,
@@ -97,7 +98,14 @@ def configure_logging(
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(settings.log_level)
-    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "celery"):
+    for logger_name in (
+        "uvicorn",
+        "uvicorn.error",
+        "uvicorn.access",
+        "celery",
+        "celery.task",
+        "celery.redirected",
+    ):
         named_logger = logging.getLogger(logger_name)
         named_logger.handlers.clear()
         named_logger.propagate = True
