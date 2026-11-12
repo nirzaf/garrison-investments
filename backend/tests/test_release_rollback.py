@@ -85,3 +85,27 @@ def test_legacy_workflow_invocation_is_rejected_before_token_read() -> None:
     )
     assert result.returncode == 1
     assert "rollback-v2 protocol" in result.stderr
+
+
+def test_unhealthy_runtime_cannot_be_masked_by_nginx_reload() -> None:
+    source = SCRIPT.read_text()
+    start = source.index("\napply_runtime() {\n")
+    end = source.index("\nrollback_compatible=0\n", start)
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+project=disposable
+compose() {{ return 42; }}
+docker() {{ echo 'Unexpected Nginx reload'; }}
+{source[start:end]}
+apply_runtime previous || exit "$?"
+""",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 42
+    assert not result.stdout

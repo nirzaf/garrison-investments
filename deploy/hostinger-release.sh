@@ -168,7 +168,7 @@ publish_frontend() {
 
 apply_runtime() {
   compose "$1" up --detach --no-build --pull never --no-deps --wait --wait-timeout 150 \
-    backend celery_worker celery_beat grafana loki alloy nginx
+    backend celery_worker celery_beat grafana loki alloy nginx || return
   docker exec "$project-nginx-1" nginx -s reload
 }
 
