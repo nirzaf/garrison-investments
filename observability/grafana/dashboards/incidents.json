@@ -31,7 +31,7 @@
         {
           "datasource": {"type": "loki", "uid": "loki"},
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" | unwrap duration_ms [$__auto])",
+          "expr": "quantile_over_time(0.95, {environment=\"$environment\", service=\"backend\"} | json | message=\"http_request_completed\" | unwrap duration_ms | __error__=\"\" [$__auto]) by (environment)",
           "legendFormat": "HTTP p95",
           "queryType": "range",
           "refId": "A"

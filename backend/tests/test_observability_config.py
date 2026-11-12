@@ -159,7 +159,12 @@ _EXPECTED_ALERT_PREDICATES = {
     "garrison-unhandled-errors": ['message=~"unhandled_request_exception|task_failed"'],
     "garrison-http-5xx-burst": ['message="http_request_completed"', "status_code >= 500"],
     "garrison-celery-retries": ['message="task_retried"', 'service=~"celery_worker|celery_beat"'],
-    "garrison-slow-http": ['message="http_request_completed"', "unwrap duration_ms"],
+    "garrison-slow-http": [
+        'message="http_request_completed"',
+        "unwrap duration_ms",
+        '__error__=""',
+        "by (environment)",
+    ],
     "garrison-log-pipeline-errors": ['service=~"loki|alloy"'],
 }
 

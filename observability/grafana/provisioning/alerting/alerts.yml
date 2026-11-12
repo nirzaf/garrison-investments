@@ -123,7 +123,7 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'quantile_over_time(0.95, {environment=~"production|staging", service="backend"} | json | message="http_request_completed" | unwrap duration_ms [10m])'
+              expr: 'quantile_over_time(0.95, {environment=~"production|staging", service="backend"} | json | message="http_request_completed" | unwrap duration_ms | __error__="" [10m]) by (environment)'
               queryType: instant
               refId: A
           - refId: B
