@@ -1,12 +1,27 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Check, ClipboardList, Image, Paperclip, Save, Send } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { getBrowserSession } from '../../api/browserSession';
+import { sameScope, type OfflineScope } from '../../api/offlineDb';
+import {
+  clearSupervisorDraft,
+  getSupervisorDraft,
+  saveSupervisorDraft
+} from '../../api/offlineQueue';
 import { formatApiError } from '../../api/errors';
-import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
+import {
+  deletePhoto,
+  listPhotos,
+  prepareMediaFiles,
+  uploadMediaFiles,
+  type MediaUploadIntent,
+  type PhotoRecord
+} from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
   createSupervisorUpdate,
@@ -20,12 +35,6 @@ import { EmptyState } from '../../components/shared/EmptyState';
 import { FileDropZone } from '../../components/shared/FileDropZone';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
-
-const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
-const MAX_ATTACHMENT_SIZE = 60 * 1024 * 1024;
-const MAX_PHOTOS = 5;
-
-const draftKey = 'garrisons.supervisor-update-draft';
 
 const updateSchema = z.object({
   project_id: z.string().min(1, 'Select a project.'),
@@ -87,13 +96,21 @@ function buildPayload(values: UpdateFormValues, draft: SupervisorUpdateRecord | 
   };
 }
 
-function persistDraft(values: UpdateFormValues, draft: SupervisorUpdateRecord | null) {
+function persistDraft(
+  values: UpdateFormValues,
+  draft: SupervisorUpdateRecord | null,
+  scope: OfflineScope
+) {
   const payload = buildPayload(values, draft);
-  return draft ? updateSupervisorUpdate(draft.id, payload) : createSupervisorUpdate(payload);
+  return draft
+    ? updateSupervisorUpdate(draft.id, payload, scope)
+    : createSupervisorUpdate(payload, scope);
 }
 
 export function SupervisorUpdatePage() {
   const { user } = useAuth();
+  const browserScope = getBrowserSession()?.scope;
+  const scope = browserScope?.ownerUserId === user?.id ? browserScope : undefined;
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [updates, setUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,16 +120,13 @@ export function SupervisorUpdatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [failedUpload, setFailedUpload] = useState<{
+    entityId: string;
+    items: MediaUploadIntent[];
+  } | null>(null);
+  const mediaWrite = useRef(false);
 
-  const storedDraft = useMemo(() => {
-    const defaultValues = createDefaultValues();
-    try {
-      const raw = window.localStorage.getItem(draftKey);
-      return raw ? { ...defaultValues, ...JSON.parse(raw) } : defaultValues;
-    } catch {
-      return defaultValues;
-    }
-  }, []);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
   const {
     formState: { errors, isDirty },
@@ -122,7 +136,7 @@ export function SupervisorUpdatePage() {
     reset,
     watch
   } = useForm<UpdateFormInput, unknown, UpdateFormValues>({
-    defaultValues: storedDraft,
+    defaultValues: createDefaultValues(),
     resolver: zodResolver(updateSchema)
   });
 
@@ -163,37 +177,64 @@ export function SupervisorUpdatePage() {
   }, []);
 
   useEffect(() => {
+    if (!scope) return;
+    let active = true;
+    void getSupervisorDraft<UpdateFormInput>(scope)
+      .then((stored) => {
+        if (!active || !sameScope(getBrowserSession()?.scope, scope)) return;
+        if (stored) reset({ ...createDefaultValues(), ...stored });
+        setDraftHydrated(true);
+      })
+      .catch(() => {
+        if (active) setError('Unable to open the local site update draft.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [reset, scope]);
+
+  useEffect(() => {
+    if (!scope || !draftHydrated) return;
     let timer: ReturnType<typeof setTimeout>;
     const subscription = watch((value, { name }) => {
       window.clearTimeout(timer);
       if (!name && !value.project_id) return;
       timer = window.setTimeout(() => {
-        window.localStorage.setItem(draftKey, JSON.stringify(value));
+        void saveSupervisorDraft(scope, value).catch(() => {
+          if (sameScope(getBrowserSession()?.scope, scope))
+            setError('Unable to save the local site update draft.');
+        });
       }, 800);
     });
     return () => {
       subscription.unsubscribe();
       window.clearTimeout(timer);
     };
-  }, [watch]);
+  }, [draftHydrated, scope, watch]);
 
   useEffect(() => {
+    if (!scope || !draftHydrated) return;
     const interval = window.setInterval(() => {
+      if (!sameScope(getBrowserSession()?.scope, scope)) return;
       const parsed = updateSchema.safeParse(getValues());
       if (!parsed.success || isSaving || (savedDraft && !isDirty)) return;
       setIsSaving(true);
-      void persistDraft(parsed.data, savedDraft)
+      void persistDraft(parsed.data, savedDraft, scope)
         .then((update) => {
+          if (!sameScope(getBrowserSession()?.scope, scope)) return;
           setSavedDraft(update);
           setLastAutosavedAt(new Date().toLocaleTimeString());
         })
-        .catch(() => {
-          window.localStorage.setItem(draftKey, JSON.stringify(getValues()));
-        })
+        .catch(() =>
+          saveSupervisorDraft(scope, getValues()).catch(() => {
+            if (sameScope(getBrowserSession()?.scope, scope))
+              setError('Unable to save the local site update draft.');
+          })
+        )
         .finally(() => setIsSaving(false));
     }, 30000);
     return () => window.clearInterval(interval);
-  }, [getValues, isDirty, isSaving, savedDraft]);
+  }, [draftHydrated, getValues, isDirty, isSaving, savedDraft, scope]);
 
   useEffect(() => {
     void loadUpdates(selectedProjectId);
@@ -210,6 +251,7 @@ export function SupervisorUpdatePage() {
     setSavedDraft(update);
     setLastAutosavedAt(null);
     setUploadedFiles([]);
+    setFailedUpload(null);
     reset({
       project_id: update.project_id,
       update_date: update.update_date,
@@ -233,48 +275,82 @@ export function SupervisorUpdatePage() {
     }
   }
 
-  async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!files?.length) return;
+  async function recordUploads(
+    entityId: string,
+    items: MediaUploadIntent[],
+    selectionErrors: string[]
+  ) {
+    if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
+    const result = await uploadMediaFiles('supervisor_update', entityId, items, scope);
+    if (!sameScope(getBrowserSession()?.scope, scope)) return;
+    setUploadedFiles((current) => [
+      ...current,
+      ...result.uploaded.filter((file) => !current.some((existing) => existing.id === file.id))
+    ]);
+    setFailedUpload((current) => {
+      const previous = current?.entityId === entityId ? current.items : [];
+      const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
+      const next = [...untouched, ...result.failed];
+      return next.length ? { entityId, items: next } : null;
+    });
+    const errors = [...selectionErrors, ...result.errors];
+    if (errors.length) setError(errors.join(' '));
+    if (result.uploaded.length) {
+      setNotice(`${result.uploaded.length} file${result.uploaded.length === 1 ? '' : 's'} saved.`);
+    }
+  }
+
+  async function updateMedia(action: () => Promise<void>) {
+    if (mediaWrite.current) return;
+    mediaWrite.current = true;
     setIsSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const values = watch();
-      const update = savedDraft ?? (await persistDraft(values as UpdateFormValues, null));
-      setSavedDraft(update);
-      const maxSize = kind === 'photo' ? MAX_PHOTO_SIZE : MAX_ATTACHMENT_SIZE;
-      const maxCount = kind === 'photo' ? MAX_PHOTOS : undefined;
-      const fileList = Array.from(files);
-      if (maxCount && fileList.length > maxCount) {
-        setError(`Maximum ${maxCount} photos allowed per update.`);
-        return;
-      }
-      if (fileList.some((f) => f.size > maxSize)) {
-        const label = kind === 'photo' ? '10 MB' : '60 MB';
-        setError(`File size exceeds the ${label} limit.`);
-        return;
-      }
-      const uploaded = await uploadEntityFiles({
-        entityType: 'supervisor_update',
-        entityId: update.id,
-        kind,
-        files
-      });
-      setUploadedFiles((prev) => [...prev, ...uploaded]);
-      setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
-    } catch (uploadError) {
-      setError(formatApiError(uploadError, 'Unable to upload files for the site update.'));
+      await action();
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to update site evidence.'));
     } finally {
+      mediaWrite.current = false;
       setIsSaving(false);
     }
   }
 
+  async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
+    if (!scope || !files?.length) return;
+    await updateMedia(async () => {
+      const { items, errors } = await prepareMediaFiles(
+        files,
+        kind,
+        MAX_REPORT_PHOTOS - uploadedFiles.filter((file) => file.kind === 'photo').length
+      );
+      if (errors.length) setError(errors.join(' '));
+      if (!items.length) return;
+      const update = savedDraft ?? (await persistDraft(watch() as UpdateFormValues, null, scope));
+      setSavedDraft(update);
+      await recordUploads(update.id, items, errors);
+    });
+  }
+
+  async function removeFile(file: PhotoRecord) {
+    if (!savedDraft || savedDraft.status !== 'draft') return;
+    if (!window.confirm(`Remove ${file.original_name} from this site update (${savedDraft.id})?`))
+      return;
+    await updateMedia(async () => {
+      await deletePhoto(file.id);
+      setUploadedFiles((current) => current.filter((item) => item.id !== file.id));
+      setNotice(`${file.original_name} removed.`);
+    });
+  }
+
   async function saveDraft(values: UpdateFormValues) {
+    if (!scope) return null;
     setError(null);
     setNotice(null);
     setIsSaving(true);
     try {
-      const update = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      const update =
+        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(update);
       setNotice('Draft saved.');
       await loadUpdates(values.project_id);
@@ -288,18 +364,21 @@ export function SupervisorUpdatePage() {
   }
 
   async function submitUpdate(values: UpdateFormValues) {
+    if (!scope) return;
     setError(null);
     setNotice(null);
     setIsSaving(true);
     try {
-      const draft = savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft);
+      const draft =
+        savedDraft && !isDirty ? savedDraft : await persistDraft(values, savedDraft, scope);
       setSavedDraft(draft);
-      await submitSupervisorUpdate(draft.id);
+      await submitSupervisorUpdate(draft.id, scope);
       setSavedDraft(null);
       setUploadedFiles([]);
+      setFailedUpload(null);
       setLastAutosavedAt(null);
       reset(createDefaultValues());
-      window.localStorage.removeItem(draftKey);
+      await clearSupervisorDraft(scope);
       setNotice('Site update submitted.');
       await loadUpdates(values.project_id);
     } catch (submitError) {
@@ -411,10 +490,10 @@ export function SupervisorUpdatePage() {
                   <span>Upload photos</span>
                 </div>
                 <FileDropZone
-                  accept="image/jpeg,image/png,image/heic"
+                  accept={REPORT_PHOTO_ACCEPT}
                   capture="environment"
                   disabled={isSaving}
-                  hint="Max 5 photos at 10 MB each. JPG, PNG, or HEIC."
+                  hint={`${uploadedFiles.filter((file) => file.kind === 'photo').length} of 5 photos saved. JPEG, PNG or HEIC, up to 10 MiB each.`}
                   label="Drop photos here or tap to use camera"
                   multiple
                   onFiles={(files) => void uploadFiles(files, 'photo')}
@@ -426,15 +505,29 @@ export function SupervisorUpdatePage() {
                   <span>Upload attachments</span>
                 </div>
                 <FileDropZone
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept={PDF_IMAGE_ACCEPT}
                   disabled={isSaving}
-                  hint="Supporting documents up to 60 MB."
+                  hint="PDF, JPEG or PNG, up to 10 MiB per file."
                   label="Drop attachments here or tap to browse"
                   multiple
                   onFiles={(files) => void uploadFiles(files, 'attachment')}
                 />
               </div>
             </div>
+            {failedUpload ? (
+              <button
+                className="form-field mt-3"
+                disabled={isSaving}
+                onClick={() => {
+                  void updateMedia(() =>
+                    recordUploads(failedUpload.entityId, failedUpload.items, [])
+                  );
+                }}
+                type="button"
+              >
+                Retry {failedUpload.items.length} failed file(s)
+              </button>
+            ) : null}
             {uploadedFiles.length > 0 ? (
               <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
@@ -443,7 +536,19 @@ export function SupervisorUpdatePage() {
                     key={file.id}
                   >
                     <span>{file.original_name}</span>
-                    <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                      {savedDraft?.status === 'draft' ? (
+                        <button
+                          className="form-field"
+                          disabled={isSaving}
+                          onClick={() => void removeFile(file)}
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -508,6 +613,15 @@ export function SupervisorUpdatePage() {
                 <p className="mt-3 line-clamp-3 text-sm text-theme-text-secondary">
                   {update.progress_notes}
                 </p>
+                {update.verified_at && (
+                  <p className="mt-2 text-xs text-theme-text-muted">
+                    Verified {new Date(update.verified_at).toLocaleString()}
+                    {update.verified_by_name ? ` by ${update.verified_by_name}` : ''}
+                    {update.verified_report_id && (
+                      <span className="block">Linked report {update.verified_report_id}</span>
+                    )}
+                  </p>
+                )}
                 {update.status === 'draft' && update.supervisor_id === user?.id ? (
                   <button
                     className="mt-3 text-sm font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"

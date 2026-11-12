@@ -1,8 +1,18 @@
+from io import BytesIO
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
+from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import engine
+from app.models.user import User
+from app.repositories.document_repository import DocumentRepository
+from app.services.document_service import DocumentService
+from app.services.storage_service import minio_client
+from tests.concurrency_helpers import race_sessions, status_counts
 from tests.test_daily_reports import (
     create_test_client,
     setup_project_team,
@@ -176,3 +186,126 @@ async def test_document_search_finds_uploaded_metadata() -> None:
 
         assert response.status_code == 200
         assert response.json()["total"] >= 1
+
+
+async def test_document_replacements_serialize_and_keep_active_version() -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        uploader = {"Authorization": f"Bearer {team['engineer_token']}"}
+        approver = {"Authorization": f"Bearer {team['op_token']}"}
+        response = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Race plan",
+                "document_type": "drawing",
+                "project_id": team["project_id"],
+            },
+            files={"file": ("v1.pdf", pdf_bytes("v1"), "application/pdf")},
+            headers=uploader,
+        )
+        assert response.status_code == 201
+        document = response.json()
+        path = f"/api/v1/documents/{document['id']}"
+        first = document["versions"][0]
+        response = await client.post(
+            f"{path}/versions/{first['id']}/approve", json={}, headers=approver
+        )
+        assert response.status_code == 200
+
+        document_id = UUID(document["id"])
+        identity = (await client.get("/api/v1/auth/me", headers=uploader)).json()
+
+        def replace(label: str):
+            async def run(session: AsyncSession) -> int:
+                actor = await session.get_one(User, UUID(identity["id"]))
+                await DocumentService(session).upload_version(
+                    document_id,
+                    UploadFile(BytesIO(pdf_bytes(label)), filename=f"{label}.pdf"),
+                    actor,
+                    f"document-{label}",
+                )
+                return 200
+
+            return run
+
+        results = await race_sessions(replace("revision-a"), replace("revision-b"))
+        assert status_counts(results) == {200: 2}
+
+        listed = await client.get(path, headers=uploader)
+        assert listed.status_code == 200
+        assert listed.json()["active_version"] == 1
+        assert [version["version"] for version in listed.json()["versions"]] == [1, 2, 3]
+        assert [version["status"] for version in listed.json()["versions"]] == [
+            "active",
+            "pending_approval",
+            "pending_approval",
+        ]
+        assert (await client.get(f"{path}/download", headers=uploader)).status_code == 200
+
+        replay = await client.post(
+            f"{path}/versions",
+            files={"file": ("revision-a.pdf", pdf_bytes("revision-a"), "application/pdf")},
+            headers={**uploader, "Idempotency-Key": "document-revision-a"},
+        )
+        assert replay.status_code == 200
+        assert len(replay.json()["versions"]) == 3
+
+        selected = listed.json()["versions"][2]
+        forbidden = await client.post(
+            f"{path}/versions/{selected['id']}/approve", json={}, headers=uploader
+        )
+        assert forbidden.status_code == 403
+        approved = await client.post(
+            f"{path}/versions/{selected['id']}/approve", json={}, headers=approver
+        )
+        assert approved.status_code == 200
+        assert approved.json()["active_version"] == 3
+        assert approved.json()["versions"][0]["status"] == "superseded"
+
+
+async def test_replacement_failure_discards_only_the_new_object(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        team = await setup_project_team(client)
+        actor = {"Authorization": f"Bearer {team['op_token']}"}
+        response = await client.post(
+            "/api/v1/documents",
+            data={
+                "title": "Failure plan",
+                "document_type": "drawing",
+                "project_id": team["project_id"],
+            },
+            files={"file": ("v1.pdf", pdf_bytes("v1"), "application/pdf")},
+            headers=actor,
+        )
+        assert response.status_code == 201
+        document = response.json()
+        path = f"/api/v1/documents/{document['id']}"
+        version = document["versions"][0]
+        approved = await client.post(
+            f"{path}/versions/{version['id']}/approve", json={}, headers=actor
+        )
+        assert approved.status_code == 200
+
+        async def fail_record(*args, **kwargs):
+            raise RuntimeError("synthetic persistence failure")
+
+        monkeypatch.setattr(DocumentRepository, "add_version", fail_record)
+        failed = await client.post(
+            f"{path}/versions",
+            files={"file": ("v2.pdf", pdf_bytes("v2"), "application/pdf")},
+            headers=actor,
+        )
+        assert failed.status_code == 503
+        assert failed.json()["error_code"] == "DOCUMENT_VERSION_SAVE_FAILED"
+        current = await client.get(path, headers=actor)
+        assert current.json()["active_version"] == 1
+        assert len(current.json()["versions"]) == 1
+        settings = get_settings()
+        stored = list(
+            minio_client(settings).list_objects(
+                settings.minio_bucket, prefix=f"documents/{document['id']}/", recursive=True
+            )
+        )
+        assert [item.object_name for item in stored] == [version["storage_path"]]

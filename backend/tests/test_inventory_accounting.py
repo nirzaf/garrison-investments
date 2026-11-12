@@ -4,34 +4,42 @@ floor (M5), and price masking that must not mutate ORM state (X1).
 Follows the per-module harness convention used by ``tests/test_inventory.py``.
 """
 
+import asyncio
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.approval import Approval
 from app.models.inventory import (
     InventoryItem,
     InventoryLocationStock,
+    InventoryMovement,
     MaterialRequest,
     MaterialRequestLine,
     StorageLocation,
 )
+from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.inventory import LocationCreateRequest
+from app.schemas.inventory import LocationCreateRequest, MaterialQuantityCommand
+from app.services.approval_service import ApprovalService
+from app.services.email_service import EmailDeliveryError
 from app.services.inventory_service import InventoryService
+from app.tasks.email import _send_email_notification
 from app.utils.exceptions import AppException
-from app.utils.security import hash_password
-from tests.concurrency_helpers import race_sessions, status_counts
+from app.utils.security import hash_password, utc_now
+from tests.concurrency_helpers import SessionOperation, error_codes, race_sessions, status_counts
 
 pytestmark = pytest.mark.asyncio
 
@@ -211,6 +219,301 @@ async def read_unit_cost(item_id: UUID) -> Decimal | None:
         )
 
 
+async def race_with_parent_lock[T, U](
+    parent: Select[UUID], first: SessionOperation[T], second: SessionOperation[U]
+) -> list[object]:
+    """Pin the commit order and verify the contender actually waits in PostgreSQL."""
+    parent_locked = asyncio.Event()
+    contender_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+
+    async def run_first(session: AsyncSession) -> T:
+        assert await session.scalar(parent.with_for_update()) is not None
+        holder_pid = await session.scalar(select(func.pg_backend_pid()))
+        assert isinstance(holder_pid, int)
+        parent_locked.set()
+        pid = await contender_pid
+        async with asyncio.timeout(10):
+            while holder_pid not in (
+                await session.scalar(select(func.pg_blocking_pids(pid))) or []
+            ):
+                await asyncio.sleep(0.01)
+        return await first(session)
+
+    async def run_second(session: AsyncSession) -> U:
+        await parent_locked.wait()
+        pid = await session.scalar(select(func.pg_backend_pid()))
+        assert isinstance(pid, int)
+        contender_pid.set_result(pid)
+        return await second(session)
+
+    return await race_sessions(run_first, run_second)
+
+
+async def seed_actionable_approval(fixture: Fixture, approver: User, *, overdue: bool) -> UUID:
+    now = utc_now()
+    async with AsyncSessionLocal() as session:
+        approval = Approval(
+            request_type="material_request",
+            request_id=fixture.request.id,
+            project_id=fixture.project.id,
+            submitter_id=fixture.engineer.id,
+            approver_id=approver.id,
+            escalation_user_id=approver.id,
+            title="Stores request",
+            status="pending",
+            submitted_at=now - timedelta(days=3) if overdue else now,
+            due_at=now - timedelta(days=2) if overdue else now + timedelta(days=2),
+        )
+        session.add(approval)
+        await session.commit()
+        return approval.id
+
+
+async def assert_cancelled_without_stock_effect(fixture: Fixture, *, decisions: int) -> None:
+    request_id = fixture.request.id
+    async with AsyncSessionLocal() as session:
+        request = await session.get_one(MaterialRequest, request_id)
+        assert request.status == "cancelled"
+        assert request.revision == fixture.request.revision + decisions
+        assert not await session.scalar(
+            select(InventoryMovement.id).where(InventoryMovement.item_id == fixture.item.id)
+        )
+    stock = await read_stock(fixture.item.id, fixture.location.id)
+    line = await read_line(request_id)
+    assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("10"), Decimal("2"))
+    assert (line.reserved_quantity, line.issued_quantity) == (ZERO, ZERO)
+
+
+@pytest.mark.parametrize("cancel_first", [True, False], ids=["cancel-first", "approve-first"])
+async def test_cancel_and_approval_serialize(cancel_first: bool) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(
+        on_hand=Decimal("10"),
+        quantity=Decimal("4"),
+        status="requested",
+        stock_reserved=Decimal("2"),
+    )
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=False)
+    request_id = fixture.request.id
+
+    async def cancel(session: AsyncSession) -> str:
+        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+
+    async def approve(session: AsyncSession) -> str:
+        return (await ApprovalService(session).approve(approval_id, approver, None)).status
+
+    parent = select(MaterialRequest.id).where(MaterialRequest.id == request_id)
+    operations = (cancel, approve) if cancel_first else (approve, cancel)
+    results = await race_with_parent_lock(parent, *operations)
+    if cancel_first:
+        assert results[0] == "cancelled", results
+        assert status_counts(results) == {"cancelled": 1, 409: 1}, results
+        assert error_codes(results) == ["APPROVAL_FINAL"]
+    else:
+        assert results == ["approved", "cancelled"], results
+
+    async with AsyncSessionLocal() as session:
+        approval = await session.get_one(Approval, approval_id)
+        assert approval.status == ("cancelled" if cancel_first else "approved")
+        assert approval.decided_at is not None
+        titles = await session.scalars(
+            select(Notification.title).where(Notification.reference_id == approval_id)
+        )
+        assert titles.all() == ([] if cancel_first else ["Approval completed"])
+    await assert_cancelled_without_stock_effect(fixture, decisions=1 if cancel_first else 2)
+
+
+@pytest.mark.parametrize("cancel_first", [True, False], ids=["cancel-first", "reminder-first"])
+async def test_cancel_and_overdue_reminder_serialize(cancel_first: bool) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(
+        on_hand=Decimal("10"),
+        quantity=Decimal("4"),
+        status="requested",
+        stock_reserved=Decimal("2"),
+    )
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
+    request_id = fixture.request.id
+
+    async def cancel(session: AsyncSession) -> str:
+        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+
+    async def remind(session: AsyncSession) -> str:
+        await ApprovalService(session).send_reminders_and_escalations()
+        return "processed"
+
+    parent = select(MaterialRequest.id).where(MaterialRequest.id == request_id)
+    operations = (cancel, remind) if cancel_first else (remind, cancel)
+    results = await race_with_parent_lock(parent, *operations)
+    assert results == (["cancelled", "processed"] if cancel_first else ["processed", "cancelled"])
+
+    async with AsyncSessionLocal() as session:
+        approval = await session.get_one(Approval, approval_id)
+        assert approval.status == "cancelled" and approval.decided_at is not None
+        if cancel_first:
+            assert approval.reminded_at is None and approval.escalated_at is None
+        else:
+            assert approval.reminded_at is not None and approval.escalated_at is not None
+            assert approval.reminded_at <= approval.decided_at
+            assert approval.escalated_at <= approval.decided_at
+        titles = await session.scalars(
+            select(Notification.title).where(Notification.reference_id == approval_id)
+        )
+        assert sorted(titles) == (
+            [] if cancel_first else ["Approval escalated", "Approval reminder"]
+        )
+    await assert_cancelled_without_stock_effect(fixture, decisions=1)
+
+
+async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(on_hand=Decimal("10"), quantity=Decimal("4"), status="requested")
+    approver, _ = await create_user("operation_manager")
+    approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
+    monkeypatch.setattr("app.tasks.email.send_email_notification.delay", lambda _id: None)
+    attempts: list[str] = []
+
+    def reject_delivery(self: object, *, recipients: list[str], subject: str, body: str) -> int:
+        assert recipients == [approver.email]
+        attempts.append(subject)
+        return 0
+
+    monkeypatch.setattr("app.tasks.email.EmailService.send", reject_delivery)
+    async with AsyncSessionLocal() as session:
+        await ApprovalService(session).send_reminders_and_escalations()
+        notifications = await session.scalars(
+            select(Notification).where(Notification.reference_id == approval_id)
+        )
+        deliveries = {notification.title: str(notification.id) for notification in notifications}
+    assert deliveries.keys() == {"Approval reminder", "Approval escalated"}
+
+    with pytest.raises(EmailDeliveryError):
+        await _send_email_notification(deliveries["Approval reminder"])
+    assert attempts == ["Approval reminder"]
+    async with AsyncSessionLocal() as session:
+        await InventoryService(session).cancel_request(fixture.request.id, fixture.engineer)
+
+    for notification_id in deliveries.values():
+        assert await _send_email_notification(notification_id) == "notification email skipped"
+    assert attempts == ["Approval reminder"]
+    async with AsyncSessionLocal() as session:
+        email_statuses = await session.scalars(
+            select(Notification.email_status).where(Notification.reference_id == approval_id)
+        )
+        assert email_statuses.all() == ["skipped", "skipped"]
+
+
+async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(on_hand=Decimal("10"), quantity=Decimal("4"), status="requested")
+    approver, _ = await create_user("operation_manager")
+    async with AsyncSessionLocal() as session:
+        approval = Approval(
+            request_type="material_request",
+            request_id=fixture.request.id,
+            project_id=fixture.project.id,
+            submitter_id=fixture.engineer.id,
+            approver_id=approver.id,
+            escalation_user_id=approver.id,
+            title="Stores request",
+            status="delegated",
+            submitted_at=utc_now(),
+            due_at=utc_now() - timedelta(days=2),
+        )
+        session.add(approval)
+        await session.commit()
+        approval_id = approval.id
+
+    async with AsyncSessionLocal() as session:
+        service = InventoryService(session)
+        assert (
+            await service.cancel_request(fixture.request.id, fixture.engineer)
+        ).status == "cancelled"
+        assert (
+            await service.cancel_request(fixture.request.id, fixture.engineer)
+        ).status == "cancelled"
+    async with AsyncSessionLocal() as session:
+        cancelled_approval = await session.get(Approval, approval_id)
+        assert cancelled_approval is not None and cancelled_approval.status == "cancelled"
+        with pytest.raises(AppException, match="Approval is already final"):
+            await ApprovalService(session).approve(approval_id, approver, None)
+        await session.rollback()
+        await ApprovalService(session).send_reminders_and_escalations()
+        await session.refresh(cancelled_approval)
+        assert cancelled_approval.status == "cancelled"
+        assert cancelled_approval.reminded_at is None and cancelled_approval.escalated_at is None
+
+
+async def test_selected_quantities_preserve_reservation_balances_and_replay() -> None:
+    await skip_if_database_unavailable()
+    fixture = await seed(on_hand=Decimal("12"), quantity=Decimal("10"))
+    line = await read_line(fixture.request.id)
+    request_id = fixture.request.id
+    keys = [str(uuid4()) for _ in range(4)]
+    steps: list[tuple[Literal["reserve", "issue"], str]] = [
+        ("reserve", "4"),
+        ("issue", "3"),
+        ("reserve", "6"),
+        ("issue", "7"),
+    ]
+    first = None
+    for revision, ((action, quantity), key) in enumerate(zip(steps, keys, strict=True), start=1):
+        command = MaterialQuantityCommand.model_validate(
+            {
+                "expected_revision": revision,
+                "lines": [{"line_id": line.id, "quantity": quantity}],
+            }
+        )
+        async with AsyncSessionLocal() as session:
+            result = await InventoryService(session).fulfill_quantities(
+                request_id,
+                fixture.store,
+                command,
+                action=action,
+                key=key,
+            )
+        assert result.revision == revision + 1
+        if revision == 1:
+            first = result
+        if revision == 4:
+            assert result.status == "issued"
+            assert result.lines[0].issued_quantity == Decimal("10")
+            assert result.lines[0].reserved_quantity == 0
+
+    command = MaterialQuantityCommand.model_validate(
+        {
+            "expected_revision": 1,
+            "lines": [{"line_id": line.id, "quantity": "4.000"}],
+        }
+    )
+    async with AsyncSessionLocal() as session:
+        replay = await InventoryService(session).fulfill_quantities(
+            request_id,
+            fixture.store,
+            command,
+            action="reserve",
+            key=keys[0],
+        )
+        assert replay == first
+    command.lines[0].quantity = Decimal("5")
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(AppException, match="used for different quantities"):
+            await InventoryService(session).fulfill_quantities(
+                request_id,
+                fixture.store,
+                command,
+                action="reserve",
+                key=keys[0],
+            )
+    balance = await read_stock(fixture.item.id, fixture.location.id)
+    assert balance.on_hand_qty == Decimal("2")
+    assert balance.reserved_qty == 0
+
+
 async def test_issue_consumes_the_line_reservation() -> None:
     """C4: after issuing, reserved_quantity must mean 'reserved but not yet issued'."""
     await skip_if_database_unavailable()
@@ -342,7 +645,7 @@ async def test_cancel_preserves_other_reservations_when_legacy_line_is_overstate
 
 
 async def test_concurrent_cancel_releases_the_remainder_exactly_once() -> None:
-    """C4: a real gather race — one cancel wins and the issued part is never returned."""
+    """Concurrent cancellation retries succeed with one stock release."""
     await skip_if_database_unavailable()
     fx = await seed(
         on_hand=Decimal("2"),
@@ -361,7 +664,7 @@ async def test_concurrent_cancel_releases_the_remainder_exactly_once() -> None:
             return exc.status_code
 
     results = await race_sessions(*([cancel] * 5))
-    assert status_counts(results) == {200: 1, 409: 4}, results
+    assert status_counts(results) == {200: 5}, results
 
     stock = await read_stock(fx.item.id, fx.location.id)
     line = await read_line(fx.request.id)

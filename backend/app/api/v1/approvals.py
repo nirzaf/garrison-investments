@@ -25,22 +25,25 @@ CanUseApprovalInbox = Annotated[User, Depends(require_permission(PERMISSION_REPO
 
 @router.get("", response_model=ApprovalListResponse)
 async def list_approvals(
-    current_user: CanUseApprovalInbox,
+    current_user: CurrentUser,
     session: DbSession,
     box: Annotated[str, Query(pattern="^(inbox|outbox)$")] = "inbox",
     status_filter: Annotated[str | None, Query(alias="status", max_length=30)] = None,
+    status_group: Annotated[str, Query(pattern="^(open|all)$")] = "all",
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ApprovalListResponse:
-    approvals, total = await ApprovalService(session).list_for_user(
+    service = ApprovalService(session)
+    approvals, total = await service.list_for_user(
         actor=current_user,
         box=box,
         status=status_filter,
         limit=limit,
         offset=offset,
+        status_group=status_group,
     )
     return ApprovalListResponse(
-        items=[ApprovalResponse.model_validate(approval) for approval in approvals],
+        items=await service.describe_approvals(approvals, current_user),
         total=total,
     )
 
@@ -68,8 +71,9 @@ async def get_approval(
     current_user: CurrentUser,
     session: DbSession,
 ) -> ApprovalResponse:
-    approval = await ApprovalService(session).get_for_actor(approval_id, current_user)
-    return ApprovalResponse.model_validate(approval)
+    service = ApprovalService(session)
+    approval = await service.get_for_actor(approval_id, current_user)
+    return (await service.describe_approvals([approval], current_user))[0]
 
 
 @router.post("/{approval_id}/approve", response_model=ApprovalResponse)

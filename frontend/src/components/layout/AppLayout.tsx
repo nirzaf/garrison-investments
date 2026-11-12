@@ -55,6 +55,12 @@ const navItems: NavItem[] = [
     mobile: true
   },
   {
+    label: 'Supervisor updates',
+    to: '/reports/supervisor-update',
+    permission: 'reports:view',
+    icon: ClipboardList
+  },
+  {
     label: 'Materials',
     to: '/materials',
     permission: 'inventory:view',
@@ -66,9 +72,9 @@ const navItems: NavItem[] = [
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
   { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
-  { label: 'Approvals', to: '/approvals', permission: 'reports:approve', icon: ShieldCheck },
+  { label: 'Approvals', to: '/approvals', icon: ShieldCheck },
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
-  { label: 'Delivery', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
+  { label: 'Launch readiness', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
   { label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
   { label: 'User Manual', to: '/manual', icon: BookOpen },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
@@ -98,12 +104,15 @@ export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [signOutError, setSignOutError] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const location = useLocation();
 
   const visibleNavItems = useMemo(
     () =>
       navItems
         .filter((item) => canAccess(item, user?.permissions ?? []))
+        .filter((item) => user?.role !== 'civil_supervisor' || item.label !== 'Supervisor updates')
         .map((item) =>
           item.label === 'Reports'
             ? {
@@ -154,7 +163,7 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-theme-main text-theme-text-primary lg:grid lg:grid-cols-[256px_1fr]">
-      <aside className="sticky top-0 hidden h-screen border-r border-theme-border bg-theme-sidebar lg:block">
+      <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-theme-border bg-theme-sidebar lg:block">
         <ShellBrand />
         <SidebarNav items={visibleNavItems} />
       </aside>
@@ -167,7 +176,7 @@ export function AppLayout() {
             onClick={() => setIsSidebarOpen(false)}
             type="button"
           />
-          <aside className="relative h-full w-72 border-r border-theme-border bg-theme-sidebar shadow-xl">
+          <aside className="relative h-full w-72 overflow-y-auto border-r border-theme-border bg-theme-sidebar shadow-xl">
             <div className="flex items-center justify-between border-b border-theme-border pr-3">
               <ShellBrand />
               <button
@@ -265,11 +274,23 @@ export function AppLayout() {
                     </Link>
                     <button
                       className="mt-2 w-full rounded-md border-t border-theme-border px-3 py-2 text-left text-sm text-[var(--status-error-text)] hover:bg-[var(--status-error-bg)]"
-                      onClick={() => void logout()}
+                      disabled={isSigningOut}
+                      onClick={() => {
+                        setSignOutError(false);
+                        setIsSigningOut(true);
+                        void logout()
+                          .catch(() => setSignOutError(true))
+                          .finally(() => setIsSigningOut(false));
+                      }}
                       type="button"
                     >
                       Sign out
                     </button>
+                    {signOutError ? (
+                      <p className="px-3 py-2 text-sm text-[var(--status-error-text)]" role="alert">
+                        Unable to clear local drafts. Try signing out again.
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

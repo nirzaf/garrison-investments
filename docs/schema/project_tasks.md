@@ -27,6 +27,9 @@ Scheduled work with an optional milestone, predecessor task, and owner.
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
 | `deleted_at` | `timestamptz` | Yes | — |
+| `revision` | `integer` | No | `1` |
+
+Task edits require the current task revision. The project row lock serializes dependency changes so two concurrent edits cannot introduce a cycle.
 
 ## Keys and constraints
 

@@ -8,7 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -20,6 +20,7 @@ from app.models.idempotency_record import IdempotencyRecord
 from app.models.photo import Photo
 from app.schemas.daily_reports import DailyReportResponse
 from app.services.audit_service import AuditService
+from app.services.photo_service import MAX_REPORT_PHOTOS
 from app.utils.security import utc_now
 
 WINDOW = timedelta(seconds=120)
@@ -77,6 +78,7 @@ async def consolidate_pair(session: AsyncSession, keep: UUID, duplicate: UUID) -
         DailyReportResponse.model_validate(row).model_dump(
             exclude={
                 "id": True,
+                "revision": True,
                 "manpower_entries": {"__all__": {"id"}},
                 "equipment_entries": {"__all__": {"id"}},
                 "material_consumption": {"__all__": {"id"}},
@@ -86,10 +88,21 @@ async def consolidate_pair(session: AsyncSession, keep: UUID, duplicate: UUID) -
     )
     if first != second:
         raise ValueError("Draft contents differ. Review and resolve them manually.")
+    # Both parents are locked, so uploads and recovery cannot change this count.
+    active_photos = await session.scalar(
+        select(func.count(Photo.id)).where(
+            Photo.entity_type == "daily_report",
+            Photo.entity_id.in_([keep, duplicate]),
+            Photo.kind == "photo",
+            Photo.deleted_at.is_(None),
+        )
+    )
+    if (active_photos or 0) > MAX_REPORT_PHOTOS:
+        raise ValueError(f"The consolidated report would exceed {MAX_REPORT_PHOTOS} active photos.")
     await session.execute(
         update(Photo)
         .where(Photo.entity_type == "daily_report", Photo.entity_id == duplicate)
-        .values(entity_id=keep)
+        .values(entity_id=keep, report_revision=None)
     )
     await session.execute(
         update(IdempotencyRecord)
@@ -99,6 +112,7 @@ async def consolidate_pair(session: AsyncSession, keep: UUID, duplicate: UUID) -
         )
         .values(resource_id=keep)
     )
+    rows[0].revision += 1
     rows[1].deleted_at = utc_now()
     await AuditService(session).record(
         action="daily_reports.offline_duplicate_consolidated",
@@ -116,6 +130,7 @@ async def run(keep: UUID | None, duplicate: UUID | None) -> None:
             if keep and duplicate:
                 await consolidate_pair(session, keep, duplicate)
             else:
+                await session.execute(text("SET TRANSACTION READ ONLY"))
                 await report_candidates(session)
     finally:
         await engine.dispose()

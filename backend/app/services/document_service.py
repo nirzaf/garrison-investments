@@ -4,8 +4,10 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import UploadFile
 from minio import Minio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -18,8 +20,9 @@ from app.services.authorization import (
     ensure_document_access,
     ensure_project_access,
 )
+from app.services.idempotency import bind, resolve_or_reserve
 from app.services.notification_service import NotificationService
-from app.services.storage_service import minio_client, minio_signed_url_client
+from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.links import append_link, document_url
 from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
@@ -33,6 +36,7 @@ ALLOWED_DOCUMENT_MAGIC = {
     "image/png": (b"\x89PNG\r\n\x1a\n",),
 }
 BLOCKED_EXTENSIONS = {".exe", ".sh", ".bat", ".cmd", ".js", ".ps1", ".php", ".py"}
+logger = structlog.get_logger(__name__)
 
 
 class DocumentService:
@@ -53,7 +57,7 @@ class DocumentService:
         file: UploadFile,
         actor: User,
     ) -> Document:
-        data = await file.read()
+        data = await file.read(MAX_DOCUMENT_SIZE + 1)
         mime_type = self._validate_file(file.filename or "document", data)
         if project_id is not None:
             await ensure_project_access(self.session, project_id, actor)
@@ -96,32 +100,56 @@ class DocumentService:
         self.session.expire_all()
         return await self._get_required(document_id)
 
-    async def upload_version(self, document_id: UUID, file: UploadFile, actor: User) -> Document:
-        document = await self._get_required(document_id)
+    async def upload_version(
+        self, document_id: UUID, file: UploadFile, actor: User, idempotency_key: str | None = None
+    ) -> Document:
+        document = await self.documents.lock_document(document_id)
+        if document is None:
+            raise NotFoundException("Document")
         await ensure_document_access(self.session, document, actor)
+        route = f"documents.version:{document_id}"
+        if idempotency_key and await resolve_or_reserve(
+            self.session, key=idempotency_key, user_id=actor.id, route=route
+        ):
+            return await self._get_required(document_id)
         if document.status == "archived":
             raise AppException("Archived documents cannot be versioned.", status_code=409)
-        data = await file.read()
-        mime_type = self._validate_file(file.filename or "document", data)
+        data = await file.read(MAX_DOCUMENT_SIZE + 1)
+        original_name = file.filename or "document"
+        mime_type = self._validate_file(original_name, data)
         version_number = await self.documents.next_version(document.id)
-        await self._store_version(
-            document,
-            version_number,
-            file.filename or "document",
-            mime_type,
-            data,
-            actor,
-        )
-        document.status = "pending_approval"
-        await self.audit.record(
-            action="documents.version_uploaded",
-            user_id=actor.id,
-            entity_type="documents",
-            entity_id=document.id,
-            new_values={"version": version_number},
-        )
-        document_id = document.id
-        await self.session.commit()
+        object_key = self._version_object_key(document_id, version_number, mime_type)
+        try:
+            version = await self._store_version(
+                document, version_number, original_name, mime_type, data, actor, object_key
+            )
+            if document.active_version is None:
+                document.status = "pending_approval"
+            await self.audit.record(
+                action="documents.version_uploaded",
+                user_id=actor.id,
+                entity_type="documents",
+                entity_id=document.id,
+                new_values={"version": version_number},
+            )
+            if idempotency_key:
+                await bind(
+                    self.session,
+                    key=idempotency_key,
+                    user_id=actor.id,
+                    route=route,
+                    resource_type="document_version",
+                    resource_id=version.id,
+                )
+            await self.session.commit()
+        except Exception as error:
+            await self._discard_uncommitted_version(object_key)
+            logger.warning("document_version_write_failed", error_type=type(error).__name__)
+            raise AppException(
+                "The replacement version could not be saved. Retry the upload.",
+                status_code=503,
+                error_code="DOCUMENT_VERSION_SAVE_FAILED",
+            ) from error
         self.session.expire_all()
         return await self._get_required(document_id)
 
@@ -139,6 +167,8 @@ class DocumentService:
             raise NotFoundException("Document")
         document = await self._get_required(document_id)
         await self._ensure_approver(actor, document)
+        if document.status == "archived":
+            raise AppException("Archived documents cannot be revised.", status_code=409)
         version = await self.documents.get_version(version_id)
         if not version or version.document_id != document.id:
             raise NotFoundException("Document version")
@@ -245,9 +275,9 @@ class DocumentService:
         mime_type: str,
         data: bytes,
         actor: User,
+        object_key: str | None = None,
     ) -> DocumentVersion:
-        extension = ".pdf" if mime_type == "application/pdf" else Path(original_name).suffix.lower()
-        object_key = f"documents/{document.id}/v{version_number}/{uuid4().hex}{extension}"
+        object_key = object_key or self._version_object_key(document.id, version_number, mime_type)
         await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
         return await self.documents.add_version(
             DocumentVersion(
@@ -261,6 +291,23 @@ class DocumentService:
                 uploaded_by=actor.id,
             )
         )
+
+    def _version_object_key(self, document_id: UUID, version: int, mime_type: str) -> str:
+        extension = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png"}[
+            mime_type
+        ]
+        return f"documents/{document_id}/v{version}/{uuid4().hex}{extension}"
+
+    async def _discard_uncommitted_version(self, object_key: str) -> None:
+        try:
+            await self.session.rollback()
+            saved = await self.session.scalar(
+                select(DocumentVersion.id).where(DocumentVersion.storage_path == object_key)
+            )
+            if saved is None:
+                await discard_new_uploads(self._client(), self.settings.minio_bucket, [object_key])
+        except Exception as error:
+            logger.warning("document_version_cleanup_unverified", error_type=type(error).__name__)
 
     async def _get_required(self, document_id: UUID) -> Document:
         document = await self.documents.get_document(document_id)
@@ -301,12 +348,12 @@ class DocumentService:
 
     def _validate_file(self, filename: str, data: bytes) -> str:
         if len(data) > MAX_DOCUMENT_SIZE:
-            raise AppException("Document exceeds the 60 MB limit.", status_code=413)
+            raise AppException("Document exceeds the 60 MiB limit.", status_code=413)
         if Path(filename).suffix.lower() in BLOCKED_EXTENSIONS:
             raise AppException("File type is blocked.", status_code=422)
         header = data[:32]
         for mime_type, signatures in ALLOWED_DOCUMENT_MAGIC.items():
-            if any(signature in header for signature in signatures):
+            if header.startswith(signatures):
                 return mime_type
         raise AppException("Unsupported document type.", status_code=422)
 

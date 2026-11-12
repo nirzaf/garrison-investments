@@ -46,7 +46,7 @@ test('a supervisor resumes a saved draft and submits the latest changes', async 
       new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url)
     )
   });
-  await expect(page.getByText('1 photo file saved.', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 file saved.', { exact: true })).toBeVisible();
 
   await page.reload();
   await record.getByRole('button', { name: 'Resume draft' }).click({ timeout: 5_000 });

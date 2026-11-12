@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, ClipboardList, MapPinned, PackagePlus, Warehouse } from 'lucide-react';
+import { isAxiosError } from 'axios';
+import { ArrowRightLeft, MapPinned, PackagePlus, Warehouse } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -9,33 +10,42 @@ import {
   createInventoryItem,
   createLocation,
   createMovement,
-  createMaterialRequest,
-  issueMaterialRequest,
   listAssets,
   listInventoryItemPage,
   listInventoryItems,
+  listItemStock,
   listLocations,
   listLowStock,
   listMaterialRequests,
   listMovements,
   listSuppliers,
-  receiveStock,
-  reserveMaterialRequest
+  type InventoryItemRecord,
+  type MovementCreatePayload
 } from '../../api/inventory';
+import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+import { MaterialFulfillment, MaterialRequestForm } from './MaterialRequestControls';
 
 const inventoryPageSize = 20;
 const movementPageSize = 8;
+type MovementForm = 'receipt' | 'movement';
+type MovementAttempt = { form: MovementForm; payload: MovementCreatePayload; key: string };
 
 export function InventoryPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const focusedRequestId = searchParams.get('materialRequestId');
   const queryClient = useQueryClient();
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [pickedItem, setPickedItem] = useState<InventoryItemRecord>();
+  const movementInFlight = useRef(false);
+  const [movementAttempt, setMovementAttempt] = useState<MovementAttempt | null>(null);
+  const [movementError, setMovementError] = useState<{ form: MovementForm; detail: string } | null>(
+    null
+  );
+  const [stockLocation, setStockLocation] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
   const [itemOffset, setItemOffset] = useState(0);
@@ -57,25 +67,39 @@ export function InventoryPage() {
   const items = useQuery({ queryKey: ['inventory-items'], queryFn: () => listInventoryItems() });
   const visibleItems = useQuery({
     queryKey: ['inventory-items', committedSearch, itemOffset],
-    queryFn: ({ signal }) => listInventoryItemPage({
-      search: committedSearch || undefined, limit: inventoryPageSize, offset: itemOffset
-    }, signal)
+    queryFn: ({ signal }) =>
+      listInventoryItemPage(
+        {
+          search: committedSearch || undefined,
+          limit: inventoryPageSize,
+          offset: itemOffset
+        },
+        signal
+      )
   });
   const lowStock = useQuery({ queryKey: ['inventory-low-stock'], queryFn: listLowStock });
   const assets = useQuery({ queryKey: ['inventory-assets'], queryFn: listAssets });
   const movements = useQuery({
     queryKey: ['inventory-movements', movementOffset],
-    queryFn: ({ signal }) => listMovements({ limit: movementPageSize, offset: movementOffset }, signal)
+    queryFn: ({ signal }) =>
+      listMovements({ limit: movementPageSize, offset: movementOffset }, signal)
   });
   const materialRequests = useQuery({
     queryKey: ['material-requests', requestOffset],
-    queryFn: ({ signal }) => listMaterialRequests({ limit: inventoryPageSize, offset: requestOffset }, signal)
+    queryFn: ({ signal }) =>
+      listMaterialRequests({ limit: inventoryPageSize, offset: requestOffset }, signal)
   });
   const focusedRequest = useQuery({
     queryKey: ['material-requests', 'detail', focusedRequestId],
-    queryFn: ({ signal }) => listMaterialRequests({
-      limit: 1, offset: 0, request_id: focusedRequestId ?? undefined
-    }, signal),
+    queryFn: ({ signal }) =>
+      listMaterialRequests(
+        {
+          limit: 1,
+          offset: 0,
+          request_id: focusedRequestId ?? undefined
+        },
+        signal
+      ),
     enabled: Boolean(focusedRequestId) && requestOffset === 0
   });
   const pageRequests = materialRequests.data?.items ?? [];
@@ -86,8 +110,29 @@ export function InventoryPage() {
       : pageRequests;
   const projects = useQuery({
     queryKey: ['projects', 'active'],
-    queryFn: () => listProjects({ status: 'active' })
+    queryFn: () => listProjects({ status: 'active' }),
+    enabled: canManageInventory && (user?.permissions?.includes('projects:read') ?? false)
   });
+  const selectedItem = pickedItem ?? items.data?.[0];
+  const stock = useQuery({
+    queryKey: ['inventory-stock', selectedItem?.id],
+    queryFn: () => listItemStock(selectedItem!.id),
+    enabled: Boolean(selectedItem)
+  });
+  const balances =
+    stock.data?.filter((row) => !stockLocation || row.location_id === stockLocation) ?? [];
+
+  function refreshInventory() {
+    for (const key of [
+      'material-requests',
+      'inventory-stock',
+      'inventory-low-stock',
+      'inventory-movements',
+      'approvals'
+    ]) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  }
 
   const createLocationMutation = useMutation({
     mutationFn: createLocation,
@@ -97,45 +142,59 @@ export function InventoryPage() {
     mutationFn: createInventoryItem,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['inventory-items'] })
   });
-  const receiveMutation = useMutation({
-    mutationFn: receiveStock,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory-movements'] });
-    }
-  });
   const createAssetMutation = useMutation({
     mutationFn: createAsset,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['inventory-assets'] })
   });
   const createMovementMutation = useMutation({
-    mutationFn: createMovement,
+    mutationFn: ({ payload, key }: MovementAttempt) => createMovement(payload, key),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['inventory-movements'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
+      refreshInventory();
       void queryClient.invalidateQueries({ queryKey: ['inventory-assets'] });
     }
   });
-  const createRequestMutation = useMutation({
-    mutationFn: createMaterialRequest,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['material-requests'] })
-  });
-  const reserveRequestMutation = useMutation({
-    mutationFn: reserveMaterialRequest,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['material-requests'] })
-  });
-  const issueRequestMutation = useMutation({
-    mutationFn: issueMaterialRequest,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['material-requests'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory-movements'] });
-      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
+  async function submitMovement(
+    form: MovementForm,
+    element: HTMLFormElement,
+    payload: MovementCreatePayload
+  ) {
+    if (movementInFlight.current || (movementAttempt && movementAttempt.form !== form)) return;
+    const attempt = movementAttempt ?? { form, payload, key: crypto.randomUUID() };
+    movementInFlight.current = true;
+    setMovementAttempt(attempt);
+    setMovementError(null);
+    try {
+      await createMovementMutation.mutateAsync(attempt);
+      setMovementAttempt(null);
+      element.reset();
+    } catch (failure) {
+      const response = isAxiosError<{ error_code?: string }>(failure)
+        ? failure.response
+        : undefined;
+      const status = response?.status;
+      const code = response?.data?.error_code;
+      const rejected =
+        Boolean(code) &&
+        (status === 400 ||
+          status === 404 ||
+          status === 422 ||
+          (status === 409 && code !== 'MOVEMENT_REPLAY_CONFLICT'));
+      if (rejected) setMovementAttempt(null);
+      setMovementError({
+        form,
+        detail:
+          rejected || code === 'MOVEMENT_REPLAY_CONFLICT'
+            ? formatApiError(failure, 'Unable to record stock movement.')
+            : 'The stock movement result could not be confirmed. Retry this movement to check the result.'
+      });
+    } finally {
+      movementInFlight.current = false;
     }
-  });
+  }
+
   const cancelRequestMutation = useMutation({
     mutationFn: cancelMaterialRequest,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['material-requests'] })
+    onSuccess: refreshInventory
   });
   useEffect(() => {
     if (!focusedRequestId) return;
@@ -150,9 +209,6 @@ export function InventoryPage() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [itemSearch]);
-
-  const selectedItem = items.data?.find((item) => item.id === selectedItemId) ?? items.data?.[0];
-  const firstLocation = locations.data?.[0];
 
   return (
     <section className="space-y-6">
@@ -268,7 +324,7 @@ export function InventoryPage() {
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border border-theme-border bg-theme-card">
           <div className="border-b border-theme-border px-4 py-3">
-            <h3 className="text-base font-semibold text-theme-text-primary">Stock matrix</h3>
+            <h3 className="text-base font-semibold text-theme-text-primary">Inventory items</h3>
             <input
               aria-label="Search inventory"
               className="form-field mt-2"
@@ -283,7 +339,12 @@ export function InventoryPage() {
                 <button
                   className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-theme-main"
                   key={item.id}
-                  onClick={() => setSelectedItemId(item.id)}
+                  aria-pressed={item.id === selectedItem?.id}
+                  disabled={movementAttempt?.form === 'receipt'}
+                  onClick={() => {
+                    setPickedItem(item);
+                    setStockLocation('');
+                  }}
                   type="button"
                 >
                   <span>
@@ -302,37 +363,126 @@ export function InventoryPage() {
               description={visibleItems.isError ? 'Unable to load inventory items.' : ''}
             />
           )}
-          <InventoryPager label="Inventory item pages" offset={itemOffset} setOffset={setItemOffset}
-            size={inventoryPageSize} total={visibleItems.data?.total ?? 0}
-            disabled={visibleItems.isPending || itemSearch.trim() !== committedSearch} />
+          <InventoryPager
+            label="Inventory item pages"
+            offset={itemOffset}
+            setOffset={setItemOffset}
+            size={inventoryPageSize}
+            total={visibleItems.data?.total ?? 0}
+            disabled={visibleItems.isPending || itemSearch.trim() !== committedSearch}
+          />
+          {selectedItem && (
+            <div className="space-y-3 border-t border-theme-border p-4">
+              <h4 className="font-semibold">
+                Stock matrix · {selectedItem.name} ({selectedItem.unit})
+              </h4>
+              <label className="text-sm">
+                Filter by location
+                <select
+                  className="form-field"
+                  value={stockLocation}
+                  onChange={(event) => setStockLocation(event.target.value)}
+                >
+                  <option value="">All locations</option>
+                  {stock.data?.map((row) => (
+                    <option key={row.id} value={row.location_id}>
+                      {row.location_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {stock.isPending && <p role="status">Loading stock balances…</p>}
+              {stock.isError && (
+                <p role="alert">
+                  {stock.data
+                    ? 'Unable to refresh stock balances. Showing the last loaded balances.'
+                    : 'Unable to load stock balances.'}
+                </p>
+              )}
+              {stock.isSuccess && balances.length === 0 && (
+                <p>No recorded balances for this selection.</p>
+              )}
+              {balances.length > 0 && (
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr>
+                      <th scope="col">Location</th>
+                      <th scope="col">On hand</th>
+                      <th scope="col">Reserved</th>
+                      <th scope="col">Available</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {balances.map((row) => (
+                      <tr className="border-t border-theme-border" key={row.id}>
+                        <th scope="row" className="py-2 font-medium">
+                          {row.location_name}
+                        </th>
+                        <td>{row.on_hand_qty}</td>
+                        <td>{row.reserved_qty}</td>
+                        <td>
+                          {row.available_qty}
+                          {row.available_qty.startsWith('-') && (
+                            <span role="alert"> · Reconciliation required</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         {canManageInventory ? (
           <div className="rounded-lg border border-theme-border bg-theme-card p-4">
             <h3 className="text-base font-semibold text-theme-text-primary">Quick receive</h3>
             <p className="mt-1 text-sm text-theme-text-secondary">
-              {selectedItem ? selectedItem.name : 'Select an item'} into{' '}
-              {firstLocation ? firstLocation.name : 'a location'}.
+              {selectedItem ? `Receive ${selectedItem.name}` : 'Select an item to receive stock.'}
             </p>
             <form
+              aria-label="Receive stock"
               className="mt-3 space-y-3"
               onSubmit={(event) => {
                 event.preventDefault();
+                if (!selectedItem) return;
                 const form = new FormData(event.currentTarget);
-                if (!selectedItem || !firstLocation) return;
-                receiveMutation.mutate({
+                void submitMovement('receipt', event.currentTarget, {
                   item_id: selectedItem.id,
-                  to_location_id: firstLocation.id,
+                  movement_type: 'receive',
+                  to_location_id: String(form.get('location_id')),
                   quantity: String(form.get('quantity') || '0'),
                   notes: String(form.get('notes') || '')
                 });
-                event.currentTarget.reset();
               }}
             >
-              <input className="form-field" name="quantity" placeholder="Quantity" required />
-              <input className="form-field" name="notes" placeholder="Notes" />
-              <button className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-                Receive stock
+              <fieldset className="min-w-0 space-y-3" disabled={movementAttempt !== null}>
+                <LocationSelect
+                  locations={locations.data?.filter((location) => location.is_active) ?? []}
+                  name="location_id"
+                  label="Receipt destination"
+                  required
+                />
+                <input className="form-field" name="quantity" placeholder="Quantity" required />
+                <input className="form-field" name="notes" placeholder="Notes" />
+              </fieldset>
+              {locations.isError && <p role="alert">Unable to load receipt destinations.</p>}
+              {movementError?.form === 'receipt' && <p role="alert">{movementError.detail}</p>}
+              <button
+                disabled={
+                  !selectedItem ||
+                  createMovementMutation.isPending ||
+                  movementAttempt?.form === 'movement' ||
+                  (!movementAttempt && (locations.isPending || locations.isError))
+                }
+                className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {movementAttempt?.form === 'receipt'
+                  ? createMovementMutation.isPending
+                    ? 'Receiving…'
+                    : 'Retry receipt'
+                  : 'Receive stock'}
               </button>
             </form>
           </div>
@@ -392,11 +542,12 @@ export function InventoryPage() {
           </form>
 
           <form
+            aria-label="Record stock movement"
             className="rounded-lg border border-theme-border bg-theme-card p-4"
             onSubmit={(event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
-              createMovementMutation.mutate({
+              void submitMovement('movement', event.currentTarget, {
                 item_id: String(form.get('item_id')),
                 asset_id: String(form.get('asset_id') || '') || undefined,
                 movement_type: String(form.get('movement_type')),
@@ -406,15 +557,17 @@ export function InventoryPage() {
                 project_id: String(form.get('project_id') || '') || undefined,
                 notes: String(form.get('notes') || '')
               });
-              event.currentTarget.reset();
             }}
           >
             <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
               <ArrowRightLeft className="h-4 w-4" />
               Movement
             </h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <select className="form-field" name="movement_type">
+            <fieldset
+              className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2"
+              disabled={movementAttempt !== null}
+            >
+              <select aria-label="Movement type" className="form-field" name="movement_type">
                 <option value="transfer">Transfer</option>
                 <option value="issue">Issue</option>
                 <option value="return">Return</option>
@@ -423,7 +576,7 @@ export function InventoryPage() {
                 <option value="wastage">Wastage</option>
                 <option value="damaged">Damaged</option>
               </select>
-              <select className="form-field" name="item_id" required>
+              <select aria-label="Movement item" className="form-field" name="item_id" required>
                 <option value="">Item</option>
                 {items.data?.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -431,7 +584,7 @@ export function InventoryPage() {
                   </option>
                 ))}
               </select>
-              <select className="form-field" name="asset_id">
+              <select aria-label="Movement asset tag" className="form-field" name="asset_id">
                 <option value="">No asset tag</option>
                 {assets.data?.map((asset) => (
                   <option key={asset.id} value={asset.id}>
@@ -446,7 +599,7 @@ export function InventoryPage() {
                 label="From"
               />
               <LocationSelect locations={locations.data ?? []} name="to_location_id" label="To" />
-              <select className="form-field" name="project_id">
+              <select aria-label="Movement project" className="form-field" name="project_id">
                 <option value="">No project</option>
                 {projects.data?.items.map((project) => (
                   <option key={project.id} value={project.id}>
@@ -455,70 +608,34 @@ export function InventoryPage() {
                 ))}
               </select>
               <input className="form-field" name="notes" placeholder="Notes" />
-            </div>
-            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              Record movement
+            </fieldset>
+            {movementError?.form === 'movement' && (
+              <p className="mt-3" role="alert">
+                {movementError.detail}
+              </p>
+            )}
+            <button
+              className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+              disabled={createMovementMutation.isPending || movementAttempt?.form === 'receipt'}
+            >
+              {movementAttempt?.form === 'movement'
+                ? createMovementMutation.isPending
+                  ? 'Recording…'
+                  : 'Retry movement'
+                : 'Record movement'}
             </button>
           </form>
         </div>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        {canCreateMaterialRequest ? (
-          <form
-            className="rounded-lg border border-theme-border bg-theme-card p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const form = new FormData(event.currentTarget);
-              createRequestMutation.mutate({
-                project_id: String(form.get('project_id')),
-                from_location_id: String(form.get('from_location_id')),
-                notes: String(form.get('notes') || ''),
-                lines: [
-                  {
-                    item_id: String(form.get('item_id')),
-                    quantity: String(form.get('quantity') || '0')
-                  }
-                ]
-              });
-              event.currentTarget.reset();
-            }}
-          >
-            <h3 className="flex items-center gap-2 text-base font-semibold text-theme-text-primary">
-              <ClipboardList className="h-4 w-4" />
-              Material request
-            </h3>
-            <div className="mt-3 grid gap-3">
-              <select className="form-field" name="project_id" required>
-                <option value="">Project</option>
-                {projects.data?.items.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.code} - {project.name}
-                  </option>
-                ))}
-              </select>
-              <LocationSelect
-                locations={locations.data ?? []}
-                name="from_location_id"
-                label="Source"
-                required
-              />
-              <select className="form-field" name="item_id" required>
-                <option value="">Item</option>
-                {items.data?.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-              <input className="form-field" name="quantity" placeholder="Quantity" required />
-              <input className="form-field" name="notes" placeholder="Notes" />
-            </div>
-            <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              Create request
-            </button>
-          </form>
-        ) : null}
+        {canCreateMaterialRequest && (
+          <MaterialRequestForm
+            items={items.data ?? []}
+            locations={locations.data ?? []}
+            onSuccess={refreshInventory}
+          />
+        )}
 
         <div className="rounded-lg border border-theme-border bg-theme-card">
           <div className="border-b border-theme-border px-4 py-3">
@@ -536,55 +653,40 @@ export function InventoryPage() {
                     materialRequestRefs.current[request.id] = element;
                   }}
                 >
-                  {(() => {
-                    const canReserve = canManageInventory && request.status === 'approved';
-                    const canIssue = canManageInventory && request.status === 'reserved';
-                    return (
-                      <>
-                        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                          <div>
-                            <p className="font-medium text-theme-text-primary">
-                              {request.request_number}
-                            </p>
-                            <p className="text-theme-text-muted">
-                              {request.lines.length} line(s) · estimated{' '}
-                              {request.total_estimated_cost}
-                            </p>
-                          </div>
-                          <StatusBadge tone={request.status === 'issued' ? 'success' : 'warning'}>
-                            {request.status}
-                          </StatusBadge>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-theme-text-secondary hover:bg-theme-main disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={!canReserve || reserveRequestMutation.isPending}
-                            onClick={() => reserveRequestMutation.mutate(request.id)}
-                            type="button"
-                          >
-                            Reserve
-                          </button>
-                          <button
-                            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={!canIssue || issueRequestMutation.isPending}
-                            onClick={() => issueRequestMutation.mutate(request.id)}
-                            type="button"
-                          >
-                            Issue
-                          </button>
-                          {canManageInventory ? (
-                            <button
-                              className="rounded-md border border-theme-border px-3 py-1.5 text-xs font-semibold text-[var(--status-error-text)] hover:bg-theme-main"
-                              onClick={() => cancelRequestMutation.mutate(request.id)}
-                              type="button"
-                            >
-                              Cancel
-                            </button>
-                          ) : null}
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <p className="font-medium">
+                      {request.request_number} · {request.lines.length} lines
+                    </p>
+                    <StatusBadge tone={request.status === 'issued' ? 'success' : 'warning'}>
+                      {request.status}
+                    </StatusBadge>
+                  </div>
+                  <MaterialFulfillment
+                    request={request}
+                    items={items.data ?? []}
+                    canManage={canManageInventory && !cancelRequestMutation.isPending}
+                    onSuccess={refreshInventory}
+                  />
+                  {(canManageInventory || request.requester_id === user?.id) &&
+                    !['cancelled', 'issued'].includes(request.status) && (
+                      <button
+                        className="mt-2 text-sm text-[var(--status-error-text)] underline"
+                        type="button"
+                        disabled={cancelRequestMutation.isPending}
+                        onClick={() => cancelRequestMutation.mutate(request.id)}
+                      >
+                        Cancel request
+                      </button>
+                    )}
+                  {cancelRequestMutation.isError &&
+                    cancelRequestMutation.variables === request.id && (
+                      <p role="alert">
+                        {formatApiError(
+                          cancelRequestMutation.error,
+                          'Unable to cancel the request.'
+                        )}
+                      </p>
+                    )}
                 </article>
               ))}
             </div>
@@ -594,8 +696,14 @@ export function InventoryPage() {
               description="Create a request to reserve and issue stock."
             />
           )}
-          <InventoryPager label="Material request pages" offset={requestOffset} setOffset={setRequestOffset}
-            size={inventoryPageSize} total={materialRequests.data?.total ?? 0} disabled={materialRequests.isPending} />
+          <InventoryPager
+            label="Material request pages"
+            offset={requestOffset}
+            setOffset={setRequestOffset}
+            size={inventoryPageSize}
+            total={materialRequests.data?.total ?? 0}
+            disabled={materialRequests.isPending}
+          />
         </div>
       </div>
 
@@ -662,15 +770,28 @@ export function InventoryPage() {
           ) : (
             <EmptyState title="No movements" description="Stock movements will appear here." />
           )}
-          <InventoryPager label="Stock movement pages" offset={movementOffset} setOffset={setMovementOffset}
-            size={movementPageSize} total={movements.data?.total ?? 0} disabled={movements.isPending} />
+          <InventoryPager
+            label="Stock movement pages"
+            offset={movementOffset}
+            setOffset={setMovementOffset}
+            size={movementPageSize}
+            total={movements.data?.total ?? 0}
+            disabled={movements.isPending}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-function InventoryPager({ label, offset, setOffset, size, total, disabled }: {
+function InventoryPager({
+  label,
+  offset,
+  setOffset,
+  size,
+  total,
+  disabled
+}: {
   label: string;
   offset: number;
   setOffset: (offset: number) => void;
@@ -680,14 +801,29 @@ function InventoryPager({ label, offset, setOffset, size, total, disabled }: {
 }) {
   if (offset === 0 && total <= size) return null;
   return (
-    <nav aria-label={label} className="flex items-center justify-end gap-3 border-t border-theme-border px-4 py-3">
-      <button className="form-field disabled:opacity-50" disabled={disabled || offset === 0}
-        onClick={() => setOffset(offset - size)} type="button">Previous</button>
+    <nav
+      aria-label={label}
+      className="flex items-center justify-end gap-3 border-t border-theme-border px-4 py-3"
+    >
+      <button
+        className="form-field disabled:opacity-50"
+        disabled={disabled || offset === 0}
+        onClick={() => setOffset(offset - size)}
+        type="button"
+      >
+        Previous
+      </button>
       <span aria-live="polite" className="text-sm text-theme-text-secondary">
         Page {offset / size + 1}
       </span>
-      <button className="form-field disabled:opacity-50" disabled={disabled || offset + size >= total}
-        onClick={() => setOffset(offset + size)} type="button">Next</button>
+      <button
+        className="form-field disabled:opacity-50"
+        disabled={disabled || offset + size >= total}
+        onClick={() => setOffset(offset + size)}
+        type="button"
+      >
+        Next
+      </button>
     </nav>
   );
 }
@@ -704,7 +840,7 @@ function LocationSelect({
   required?: boolean;
 }) {
   return (
-    <select className="form-field" name={name} required={required}>
+    <select aria-label={label} className="form-field" name={name} required={required}>
       <option value="">{label} location</option>
       {locations.map((location) => (
         <option key={location.id} value={location.id}>

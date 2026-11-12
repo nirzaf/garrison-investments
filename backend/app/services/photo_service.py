@@ -4,22 +4,40 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import UploadFile
 from minio import Minio
+from minio.error import S3Error
 from PIL import Image, ImageDraw
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.models.daily_report import DailyReport
 from app.models.photo import Photo
+from app.models.project import Project
+from app.models.supervisor_update import SupervisorUpdate
 from app.models.user import User
+from app.repositories.daily_report_repository import DailyReportRepository
 from app.repositories.photo_repository import PhotoRepository
+from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
 from app.services.audit_service import AuditService
-from app.services.authorization import accessible_project_ids, ensure_entity_access
+from app.services.authorization import (
+    accessible_project_ids,
+    ensure_entity_access,
+    ensure_project_access,
+)
 from app.services.idempotency import bind, resolve_or_reserve
-from app.services.report_service import ReportService
-from app.services.storage_service import minio_client, minio_signed_url_client
+from app.services.report_service import DAILY_REPORT_READ_ROLES
+from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
-from app.utils.permissions import ROLE_ADMIN
+from app.utils.permissions import (
+    PERMISSION_REPORTS_SUBMIT,
+    ROLE_ADMIN,
+    ROLE_CIVIL_ENGINEER,
+    ROLE_CIVIL_SUPERVISOR,
+    ensure_permission,
+)
 from app.utils.security import utc_now
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -34,6 +52,7 @@ ALLOWED_MAGIC = {
 }
 BLOCKED_EXTENSIONS = {".exe", ".sh", ".bat", ".cmd", ".js", ".ps1", ".php", ".py"}
 IDEMPOTENCY_ROUTE = "photos.upload"
+logger = structlog.get_logger(__name__)
 
 
 class PhotoService:
@@ -53,9 +72,15 @@ class PhotoService:
         caption: str | None,
         actor: User,
         idempotency_key: str | None = None,
+        expected_report_revision: int | None = None,
     ) -> Photo:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
         self._validate_entity_type(entity_type)
-        normalized_kind = self._validate_kind(kind, file.filename or "")
+        normalized_kind = self._validate_kind(kind)
+        data = await file.read(MAX_FILE_SIZE + 1)
+        mime_type = self._validate_file(file.filename or "upload", data, normalized_kind)
+        if mime_type == "application/pdf":
+            normalized_kind = "attachment"
         if idempotency_key:
             # Reserve before any storage I/O so a replay never re-uploads the bytes.
             existing_id = await resolve_or_reserve(
@@ -66,10 +91,27 @@ class PhotoService:
             )
             if existing_id is not None:
                 # A replay is still subject to current access to the original photo.
-                return await self.get(existing_id, actor=actor)
-        await self._ensure_upload_allowed(entity_type, entity_id, normalized_kind, actor)
-        data = await file.read()
-        mime_type = self._validate_file(file.filename or "upload", data, normalized_kind)
+                existing = await self.get(existing_id, actor=actor)
+                if (existing.entity_type, existing.entity_id, existing.kind) != (
+                    entity_type,
+                    entity_id,
+                    normalized_kind,
+                ):
+                    raise AppException(
+                        "This upload key belongs to a different file operation.",
+                        status_code=409,
+                        error_code="PHOTO_UPLOAD_KEY_CONFLICT",
+                    )
+                if expected_report_revision is not None and (
+                    existing.report_revision != expected_report_revision + 1
+                ):
+                    self._raise_revision_conflict()
+                return existing
+        owner = await self._ensure_upload_allowed(entity_type, entity_id, normalized_kind, actor)
+        if expected_report_revision is not None and (
+            not isinstance(owner, DailyReport) or owner.revision != expected_report_revision
+        ):
+            self._raise_revision_conflict()
         object_id = uuid4().hex
         extension = self._extension_for_mime(mime_type)
         base_key = f"{entity_type}/{entity_id}/{object_id}"
@@ -79,58 +121,91 @@ class PhotoService:
         width: int | None = None
         height: int | None = None
 
-        await asyncio.to_thread(self._upload_object, storage_path, data, mime_type)
+        objects = [(storage_path, data, mime_type)]
         if normalized_kind == "photo" and mime_type in {"image/jpeg", "image/png"}:
-            compressed, thumbnail, width, height = await asyncio.to_thread(
-                self._create_photo_variants, data, mime_type
-            )
+            try:
+                compressed, thumbnail, width, height = await asyncio.to_thread(
+                    self._create_photo_variants, data, mime_type
+                )
+            except (OSError, Image.DecompressionBombError) as error:
+                raise AppException(
+                    "The image could not be read.", status_code=422, error_code="INVALID_IMAGE"
+                ) from error
             compressed_path = f"{base_key}/display.jpg"
             thumbnail_path = f"{base_key}/thumbnail.jpg"
-            await asyncio.to_thread(self._upload_object, compressed_path, compressed, "image/jpeg")
-            await asyncio.to_thread(self._upload_object, thumbnail_path, thumbnail, "image/jpeg")
-
-        photo = await self.photos.add(
-            Photo(
-                filename=f"{object_id}{extension}",
-                original_name=file.filename or "upload",
-                storage_path=storage_path,
-                compressed_path=compressed_path,
-                thumbnail_path=thumbnail_path,
-                mime_type=mime_type,
-                size_bytes=len(data),
-                width=width,
-                height=height,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                kind=normalized_kind,
-                caption=caption,
-                uploaded_by=actor.id,
-                processing_status="ready",
+            objects.extend(
+                [
+                    (compressed_path, compressed, "image/jpeg"),
+                    (thumbnail_path, thumbnail, "image/jpeg"),
+                ]
             )
-        )
-        await self.audit.record(
-            action="photos.uploaded",
-            user_id=actor.id,
+
+        photo = Photo(
+            filename=f"{object_id}{extension}",
+            original_name=file.filename or "upload",
+            storage_path=storage_path,
+            compressed_path=compressed_path,
+            thumbnail_path=thumbnail_path,
+            mime_type=mime_type,
+            size_bytes=len(data),
+            width=width,
+            height=height,
             entity_type=entity_type,
             entity_id=entity_id,
-            new_values={"photo_id": str(photo.id), "kind": normalized_kind},
+            kind=normalized_kind,
+            caption=caption,
+            uploaded_by=actor.id,
+            processing_status="ready",
         )
-        if idempotency_key:
-            winner_id = await bind(
-                self.session,
-                key=idempotency_key,
+        written: list[str] = []
+        try:
+            for object_key, content, content_type in objects:
+                written.append(object_key)
+                await asyncio.to_thread(self._upload_object, object_key, content, content_type)
+            if isinstance(owner, DailyReport):
+                owner.revision += 1
+                photo.report_revision = owner.revision
+            await self.photos.add(photo)
+            await self.audit.record(
+                action="photos.uploaded",
                 user_id=actor.id,
-                route=IDEMPOTENCY_ROUTE,
-                resource_type="photo",
-                resource_id=photo.id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                new_values={"photo_id": str(photo.id), "kind": normalized_kind},
             )
-            if winner_id != photo.id:
-                await self.session.rollback()
-                winner = await self.photos.get_by_id(winner_id)
-                if winner is not None:
-                    return winner
-        await self.session.commit()
+            if idempotency_key:
+                winner_id = await bind(
+                    self.session,
+                    key=idempotency_key,
+                    user_id=actor.id,
+                    route=IDEMPOTENCY_ROUTE,
+                    resource_type="photo",
+                    resource_id=photo.id,
+                )
+                if winner_id != photo.id:
+                    await self._discard_uncommitted_upload(storage_path, written)
+                    return await self.get(winner_id, actor=actor)
+            await self.session.commit()
+        except Exception as error:
+            await self._discard_uncommitted_upload(storage_path, written)
+            logger.warning("photo_write_failed", error_type=type(error).__name__)
+            raise AppException(
+                "The file could not be saved. Retry the upload.",
+                status_code=503,
+                error_code="PHOTO_SAVE_FAILED",
+            ) from error
         return photo
+
+    async def _discard_uncommitted_upload(self, storage_path: str, written: list[str]) -> None:
+        try:
+            await self.session.rollback()
+            saved = await self.session.scalar(
+                select(Photo.id).where(Photo.storage_path == storage_path)
+            )
+            if saved is None:
+                await discard_new_uploads(self._client(), self.settings.minio_bucket, written)
+        except Exception as error:
+            logger.warning("photo_cleanup_unverified", error_type=type(error).__name__)
 
     async def list_for_entity(
         self,
@@ -139,6 +214,8 @@ class PhotoService:
         entity_id: UUID,
         kind: str | None,
         actor: User,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[Photo], int]:
         self._validate_entity_type(entity_type)
         await ensure_entity_access(self.session, entity_type, entity_id, actor)
@@ -146,6 +223,8 @@ class PhotoService:
             entity_type=entity_type,
             entity_id=entity_id,
             kind=kind,
+            limit=limit,
+            offset=offset,
         )
 
     async def list_recent(
@@ -176,12 +255,15 @@ class PhotoService:
                     error_code="INVALID_FILE_KIND",
                 )
             kind = normalized_kind
+        if actor.role not in DAILY_REPORT_READ_ROLES:
+            return [], 0
         return await self.photos.list_recent(
             entity_type=entity_type,
             kind=kind,
             limit=limit,
             offset=offset,
             project_ids=await accessible_project_ids(self.session, actor),
+            engineer_id=actor.id if actor.role == ROLE_CIVIL_ENGINEER else None,
         )
 
     async def get(self, photo_id: UUID, *, actor: User) -> Photo:
@@ -208,35 +290,109 @@ class PhotoService:
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
         )
 
-    async def delete(self, photo_id: UUID, actor: User) -> None:
-        photo = await self.get(photo_id, actor=actor)
-        if photo.entity_type == "daily_report":
-            report = await ReportService(self.session).get_report_for_export(photo.entity_id)
-            if report.status != "draft" and actor.role != ROLE_ADMIN:
+    async def deletable_ids(self, photos: list[Photo], actor: User) -> set[UUID]:
+        if actor.role == ROLE_ADMIN:
+            return {photo.id for photo in photos if photo.deleted_at is None}
+        project_ids = await accessible_project_ids(self.session, actor) or []
+        if actor.role == ROLE_CIVIL_ENGINEER:
+            report_ids = [
+                photo.entity_id for photo in photos if photo.entity_type == "daily_report"
+            ]
+            if not report_ids:
+                return set()
+            owners = await self.session.scalars(
+                select(DailyReport.id).where(
+                    DailyReport.id.in_(report_ids),
+                    DailyReport.engineer_id == actor.id,
+                    DailyReport.project_id.in_(project_ids),
+                    DailyReport.status == "draft",
+                    DailyReport.deleted_at.is_(None),
+                )
+            )
+            entity_type = "daily_report"
+        elif actor.role == ROLE_CIVIL_SUPERVISOR:
+            update_ids = [
+                photo.entity_id for photo in photos if photo.entity_type == "supervisor_update"
+            ]
+            if not update_ids:
+                return set()
+            owners = await self.session.scalars(
+                select(SupervisorUpdate.id).where(
+                    SupervisorUpdate.id.in_(update_ids),
+                    SupervisorUpdate.supervisor_id == actor.id,
+                    SupervisorUpdate.project_id.in_(project_ids),
+                    SupervisorUpdate.status == "draft",
+                    SupervisorUpdate.deleted_at.is_(None),
+                )
+            )
+            entity_type = "supervisor_update"
+        else:
+            return set()
+        editable = set(owners)
+        return {
+            photo.id
+            for photo in photos
+            if photo.entity_type == entity_type and photo.entity_id in editable
+        }
+
+    async def list_deleted(
+        self,
+        *,
+        entity_type: str | None,
+        entity_id: UUID | None,
+        kind: str | None,
+        limit: int,
+        offset: int,
+        actor: User,
+    ) -> tuple[list[Photo], int]:
+        self._ensure_admin(actor)
+        if entity_type:
+            self._validate_entity_type(entity_type)
+        if kind and kind not in {"photo", "attachment"}:
+            raise AppException(
+                "Invalid file kind.", status_code=422, error_code="INVALID_FILE_KIND"
+            )
+        return await self.photos.list_deleted(
+            entity_type=entity_type, entity_id=entity_id, kind=kind, limit=limit, offset=offset
+        )
+
+    async def delete(self, photo_id: UUID, actor: User, reason: str | None = None) -> None:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        existing = await self.get(photo_id, actor=actor)
+        owner = await self._lock_owner(existing.entity_type, existing.entity_id, actor)
+        photo = await self.photos.get_by_id(photo_id, for_update=True)
+        if photo is None:
+            raise NotFoundException("Photo")
+        if actor.role != ROLE_ADMIN:
+            await self._ensure_author(owner, actor)
+            if owner is None or owner.status != "draft":
                 raise AppException(
-                    "Photos cannot be deleted after report submission.",
+                    "Files can only be removed from editable drafts.",
                     status_code=409,
                     error_code="PHOTO_DELETE_LOCKED",
                 )
+        reason = self._evidence_reason(owner, actor, reason)
         photo.deleted_at = utc_now()
+        if isinstance(owner, DailyReport):
+            owner.revision += 1
         await self.audit.record(
             action="photos.deleted",
             user_id=actor.id,
             entity_type=photo.entity_type,
             entity_id=photo.entity_id,
+            comments=reason,
             new_values={"photo_id": str(photo.id)},
         )
         await self.session.commit()
 
-    async def recover(self, photo_id: UUID, actor: User) -> Photo:
-        if actor.role != ROLE_ADMIN:
-            raise AppException(
-                "Only Admin can recover deleted photos.",
-                status_code=403,
-                error_code="PHOTO_RECOVERY_FORBIDDEN",
-            )
+    async def recover(self, photo_id: UUID, actor: User, reason: str | None = None) -> Photo:
+        self._ensure_admin(actor)
         photo = await self.photos.get_deleted_by_id(photo_id)
-        if not photo:
+        if photo is None:
+            raise NotFoundException("Photo")
+        owner = await self._lock_owner(photo.entity_type, photo.entity_id, actor)
+        photo = await self.photos.get_deleted_by_id(photo_id, for_update=True)
+        if photo is None:
             raise NotFoundException("Photo")
         recovery_cutoff = utc_now() - timedelta(days=PHOTO_RECOVERY_DAYS)
         if photo.deleted_at and photo.deleted_at < recovery_cutoff:
@@ -245,16 +401,92 @@ class PhotoService:
                 status_code=409,
                 error_code="PHOTO_RECOVERY_EXPIRED",
             )
+        await self._ensure_photo_capacity(photo.entity_type, photo.entity_id, photo.kind)
+        reason = self._evidence_reason(owner, actor, reason)
+        client = self._client()
+        for path in (photo.storage_path, photo.compressed_path, photo.thumbnail_path):
+            if path:
+                try:
+                    await asyncio.to_thread(client.stat_object, self.settings.minio_bucket, path)
+                except S3Error as error:
+                    if error.code in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                        raise AppException(
+                            "One or more stored files are unavailable for recovery.",
+                            status_code=409,
+                            error_code="PHOTO_RECOVERY_UNAVAILABLE",
+                        ) from error
+                    raise
         photo.deleted_at = None
+        if isinstance(owner, DailyReport):
+            owner.revision += 1
         await self.audit.record(
             action="photos.recovered",
             user_id=actor.id,
             entity_type=photo.entity_type,
             entity_id=photo.entity_id,
+            comments=reason,
             new_values={"photo_id": str(photo.id)},
         )
         await self.session.commit()
         return photo
+
+    def _evidence_reason(
+        self, owner: DailyReport | SupervisorUpdate | None, actor: User, reason: str | None
+    ) -> str | None:
+        reason = reason.strip() if reason else None
+        if actor.role == ROLE_ADMIN and (owner is None or owner.status != "draft") and not reason:
+            raise AppException(
+                "Give a reason for changing this evidence.",
+                status_code=422,
+                error_code="PHOTO_CHANGE_REASON_REQUIRED",
+            )
+        return reason
+
+    def _ensure_admin(self, actor: User) -> None:
+        if actor.role != ROLE_ADMIN:
+            raise AppException(
+                "Only Admin can access deleted media.",
+                status_code=403,
+                error_code="PHOTO_RECOVERY_FORBIDDEN",
+            )
+
+    async def _lock_owner(
+        self, entity_type: str, entity_id: UUID, actor: User
+    ) -> DailyReport | SupervisorUpdate | None:
+        owner: DailyReport | SupervisorUpdate | None = None
+        if entity_type == "daily_report":
+            owner = await DailyReportRepository(self.session).lock_by_id(entity_id)
+            if owner is None:
+                raise NotFoundException("Daily report")
+        elif entity_type == "supervisor_update":
+            owner = await SupervisorUpdateRepository(self.session).get_by_id(
+                entity_id, for_update=True
+            )
+            if owner is None:
+                raise NotFoundException("Supervisor update")
+        elif entity_type == "project":
+            project = await self.session.scalar(
+                select(Project.id)
+                .where(Project.id == entity_id, Project.deleted_at.is_(None))
+                .with_for_update()
+            )
+            if project is None:
+                raise NotFoundException("Project")
+        await ensure_entity_access(self.session, entity_type, entity_id, actor)
+        return owner
+
+    async def _ensure_author(
+        self, owner: DailyReport | SupervisorUpdate | None, actor: User
+    ) -> None:
+        if isinstance(owner, DailyReport):
+            owns_draft = actor.role == ROLE_CIVIL_ENGINEER and owner.engineer_id == actor.id
+        elif isinstance(owner, SupervisorUpdate):
+            owns_draft = actor.role == ROLE_CIVIL_SUPERVISOR and owner.supervisor_id == actor.id
+        else:
+            owns_draft = False
+        if not owns_draft or owner is None:
+            raise NotFoundException("Photo")
+        await ensure_project_access(self.session, owner.project_id, actor)
 
     async def _ensure_upload_allowed(
         self,
@@ -262,31 +494,38 @@ class PhotoService:
         entity_id: UUID,
         kind: str,
         actor: User,
-    ) -> None:
-        if entity_type == "daily_report":
-            report = await ReportService(self.session).get_report(entity_id, actor)
-            if report.status != "draft":
+    ) -> DailyReport | SupervisorUpdate | None:
+        owner = await self._lock_owner(entity_type, entity_id, actor)
+        if owner is not None:
+            if actor.role != ROLE_ADMIN:
+                await self._ensure_author(owner, actor)
+            if owner.status != "draft":
                 raise AppException(
-                    "Files can only be added to draft reports.",
+                    "Files can only be added to editable drafts.",
                     status_code=409,
                     error_code="PHOTO_UPLOAD_LOCKED",
                 )
-            if kind == "photo":
-                _, total = await self.photos.list_for_entity(
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    kind="photo",
-                )
-                if total >= MAX_REPORT_PHOTOS:
-                    raise AppException(
-                        "A report can have a maximum of 5 photos.",
-                        status_code=409,
-                        error_code="REPORT_PHOTO_LIMIT_REACHED",
-                    )
-        else:
-            # get_report above already scopes daily reports; every other owner needs the
-            # same check before bytes are written to storage.
-            await ensure_entity_access(self.session, entity_type, entity_id, actor)
+        await self._ensure_photo_capacity(entity_type, entity_id, kind)
+        return owner
+
+    @staticmethod
+    def _raise_revision_conflict() -> None:
+        raise AppException(
+            "The report changed. Reload before adding evidence.",
+            status_code=409,
+            error_code="DAILY_REPORT_REVISION_CONFLICT",
+        )
+
+    async def _ensure_photo_capacity(self, entity_type: str, entity_id: UUID, kind: str) -> None:
+        if kind != "photo" or entity_type not in {"daily_report", "supervisor_update"}:
+            return
+        if await self.photos.count_photos(entity_type, entity_id) >= MAX_REPORT_PHOTOS:
+            owner_label = "report" if entity_type == "daily_report" else "site update"
+            raise AppException(
+                f"This {owner_label} already has {MAX_REPORT_PHOTOS} active photos.",
+                status_code=409,
+                error_code="REPORT_PHOTO_LIMIT_REACHED",
+            )
 
     def _validate_entity_type(self, entity_type: str) -> None:
         if entity_type not in {"daily_report", "project", "supervisor_update", "document"}:
@@ -296,7 +535,7 @@ class PhotoService:
                 error_code="INVALID_ENTITY_TYPE",
             )
 
-    def _validate_kind(self, kind: str, filename: str) -> str:
+    def _validate_kind(self, kind: str) -> str:
         normalized = kind.strip().lower()
         if normalized not in {"photo", "attachment"}:
             raise AppException(
@@ -304,14 +543,12 @@ class PhotoService:
                 status_code=422,
                 error_code="INVALID_FILE_KIND",
             )
-        if Path(filename).suffix.lower() == ".pdf":
-            return "attachment"
         return normalized
 
     def _validate_file(self, filename: str, data: bytes, kind: str) -> str:
         if len(data) > MAX_FILE_SIZE:
             raise AppException(
-                "File exceeds the 10 MB limit.",
+                "File exceeds the 10 MiB limit.",
                 status_code=413,
                 error_code="FILE_TOO_LARGE",
             )
@@ -322,7 +559,12 @@ class PhotoService:
                 error_code="BLOCKED_FILE_TYPE",
             )
         mime_type = self._detect_mime(data)
-        if kind == "photo" and mime_type not in {"image/jpeg", "image/png", "image/heic"}:
+        if kind == "photo" and mime_type not in {
+            "image/jpeg",
+            "image/png",
+            "image/heic",
+            "application/pdf",
+        }:
             raise AppException(
                 "Unsupported photo type.",
                 status_code=422,
@@ -339,7 +581,8 @@ class PhotoService:
     def _detect_mime(self, data: bytes) -> str:
         header = data[:32]
         for mime_type, signatures in ALLOWED_MAGIC.items():
-            if any(signature in header for signature in signatures):
+            prefix = header[4:] if mime_type == "image/heic" else header
+            if prefix.startswith(signatures):
                 return mime_type
         raise AppException(
             "Unsupported file type.",

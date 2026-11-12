@@ -13,6 +13,7 @@ export async function listApprovals(
   params: {
     box?: 'inbox' | 'outbox';
     status?: string;
+    status_group?: 'open' | 'all';
     limit?: number;
     offset?: number;
   } = {}

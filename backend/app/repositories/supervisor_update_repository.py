@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.supervisor_update import SupervisorUpdate
@@ -15,14 +15,57 @@ class SupervisorUpdateRepository:
         await self.session.flush()
         return update
 
-    async def get_by_id(self, update_id: UUID) -> SupervisorUpdate | None:
-        result = await self.session.execute(
-            select(SupervisorUpdate).where(
-                SupervisorUpdate.id == update_id,
-                SupervisorUpdate.deleted_at.is_(None),
+    async def get_by_id(
+        self, update_id: UUID, *, for_update: bool = False
+    ) -> SupervisorUpdate | None:
+        query = select(SupervisorUpdate).where(
+            SupervisorUpdate.id == update_id,
+            SupervisorUpdate.deleted_at.is_(None),
+        )
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        return await self.session.scalar(query)
+
+    async def lock_linked(self, update_ids: list[UUID]) -> list[SupervisorUpdate]:
+        if not update_ids:
+            return []
+        return list(
+            await self.session.scalars(
+                select(SupervisorUpdate)
+                .where(SupervisorUpdate.id.in_(update_ids), SupervisorUpdate.deleted_at.is_(None))
+                .order_by(SupervisorUpdate.id)
+                .with_for_update()
             )
         )
-        return result.scalar_one_or_none()
+
+    async def bound_ids(self, report_id: UUID) -> set[UUID]:
+        return set(
+            await self.session.scalars(
+                select(SupervisorUpdate.id).where(
+                    SupervisorUpdate.verified_report_id == report_id,
+                    SupervisorUpdate.deleted_at.is_(None),
+                )
+            )
+        )
+
+    async def list_report_evidence(
+        self, report_id: UUID, project_id: UUID, update_ids: list[UUID]
+    ) -> list[SupervisorUpdate]:
+        return list(
+            await self.session.scalars(
+                select(SupervisorUpdate)
+                .where(
+                    SupervisorUpdate.id.in_(update_ids),
+                    SupervisorUpdate.project_id == project_id,
+                    SupervisorUpdate.deleted_at.is_(None),
+                    or_(
+                        SupervisorUpdate.verified_report_id == report_id,
+                        SupervisorUpdate.status == "submitted",
+                    ),
+                )
+                .order_by(SupervisorUpdate.update_date.desc(), SupervisorUpdate.id)
+            )
+        )
 
     async def list_updates(
         self,
@@ -41,6 +84,8 @@ class SupervisorUpdateRepository:
             query = query.where(SupervisorUpdate.project_id.in_(project_ids))
         if supervisor_id:
             query = query.where(SupervisorUpdate.supervisor_id == supervisor_id)
+        else:
+            query = query.where(SupervisorUpdate.status != "draft")
         if status:
             query = query.where(SupervisorUpdate.status == status)
         total = await self.session.scalar(

@@ -11,6 +11,7 @@ from app.models.daily_report import (
     ReportManpower,
     ReportMaterialConsumption,
 )
+from app.models.supervisor_update import SupervisorUpdate
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.daily_report_repository import DailyReportRepository
@@ -34,6 +35,7 @@ from app.utils.security import utc_now
 from app.utils.time import business_today
 
 REPORT_STATUSES = {"draft", "submitted", "approved", "rejected"}
+DAILY_REPORT_READ_ROLES = COMPANY_WIDE_ROLES | {ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
 IDEMPOTENCY_ROUTE = "reports.create"
 
 
@@ -93,8 +95,22 @@ class ReportService:
             if winner_id != report.id:
                 await self.session.rollback()
                 return await self.get_report(winner_id, actor)
+        return await self._commit_report_snapshot(report)
+
+    async def _commit_report_snapshot(self, report: DailyReport) -> DailyReport:
+        # Capture this write before releasing the lock. A subsequent edit is a new revision.
+        await self.session.flush()
+        await self.session.refresh(
+            report,
+            attribute_names=[
+                "manpower_entries",
+                "equipment_entries",
+                "material_consumption",
+                "approval_history",
+            ],
+        )
         await self.session.commit()
-        return await self._get_required(report.id)
+        return report
 
     async def update_report(
         self,
@@ -103,7 +119,7 @@ class ReportService:
         actor: User,
     ) -> DailyReport:
         self._ensure_engineer(actor)
-        report = await self._get_required(report_id)
+        report = await self._get_required(report_id, for_update=True)
         if report.engineer_id != actor.id:
             raise NotFoundException("Daily report")
         if report.status == "approved":
@@ -118,12 +134,39 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_SUBMITTED_LOCKED",
             )
-        self._validate_report_date(payload.report_date, actor)
-        await self._ensure_project_member(payload.project_id, actor)
+        await self._ensure_project_member(report.project_id, actor)
+        if payload.expected_revision is None:
+            raise AppException(
+                "Reload the report before editing so the current revision can be checked.",
+                status_code=409,
+                error_code="DAILY_REPORT_REVISION_REQUIRED",
+            )
+        if report.revision != payload.expected_revision:
+            raise AppException(
+                "The report changed since it was opened. Reload it before editing.",
+                status_code=409,
+                error_code="DAILY_REPORT_REVISION_CONFLICT",
+            )
+        # The report date was accepted when the official number was assigned.
+        if not report.report_number or payload.report_date != report.report_date:
+            self._validate_report_date(payload.report_date, actor)
+        if payload.project_id != report.project_id:
+            await self._ensure_project_member(payload.project_id, actor)
+        bound_ids = await self.supervisor_updates.bound_ids(report.id)
+        if bound_ids and (
+            payload.project_id != report.project_id
+            or not bound_ids.issubset(payload.supervisor_update_ids)
+        ):
+            raise AppException(
+                "Keep verified supervisor updates and their project on this report.",
+                status_code=409,
+                error_code="SUPERVISOR_UPDATE_VERIFICATION_LOCKED",
+            )
         for key, value in self._report_values(payload).items():
             setattr(report, key, value)
         if report.status == "rejected":
             report.status = "draft"
+        report.revision += 1
         await self._replace_children(report, payload)
         await self.audit.record(
             action="daily_reports.updated",
@@ -131,8 +174,7 @@ class ReportService:
             entity_type="daily_reports",
             entity_id=report.id,
         )
-        await self.session.commit()
-        return await self._get_required(report.id)
+        return await self._commit_report_snapshot(report)
 
     async def submit_report(self, report_id: UUID, actor: User) -> DailyReport:
         self._ensure_engineer(actor)
@@ -145,7 +187,8 @@ class ReportService:
                 status_code=409,
                 error_code="DAILY_REPORT_LOCKED",
             )
-        self._validate_report_date(report.report_date, actor)
+        if not report.report_number:
+            self._validate_report_date(report.report_date, actor)
         project = await self._ensure_project_member(report.project_id, actor)
         await self._verify_supervisor_updates(report, actor)
         if not report.report_number:
@@ -170,6 +213,7 @@ class ReportService:
         try:
             previous_status = report.status
             report.status = "submitted"
+            report.revision += 1
             report.submitted_at = utc_now()
             report.rejection_comments = None
             await self._record_history(
@@ -228,6 +272,7 @@ class ReportService:
                 error_code="DAILY_REPORT_NOT_SUBMITTED",
             )
         previous_status = report.status
+        report.revision += 1
         report.status = "approved"
         report.approved_by = actor.id
         report.approved_at = utc_now()
@@ -293,6 +338,7 @@ class ReportService:
                 error_code="DAILY_REPORT_APPROVED_LOCKED",
             )
         previous_status = report.status
+        report.revision += 1
         if decision == "approved":
             report.status = "approved"
             report.approved_by = actor.id
@@ -355,6 +401,7 @@ class ReportService:
                 error_code="DAILY_REPORT_NOT_SUBMITTED",
             )
         previous_status = report.status
+        report.revision += 1
         report.status = "draft"
         report.rejection_comments = comments.strip()
         await self._record_history(
@@ -391,6 +438,14 @@ class ReportService:
         await self._ensure_report_access(report, actor)
         return report
 
+    async def list_supervisor_evidence(
+        self, report_id: UUID, actor: User
+    ) -> list[SupervisorUpdate]:
+        report = await self.get_report(report_id, actor)
+        return await self.supervisor_updates.list_report_evidence(
+            report.id, report.project_id, self._supervisor_update_ids(report)
+        )
+
     async def list_reports(
         self,
         *,
@@ -412,13 +467,12 @@ class ReportService:
                 await self._ensure_project_member(project_id, actor)
         elif actor.role == ROLE_CIVIL_ENGINEER and project_id:
             await self._ensure_project_member(project_id, actor)
-        elif actor.role not in COMPANY_WIDE_ROLES:
-            if actor.role != ROLE_CIVIL_ENGINEER:
-                raise AppException(
-                    "You do not have access to daily reports.",
-                    status_code=403,
-                    error_code="DAILY_REPORT_FORBIDDEN",
-                )
+        elif actor.role not in DAILY_REPORT_READ_ROLES:
+            raise AppException(
+                "You do not have access to daily reports.",
+                status_code=403,
+                error_code="DAILY_REPORT_FORBIDDEN",
+            )
         return await self.reports.list_reports(
             project_id=project_id,
             project_ids=project_ids,
@@ -461,14 +515,40 @@ class ReportService:
             ],
         )
 
+    @staticmethod
+    def _supervisor_update_ids(report: DailyReport) -> list[UUID]:
+        try:
+            return [UUID(update_id) for update_id in report.supervisor_update_ids]
+        except ValueError as exc:
+            raise AppException(
+                "The report contains an invalid supervisor update reference.",
+                status_code=422,
+                error_code="INVALID_SUPERVISOR_UPDATE_REFERENCE",
+            ) from exc
+
     async def _verify_supervisor_updates(self, report: DailyReport, actor: User) -> None:
-        for update_id in report.supervisor_update_ids:
-            supervisor_update = await self.supervisor_updates.get_by_id(UUID(update_id))
-            if not supervisor_update or supervisor_update.project_id != report.project_id:
+        update_ids = self._supervisor_update_ids(report)
+        updates = await self.supervisor_updates.lock_linked(update_ids)
+        if len(updates) != len(update_ids) or any(
+            update.project_id != report.project_id for update in updates
+        ):
+            raise AppException(
+                "Select distinct supervisor updates from this project.",
+                status_code=422,
+                error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
+            )
+        for supervisor_update in updates:
+            if supervisor_update.status == "verified":
+                if supervisor_update.verified_report_id == report.id:
+                    continue
                 raise AppException(
-                    "Supervisor update does not belong to this project.",
-                    status_code=422,
-                    error_code="SUPERVISOR_UPDATE_PROJECT_MISMATCH",
+                    "This supervisor update is already verified for a different or unknown report.",
+                    status_code=409,
+                    error_code=(
+                        "SUPERVISOR_UPDATE_VERIFICATION_UNRESOLVED"
+                        if supervisor_update.verified_report_id is None
+                        else "SUPERVISOR_UPDATE_ALREADY_VERIFIED"
+                    ),
                 )
             if supervisor_update.status != "submitted":
                 raise AppException(
@@ -479,6 +559,7 @@ class ReportService:
             supervisor_update.status = "verified"
             supervisor_update.verified_by = actor.id
             supervisor_update.verified_at = utc_now()
+            supervisor_update.verified_report_id = report.id
 
     async def _ensure_project_member(self, project_id: UUID, actor: User):
         project = await self.projects.get_by_id(project_id)
@@ -494,7 +575,7 @@ class ReportService:
     async def _ensure_report_access(self, report: DailyReport, actor: User) -> None:
         if actor.role == ROLE_CIVIL_ENGINEER and report.engineer_id == actor.id:
             return
-        if actor.role in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        if actor.role in COMPANY_WIDE_ROLES:
             return
         if actor.role == ROLE_PROJECT_MANAGER:
             await self._ensure_project_member(report.project_id, actor)
@@ -578,7 +659,12 @@ class ReportService:
 
     def _report_values(self, payload: DailyReportCreateRequest | DailyReportUpdateRequest) -> dict:
         values = payload.model_dump(
-            exclude={"manpower_entries", "equipment_entries", "material_consumption"}
+            exclude={
+                "manpower_entries",
+                "equipment_entries",
+                "material_consumption",
+                "expected_revision",
+            }
         )
         values["supervisor_update_ids"] = [
             str(update_id) for update_id in payload.supervisor_update_ids

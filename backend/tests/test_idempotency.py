@@ -52,25 +52,39 @@ async def _count_reports(project_id: str) -> int:
         )
 
 
-async def test_same_key_twice_creates_one_report() -> None:
+async def test_local_report_key_requires_owner_before_creation_and_replay() -> None:
     await require_database()
-    key = f"offline-{uuid4().hex}"
+    key = f"local-{uuid4()}"
     async with create_test_client() as client:
         setup = await setup_project_team(client)
         headers = {
             "Authorization": f"Bearer {setup['engineer_token']}",
             "Idempotency-Key": key,
         }
-        first = await client.post(
-            "/api/v1/reports", json=report_payload(setup["project_id"]), headers=headers
+        payload = report_payload(setup["project_id"])
+        endpoint = "/api/v1/reports"
+        legacy = await client.post(endpoint, json=payload, headers=headers)
+        assert legacy.status_code == 409
+        assert legacy.json()["error_code"] == "OFFLINE_REPORT_CLIENT_UPGRADE_REQUIRED"
+
+        mismatch = await client.post(
+            endpoint, json=payload, headers={**headers, "X-Offline-Owner": str(uuid4())}
         )
-        second = await client.post(
-            "/api/v1/reports", json=report_payload(setup["project_id"]), headers=headers
-        )
+        assert mismatch.status_code == 403
+        assert mismatch.json()["error_code"] == "OFFLINE_REPORT_OWNER_MISMATCH"
+        assert await _count_reports(setup["project_id"]) == 0
+
+        me = await client.get("/api/v1/auth/me", headers=headers)
+        assert me.status_code == 200
+        owned = {**headers, "X-Offline-Owner": me.json()["id"]}
+        first = await client.post(endpoint, json=payload, headers=owned)
+        second = await client.post(endpoint, json=payload, headers=owned)
 
         assert first.status_code == 201
         assert second.status_code == 201, "a replay must still look like success to the client"
         assert first.json()["id"] == second.json()["id"]
+        legacy_replay = await client.post(endpoint, json=payload, headers=headers)
+        assert legacy_replay.status_code == 409
 
     assert await _count_reports(setup["project_id"]) == 1
 
@@ -195,9 +209,9 @@ def _png_bytes() -> bytes:
     return buffer.getvalue()
 
 
-async def test_photo_upload_replay_returns_the_same_photo() -> None:
+async def test_keyed_report_photo_requires_revision_before_upload_and_replay() -> None:
     await require_database()
-    key = f"photo-{uuid4().hex}"
+    key = str(uuid4())
     async with create_test_client() as client:
         setup = await setup_project_team(client)
         report = (
@@ -211,22 +225,21 @@ async def test_photo_upload_replay_returns_the_same_photo() -> None:
             "Authorization": f"Bearer {setup['engineer_token']}",
             "Idempotency-Key": key,
         }
-        png = _png_bytes()
-        first = await client.post(
-            "/api/v1/photos/upload",
-            data={"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"},
-            files={"files": ("site.png", png, "image/png")},
-            headers=headers,
-        )
-        second = await client.post(
-            "/api/v1/photos/upload",
-            data={"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"},
-            files={"files": ("site.png", png, "image/png")},
-            headers=headers,
-        )
+        endpoint = "/api/v1/photos/upload"
+        files = {"files": ("site.png", _png_bytes(), "image/png")}
+        unversioned = {"entity_type": "daily_report", "entity_id": report["id"], "kind": "photo"}
+        legacy = await client.post(endpoint, data=unversioned, files=files, headers=headers)
+        assert legacy.status_code == 409
+        assert legacy.json()["error_code"] == "DAILY_REPORT_REVISION_REQUIRED"
+
+        versioned = {**unversioned, "expected_report_revision": str(report["revision"])}
+        first = await client.post(endpoint, data=versioned, files=files, headers=headers)
+        second = await client.post(endpoint, data=versioned, files=files, headers=headers)
         assert first.status_code == 201, first.text
         assert second.status_code == 201, second.text
         assert first.json()[0]["id"] == second.json()[0]["id"]
+        legacy_replay = await client.post(endpoint, data=unversioned, files=files, headers=headers)
+        assert legacy_replay.status_code == 409
 
     async with AsyncSessionLocal() as session:
         total = await session.scalar(

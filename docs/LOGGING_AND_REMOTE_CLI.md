@@ -66,7 +66,11 @@ Typical event types include `api_request`, `security_event`, `user_action`, `sta
 
 ## Audit retention
 
-The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs archival and purge daily at 03:30 UTC. The default hot window is 30 days (`LOG_HOT_RETENTION_DAYS`), and the default archive retention is 365 days (`LOG_ARCHIVE_RETENTION_DAYS`). Archived rows remain queryable with `search --storage-tier archive`. `LOG_STREAM_POLL_SECONDS` defaults to one second.
+The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs the retention check daily at 03:30 UTC. The default hot window is 30 days (`LOG_HOT_RETENTION_DAYS`), and the default archive window is 365 days (`LOG_ARCHIVE_RETENTION_DAYS`). Archived rows remain in PostgreSQL and can be queried with `search --storage-tier archive`. `LOG_STREAM_POLL_SECONDS` defaults to one second.
+
+The scheduled job reports a bounded preview count by default. A row becomes a purge candidate after both the archive window and its recorded `retention_until` deadline expire. Rows without a deadline are retained. `LOG_PURGE_ENABLED` defaults to `false`. Enabling it requires the approved records policy, legacy deadline review, and recovery evidence.
+
+Run `python scripts/preview_audit_retention.py` from the backend directory to list candidate IDs and deadlines and review missing deadlines. The output includes the total missing-deadline count and a page of IDs, creation times, storage tiers, and reasons. The proposed disposition is to retain the records pending owner review. Use `--missing-limit` to set the page size from 1 to 1000, and pass `next_missing_after` as `--missing-after` for the next page. The preview uses a read-only transaction and omits event payloads.
 
 ## Grafana, Loki, and Alloy
 
@@ -76,6 +80,8 @@ Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostn
 
 Use **Garrison Production Logs** for error counts, HTTP status distribution, and log search. Use **Garrison Incident Explorer** for latency and request or task correlation. The dashboard definitions live in [observability/grafana/dashboards](../observability/grafana/dashboards/).
 
+The dashboard IDs are `garrison-production-logs` and `garrison-incident-explorer`. Record the dashboard ID and the relevant time range when escalating an incident.
+
 ```logql
 {environment="production"} | json | message=~"unhandled_request_exception|task_failed"
 {environment="production"} | json | request_id="req-123"
@@ -83,7 +89,7 @@ Use **Garrison Production Logs** for error counts, HTTP status distribution, and
 {environment="production", service=~"celery_worker|celery_beat"} | json | message="task_retried"
 ```
 
-Request, session, user, and task IDs are JSON fields queried after `| json`. Keep high-cardinality identifiers out of Loki labels. Keep request bodies, authorization headers, cookies, OTPs, credentials, and raw task arguments or results out of logging call sites. The backend's redaction processor and Alloy's filters protect emitted records as a second layer.
+Request, session, user, and task IDs are JSON fields queried after `| json`. Keep high-cardinality identifiers out of Loki labels. Keep request bodies, authorization headers, cookies, OTPs, credentials, and raw task arguments or results out of logging call sites. Nginx access logs omit query strings. The backend's redaction processor and Alloy's filters remove credential values, including S3 signing parameters, from supported structured and query-string formats.
 
 ### Alert delivery
 
@@ -110,6 +116,8 @@ Use rotated Docker logs while the collection pipeline is being restored. On prod
 prod logs --since 30m backend celery_worker celery_beat
 ```
 
+Treat raw Nginx error logs as restricted. An upstream error can include its original signed URL before Alloy redacts collected output. Use the redacted Loki view for sharing incident excerpts.
+
 The [standalone HTTP monitor](../backend/scripts/health_monitor.py) can probe an external URL from a host with SMTP relay access. Grafana alerting and this monitor use separate delivery paths.
 
 ## Verify logging changes
@@ -121,3 +129,11 @@ pytest -q tests/test_structured_logging.py tests/test_observability_config.py
 ```
 
 These checks cover structured context and redaction, dashboard and alert configuration, retention, ports, pinned images, and database initialization. Check deployed service health and alert delivery when the change affects a live environment.
+
+### Observability acceptance drill
+
+1. Record the source SHA, deployed configuration identity, operator, reviewer, and isolated test environment. Verify authenticated Grafana access and confirm that Loki, Alloy, PostgreSQL, and the backend are reachable only through their intended network paths.
+2. Generate a controlled HTTP failure and Celery retry with a shared synthetic correlation marker. Find both in **Garrison Incident Explorer** and record their request and task IDs. Include harmless credential-shaped markers to test application and Alloy redaction. Check the collected records for those markers without copying secrets into the evidence.
+3. Exercise each provisioned rule with representative signals. Confirm the query result and configured evaluation window without changing the rule thresholds. Use the approved test contact point. Record firing and resolved mailbox receipts, rule ID, timestamps, and grouping behavior.
+4. Interrupt collection briefly in the isolated environment. Keep the source container running, emit a unique marker, and check whether it arrives after recovery. Record the outage duration and the events observed or missing. Use the incident fallback when a collection gap is suspected.
+5. Record the effective Loki operational retention and the separate database audit retention. Check an authorized archived-audit query and link the evidence to the release record. Keep any named operator and mailbox evidence in the approved restricted location.

@@ -18,6 +18,8 @@ export type MovementCreatePayload = components['schemas']['MovementCreateRequest
 
 export type MaterialRequestRecord = components['schemas']['MaterialRequestResponse'];
 export type MaterialRequestCreatePayload = components['schemas']['MaterialRequestCreateRequest'];
+export type MaterialQuantityCommand = components['schemas']['MaterialQuantityCommand'];
+export type RequestProjectOption = components['schemas']['RequestProjectOption'];
 
 export type SupplierRecord = components['schemas']['SupplierResponse'];
 export type SupplierListResponse = components['schemas']['SupplierListResponse'];
@@ -73,12 +75,19 @@ export async function listInventoryItems(search?: string) {
 
 type InventoryPageParams = { limit: number; offset: number };
 
-async function getInventoryPage<T>(path: string, params: InventoryPageParams, signal?: AbortSignal) {
+async function getInventoryPage<T>(
+  path: string,
+  params: InventoryPageParams,
+  signal?: AbortSignal
+) {
   const { data, headers } = await apiClient.get<T[]>(path, { params, signal });
   return { items: data, total: Number(headers['x-total-count'] ?? data.length) };
 }
 
-export function listInventoryItemPage(params: InventoryPageParams & { search?: string }, signal?: AbortSignal) {
+export function listInventoryItemPage(
+  params: InventoryPageParams & { search?: string },
+  signal?: AbortSignal
+) {
   return getInventoryPage<InventoryItemRecord>('/inventory/items', params, signal);
 }
 
@@ -89,19 +98,6 @@ export async function createInventoryItem(payload: InventoryItemCreatePayload) {
 
 export async function listItemStock(itemId: string) {
   const { data } = await apiClient.get<StockRecord[]>(`/inventory/items/${itemId}/stock`);
-  return data;
-}
-
-export async function receiveStock(payload: {
-  item_id: string;
-  to_location_id: string;
-  quantity: string;
-  notes?: string;
-}) {
-  const { data } = await apiClient.post('/inventory/movements', {
-    ...payload,
-    movement_type: 'receive'
-  });
   return data;
 }
 
@@ -120,25 +116,55 @@ export async function createAsset(payload: AssetCreatePayload) {
   return data;
 }
 
-export function listMovements(params: InventoryPageParams & {
-  item_id?: string;
-  location_id?: string;
-  project_id?: string;
-}, signal?: AbortSignal) {
+export function listMovements(
+  params: InventoryPageParams & {
+    item_id?: string;
+    location_id?: string;
+    project_id?: string;
+  },
+  signal?: AbortSignal
+) {
   return getInventoryPage<MovementRecord>('/inventory/movements', params, signal);
 }
 
-export async function createMovement(payload: MovementCreatePayload) {
-  const { data } = await apiClient.post<MovementRecord>('/inventory/movements', payload);
+export async function createMovement(payload: MovementCreatePayload, idempotencyKey: string) {
+  const { data } = await apiClient.post<MovementRecord>('/inventory/movements', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
   return data;
 }
 
-export function listMaterialRequests(params: InventoryPageParams & { request_id?: string }, signal?: AbortSignal) {
+export function listMaterialRequests(
+  params: InventoryPageParams & { request_id?: string },
+  signal?: AbortSignal
+) {
   return getInventoryPage<MaterialRequestRecord>('/inventory/requests', params, signal);
 }
 
 export async function createMaterialRequest(payload: MaterialRequestCreatePayload) {
   const { data } = await apiClient.post<MaterialRequestRecord>('/inventory/requests', payload);
+  return data;
+}
+
+export async function listRequestProjects(search?: string) {
+  const { data } = await apiClient.get<components['schemas']['RequestProjectOptions']>(
+    '/inventory/request-projects',
+    { params: { search } }
+  );
+  return data;
+}
+
+export async function fulfillMaterialRequest(
+  requestId: string,
+  action: 'reserve' | 'issue',
+  command: MaterialQuantityCommand,
+  key: string
+) {
+  const { data } = await apiClient.post<MaterialRequestRecord>(
+    `/inventory/requests/${requestId}/${action}`,
+    command,
+    { headers: { 'Idempotency-Key': key } }
+  );
   return data;
 }
 

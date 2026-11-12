@@ -21,7 +21,7 @@ export function OfflineIndicator() {
         if (nextReason) setReason(nextReason);
         return;
       }
-      void flushPhotoQueue();
+      void flushPhotoQueue().catch(() => {});
     };
 
     const probeHealth = async () => {
@@ -60,6 +60,7 @@ export function OfflineIndicator() {
     window.addEventListener('offline', handleOffline);
 
     const cleanupSync = listenForSyncMessages();
+    if (navigator.onLine) void flushPhotoQueue().catch(() => {});
     void probeHealth();
     const interval = window.setInterval(() => void probeHealth(), 15_000);
 

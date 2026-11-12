@@ -83,7 +83,11 @@ class MovementCreateRequest(BaseModel):
     movement_type: str = Field(
         pattern="^(receive|reserve|issue|transfer|return|consume|adjustment|wastage|damaged)$"
     )
-    quantity: Decimal = Field(description="Positive, or negative for a stock adjustment.")
+    quantity: Decimal = Field(
+        max_digits=14,
+        decimal_places=3,
+        description="Positive, or negative for a stock adjustment. Up to three decimal places.",
+    )
     from_location_id: UUID | None = None
     to_location_id: UUID | None = None
     project_id: UUID | None = None
@@ -118,14 +122,33 @@ class MovementResponse(BaseModel):
 
 class MaterialRequestLineCreate(BaseModel):
     item_id: UUID
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
 
 
 class MaterialRequestCreateRequest(BaseModel):
     project_id: UUID
     from_location_id: UUID
     notes: str | None = None
-    lines: list[MaterialRequestLineCreate] = Field(min_length=1)
+    lines: list[MaterialRequestLineCreate] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def distinct_items(self) -> Self:
+        if len({line.item_id for line in self.lines}) != len(self.lines):
+            raise ValueError("Select each inventory item only once.")
+        return self
+
+
+class RequestProjectOption(BaseModel):
+    id: UUID
+    code: str
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RequestProjectOptions(BaseModel):
+    items: list[RequestProjectOption]
+    total: int
 
 
 class MaterialRequestLineResponse(BaseModel):
@@ -146,8 +169,25 @@ class MaterialRequestResponse(BaseModel):
     requester_id: UUID | None
     from_location_id: UUID | None
     status: str
+    revision: int
     total_estimated_cost: Decimal
     notes: str | None
     lines: list[MaterialRequestLineResponse]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MaterialQuantityLine(BaseModel):
+    line_id: UUID
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+
+
+class MaterialQuantityCommand(BaseModel):
+    expected_revision: int = Field(ge=1)
+    lines: list[MaterialQuantityLine] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def distinct_lines(self) -> Self:
+        if len({line.line_id for line in self.lines}) != len(self.lines):
+            raise ValueError("Select each request line only once.")
+        return self

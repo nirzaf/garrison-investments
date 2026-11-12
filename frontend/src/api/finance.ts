@@ -5,11 +5,47 @@ import type { components } from './schema';
 export type InvoiceRecord = components['schemas']['InvoiceResponse'];
 export type InvoiceListResponse = components['schemas']['InvoiceListResponse'];
 export type InvoiceCreatePayload = components['schemas']['InvoiceCreateRequest'];
+export type InvoiceUpdatePayload = components['schemas']['InvoiceUpdateRequest'];
 export type PaymentCreatePayload = components['schemas']['PaymentCreateRequest'];
 export type InvoiceAttachmentUrl = components['schemas']['InvoiceAttachmentUrlResponse'];
+export type InvoiceSupplierOptions = components['schemas']['InvoiceSupplierOptionsResponse'];
+export type BudgetSummary = components['schemas']['BudgetSummaryResponse'];
 
-export async function listInvoices() {
-  const { data } = await apiClient.get<InvoiceListResponse>('/finance/invoices');
+export async function listInvoices(params?: {
+  project_id?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { data } = await apiClient.get<InvoiceListResponse>('/finance/invoices', { params });
+  return data;
+}
+
+export async function getInvoice(invoiceId: string) {
+  const { data } = await apiClient.get<InvoiceRecord>(`/finance/invoices/${invoiceId}`);
+  return data;
+}
+
+export async function updateInvoice(invoiceId: string, payload: InvoiceUpdatePayload) {
+  const { data } = await apiClient.patch<InvoiceRecord>(`/finance/invoices/${invoiceId}`, payload);
+  return data;
+}
+
+export async function listInvoiceSupplierOptions(params: {
+  search?: string;
+  limit: number;
+  offset: number;
+}) {
+  const { data } = await apiClient.get<InvoiceSupplierOptions>('/finance/supplier-options', {
+    params
+  });
+  return data;
+}
+
+export async function getBudgetSummary(projectId: string) {
+  const { data } = await apiClient.get<BudgetSummary>(
+    `/finance/projects/${projectId}/budget-summary`
+  );
   return data;
 }
 
@@ -18,10 +54,15 @@ export async function createInvoice(payload: InvoiceCreatePayload) {
   return data;
 }
 
-export async function createPayment(invoiceId: string, payload: PaymentCreatePayload) {
+export async function createPayment(
+  invoiceId: string,
+  payload: PaymentCreatePayload,
+  idempotencyKey?: string
+) {
   const { data } = await apiClient.post<InvoiceRecord>(
     `/finance/invoices/${invoiceId}/payments`,
-    payload
+    payload,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined
   );
   return data;
 }

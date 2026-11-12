@@ -10,6 +10,7 @@ import pytest
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.approval import Approval
+from app.models.inventory import MaterialRequest
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
@@ -113,6 +114,23 @@ async def create_approval(
     project_id: UUID | None = None,
     request_id: UUID | None = None,
 ) -> Approval:
+    if request_id is None and request_type == "invoice":
+        project = await create_project([approver])
+        invoice = await add_invoice(project, Decimal("100"), status="submitted")
+        request_id = invoice.id
+    if request_id is None and request_type == "material_request":
+        assert project_id is not None
+        async with AsyncSessionLocal() as session:
+            request = MaterialRequest(
+                request_number=f"MR-{uuid4().hex[:12]}",
+                project_id=project_id,
+                requester_id=submitter.id if submitter else None,
+                status="requested",
+                total_estimated_cost=Decimal("0"),
+            )
+            session.add(request)
+            await session.commit()
+            request_id = request.id
     now = utc_now()
     approval = Approval(
         request_type=request_type,
@@ -220,7 +238,7 @@ async def test_invoice_delegation_to_another_operation_manager_succeeds() -> Non
     assert decided.json()["status"] == "approved"
 
 
-async def test_daily_report_delegation_accepts_general_manager() -> None:
+async def test_daily_report_approval_requires_its_own_workflow() -> None:
     await skip_if_database_unavailable()
     manager = await create_user("operation_manager")
     general = await create_user("general_manager")
@@ -229,7 +247,8 @@ async def test_daily_report_delegation_accepts_general_manager() -> None:
 
     response = await delegate(token, approval.id, general.id)
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "APPROVAL_REQUIRES_OWNING_WORKFLOW"
 
 
 async def test_project_manager_delegate_must_belong_to_the_project() -> None:
@@ -255,7 +274,7 @@ async def test_unscoped_approval_cannot_be_delegated_to_a_project_manager() -> N
     await skip_if_database_unavailable()
     manager = await create_user("operation_manager")
     project_manager = await create_user("project_manager")
-    approval = await create_approval(request_type="document", approver=manager)
+    approval = await create_approval(request_type="project_change", approver=manager)
     token = await login(manager)
 
     response = await delegate(token, approval.id, project_manager.id)
@@ -352,3 +371,47 @@ async def test_candidate_list_requires_acting_rights() -> None:
 
     assert response.status_code == 403
     assert response.json()["error_code"] == "APPROVAL_FORBIDDEN"
+
+
+async def test_outbox_and_escalation_visibility_do_not_grant_decision_rights() -> None:
+    await skip_if_database_unavailable()
+    manager = await create_user("operation_manager")
+    oversight = await create_user("general_manager")
+    submitter = await create_user("store_keeper")
+    stranger = await create_user("store_keeper")
+    approval = await create_approval(
+        request_type="project_change", approver=manager, submitter=submitter
+    )
+    async with AsyncSessionLocal() as session:
+        row = await session.get(Approval, approval.id)
+        assert row is not None
+        row.status = "escalated"
+        row.escalation_user_id = oversight.id
+        await session.commit()
+    async with create_test_client() as client:
+        submitter_headers = {"Authorization": f"Bearer {await login(submitter)}"}
+        outbox = await client.get(
+            "/api/v1/approvals",
+            params={"box": "outbox", "status_group": "open"},
+            headers=submitter_headers,
+        )
+        assert outbox.status_code == 200
+        assert [item["id"] for item in outbox.json()["items"]] == [str(approval.id)]
+        assert not outbox.json()["items"][0]["allowed_actions"]
+        assert (await client.get("/api/v1/approvals", headers=submitter_headers)).status_code == 403
+        stranger_outbox = await client.get(
+            "/api/v1/approvals",
+            params={"box": "outbox"},
+            headers={"Authorization": f"Bearer {await login(stranger)}"},
+        )
+        assert stranger_outbox.json()["items"] == []
+        oversight_headers = {"Authorization": f"Bearer {await login(oversight)}"}
+        inbox = await client.get(
+            "/api/v1/approvals", params={"status_group": "open"}, headers=oversight_headers
+        )
+        assert [item["id"] for item in inbox.json()["items"]] == [str(approval.id)]
+        assert not inbox.json()["items"][0]["allowed_actions"]
+        decision = await client.post(
+            f"/api/v1/approvals/{approval.id}/approve", json={}, headers=oversight_headers
+        )
+        assert decision.status_code == 403

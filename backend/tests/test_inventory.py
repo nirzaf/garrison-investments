@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
@@ -7,11 +8,12 @@ import pytest
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.inventory import StorageLocation
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password
+from app.utils.security import hash_password, utc_now
 
 pytestmark = pytest.mark.asyncio
 
@@ -168,18 +170,34 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         assert item_response.status_code == 201
         item = item_response.json()
 
-        receive_response = await client.post(
-            "/api/v1/inventory/movements",
-            json={
-                "item_id": item["id"],
-                "movement_type": "receive",
-                "quantity": "10",
-                "to_location_id": location["id"],
-                "notes": "Opening stock",
-            },
-            headers={"Authorization": f"Bearer {store_token}"},
+        movement_payload = {
+            "item_id": item["id"],
+            "movement_type": "receive",
+            "quantity": "10",
+            "to_location_id": location["id"],
+            "notes": "Opening stock",
+        }
+        movement_headers = {
+            "Authorization": f"Bearer {store_token}",
+            "Idempotency-Key": f"receipt-{uuid4()}",
+        }
+        receive_response, replay = await asyncio.gather(
+            *(
+                client.post(
+                    "/api/v1/inventory/movements", json=movement_payload, headers=movement_headers
+                )
+                for _ in range(2)
+            )
         )
-        assert receive_response.status_code == 201
+        assert receive_response.status_code == replay.status_code == 201
+        assert receive_response.json() == replay.json()
+        reused_key = await client.post(
+            "/api/v1/inventory/movements",
+            json={**movement_payload, "quantity": "11"},
+            headers=movement_headers,
+        )
+        assert reused_key.status_code == 409
+        assert reused_key.json()["error_code"] == "MOVEMENT_REPLAY_CONFLICT"
 
         stock_response = await client.get(
             f"/api/v1/inventory/items/{item['id']}/stock",
@@ -187,6 +205,52 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
         )
         assert stock_response.status_code == 200
         assert stock_response.json()[0]["available_qty"] == "10.000"
+
+        async with AsyncSessionLocal() as session:
+            unavailable_destinations = [
+                StorageLocation(
+                    name="Inactive store",
+                    code=f"OFF-{uuid4().hex[:6]}",
+                    location_type="warehouse",
+                    is_active=False,
+                ),
+                StorageLocation(
+                    name="Archived store",
+                    code=f"DEL-{uuid4().hex[:6]}",
+                    location_type="warehouse",
+                    deleted_at=utc_now(),
+                ),
+            ]
+            session.add_all(unavailable_destinations)
+            await session.flush()
+            unavailable_ids = [str(row.id) for row in unavailable_destinations]
+            await session.commit()
+
+        store_headers = {"Authorization": f"Bearer {store_token}"}
+        receipt = {"item_id": item["id"], "movement_type": "receive", "quantity": "1.000"}
+        for destination in [*unavailable_ids, str(uuid4())]:
+            refused = await client.post(
+                "/api/v1/inventory/movements",
+                headers=store_headers,
+                json={**receipt, "to_location_id": destination},
+            )
+            assert refused.status_code == 404, refused.text
+            assert "Eligible receipt destination" in refused.json()["detail"]
+
+        too_small = await client.post(
+            "/api/v1/inventory/movements",
+            headers=store_headers,
+            json={**receipt, "to_location_id": location["id"], "quantity": "0.0001"},
+        )
+        assert too_small.status_code == 422
+        after_refusal = await client.get(
+            f"/api/v1/inventory/items/{item['id']}/stock", headers=store_headers
+        )
+        assert after_refusal.json() == stock_response.json()
+        item_movements = await client.get(
+            "/api/v1/inventory/movements", headers=store_headers, params={"item_id": item["id"]}
+        )
+        assert [row["id"] for row in item_movements.json()] == [receive_response.json()["id"]]
 
         request_response = await client.post(
             "/api/v1/inventory/requests",
@@ -388,7 +452,7 @@ async def test_reserve_request_concurrency() -> None:
                 return await new_client.post(
                     f"/api/v1/inventory/requests/{material_request['id']}/reserve",
                     headers={"Authorization": f"Bearer {store_token}"},
-        )
+                )
 
         reserve_responses = await asyncio.gather(*[make_reserve_request() for _ in range(5)])
 
@@ -407,3 +471,83 @@ async def test_reserve_request_concurrency() -> None:
         issue_responses = await asyncio.gather(*[make_issue_request() for _ in range(5)])
         issue_success = sum(1 for r in issue_responses if r.status_code == 200)
         assert issue_success == 1, f"Expected exactly 1 successful issuance, got {issue_success}."
+
+
+async def test_request_project_lookup_and_write_share_active_role_and_membership_scope() -> None:
+    await skip_if_database_unavailable()
+    roles = (
+        "admin",
+        "general_manager",
+        "operation_manager",
+        "project_manager",
+        "civil_engineer",
+        "civil_supervisor",
+        "store_keeper",
+        "accounts",
+    )
+    accounts = {role: await create_user(role) for role in roles}
+    pm, engineer = accounts["project_manager"][0], accounts["civil_engineer"][0]
+    assigned = await create_project(pm, engineer)
+    other = await create_project(accounts["admin"][0], accounts["store_keeper"][0])
+    inactive = await create_project(pm, engineer)
+    prefix = f"REQ-{uuid4().hex[:8]}"
+    async with AsyncSessionLocal() as session:
+        for project, suffix in ((assigned, "A"), (other, "B"), (inactive, "C")):
+            record = await session.get(Project, project.id)
+            assert record is not None
+            record.code = f"{prefix}-{suffix}"
+            if project.id == inactive.id:
+                record.status = "completed"
+        await session.commit()
+
+    company_creators = {"admin", "store_keeper"}
+    scoped_creators = {"project_manager", "civil_engineer"}
+    async with create_test_client() as client:
+        for role, (user, password) in accounts.items():
+            headers = {"Authorization": f"Bearer {await login_for_token(client, user, password)}"}
+            lookup = "/api/v1/inventory/request-projects"
+            first = await client.get(lookup, params={"search": prefix, "limit": 1}, headers=headers)
+            eligible = (
+                {str(assigned.id), str(other.id)}
+                if role in company_creators
+                else {str(assigned.id)}
+            )
+            if role not in company_creators | scoped_creators:
+                assert first.status_code == 403
+                eligible = set()
+            else:
+                assert first.status_code == 200
+                assert first.json()["total"] == len(eligible)
+                options = first.json()["items"]
+                if len(eligible) > 1:
+                    second = await client.get(
+                        lookup,
+                        params={"search": prefix, "limit": 1, "offset": 1},
+                        headers=headers,
+                    )
+                    assert second.status_code == 200
+                    options.extend(second.json()["items"])
+                assert {item["id"] for item in options} == eligible
+                assert all(set(item) == {"id", "code", "name"} for item in options)
+
+            # An unknown source isolates the project guard before a fixture write can occur.
+            for project_id in (assigned.id, other.id, inactive.id, uuid4()):
+                result = await client.post(
+                    "/api/v1/inventory/requests",
+                    headers=headers,
+                    json={
+                        "project_id": str(project_id),
+                        "from_location_id": str(uuid4()),
+                        "lines": [{"item_id": str(uuid4()), "quantity": "1.000"}],
+                    },
+                )
+                if role not in company_creators | scoped_creators:
+                    assert result.status_code == 403
+                else:
+                    assert result.status_code == 404
+                    expected = (
+                        "Eligible request source location"
+                        if str(project_id) in eligible
+                        else "Eligible request project"
+                    )
+                    assert expected in result.json()["detail"]

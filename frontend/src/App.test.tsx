@@ -170,7 +170,7 @@ describe('App route smoke tests', () => {
   it('renders photos route for report viewers', () => {
     const html = renderApp({ route: '/photos', permissions: ['reports:view'] });
 
-    expect(html).toContain('Photos And Attachments');
+    expect(html).toContain('Photos and attachments');
   });
 
   it('renders security route for audit users', () => {
@@ -179,10 +179,11 @@ describe('App route smoke tests', () => {
     expect(html).toContain('Security And Audit');
   });
 
-  it('renders delivery route for management users', () => {
+  it('renders launch readiness at the existing delivery route for management users', () => {
     const html = renderApp({ route: '/delivery', permissions: ['dashboard:company'] });
 
-    expect(html).toContain('Delivery Plan');
+    expect(html).toContain('Launch readiness');
+    expect(html).toContain('operations guide');
   });
 
   it('renders profile route for signed-in users', () => {
@@ -190,6 +191,14 @@ describe('App route smoke tests', () => {
 
     expect(html).toContain('Profile');
     expect(html).toContain('MGR-001');
+    expect(html).toContain('Contact an administrator to correct your account details.');
+  });
+
+  it('makes the approval outbox available without the approval permission', () => {
+    const html = renderApp({ route: '/approvals', permissions: ['inventory:view'] });
+
+    expect(html).toContain('My submitted requests');
+    expect(html).not.toContain('Report approvals');
   });
 
   it('redirects unauthenticated users to login for protected routes', () => {

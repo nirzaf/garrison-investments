@@ -45,6 +45,7 @@ class DailyReportRepository:
                 DailyReport.deleted_at.is_(None),
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
 
     async def list_reports(

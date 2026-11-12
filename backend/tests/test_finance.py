@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
@@ -16,8 +17,11 @@ from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.finance import InvoiceUpdateRequest, PaymentCreateRequest
 from app.services.audit_service import AuditService
+from app.services.finance_service import FinanceService
 from app.utils.security import hash_password, utc_now
+from tests.concurrency_helpers import error_codes, race_sessions, status_counts
 
 pytestmark = pytest.mark.asyncio
 
@@ -559,7 +563,7 @@ async def test_approved_invoice_cannot_be_resubmitted_or_approved_again() -> Non
 
 async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission() -> None:
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
+    admin, admin_password = await create_user("admin")
     accounts, accounts_password = await create_user("accounts")
     manager, manager_password = await create_user("operation_manager")
     project, supplier = await create_project_and_supplier(admin)
@@ -567,7 +571,8 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
     async with create_test_client() as client:
         accounts_token = await login_for_token(client, accounts, accounts_password)
         manager_token = await login_for_token(client, manager, manager_password)
-        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+        admin_token = await login_for_token(client, admin, admin_password)
+        invoice = await create_invoice_via_api(client, admin_token, project, supplier)
 
         rejected = await patch_status(client, manager_token, invoice["id"], "rejected")
         assert rejected.status_code == 200, rejected.text
@@ -592,6 +597,18 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
             approval_id = pending.id
             await session.commit()
 
+        approval_url = f"/api/v1/approvals/{approval_id}"
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        creator_view = await client.get(approval_url, headers=admin_headers)
+        assert creator_view.status_code == 200
+        assert creator_view.json()["allowed_actions"] == []
+        creator_decision = await client.post(
+            f"{approval_url}/override",
+            json={"decision": "approved", "reason": "Creator cannot decide the new cycle."},
+            headers=admin_headers,
+        )
+        assert creator_decision.status_code == 403
+
         direct, inbox = await asyncio.gather(
             patch_status(client, manager_token, invoice["id"], "approved"),
             client.post(
@@ -607,3 +624,295 @@ async def test_invoice_rejection_resolves_the_approval_and_allows_resubmission()
         updated_invoice = await session.get(Invoice, UUID(invoice["id"]))
         assert approval is not None and approval.status == "approved"
         assert updated_invoice is not None and updated_invoice.status == "approved"
+        assert updated_invoice.revision == resubmitted.json()["revision"] + 1
+
+
+async def test_finance_supplier_options_are_minimal_paged_and_independent_of_management() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("project_manager")
+    engineer, engineer_password = await create_user("civil_engineer")
+    operations, operations_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+    other, second = await create_project_and_supplier(admin)
+    async with AsyncSessionLocal() as session:
+        session.add(ProjectMember(project_id=project.id, user_id=manager.id))
+        await session.commit()
+
+    async with create_test_client() as client:
+        account_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        engineer_token = await login_for_token(client, engineer, engineer_password)
+        operations_token = await login_for_token(client, operations, operations_password)
+        headers = {"Authorization": f"Bearer {account_token}"}
+        for token in (account_token, manager_token):
+            finance_headers = {"Authorization": f"Bearer {token}"}
+            seen = set()
+            for offset in (0, 1):
+                response = await client.get(
+                    "/api/v1/finance/supplier-options",
+                    params={"search": "Finance Supplier", "limit": 1, "offset": offset},
+                    headers=finance_headers,
+                )
+                assert response.status_code == 200
+                item = response.json()["items"][0]
+                assert set(item) == {"id", "name"}
+                seen.add(item["id"])
+            assert len(seen) == 2
+            record = await create_invoice_via_api(client, token, project, supplier)
+            assert record["supplier_name"] == supplier.name
+            directory = await client.get("/api/v1/suppliers", headers=finance_headers)
+            tds = await client.get(
+                f"/api/v1/suppliers/{supplier.id}/tds-document", headers=finance_headers
+            )
+            assert directory.status_code == tds.status_code == 403
+            edit = await client.patch(
+                f"/api/v1/suppliers/{supplier.id}",
+                json={"name": "Forbidden"},
+                headers=finance_headers,
+            )
+            deactivate = await client.delete(
+                f"/api/v1/suppliers/{supplier.id}", headers=finance_headers
+            )
+            assert edit.status_code == deactivate.status_code == 403
+        options_denied = await client.get(
+            "/api/v1/finance/supplier-options",
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert options_denied.status_code == 403
+        missing_supplier = {
+            "invoice_number": f"INV-{uuid4().hex[:8]}",
+            "project_id": str(project.id),
+            "invoice_date": date.today().isoformat(),
+            "due_date": date.today().isoformat(),
+            "amount": "12.30",
+            "supplier_id": None,
+        }
+        unlinked = await client.post(
+            "/api/v1/finance/invoices", json=missing_supplier, headers=headers
+        )
+        assert unlinked.status_code == 201 and unlinked.json()["supplier_id"] is None
+        forged = await client.post(
+            "/api/v1/finance/invoices",
+            json={**missing_supplier, "project_id": str(other.id)},
+            headers={"Authorization": f"Bearer {manager_token}"},
+        )
+        assert forged.status_code == 403
+        await client.delete(
+            f"/api/v1/suppliers/{second.id}",
+            headers={"Authorization": f"Bearer {operations_token}"},
+        )
+        stale_selection = await client.post(
+            "/api/v1/finance/invoices",
+            json={**missing_supplier, "supplier_id": str(second.id)},
+            headers=headers,
+        )
+        assert stale_selection.status_code == 422
+        assert stale_selection.json()["error_code"] == "INVOICE_SUPPLIER_INACTIVE"
+        options = await client.get(
+            "/api/v1/finance/supplier-options", params={"search": second.name}, headers=headers
+        )
+        assert options.json() == {"items": [], "total": 0}
+
+
+async def test_corrected_invoice_reopens_one_approval_and_protects_posted_payments() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        accounts_headers = {"Authorization": f"Bearer {accounts_token}"}
+        invoice = await create_invoice_via_api(client, accounts_token, project, supplier)
+        own = await create_invoice_via_api(client, manager_token, project, supplier)
+        url = f"/api/v1/finance/invoices/{invoice['id']}"
+        disallowed = await client.patch(
+            url, json={"amount": "1", "expected_revision": 1}, headers=accounts_headers
+        )
+        assert disallowed.status_code == 409
+        rejected = await patch_status(client, manager_token, invoice["id"], "rejected")
+        assert rejected.status_code == 200 and rejected.json()["revision"] == 2
+        duplicate = await client.patch(
+            url,
+            json={"invoice_number": own["invoice_number"], "expected_revision": 2},
+            headers=accounts_headers,
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["error_code"] == "INVOICE_NUMBER_CONFLICT"
+        changed = await client.patch(
+            url,
+            json={
+                "expected_revision": 2,
+                "amount": "210.75",
+                "tax_amount": "4.25",
+                "supplier_id": None,
+                "due_date": (date.today() + timedelta(days=45)).isoformat(),
+                "notes": "Corrected values",
+            },
+            headers=accounts_headers,
+        )
+        assert changed.status_code == 200, changed.text
+        assert Decimal(changed.json()["total_amount"]) == Decimal("215.00")
+        assert changed.json()["supplier_id"] is None
+        resubmission = {"status": "submitted", "expected_revision": changed.json()["revision"]}
+        resubmitted = await client.patch(url, json=resubmission, headers=accounts_headers)
+        assert resubmitted.status_code == 200
+        stale = await client.patch(url, json=resubmission, headers=accounts_headers)
+        assert (
+            stale.status_code == 409 and stale.json()["error_code"] == "INVOICE_REVISION_CONFLICT"
+        )
+        approval_denied = await patch_status(client, accounts_token, invoice["id"], "approved")
+        assert approval_denied.status_code == 403
+        assert "approve" not in own["allowed_actions"]
+        own_approval = await patch_status(client, manager_token, own["id"], "approved")
+        assert own_approval.status_code == 403
+        assert own_approval.json()["error_code"] == "INVOICE_SELF_APPROVAL_FORBIDDEN"
+        approved = await patch_status(client, manager_token, invoice["id"], "approved")
+        assert approved.status_code == 200
+        paid = await client.post(
+            f"{url}/payments",
+            json={
+                "amount": "115.05",
+                "payment_date": date.today().isoformat(),
+                "method": "bank_transfer",
+            },
+            headers=accounts_headers,
+        )
+        assert paid.status_code == 200
+        assert paid.json()["payment_status"] == "partial"
+        assert Decimal(paid.json()["outstanding_amount"]) == Decimal("99.95")
+        cannot_reject = await patch_status(client, manager_token, invoice["id"], "rejected")
+        assert cannot_reject.status_code == 409
+        assert cannot_reject.json()["error_code"] == "INVOICE_HAS_PAYMENTS"
+        final = await client.post(
+            f"{url}/payments",
+            json={
+                "amount": "99.95",
+                "payment_date": date.today().isoformat(),
+                "method": "bank_transfer",
+            },
+            headers=accounts_headers,
+        )
+        assert final.status_code == 200
+        assert Decimal(final.json()["outstanding_amount"]) == 0
+        assert len(final.json()["payments"]) == 2
+
+    async with AsyncSessionLocal() as session:
+        approvals = (
+            await session.scalars(
+                select(Approval).where(Approval.request_id == UUID(invoice["id"]))
+            )
+        ).all()
+        assert {approval.status: approval.amount for approval in approvals} == {
+            "rejected": Decimal("300.00"),
+            "approved": Decimal("215.00"),
+        }
+
+
+async def test_invoice_correction_resubmission_and_payment_rejection_races_serialize() -> None:
+    await skip_if_database_unavailable()
+    admin, _ = await create_user("admin")
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(admin)
+    async with create_test_client() as client:
+        accounts_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        rejected = await create_invoice_via_api(client, accounts_token, project, supplier)
+        approved = await create_invoice_via_api(client, accounts_token, project, supplier)
+        assert (
+            await patch_status(client, manager_token, rejected["id"], "rejected")
+        ).status_code == 200
+        assert (
+            await patch_status(client, manager_token, approved["id"], "approved")
+        ).status_code == 200
+
+    async def change(
+        session: AsyncSession, invoice_id: str, actor_id: UUID, payload: InvoiceUpdateRequest
+    ) -> int:
+        actor = await session.get(User, actor_id)
+        assert actor is not None
+        await FinanceService(session).update_invoice(UUID(invoice_id), payload, actor)
+        return 200
+
+    correction = InvoiceUpdateRequest(amount=Decimal("100.00"), expected_revision=2)
+    resubmission = InvoiceUpdateRequest(status="submitted", expected_revision=2)
+    results = await race_sessions(
+        lambda session: change(session, rejected["id"], accounts.id, correction),
+        lambda session: change(session, rejected["id"], accounts.id, resubmission),
+    )
+    assert status_counts(results) == {200: 1, 409: 1}
+    assert error_codes(results) == ["INVOICE_REVISION_CONFLICT"]
+
+    async def pay(session: AsyncSession) -> int:
+        actor = await session.get(User, accounts.id)
+        assert actor is not None
+        await FinanceService(session).create_payment(
+            UUID(approved["id"]),
+            PaymentCreateRequest(
+                amount=Decimal("50.00"), payment_date=date.today(), method="bank_transfer"
+            ),
+            actor,
+        )
+        return 200
+
+    results = await race_sessions(
+        pay,
+        lambda session: change(
+            session, approved["id"], manager.id, InvoiceUpdateRequest(status="rejected")
+        ),
+    )
+    assert status_counts(results) == {200: 1, 409: 1}
+    assert error_codes(results)[0] in {"INVOICE_NOT_APPROVED", "INVOICE_HAS_PAYMENTS"}
+    async with AsyncSessionLocal() as session:
+        invoice = await session.get(Invoice, UUID(approved["id"]))
+        assert invoice is not None
+        assert (invoice.status == "approved") == bool(invoice.payments)
+
+
+async def test_payment_replay_keeps_one_record_and_rejects_a_changed_intent() -> None:
+    await skip_if_database_unavailable()
+    accounts, accounts_password = await create_user("accounts")
+    manager, manager_password = await create_user("operation_manager")
+    project, supplier = await create_project_and_supplier(manager)
+    async with create_test_client() as client:
+        account_token = await login_for_token(client, accounts, accounts_password)
+        manager_token = await login_for_token(client, manager, manager_password)
+        first = await create_invoice_via_api(client, account_token, project, supplier)
+        second = await create_invoice_via_api(client, account_token, project, supplier)
+        for invoice in (first, second):
+            approval = await patch_status(client, manager_token, invoice["id"], "approved")
+            assert approval.status_code == 200
+        headers = {
+            "Authorization": f"Bearer {account_token}",
+            "Idempotency-Key": str(uuid4()),
+        }
+        url = f"/api/v1/finance/invoices/{first['id']}/payments"
+        payment = {
+            "payment_date": date.today().isoformat(),
+            "amount": "50.00",
+            "method": "bank_transfer",
+        }
+        requests = await asyncio.gather(
+            client.post(url, headers=headers, json=payment),
+            client.post(url, headers=headers, json=payment),
+        )
+        assert all(response.status_code == 200 for response in requests)
+        created, replayed = (response.json() for response in requests)
+        assert created["payments"] == replayed["payments"]
+        assert len(created["payments"]) == 1
+        assert Decimal(replayed["outstanding_amount"]) == Decimal("250.00")
+        assert replayed["revision"] == created["revision"]
+
+        changed = await client.post(url, headers=headers, json={**payment, "amount": "51.00"})
+        wrong_invoice = await client.post(
+            f"/api/v1/finance/invoices/{second['id']}/payments", headers=headers, json=payment
+        )
+        for response in (changed, wrong_invoice):
+            assert response.status_code == 409
+            assert response.json()["error_code"] == "PAYMENT_REPLAY_CONFLICT"
+        persisted = await client.get(f"/api/v1/finance/invoices/{first['id']}", headers=headers)
+        assert persisted.json()["payments"] == created["payments"]

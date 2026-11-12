@@ -44,7 +44,7 @@ class UserRepository:
         )
         total = await self.session.scalar(count_query)
         result = await self.session.execute(
-            query.order_by(User.full_name.asc()).limit(limit).offset(offset)
+            query.order_by(User.full_name.asc(), User.id.asc()).limit(limit).offset(offset)
         )
         return list(result.scalars().all()), int(total or 0)
 
@@ -52,6 +52,14 @@ class UserRepository:
         self.session.add(user)
         await self.session.flush()
         return user
+
+    async def display_names(self, user_ids: set[UUID]) -> dict[UUID, str]:
+        if not user_ids:
+            return {}
+        result = await self.session.execute(
+            select(User.id, User.full_name).where(User.id.in_(user_ids), User.deleted_at.is_(None))
+        )
+        return {user_id: name for user_id, name in result}
 
     def _apply_filters(
         self,

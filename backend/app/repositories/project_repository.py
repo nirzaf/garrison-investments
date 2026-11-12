@@ -18,11 +18,11 @@ class ProjectRepository:
         total = await self.session.scalar(select(func.count()).select_from(Project))
         return int(total or 0) + 1
 
-    async def get_by_id(self, project_id: UUID) -> Project | None:
-        result = await self.session.execute(
-            select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
-        )
-        return result.scalar_one_or_none()
+    async def get_by_id(self, project_id: UUID, *, for_update: bool = False) -> Project | None:
+        query = select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        return await self.session.scalar(query)
 
     async def list_projects(
         self,
@@ -46,7 +46,7 @@ class ProjectRepository:
         )
         total = await self.session.scalar(count_query)
         result = await self.session.execute(
-            query.order_by(Project.created_at.desc()).limit(limit).offset(offset)
+            query.order_by(Project.created_at.desc(), Project.id.asc()).limit(limit).offset(offset)
         )
         return list(result.scalars().all()), int(total or 0)
 

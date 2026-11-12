@@ -554,6 +554,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/finance/supplier-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Supplier Options */
+        get: operations["list_supplier_options_api_v1_finance_supplier_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/imports/batches": {
         parameters: {
             query?: never;
@@ -773,6 +790,23 @@ export interface paths {
         put?: never;
         /** Create Movement */
         post: operations["create_movement_api_v1_inventory_movements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/request-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Material Request Projects */
+        get: operations["list_material_request_projects_api_v1_inventory_request_projects_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1158,6 +1192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Task */
+        patch: operations["update_project_task_api_v1_projects__project_id__tasks__task_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/timeline": {
         parameters: {
             query?: never;
@@ -1290,6 +1341,23 @@ export interface paths {
         put?: never;
         /** Submit Report */
         post: operations["submit_report_api_v1_reports__report_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/{report_id}/supervisor-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Report Supervisor Updates */
+        get: operations["list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1587,6 +1655,8 @@ export interface components {
         };
         /** ApprovalResponse */
         ApprovalResponse: {
+            /** Allowed Actions */
+            allowed_actions?: string[];
             /** Amount */
             amount: string | null;
             /** Approver Id */
@@ -1838,6 +1908,11 @@ export interface components {
             entity_id: string;
             /** Entity Type */
             entity_type: string;
+            /**
+             * Expected Report Revision
+             * @description Required for keyed single-file daily-report uploads.
+             */
+            expected_report_revision?: number | null;
             /** Files */
             files?: string[] | null;
             /**
@@ -2093,6 +2168,8 @@ export interface components {
             report_date: string;
             /** Report Number */
             report_number: string | null;
+            /** Revision */
+            revision: number;
             /** Safety Incidents */
             safety_incidents: number;
             /** Safety Notes */
@@ -2118,6 +2195,8 @@ export interface components {
             delay_notes?: string | null;
             /** Equipment Entries */
             equipment_entries?: components["schemas"]["ReportEquipmentInput"][];
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Extra Fields */
             extra_fields?: {
                 [key: string]: unknown;
@@ -2389,8 +2468,6 @@ export interface components {
         InvoiceCreateRequest: {
             /** Amount */
             amount: number | string;
-            /** Attachment Key */
-            attachment_key?: string | null;
             /**
              * Due Date
              * Format: date
@@ -2427,6 +2504,8 @@ export interface components {
         };
         /** InvoiceResponse */
         InvoiceResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("correct" | "resubmit" | "approve" | "reject" | "record_payment")[];
             /** Amount */
             amount: string;
             /** Approved At */
@@ -2456,6 +2535,10 @@ export interface components {
             invoice_number: string;
             /** Notes */
             notes: string | null;
+            /** Outstanding Amount */
+            readonly outstanding_amount: string;
+            /** Paid Total */
+            readonly paid_total: string;
             /** Payment Status */
             payment_status: string;
             /** Payments */
@@ -2465,21 +2548,58 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Project Name */
+            project_name?: string | null;
+            /** Revision */
+            revision: number;
             /** Status */
             status: string;
             /** Supplier Id */
             supplier_id: string | null;
+            /** Supplier Name */
+            supplier_name?: string | null;
             /** Tax Amount */
             tax_amount: string;
             /** Total Amount */
             total_amount: string;
         };
+        /** InvoiceSupplierOption */
+        InvoiceSupplierOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** InvoiceSupplierOptionsResponse */
+        InvoiceSupplierOptionsResponse: {
+            /** Items */
+            items: components["schemas"]["InvoiceSupplierOption"][];
+            /** Total */
+            total: number;
+        };
         /** InvoiceUpdateRequest */
         InvoiceUpdateRequest: {
+            /** Amount */
+            amount?: number | string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Invoice Number */
+            invoice_number?: string | null;
             /** Notes */
             notes?: string | null;
             /** Status */
             status?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /** Tax Amount */
+            tax_amount?: number | string | null;
         };
         /** LocationCreateRequest */
         LocationCreateRequest: {
@@ -2540,6 +2660,23 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** MaterialQuantityCommand */
+        MaterialQuantityCommand: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Lines */
+            lines: components["schemas"]["MaterialQuantityLine"][];
+        };
+        /** MaterialQuantityLine */
+        MaterialQuantityLine: {
+            /**
+             * Line Id
+             * Format: uuid
+             */
+            line_id: string;
+            /** Quantity */
+            quantity: number | string;
         };
         /** MaterialRequestCreateRequest */
         MaterialRequestCreateRequest: {
@@ -2611,6 +2748,8 @@ export interface components {
             request_number: string;
             /** Requester Id */
             requester_id: string | null;
+            /** Revision */
+            revision: number;
             /** Status */
             status: string;
             /** Total Estimated Cost */
@@ -2701,7 +2840,7 @@ export interface components {
             project_id?: string | null;
             /**
              * Quantity
-             * @description Positive, or negative for a stock adjustment.
+             * @description Positive, or negative for a stock adjustment. Up to three decimal places.
              */
             quantity: number | string;
             /** Reference Id */
@@ -2881,6 +3020,11 @@ export interface components {
             /** Reference Number */
             reference_number: string | null;
         };
+        /** PhotoDecisionRequest */
+        PhotoDecisionRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** PhotoListResponse */
         PhotoListResponse: {
             /** Items */
@@ -2890,10 +3034,17 @@ export interface components {
         };
         /** PhotoResponse */
         PhotoResponse: {
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
             /** Caption */
             caption: string | null;
             /** Compressed Path */
             compressed_path: string | null;
+            /** Deleted At */
+            deleted_at?: string | null;
             /**
              * Entity Id
              * Format: uuid
@@ -2918,6 +3069,8 @@ export interface components {
             original_name: string;
             /** Processing Status */
             processing_status: string;
+            /** Recoverable Until */
+            recoverable_until?: string | null;
             /** Size Bytes */
             size_bytes: number;
             /** Storage Path */
@@ -3022,6 +3175,8 @@ export interface components {
             name: string;
             /** Progress Percentage */
             progress_percentage: string;
+            /** Revision */
+            revision: number;
             /** Scope Of Work */
             scope_of_work: string;
             /** Start Date */
@@ -3043,6 +3198,8 @@ export interface components {
         };
         /** ProjectMemberCreateRequest */
         ProjectMemberCreateRequest: {
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Role In Project */
             role_in_project?: string | null;
             /**
@@ -3075,6 +3232,8 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+            /** User Name */
+            user_name?: string | null;
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -3108,6 +3267,8 @@ export interface components {
             name: string;
             /** Progress Percentage */
             progress_percentage: string;
+            /** Revision */
+            revision: number;
             /** Scope Of Work */
             scope_of_work: string;
             /** Start Date */
@@ -3201,15 +3362,54 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Revision */
+            revision: number;
             /** Sort Order */
             sort_order: number;
             /** Status */
             status: string;
         };
+        /** ProjectTaskUpdateRequest */
+        ProjectTaskUpdateRequest: {
+            /** Actual End Date */
+            actual_end_date?: string | null;
+            /** Actual Start Date */
+            actual_start_date?: string | null;
+            /** Baseline End Date */
+            baseline_end_date?: string | null;
+            /** Baseline Start Date */
+            baseline_start_date?: string | null;
+            /** Delay Reason */
+            delay_reason?: string | null;
+            /** Dependency Task Id */
+            dependency_task_id?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Milestone Id */
+            milestone_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Planned End Date */
+            planned_end_date?: string | null;
+            /** Planned Start Date */
+            planned_start_date?: string | null;
+            /** Progress Percentage */
+            progress_percentage?: number | string | null;
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Status */
+            status?: string | null;
+        };
         /** ProjectTimelineResponse */
         ProjectTimelineResponse: {
             /** Milestones */
             milestones: components["schemas"]["MilestoneResponse"][];
+            /** Owner Names */
+            owner_names: {
+                [key: string]: string;
+            };
             project: components["schemas"]["ProjectResponse"];
             /** Tasks */
             tasks: components["schemas"]["ProjectTaskResponse"][];
@@ -3226,6 +3426,8 @@ export interface components {
             contract_number?: string | null;
             /** Description */
             description?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Location */
             location?: string | null;
             /** Name */
@@ -3362,6 +3564,25 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** RequestProjectOption */
+        RequestProjectOption: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** RequestProjectOptions */
+        RequestProjectOptions: {
+            /** Items */
+            items: components["schemas"]["RequestProjectOption"][];
+            /** Total */
+            total: number;
+        };
         /** StockResponse */
         StockResponse: {
             /** Available Qty */
@@ -3478,6 +3699,10 @@ export interface components {
             verified_at: string | null;
             /** Verified By */
             verified_by: string | null;
+            /** Verified By Name */
+            verified_by_name?: string | null;
+            /** Verified Report Id */
+            verified_report_id: string | null;
             /** Work Location */
             work_location: string;
         };
@@ -3552,10 +3777,14 @@ export interface components {
             phone: string;
             /** Rating */
             rating: string;
+            /** Revision */
+            revision: number;
             /** Tax Registration Number */
             tax_registration_number: string;
             /** Tds Certificate Number */
             tds_certificate_number: string | null;
+            /** Tds Days Remaining */
+            readonly tds_days_remaining: number | null;
             /** Tds Document Key */
             tds_document_key: string | null;
             /** Tds Expiry Date */
@@ -3573,6 +3802,8 @@ export interface components {
             contact_person?: string | null;
             /** Email */
             email?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */
@@ -3785,6 +4016,7 @@ export interface operations {
             query?: {
                 box?: string;
                 status?: string | null;
+                status_group?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -4536,7 +4768,9 @@ export interface operations {
     upload_document_version_api_v1_documents__document_id__versions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 document_id: string;
             };
@@ -4910,7 +5144,9 @@ export interface operations {
     create_payment_api_v1_finance_invoices__invoice_id__payments_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 invoice_id: string;
             };
@@ -4960,6 +5196,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetSummaryResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_supplier_options_api_v1_finance_supplier_options_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceSupplierOptionsResponse"];
                 };
             };
             /** @description Invalid request */
@@ -5490,7 +5759,9 @@ export interface operations {
     create_movement_api_v1_inventory_movements_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -5507,6 +5778,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MovementResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_material_request_projects_api_v1_inventory_request_projects_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestProjectOptions"];
                 };
             };
             /** @description Invalid request */
@@ -5621,13 +5925,19 @@ export interface operations {
     issue_material_request_api_v1_inventory_requests__request_id__issue_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 request_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MaterialQuantityCommand"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5652,13 +5962,19 @@ export interface operations {
     reserve_material_request_api_v1_inventory_requests__request_id__reserve_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 request_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MaterialQuantityCommand"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5958,6 +6274,7 @@ export interface operations {
                 kind?: string | null;
                 limit?: number;
                 offset?: number;
+                deleted?: boolean;
             };
             header?: never;
             path?: never;
@@ -6003,6 +6320,7 @@ export interface operations {
             /** @description Successful Response */
             201: {
                 headers: {
+                    "X-Report-Revision"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6060,7 +6378,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PhotoDecisionRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -6120,7 +6442,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PhotoDecisionRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6407,6 +6733,42 @@ export interface operations {
             };
         };
     };
+    update_project_task_api_v1_projects__project_id__tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectTaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTaskResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     get_project_timeline_api_v1_projects__project_id__timeline_get: {
         parameters: {
             query?: never;
@@ -6477,6 +6839,8 @@ export interface operations {
             query?: never;
             header?: {
                 "Idempotency-Key"?: string | null;
+                /** @description Required for local-* Idempotency-Key values. */
+                "X-Offline-Owner"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6740,6 +7104,37 @@ export interface operations {
             };
         };
     };
+    list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupervisorUpdateResponse"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_supervisor_updates_api_v1_supervisor_updates_get: {
         parameters: {
             query?: {
@@ -6943,7 +7338,9 @@ export interface operations {
     };
     deactivate_supplier_api_v1_suppliers__supplier_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                expected_revision?: number | null;
+            };
             header?: never;
             path: {
                 supplier_id: string;

@@ -31,7 +31,7 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 [CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency and a host lock serialize releases.
 
-The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub, downloads that exact source revision, and builds the frontend. For runtime changes it checks that protected services, volumes, networks, and bootstrap files are unchanged, builds the backend, compares the candidate Alembic heads with the live revision, and takes encrypted backups of the application and Grafana databases before activation. It publishes the frontend index atomically, checks the publicly served sign-in HTML and JavaScript hashes, and calls public readiness. If activation fails, it attempts to restore the previous runtime and frontend. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and asset hash in `DEPLOYED`.
+The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub, downloads that exact source revision, builds the frontend, and compares the candidate Alembic heads with the live revision. For runtime changes it also checks protected resources, builds the backend, and runs the application and Grafana backup command in a one-off container before activation. It swaps the frontend index atomically, verifies the served sign-in HTML, JavaScript and service worker hashes, and checks public readiness. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and hashes in `DEPLOYED`. Failed activations follow the [rollback procedure](#rollback).
 
 ### Host bootstrap and runner maintenance
 
@@ -41,10 +41,10 @@ Provision the existing stack and an initial active release before registering th
 | --- | --- |
 | `production.env` | Private configuration copied into each candidate release. |
 | `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
-| `current` | Link to the active release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
+| `current` | Link to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
 | `deploy.lock` | Host-side serialization across release attempts. |
 
-Install the reviewed script as root at `/usr/local/sbin/garrison-deploy` on initial setup and when updating the host script. The runner account needs only noninteractive `sudo` for that script. Keep the privileged script and production inputs outside the runner workspace.
+Install the reviewed script as root at `/usr/local/sbin/garrison-deploy` before the first release using the `rollback-v2` invocation. The old script rejects this invocation before activation. The runner account needs only noninteractive `sudo` for that script. Keep the privileged script and production inputs outside the runner workspace.
 
 On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 
@@ -60,12 +60,14 @@ prod() {
 
 ### Production maintenance
 
-Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its initializer, the Grafana database initializer, Compose volumes, or networks require a reviewed maintenance window. Production CD blocks those changes before activation.
+Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its initializer, the Grafana database initializer, Compose volumes, or networks require a reviewed maintenance window. Production CD blocks those changes before activation. A change in rollback generation also requires a maintenance window so incompatible clients and scheduled writers are quiesced before switching.
 
 1. Identify the candidate SHA, successful CI run, deployed SHA, current database revision, and affected volumes. Review the migration, data repair prerequisites, and compatibility with the running application. Rehearse the exact change against an isolated restore.
-2. Record the backup object names and tested recovery plan. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
+2. Record the backup object names and tested recovery plan. The pre-activation database backup uses `--skip-retention` to preserve existing backups. It supplements the independently verified database and file recovery set. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
 3. Apply the approved migration or infrastructure change using the candidate's images and the host override. Compare the resulting Alembic revision and persistent resource layout with the plan before resuming writes.
 4. Verify health, data and permissions, relevant background jobs, and the affected browser workflow. Capture the deployment and restore evidence. If a rollback needs data recovery, account for writes after the recovery point before reopening traffic.
+
+For the first owner-aware offline rollout, stop the previous Celery beat and worker and drain active application writes before migration. Keep an ingress write block in place through activation and the read-only smoke checks. The deployment probe needs GET access to the sign-in page, frontend entry asset, service worker, and readiness endpoint. Remove the block after verifying the new application and worker and confirming no legacy writers are running.
 
 ### Upgrade an existing PostgreSQL 16 database
 
@@ -144,6 +146,30 @@ python scripts/restore_dry_run.py \
 
 Check for `Restore status: executed` in the evidence. With no restore database URL, the receipt is `validated-only`. Include the backup object name, timestamp, operator, target isolation, and verified results with the receipt.
 
+### Independent database and file recovery drill
+
+Agree on the backup destination, key custodian, retained evidence, recovery point and recovery time targets before accepting a release. Use a destination that remains accessible if the portal host and its object storage are unavailable. Keep the manifest private because it includes object identifiers. Store deployment configuration and keys through the approved recovery procedure.
+
+[The backup-set tool](../backend/scripts/backup_set.py) captures the application database and required files. It reads database references from the same PostgreSQL snapshot as the dump. The set includes active and superseded document versions, report PDFs, current invoice and supplier attachments, and photo originals and generated variants for active and recoverable records. If policy retains replaced attachment objects, supply their keys from the approved inventory with `--extra-objects`. Supply `BACKUP_GRAFANA_DATABASE_URL` in the private environment to include the Grafana database. Capture during a recorded write pause that also covers the object store and any Grafana database included in the set.
+
+From the authorized backend environment, set `BACKUP_ENCRYPTION_PASSWORD` privately. Create a new set directory on the approved destination and verify its encrypted artifacts.
+
+```bash
+python -m scripts.backup_set capture \
+  --source-sha "$RELEASE_SHA" \
+  --consistency-note "$WRITE_PAUSE_EVIDENCE" \
+  --destination /private/independent-storage/backup-set
+python -m scripts.backup_set verify /private/independent-storage/backup-set
+```
+
+The `verify` command checks artifact presence, size and SHA-256. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
+
+```bash
+python -m scripts.backup_set restore /private/independent-storage/backup-set
+```
+
+The restore checks decrypted bytes before writing and checks the resulting schema, database references, and restored object checksums. Start the isolated application and open the required protected files under authorized and forbidden accounts. Include the backup set identity, source SHA, schema head, UTC timings, missing or corrupt artifact tests, key access, and actual recovery results in the release evidence. Local fixtures establish tool behavior. The release still requires a drill with the approved destination, retained data scope, operator, and measured targets.
+
 ### Data checks and repairs
 
 | Case | Operator action |
@@ -151,11 +177,25 @@ Check for `Restore status: executed` in the evidence. With no restore database U
 | Import source shape | Use the [import validation guide](import_templates/README.md). If using a backend container, mount the templates at `/docs/import_templates` or pass the source explicitly. |
 | Historical invoice overpayments | Run `prod exec -T backend python scripts/report_payment_overages.py --i-understand`. Use the read-only output to reconcile payments with Finance. |
 | Duplicate offline drafts | Run `prod exec -T backend python scripts/repair_offline_duplicates.py --i-understand` to list candidates. Consolidation requires a maintenance window, a reviewed pair, and `--apply --keep <uuid> --duplicate <uuid>`. The script moves photo and retry references and soft-deletes the duplicate in one transaction. |
-| Inventory reservation drift | Run `prod exec -T backend python scripts/report_inventory_reservation_drift.py --i-understand` to compare recorded balances with the derived reservations. Migration `202605300003` repairs derived reservations and validates existing stock constraints. Reconcile any legacy negative on-hand values before retrying a migration blocked by that constraint. |
+| Inventory reservation drift | Run `prod exec -T backend python scripts/report_inventory_reservation_drift.py --i-understand` to compare recorded balances with the derived reservations and find cancelled requests that still have open approvals or reserved lines. Review findings with Inventory before authorizing repairs. Migration `202605300003` repairs derived reservations and validates existing stock constraints. Reconcile any legacy negative on-hand values before retrying a migration blocked by that constraint. |
+| Legacy supervisor verification | Once read-only inspection is authorized, run `prod exec -T backend python scripts/report_supervisor_verification.py --i-understand`. Review unresolved verification bindings and their candidate counts with the workflow owner. |
+| Legacy photo quota overages | Once read-only inspection is authorized, run `prod exec -T backend python scripts/report_media_quota_drift.py --i-understand`. Review the report and supervisor update IDs and active-photo counts with the records owner. The scan excludes deleted photos and attachments. |
+
+### Offline storage upgrade
+
+The owner-aware worker upgrades the portal's IndexedDB to version 3. Have operators close older portal tabs and reopen the portal on the new build. Confirm the active worker has upgraded before testing account switches on shared devices. Older workers cannot open version 3. A worker already running before activation can finish requests it already sent, so wait for the older clients to close before accepting the rollout. Keep the owner-aware worker during rollback or disable offline sync until a compatible build is ready.
+
+The old `reportDrafts` and `photoQueue` stores and the `garrisons.supervisor-update-draft` local storage entry are quarantined. The app leaves them unread because ownership cannot be established from their keys. If the owner authorizes disposal, remove only these legacy entries for the portal origin after confirming that no older clients remain. Keep the owned stores and session state intact.
+
+Apply the report revision migration before activating the report API and frontend together. Report creation with a `local-*` idempotency key requires an `X-Offline-Owner` header matching the authenticated user. A report edit without `expected_revision`, or a keyed single-file daily-report upload without `expected_report_revision`, returns a conflict and asks the user to reload. These checks apply before replaying a previous result. Keep revision fields on rollback, and use only workers that verify ownership and preserve revision checks.
 
 ### Rollback
 
-After failed activation, check the release script output, the active release receipt, readiness, and the served assets to confirm the previous release recovered. For a rollback after a successful release, use the retained known-good runtime and frontend with the same host override. Verify that they support the current schema and persistent data before activation. When data recovery is required, follow the reviewed recovery plan and record the recovery point. Use the [container log fallback](LOGGING_AND_REMOTE_CLI.md#incident-fallback) if the observability stack is unavailable.
+Automatic rollback requires matching [rollback generations](../deploy/rollback-generation), previous backend Alembic heads that match the live database, and the retained frontend image. Generation 1 requires the owner-aware service worker, report revision enforcement, and deadline-aware audit retention. Change the generation when a release invalidates the previous release's ability to use the same data and client state safely.
+
+If a compatible rollback runs, verify readiness and the served assets against the previous release receipt. If no compatible rollback exists, the script records `ACTIVATION_FAILED` under the candidate release, stops Nginx and the application writers, and leaves `current` pointing at the last verified release. Keep the maintenance write block in place, verify that ingress and writers are stopped, and reconcile actual containers and static assets before activating a compatible forward fix. The failure receipt can exist even if the application or static assets were partly switched.
+
+For an authorized rollback after a successful release, apply the same generation and schema checks and use the same host override. If data recovery is required, follow the approved recovery plan and record the recovery point. Use the [container log fallback](LOGGING_AND_REMOTE_CLI.md#incident-fallback) if the observability stack is unavailable.
 
 ## User acceptance
 

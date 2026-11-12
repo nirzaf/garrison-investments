@@ -18,6 +18,7 @@ from app.models.daily_report import DailyReport
 from app.models.finance import Invoice, Payment
 from app.models.inventory import InventoryLocationStock, InventoryMovement
 from app.models.user import User
+from app.schemas.daily_reports import DailyReportUpdateRequest
 from app.schemas.finance import PaymentCreateRequest
 from app.services.finance_service import FinanceService
 from app.services.report_service import ReportService
@@ -352,3 +353,52 @@ async def test_payment_above_outstanding_balance_is_rejected() -> None:
             await service.create_payment(invoice_id, _payment("0.01"), actor)
         assert excinfo.value.status_code == 409
         assert excinfo.value.error_code == "INVOICE_ALREADY_PAID"
+
+async def test_concurrent_draft_edits_from_one_revision_have_one_winner() -> None:
+    await require_database()
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        headers = {"Authorization": f"Bearer {setup['engineer_token']}"}
+        payload = report_payload(setup["project_id"])
+        created = await client.post("/api/v1/reports", json=payload, headers=headers)
+        assert created.status_code == 201
+        report = created.json()
+        actor = (await client.get("/api/v1/auth/me", headers=headers)).json()
+
+    report_id = UUID(report["id"])
+    actor_id = UUID(actor["id"])
+
+    expected_revision = 1
+
+    async def edit(session):
+        user = await session.get(User, actor_id)
+        assert user is not None
+        updated = await ReportService(session).update_report(
+            report_id,
+            DailyReportUpdateRequest.model_validate(
+                {**payload, "expected_revision": expected_revision, "work_completed": "Latest edit"}
+            ),
+            user,
+        )
+        return updated.revision
+
+    results = await race_sessions(edit, edit)
+    assert status_counts(results) == {2: 1, 409: 1}
+    assert error_codes(results) == ["DAILY_REPORT_REVISION_CONFLICT"]
+
+    expected_revision = 2
+
+    async def submit(session):
+        user = await session.get(User, actor_id)
+        assert user is not None
+        submitted = await ReportService(session).submit_report(report_id, user)
+        return submitted.status
+
+    transition = await race_sessions(edit, submit)
+    observed = status_counts(transition)
+    assert observed in ({"submitted": 1, 3: 1}, {"submitted": 1, 409: 1})
+    async with AsyncSessionLocal() as session:
+        persisted = await session.get(DailyReport, report_id)
+        assert persisted is not None
+        assert persisted.status == "submitted"
+        assert persisted.revision == (4 if 3 in observed else 3)

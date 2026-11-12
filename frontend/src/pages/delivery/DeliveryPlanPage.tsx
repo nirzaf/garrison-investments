@@ -12,16 +12,16 @@ const deliveryItems = [
   {
     label: 'Environments',
     detail:
-      'Staging and production targets exist, but launch runs are executed manually by the deployment owner.',
+      'The operations guide describes the approved staging and production deployment procedures.',
     icon: Route,
     status: 'external proof'
   },
   {
     label: 'Deployment',
     detail:
-      'No active GitHub deployment workflow is enabled; deployment approval and execution are external launch-run evidence.',
+      'GitHub Actions has a production workflow for verified main commits. Check the release record for execution and approval evidence.',
     icon: Truck,
-    status: 'partial'
+    status: 'configured'
   },
   {
     label: 'Backups',
@@ -44,7 +44,7 @@ const deliveryItems = [
 ];
 
 const acceptanceScenarios = [
-  'Login, OTP, forced password change, and password reset',
+  'Login, OTP, and password reset',
   'User creation and deactivation',
   'Project creation with BOQ baseline',
   'Supervisor site update with photos',
@@ -68,8 +68,17 @@ export function DeliveryPlanPage() {
   return (
     <section className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-brand-600">Launch Readiness</p>
-        <h2 className="text-2xl font-semibold text-theme-text-primary">Delivery Plan</h2>
+        <h2 className="text-2xl font-semibold text-theme-text-primary">Launch readiness</h2>
+        <p className="mt-1 text-sm text-theme-text-secondary">
+          Use the{' '}
+          <a
+            className="text-brand-600 underline"
+            href="https://github.com/nirzaf/garrison-investments/blob/main/docs/OPERATIONS_AND_DEPLOYMENT.md"
+          >
+            operations guide
+          </a>{' '}
+          to record release checks and sign-off.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -102,7 +111,7 @@ export function DeliveryPlanPage() {
         <div className="flex items-center gap-2">
           <Smartphone className="h-5 w-5 text-brand-600" />
           <h3 className="text-base font-semibold text-theme-text-primary">
-            Mobile/PWA delivery scope
+            Mobile and offline acceptance scenarios
           </h3>
         </div>
         <div className="mt-3 grid gap-3 text-sm text-theme-text-secondary md:grid-cols-4">

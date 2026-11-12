@@ -2,32 +2,54 @@ import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { getBrowserSession } from '../../api/browserSession';
+import { sameScope, type OfflineScope } from '../../api/offlineDb';
 import { formatApiError } from '../../api/errors';
+import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
 import {
   clearReportDraft,
   flushPhotoQueue,
   getReportDraft,
+  getQueuedUploadIssues,
+  isReportSyncActive,
   queueFiles,
   queuedPhotoCount,
+  queuedDraftPhotoCount,
+  acknowledgeReportEvidenceRevision,
   registerBackgroundSync,
-  saveReportDraft
+  removeQueuedUploadIssue,
+  saveReportDraft,
+  type LocalReportDraft,
+  type QueuedUploadIssue
 } from '../../api/offlineQueue';
-import { listPhotos, uploadEntityFiles, type PhotoRecord } from '../../api/photos';
+import {
+  listPhotos,
+  prepareMediaFiles,
+  uploadMediaFiles,
+  type MediaUploadIntent,
+  type PhotoRecord
+} from '../../api/photos';
 import { listProjects, type ProjectRecord } from '../../api/projects';
 import {
-  createDailyReport,
+  getDailyReport,
   downloadReportPdf,
   listDailyReports,
   submitDailyReport,
-  updateDailyReport,
   type DailyReportPayload,
   type DailyReportRecord
 } from '../../api/reports';
-import { listSupervisorUpdates, type SupervisorUpdateRecord } from '../../api/supervisorUpdates';
+import {
+  listReportSupervisorUpdates,
+  listSupervisorUpdates,
+  type SupervisorUpdateRecord
+} from '../../api/supervisorUpdates';
 import { businessDate } from '../../businessDate';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+
+const storageFullMessage =
+  'Browser storage is full. Your changes are still in this form. Free space and retry before closing this page.';
 
 const emptyPayload: DailyReportPayload = {
   project_id: '',
@@ -171,6 +193,8 @@ const t = (str: string) => str;
 export function DailyReportPage() {
   const { user } = useAuth();
   const currentUserId = user?.id;
+  const browserScope = getBrowserSession()?.scope;
+  const scope = browserScope?.ownerUserId === currentUserId ? browserScope : undefined;
   const [searchParams] = useSearchParams();
   const focusedReportId = searchParams.get('reportId');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -180,25 +204,37 @@ export function DailyReportPage() {
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [failedUpload, setFailedUpload] = useState<{
+    entityId: string;
+    items: MediaUploadIntent[];
+  } | null>(null);
+  const [queuedDraftPhotos, setQueuedDraftPhotos] = useState(0);
+  const [uploadPending, setUploadPending] = useState(false);
+  const uploadInProgress = useRef(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedReportId, setSavedReportId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [draftStatus, setDraftStatus] = useState<'idle' | 'local' | 'server_newer'>('idle');
+  const [draftStatus, setDraftStatus] = useState<
+    LocalReportDraft['syncState'] | 'idle' | 'syncing' | 'storage-full'
+  >('idle');
   const [queuedUploads, setQueuedUploads] = useState(0);
   const [syncConflicts, setSyncConflicts] = useState(0);
+  const [queuedUploadIssues, setQueuedUploadIssues] = useState<QueuedUploadIssue[]>([]);
+  const [queuedUploadPending, setQueuedUploadPending] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
   const persistedDraftSnapshot = useRef(JSON.stringify(form));
   const serverSavedSnapshot = useRef(JSON.stringify(form));
   const draftKey = useRef<string | null>(null);
+  const baseRevision = useRef<number | undefined>(undefined);
 
-  function getDraftKey() {
+  const getDraftKey = useCallback(() => {
     draftKey.current ??= `local-${crypto.randomUUID()}`;
     return draftKey.current;
-  }
+  }, []);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === form.project_id),
@@ -207,15 +243,27 @@ export function DailyReportPage() {
   const canSubmitReports = user?.permissions?.includes('reports:submit') ?? false;
   const saveLocalDraft = useCallback(
     (payload: DailyReportPayload) =>
-      saveReportDraft(
-        payload,
-        draftKey.current,
-        savedReportId && currentUserId
-          ? { id: savedReportId, engineerId: currentUserId }
-          : undefined
-      ),
-    [currentUserId, savedReportId]
+      scope
+        ? saveReportDraft(
+            scope,
+            payload,
+            getDraftKey(),
+            savedReportId
+              ? { id: savedReportId, engineerId: scope.ownerUserId, revision: baseRevision.current }
+              : undefined
+          )
+        : Promise.resolve(false),
+    [getDraftKey, savedReportId, scope]
   );
+
+  const showDraftSaveError = useCallback((error: unknown, fallback: string) => {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      setDraftStatus((status) => (status === 'conflict' ? status : 'storage-full'));
+      setError(storageFullMessage);
+    } else {
+      setError(formatApiError(error, fallback));
+    }
+  }, []);
 
   const loadReports = useCallback(async (projectId?: string) => {
     const response = await listDailyReports({ project_id: projectId || undefined });
@@ -232,97 +280,232 @@ export function DailyReportPage() {
   }, []);
 
   useEffect(() => {
-    void getReportDraft().then((draft) => {
-      if (
-        draft?.payload &&
-        (!draft.serverReport || draft.serverReport.engineerId === currentUserId) &&
-        formHasDraftContent(draft.payload)
-      ) {
-        draftKey.current = draft.draftKey ?? null;
-        setSavedReportId(draft.serverReport?.id ?? null);
-        setForm(draft.payload);
-        setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
-        setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
-        persistedDraftSnapshot.current = JSON.stringify(draft.payload);
-        setDraftStatus('local');
-      }
-      setDraftHydrated(true);
-    });
-    void queuedPhotoCount().then(setQueuedUploads);
-  }, [currentUserId]);
+    if (!scope) return;
+    let mounted = true;
+    const active = () => mounted && sameScope(getBrowserSession()?.scope, scope);
+    void getReportDraft(scope)
+      .then((draft) => {
+        if (!active()) return;
+        if (
+          draft?.payload &&
+          (!draft.serverReport || draft.serverReport.engineerId === scope.ownerUserId) &&
+          formHasDraftContent(draft.payload)
+        ) {
+          draftKey.current = draft.localDraftId;
+          setSavedReportId(draft.serverReport?.id ?? null);
+          baseRevision.current = draft.baseServerRevision;
+          setForm(draft.payload);
+          setPhotoNames(draft.payload.photo_refs.map(({ name }) => name).join('\n'));
+          setAttachmentNames(draft.payload.attachment_refs.map(({ name }) => name).join('\n'));
+          persistedDraftSnapshot.current = JSON.stringify(draft.payload);
+          setDraftStatus(draft.syncState);
+        }
+        setDraftHydrated(true);
+      })
+      .catch(() => {
+        if (active())
+          setError('Unable to open offline drafts. Close older portal tabs and try again.');
+      });
+    void queuedPhotoCount(scope)
+      .then((count) => {
+        if (active()) setQueuedUploads(count);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [scope]);
 
   useEffect(() => {
-    if (!draftHydrated) return;
+    if (!draftHydrated || !scope) return;
     const snapshot = JSON.stringify(form);
     if (snapshot === persistedDraftSnapshot.current || snapshot === serverSavedSnapshot.current) {
       return;
     }
+    const active = () => sameScope(getBrowserSession()?.scope, scope);
+    const onError = (error: unknown) => {
+      if (active()) showDraftSaveError(error, 'Unable to save the local draft.');
+    };
     if (!formHasDraftContent(form)) {
+      const localDraftId = draftKey.current;
+      if (!localDraftId) return;
       const timer = window.setTimeout(() => {
-        void clearReportDraft().then(() => {
-          persistedDraftSnapshot.current = snapshot;
-          setDraftStatus('idle');
-        });
+        void clearReportDraft(scope, localDraftId)
+          .then(() => {
+            if (!active()) return;
+            persistedDraftSnapshot.current = snapshot;
+            setDraftStatus('idle');
+          })
+          .catch(onError);
       }, 800);
       return () => window.clearTimeout(timer);
     }
-    const timer = window.setTimeout(() => {
-      void saveLocalDraft(form).then(() => {
-        persistedDraftSnapshot.current = snapshot;
-        setDraftStatus('local');
-      });
-    }, 800);
-    const interval = window.setInterval(() => {
-      void saveLocalDraft(form).then(() => {
-        persistedDraftSnapshot.current = JSON.stringify(form);
-        setDraftStatus('local');
-      });
-    }, 30_000);
+    const continueSync = isReportSyncActive(scope);
+    const save = () => {
+      void saveLocalDraft(form)
+        .then((saved) => {
+          if (!saved || !active()) return;
+          persistedDraftSnapshot.current = snapshot;
+          setDraftStatus((current) => (current === 'conflict' ? current : 'local'));
+          setError((current) => (current === storageFullMessage ? null : current));
+          if (continueSync && navigator.onLine) void flushPhotoQueue(true).catch(() => {});
+        })
+        .catch(onError);
+    };
+    const timer = window.setTimeout(save, 800);
+    const interval = window.setInterval(save, 30_000);
     return () => {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
-  }, [draftHydrated, form, saveLocalDraft]);
+  }, [draftHydrated, form, saveLocalDraft, scope, showDraftSaveError]);
 
   useEffect(() => {
+    if (!scope) return;
+    let mounted = true;
+    const refreshQueuedCount = () => {
+      void Promise.all([
+        queuedPhotoCount(scope),
+        draftKey.current ? queuedDraftPhotoCount(scope, draftKey.current) : 0,
+        getQueuedUploadIssues(scope)
+      ])
+        .then(([count, photos, issues]) => {
+          if (!mounted || !sameScope(getBrowserSession()?.scope, scope)) return;
+          setQueuedUploads(count);
+          setQueuedDraftPhotos(photos);
+          setQueuedUploadIssues(issues);
+        })
+        .catch(() => {});
+    };
+    const refreshDraftState = () => {
+      const localDraftId = draftKey.current;
+      if (!localDraftId) return;
+      void getReportDraft(scope, localDraftId)
+        .then((draft) => {
+          if (
+            !draft ||
+            !mounted ||
+            !sameScope(getBrowserSession()?.scope, scope) ||
+            draftKey.current !== localDraftId
+          )
+            return;
+          setDraftStatus((status) => (status === 'storage-full' ? status : draft.syncState));
+          if (draft.serverReport) {
+            setSavedReportId(draft.serverReport.id);
+            baseRevision.current = draft.baseServerRevision;
+            if (
+              draft.syncState === 'saved' &&
+              draft.lastSyncedLocalRevision >= draft.localRevision
+            ) {
+              serverSavedSnapshot.current = JSON.stringify(draft.payload);
+            }
+          }
+        })
+        .catch(() => {});
+    };
     const syncQueued = () => {
       setIsOnline(true);
       void flushPhotoQueue()
-        .then(() => queuedPhotoCount())
-        .then(setQueuedUploads);
+        .then(() => {
+          refreshQueuedCount();
+          refreshDraftState();
+        })
+        .catch(() => {});
     };
-    const refreshQueuedCount = (event?: Event) => {
-      void queuedPhotoCount().then(setQueuedUploads);
-      const conflicts = (event as CustomEvent<{ conflicts?: number }> | undefined)?.detail
-        ?.conflicts;
-      if (typeof conflicts === 'number') setSyncConflicts(conflicts);
+    const handleSync = (event: Event) => {
+      const { scope: source, conflicts } = (
+        event as CustomEvent<{
+          scope: OfflineScope;
+          conflicts: number;
+        }>
+      ).detail;
+      if (!sameScope(source, scope)) return;
+      refreshQueuedCount();
+      refreshDraftState();
+      setSyncConflicts(conflicts);
     };
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', syncQueued);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('photo-queue-sync-complete', refreshQueuedCount);
+    window.addEventListener('photo-queue-sync-complete', handleSync);
+    refreshQueuedCount();
     if (navigator.onLine) syncQueued();
     return () => {
+      mounted = false;
       window.removeEventListener('online', syncQueued);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('photo-queue-sync-complete', refreshQueuedCount);
+      window.removeEventListener('photo-queue-sync-complete', handleSync);
     };
-  }, []);
+  }, [scope]);
+
+  useEffect(() => {
+    if (!scope || !savedReportId) return;
+    let controller: AbortController | undefined;
+    const loadFiles = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      const files: PhotoRecord[] = [];
+      try {
+        do {
+          const page = await listPhotos(
+            { entityType: 'daily_report', entityId: savedReportId, offset: files.length },
+            request.signal
+          );
+          files.push(...page.items);
+          if (!page.items.length || files.length >= page.total) break;
+        } while (!request.signal.aborted);
+        if (!request.signal.aborted && sameScope(getBrowserSession()?.scope, scope)) {
+          setUploadedFiles(files);
+        }
+      } catch (error) {
+        if (
+          !request.signal.aborted &&
+          navigator.onLine &&
+          sameScope(getBrowserSession()?.scope, scope)
+        ) {
+          setError(formatApiError(error, 'Unable to load the saved report attachments.'));
+        }
+      }
+    };
+    const refreshFiles = (event: Event) => {
+      const { scope: source } = (event as CustomEvent<{ scope: OfflineScope }>).detail;
+      if (sameScope(source, scope)) void loadFiles();
+    };
+    void loadFiles();
+    window.addEventListener('photo-queue-sync-complete', refreshFiles);
+    return () => {
+      controller?.abort();
+      window.removeEventListener('photo-queue-sync-complete', refreshFiles);
+    };
+  }, [savedReportId, scope]);
 
   useEffect(() => {
     if (!form.project_id) {
       setSupervisorUpdates([]);
       return;
     }
+    let active = true;
     void Promise.all([
       listSupervisorUpdates({ project_id: form.project_id, status: 'submitted' }),
+      savedReportId ? listReportSupervisorUpdates(savedReportId) : Promise.resolve([]),
       loadReports(form.project_id)
     ])
-      .then(([updateResponse]) => setSupervisorUpdates(updateResponse.items))
-      .catch(() => setError('Unable to load supervisor updates.'));
-  }, [form.project_id, loadReports]);
+      .then(([submitted, linked]) => {
+        if (!active) return;
+        const updates = new Map(submitted.items.map((update) => [update.id, update]));
+        for (const update of linked) {
+          if (update.project_id === form.project_id) updates.set(update.id, update);
+        }
+        setSupervisorUpdates([...updates.values()]);
+      })
+      .catch(() => {
+        if (active) setError('Unable to load supervisor updates.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.project_id, loadReports, savedReportId]);
 
   useEffect(() => {
     if (!focusedReportId) return;
@@ -382,7 +565,11 @@ export function DailyReportPage() {
     const hasLocalEdits =
       formHasDraftContent({ ...form, project_id: '' }) &&
       JSON.stringify(form) !== serverSavedSnapshot.current;
-    if (hasLocalEdits && !window.confirm('Replace the unsaved report in this form?')) return;
+    if (
+      hasLocalEdits &&
+      !window.confirm('Open the server draft? Other local drafts stay on this device.')
+    )
+      return;
 
     const payload = reportForm(report);
     const snapshot = JSON.stringify(payload);
@@ -390,11 +577,14 @@ export function DailyReportPage() {
     setErrors({});
     setIsSaving(true);
     setSavedReportId(report.id);
-    draftKey.current = null;
+    draftKey.current = draftKey.current && savedReportId === report.id ? draftKey.current : null;
+    baseRevision.current = report.revision;
     setForm(payload);
     setPhotoNames(payload.photo_refs.map(({ name }) => name).join('\n'));
     setAttachmentNames(payload.attachment_refs.map(({ name }) => name).join('\n'));
     setUploadedFiles([]);
+    setFailedUpload(null);
+    setQueuedDraftPhotos(0);
     serverSavedSnapshot.current = snapshot;
     persistedDraftSnapshot.current = snapshot;
     setDraftStatus('idle');
@@ -404,53 +594,161 @@ export function DailyReportPage() {
         : 'Report reopened.'
     );
     try {
-      await saveReportDraft(payload, null, { id: report.id, engineerId: report.engineer_id });
-      const files = await listPhotos({ entityType: 'daily_report', entityId: report.id });
-      setUploadedFiles(files.items);
+      if (!scope) return;
+      await saveReportDraft(
+        scope,
+        payload,
+        getDraftKey(),
+        {
+          id: report.id,
+          engineerId: report.engineer_id,
+          revision: report.revision
+        },
+        true
+      );
     } catch (loadError) {
-      setError(formatApiError(loadError, 'Unable to load the saved report or its attachments.'));
+      setError(formatApiError(loadError, 'Unable to save the reopened report on this device.'));
     } finally {
       setIsSaving(false);
     }
   }
 
   async function saveDraft() {
-    if (!validate()) return null;
+    if (!scope || !validate()) return null;
     setIsSaving(true);
     setError(null);
     setNotice(null);
+    const localDraftId = getDraftKey();
     try {
       const payload = buildPayload();
-      let reportId = savedReportId;
-      if (reportId) {
-        await updateDailyReport(reportId, payload);
-      } else {
-        const mightExist = draftKey.current !== null;
-        const key = getDraftKey();
-        await saveReportDraft(payload, key);
-        reportId = (await createDailyReport(payload, key)).id;
-        // A queued upload or an earlier save may already have created the draft with older fields.
-        if (mightExist) await updateDailyReport(reportId, payload);
+      const saved = await saveReportDraft(
+        scope,
+        payload,
+        localDraftId,
+        savedReportId
+          ? { id: savedReportId, engineerId: scope.ownerUserId, revision: baseRevision.current }
+          : undefined
+      );
+      if (!saved) return null;
+      if (!navigator.onLine) {
+        setDraftStatus('local');
+        setNotice('Daily report draft saved on this device.');
+        return null;
       }
+      setDraftStatus('syncing');
+      await flushPhotoQueue(true);
+      const result = await getReportDraft(scope, localDraftId);
+      if (!result || !sameScope(getBrowserSession()?.scope, scope)) return null;
+      setDraftStatus(result.syncState);
+      if (result.syncState !== 'saved' || !result.serverReport) {
+        setError(
+          result.syncState === 'conflict'
+            ? 'The server report changed. Your local draft is still available.'
+            : 'The draft is saved locally. Resolve the issue or retry synchronization.'
+        );
+        return null;
+      }
+      const reportId = result.serverReport.id;
       setSavedReportId(reportId);
-      await clearReportDraft();
+      baseRevision.current = result.baseServerRevision;
       serverSavedSnapshot.current = JSON.stringify(payload);
       persistedDraftSnapshot.current = JSON.stringify(payload);
-      setDraftStatus('idle');
       setNotice('Daily report draft saved.');
       await loadReports(payload.project_id);
       return reportId;
     } catch (saveError) {
-      setError(formatApiError(saveError, 'Unable to save the daily report.'));
+      showDraftSaveError(saveError, 'Unable to save the daily report.');
       return null;
     } finally {
       setIsSaving(false);
     }
   }
 
+  async function removeQueuedUpload(issue: QueuedUploadIssue) {
+    if (
+      !scope ||
+      queuedUploadPending ||
+      !window.confirm(`Remove the local queued copy of ${issue.name}?`)
+    )
+      return;
+    setQueuedUploadPending(true);
+    try {
+      await removeQueuedUploadIssue(scope, issue.id);
+      const [count, issues] = await Promise.all([
+        queuedPhotoCount(scope),
+        getQueuedUploadIssues(scope)
+      ]);
+      if (!sameScope(getBrowserSession()?.scope, scope)) return;
+      setQueuedUploads(count);
+      setQueuedUploadIssues(issues);
+    } catch {
+      setError('Unable to remove the local queued file.');
+    } finally {
+      setQueuedUploadPending(false);
+    }
+  }
+
+  async function retryQueuedUploads() {
+    if (queuedUploadPending || !isOnline) return;
+    setQueuedUploadPending(true);
+    try {
+      await flushPhotoQueue(true);
+    } catch {
+      setError('Unable to retry the queued uploads.');
+    } finally {
+      setQueuedUploadPending(false);
+    }
+  }
+
+  async function reloadServerDraft() {
+    if (!scope || !savedReportId) return;
+    try {
+      const latest = await getDailyReport(savedReportId, scope);
+      if (latest.status !== 'draft') {
+        setError(
+          'The server report is no longer editable. You can keep this draft or copy the text into a new one.'
+        );
+        return;
+      }
+      await resumeReport(latest);
+    } catch (loadError) {
+      setError(formatApiError(loadError, 'Unable to reload the server report.'));
+    }
+  }
+
+  function copyDraftText() {
+    if (
+      !window.confirm(
+        'Copy the report text into a new draft? Linked evidence will stay with the existing report.'
+      )
+    )
+      return;
+    draftKey.current = null;
+    baseRevision.current = undefined;
+    setSavedReportId(null);
+    setUploadedFiles([]);
+    setPhotoNames('');
+    setAttachmentNames('');
+    setError(null);
+    setDraftStatus('local');
+    setForm({
+      ...createEmptyPayload(),
+      project_id: form.project_id,
+      work_location: form.work_location,
+      work_completed: form.work_completed,
+      next_day_plan: form.next_day_plan,
+      safety_notes: form.safety_notes,
+      delay_notes: form.delay_notes
+    });
+  }
+
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!validate()) return;
+    if (!scope || !validate()) return;
+    if (!navigator.onLine) {
+      setError('Reconnect to submit this report. Your draft can be saved locally.');
+      return;
+    }
     const unchanged = JSON.stringify(buildPayload()) === serverSavedSnapshot.current;
     const reportId = savedReportId && unchanged ? savedReportId : await saveDraft();
     if (!reportId) return;
@@ -458,14 +756,18 @@ export function DailyReportPage() {
     setError(null);
     setNotice(null);
     try {
-      const report = await submitDailyReport(reportId);
+      const report = await submitDailyReport(reportId, scope);
       const resetForm = createEmptyPayload();
       setForm(resetForm);
       setPhotoNames('');
       setAttachmentNames('');
+      setUploadedFiles([]);
+      setFailedUpload(null);
+      setQueuedDraftPhotos(0);
       setSavedReportId(null);
+      baseRevision.current = undefined;
+      if (draftKey.current) await clearReportDraft(scope, draftKey.current);
       draftKey.current = null;
-      await clearReportDraft();
       serverSavedSnapshot.current = JSON.stringify(resetForm);
       persistedDraftSnapshot.current = JSON.stringify(resetForm);
       setDraftStatus('idle');
@@ -493,55 +795,113 @@ export function DailyReportPage() {
     }
   }
 
+  async function recordUploads(
+    entityId: string,
+    items: MediaUploadIntent[],
+    selectionErrors: string[]
+  ) {
+    if (!scope || !sameScope(getBrowserSession()?.scope, scope)) return;
+    const previousRevision = baseRevision.current;
+    const result = await uploadMediaFiles('daily_report', entityId, items, scope, previousRevision);
+    if (!sameScope(getBrowserSession()?.scope, scope)) return;
+    if (
+      previousRevision !== undefined &&
+      result.reportRevision !== undefined &&
+      result.reportRevision > previousRevision
+    ) {
+      baseRevision.current = result.reportRevision;
+      if (draftKey.current) {
+        await acknowledgeReportEvidenceRevision(
+          scope,
+          draftKey.current,
+          entityId,
+          previousRevision,
+          result.reportRevision
+        );
+      }
+    }
+    setUploadedFiles((current) => [
+      ...current,
+      ...result.uploaded.filter((file) => !current.some((existing) => existing.id === file.id))
+    ]);
+    setFailedUpload((current) => {
+      const previous = current?.entityId === entityId ? current.items : [];
+      const untouched = previous.filter((item) => !items.some((sent) => sent.key === item.key));
+      const next = [...untouched, ...result.failed];
+      return next.length ? { entityId, items: next } : null;
+    });
+    const errors = [...selectionErrors, ...result.errors];
+    if (errors.length) setError(errors.join(' '));
+    if (result.uploaded.length) {
+      setNotice(`${result.uploaded.length} file${result.uploaded.length === 1 ? '' : 's'} saved.`);
+    }
+  }
+
   async function uploadFiles(files: FileList | null, kind: 'photo' | 'attachment') {
-    if (!files?.length) return;
-    const fileList = Array.from(files);
-    if (kind === 'photo' && fileList.length > 5) {
-      setError('Maximum 5 photos allowed per report.');
-      return;
-    }
-    const maxSize = kind === 'photo' ? 10 * 1024 * 1024 : 60 * 1024 * 1024;
-    const label = kind === 'photo' ? '10 MB' : '60 MB';
-    if (fileList.some((f) => f.size > maxSize)) {
-      setError(`File size exceeds the ${label} limit.`);
-      return;
-    }
-    const payload = buildPayload();
-    if (!navigator.onLine) {
-      if (!validate()) return;
-      const entityId = savedReportId ?? getDraftKey();
-      await saveLocalDraft(payload);
-      await queueFiles({
-        entityType: 'daily_report',
-        entityId,
-        draftPayload: savedReportId ? undefined : payload,
-        kind,
-        files
-      });
-      await registerBackgroundSync();
-      const count = await queuedPhotoCount();
-      setQueuedUploads(count);
-      setDraftStatus('local');
-      setNotice(`${files.length} file${files.length > 1 ? 's' : ''} queued for upload.`);
-      return;
-    }
-    const reportId = savedReportId ?? (await saveDraft());
-    if (!reportId) return;
-    setIsSaving(true);
+    if (!scope || !files?.length || uploadInProgress.current) return;
+    uploadInProgress.current = true;
+    setUploadPending(true);
     setError(null);
+    setNotice(null);
+    const selection = Array.from(files);
     try {
-      const uploaded = await uploadEntityFiles({
-        entityType: 'daily_report',
-        entityId: reportId,
+      const serverPhotos = uploadedFiles.filter((file) => file.kind === 'photo').length;
+      const localDraftId = getDraftKey();
+      const queued = await queuedDraftPhotoCount(scope, localDraftId);
+      const { items, errors } = await prepareMediaFiles(
+        selection,
         kind,
-        files
-      });
-      setUploadedFiles([...uploadedFiles, ...uploaded]);
-      setNotice(`${uploaded.length} ${kind === 'photo' ? 'photo' : 'attachment'} file saved.`);
-    } catch {
-      setError('Unable to upload the selected file.');
+        MAX_REPORT_PHOTOS - serverPhotos - queued
+      );
+      if (errors.length) setError(errors.join(' '));
+      if (!items.length) return;
+      if (!navigator.onLine) {
+        if (!validate()) return;
+        const payload = buildPayload();
+        const entityId = savedReportId ?? localDraftId;
+        if (!(await saveLocalDraft(payload))) return;
+        let queuedFilesCount = 0;
+        for (const entry of items) {
+          const saved = await queueFiles(scope, {
+            entityType: 'daily_report',
+            entityId,
+            localDraftId,
+            kind: entry.kind,
+            files: [entry.file]
+          });
+          if (saved) queuedFilesCount += 1;
+        }
+        if (!queuedFilesCount || !sameScope(getBrowserSession()?.scope, scope)) return;
+        await registerBackgroundSync();
+        setQueuedUploads(await queuedPhotoCount(scope));
+        setQueuedDraftPhotos(await queuedDraftPhotoCount(scope, localDraftId));
+        setDraftStatus('local');
+        setNotice(
+          `${queuedFilesCount} file${queuedFilesCount === 1 ? '' : 's'} queued for upload.`
+        );
+        return;
+      }
+      const reportId = savedReportId ?? (await saveDraft());
+      if (reportId) await recordUploads(reportId, items, errors);
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to process the selected files.'));
     } finally {
-      setIsSaving(false);
+      uploadInProgress.current = false;
+      setUploadPending(false);
+    }
+  }
+
+  async function retryMediaUploads() {
+    if (!failedUpload || uploadInProgress.current) return;
+    uploadInProgress.current = true;
+    setUploadPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await recordUploads(failedUpload.entityId, failedUpload.items, []);
+    } finally {
+      uploadInProgress.current = false;
+      setUploadPending(false);
     }
   }
 
@@ -655,14 +1015,88 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
-        {syncConflicts > 0 ? (
-          <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
-            {syncConflicts} queued upload{syncConflicts > 1 ? 's were' : ' was'} skipped because the
-            report had already been submitted on the server. Review the report and re-attach the
-            files if they are still needed.
+        {draftStatus === 'conflict' || syncConflicts > 0 ? (
+          <div
+            className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm"
+            role="alert"
+          >
+            The server report changed. Your local draft and queued uploads are still saved on this
+            device.
+            <div className="mt-2 flex flex-wrap gap-2">
+              {savedReportId ? (
+                <button
+                  className="button-secondary"
+                  type="button"
+                  onClick={() => void reloadServerDraft()}
+                >
+                  Reload server draft
+                </button>
+              ) : null}
+              <button className="button-secondary" type="button" onClick={copyDraftText}>
+                Copy text into new draft
+              </button>
+            </div>
           </div>
         ) : null}
-        {!isOnline && (draftStatus === 'local' || queuedUploads > 0) ? (
+        {draftStatus === 'syncing' ? <p role="status">Syncing draft…</p> : null}
+        {draftStatus === 'saved' ? <p role="status">Draft saved to server.</p> : null}
+        {isOnline &&
+        (draftStatus === 'local' || draftStatus === 'retry' || draftStatus === 'blocked') ? (
+          <div role="status" className="flex flex-wrap items-center gap-2">
+            <p>
+              {draftStatus === 'blocked'
+                ? 'Draft sync needs attention.'
+                : 'Draft saved on this device.'}
+            </p>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={isSaving}
+              onClick={() => void saveDraft()}
+            >
+              Retry sync
+            </button>
+          </div>
+        ) : null}
+        {queuedUploadIssues.length ? (
+          <section
+            aria-label="Queued uploads needing attention"
+            className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm"
+          >
+            <h3 className="font-semibold">Queued uploads needing attention</h3>
+            <ul className="mt-2 space-y-2">
+              {queuedUploadIssues.map((issue) => (
+                <li key={issue.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {issue.name}. {issue.reason}
+                  </span>
+                  <button
+                    aria-label={`Remove queued file ${issue.name}`}
+                    className="button-secondary"
+                    disabled={queuedUploadPending}
+                    type="button"
+                    onClick={() => void removeQueuedUpload(issue)}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {queuedUploadIssues.some((issue) => issue.canRetry) ? (
+              <button
+                className="button-secondary mt-2"
+                type="button"
+                disabled={!isOnline || queuedUploadPending}
+                onClick={() => void retryQueuedUploads()}
+              >
+                Retry pending uploads
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+        {!isOnline &&
+        draftStatus !== 'storage-full' &&
+        (draftStatus === 'local' || queuedUploads > 0) ? (
           <div className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm">
             Local draft active
             {queuedUploads > 0
@@ -761,6 +1195,7 @@ export function DailyReportPage() {
                   >
                     <input
                       checked={form.supervisor_update_ids.includes(update.id)}
+                      disabled={update.status === 'verified'}
                       className="mt-1"
                       onChange={(event) => {
                         const selected = event.target.checked
@@ -777,6 +1212,11 @@ export function DailyReportPage() {
                       <span className="line-clamp-2 text-theme-text-muted">
                         {update.progress_notes}
                       </span>
+                      {update.status === 'verified' && (
+                        <span className="block text-theme-text-muted">
+                          Verified evidence retained on this report
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}
@@ -1071,23 +1511,36 @@ export function DailyReportPage() {
 
           <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
             <SectionHeader title="Photos And Attachments" />
+            <p className="mb-3 text-sm text-theme-text-muted">
+              {uploadedFiles.filter((file) => file.kind === 'photo').length} of 5 photos saved
+              {queuedDraftPhotos > 0 ? ` · ${queuedDraftPhotos} photos queued for this draft` : ''}.
+              JPEG, PNG and HEIC photos or PDF, JPEG and PNG attachments, up to 10 MiB per file.
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Upload photos">
                 <input
-                  accept="image/jpeg,image/png,image/heic"
+                  accept={REPORT_PHOTO_ACCEPT}
                   capture="environment"
                   className="form-field"
+                  disabled={isSaving || uploadPending}
                   multiple
-                  onChange={(event) => void uploadFiles(event.target.files, 'photo')}
+                  onChange={(event) => {
+                    void uploadFiles(event.target.files, 'photo');
+                    event.target.value = '';
+                  }}
                   type="file"
                 />
               </Field>
               <Field label="Upload attachments">
                 <input
-                  accept="application/pdf,image/jpeg,image/png"
+                  accept={PDF_IMAGE_ACCEPT}
                   className="form-field"
+                  disabled={isSaving || uploadPending}
                   multiple
-                  onChange={(event) => void uploadFiles(event.target.files, 'attachment')}
+                  onChange={(event) => {
+                    void uploadFiles(event.target.files, 'attachment');
+                    event.target.value = '';
+                  }}
                   type="file"
                 />
               </Field>
@@ -1119,6 +1572,16 @@ export function DailyReportPage() {
                 />
               </Field>
             </div>
+            {failedUpload ? (
+              <button
+                className="form-field mt-3"
+                disabled={uploadPending || !isOnline}
+                onClick={() => void retryMediaUploads()}
+                type="button"
+              >
+                Retry {failedUpload.items.length} failed file(s)
+              </button>
+            ) : null}
             {uploadedFiles.length > 0 ? (
               <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
@@ -1137,7 +1600,7 @@ export function DailyReportPage() {
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-theme-border px-4 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-60"
-              disabled={isSaving}
+              disabled={isSaving || uploadPending}
               onClick={() => void saveDraft()}
               type="button"
             >
@@ -1146,7 +1609,7 @@ export function DailyReportPage() {
             </button>
             <button
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-              disabled={isSaving}
+              disabled={isSaving || uploadPending}
               type="submit"
             >
               <Send className="h-4 w-4" />
@@ -1200,11 +1663,13 @@ export function DailyReportPage() {
                 (report.status === 'draft' || report.status === 'rejected') ? (
                   <button
                     className="mt-3 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-main disabled:opacity-50"
-                    disabled={!draftHydrated || isSaving || savedReportId === report.id}
+                    disabled={
+                      !draftHydrated || isSaving || uploadPending || savedReportId === report.id
+                    }
                     onClick={() => void resumeReport(report)}
                     type="button"
                   >
-                    Resume report
+                    {savedReportId === report.id ? 'Editing this report' : 'Resume report'}
                   </button>
                 ) : null}
                 {report.status === 'approved' ? (

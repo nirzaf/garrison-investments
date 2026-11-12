@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from app.models.user import User
@@ -42,6 +45,14 @@ def test_permission_matrix_covers_every_valid_role() -> None:
     missing_roles = VALID_ROLES.difference(ROLE_PERMISSIONS)
 
     assert not missing_roles, f"Every valid role must have a permission entry: {missing_roles}"
+
+
+def test_frontend_permission_matrix_matches_backend() -> None:
+    fixture = Path(__file__).resolve().parents[2] / "frontend/src/pages/roles/rolePermissions.json"
+    matrix = json.loads(fixture.read_text())
+    assert len(matrix["permissions"]) == len(ALL_PERMISSIONS)
+    assert set(matrix["permissions"]) == ALL_PERMISSIONS
+    assert {role: set(grants) for role, grants in matrix["roles"].items()} == ROLE_PERMISSIONS
 
 
 def test_permission_matrix_does_not_grant_unknown_permissions() -> None:

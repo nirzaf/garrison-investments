@@ -3,6 +3,7 @@ from decimal import Decimal
 from io import BytesIO
 from uuid import UUID, uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from minio import Minio
 from reportlab.lib.pagesizes import A4
@@ -18,6 +19,7 @@ from app.models.inventory import InventoryItem, InventoryMovement
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.analytics import AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow
+from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.finance_service import FINANCE_ROLES, NON_BILLABLE_INVOICE_STATUSES
 from app.utils.exceptions import AppException
 from app.utils.permissions import ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER
@@ -48,9 +50,10 @@ class AnalyticsService:
         location: str | None = None,
         department: str | None = None,
     ) -> AnalyticsSummaryResponse:
-        self.ensure_management_access(actor)
-        projects = await self._project_rows(project_id, date_from, date_to, location, department)
-        usage = await self._material_rows(project_id, date_from, date_to, department)
+        project_scope = await self._project_scope(actor, project_id)
+        self._validate_date_range(date_from, date_to)
+        projects = await self._project_rows(project_scope, date_from, date_to, location, department)
+        usage = await self._material_rows(project_scope, date_from, date_to, department)
         return AnalyticsSummaryResponse(projects=projects, material_usage=usage)
 
     async def project_progress_export(
@@ -63,9 +66,9 @@ class AnalyticsService:
         location: str | None = None,
         department: str | None = None,
     ) -> bytes:
-        rows = await self._project_rows_for_export(
-            actor, project_id, date_from, date_to, location, department
-        )
+        project_scope = await self._project_scope(actor, project_id)
+        self._validate_date_range(date_from, date_to)
+        rows = await self._project_rows(project_scope, date_from, date_to, location, department)
         return build_xlsx(
             "Project Progress",
             [["Project", "Progress %", "Reports", "Invoice Total", "Paid Total"]]
@@ -79,6 +82,7 @@ class AnalyticsService:
                 ]
                 for row in rows
             ],
+            context=self._filter_context(project_id, date_from, date_to, location, department),
         )
 
     async def material_usage_export(
@@ -90,8 +94,9 @@ class AnalyticsService:
         date_to: date | None = None,
         department: str | None = None,
     ) -> bytes:
-        self.ensure_management_access(actor)
-        rows = await self._material_rows(project_id, date_from, date_to, department)
+        project_scope = await self._project_scope(actor, project_id)
+        self._validate_date_range(date_from, date_to)
+        rows = await self._material_rows(project_scope, date_from, date_to, department)
         return build_xlsx(
             "Material Usage",
             [["Item", "Issued Quantity", "Consumed Quantity"]]
@@ -99,6 +104,9 @@ class AnalyticsService:
                 [row.item_name, str(row.issued_quantity), str(row.consumed_quantity)]
                 for row in rows
             ],
+            context=self._filter_context(
+                project_id, date_from, date_to, None, department, material=True
+            ),
         )
 
     async def management_pdf_summary(
@@ -125,6 +133,12 @@ class AnalyticsService:
         story = [
             Paragraph("Garrisons Investments - Management Summary", styles["Title"]),
             Spacer(1, 12),
+            Paragraph(
+                escape_xml(
+                    self._filter_context(project_id, date_from, date_to, location, department)
+                ),
+                styles["BodyText"],
+            ),
             Paragraph("Project Progress", styles["Heading2"]),
             Table(
                 [["Project", "Progress", "Reports", "Invoiced", "Paid"]]
@@ -166,21 +180,46 @@ class AnalyticsService:
         )
         return object_key
 
-    async def _project_rows_for_export(
-        self,
-        actor: User,
+    async def _project_scope(self, actor: User, project_id: UUID | None) -> list[UUID] | None:
+        self.ensure_management_access(actor)
+        if project_id is not None:
+            await ensure_project_access(self.session, project_id, actor)
+            return [project_id]
+        return await accessible_project_ids(self.session, actor)
+
+    @staticmethod
+    def _validate_date_range(date_from: date | None, date_to: date | None) -> None:
+        if date_from and date_to and date_from > date_to:
+            raise AppException(
+                "Choose an end date on or after the start date.",
+                status_code=422,
+                error_code="INVALID_ANALYTICS_DATE_RANGE",
+            )
+
+    @staticmethod
+    def _filter_context(
         project_id: UUID | None,
         date_from: date | None,
         date_to: date | None,
         location: str | None,
         department: str | None,
-    ) -> list[ProjectAnalyticsRow]:
-        self.ensure_management_access(actor)
-        return await self._project_rows(project_id, date_from, date_to, location, department)
+        *,
+        material: bool = False,
+    ) -> str:
+        filters = (
+            f"Project {project_id or 'all accessible'} | Activity dates {date_from or 'any'} to "
+            f"{date_to or 'any'} | Scope or category text {(department or '').strip() or 'any'}"
+        )
+        if material:
+            return f"{filters} | Project location is not applied to material movements."
+        return (
+            f"{filters} | Project-panel location {(location or '').strip() or 'any'} | "
+            "Progress, invoiced and paid totals are cumulative."
+        )
 
     async def _project_rows(
         self,
-        project_id: UUID | None,
+        project_scope: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
         location: str | None,
@@ -226,12 +265,14 @@ class AnalyticsService:
             invoice_total,
             paid_total,
         ).where(Project.deleted_at.is_(None))
-        if project_id:
-            query = query.where(Project.id == project_id)
-        if location:
-            query = query.where(func.lower(Project.location).like(f"%{location.lower()}%"))
-        if department:
-            query = query.where(func.lower(Project.scope_of_work).like(f"%{department.lower()}%"))
+        if project_scope is not None:
+            query = query.where(Project.id.in_(project_scope))
+        if location and location.strip():
+            query = query.where(func.lower(Project.location).like(f"%{location.strip().lower()}%"))
+        if department and department.strip():
+            query = query.where(
+                func.lower(Project.scope_of_work).like(f"%{department.strip().lower()}%")
+            )
         result = await self.session.execute(query.order_by(Project.name.asc()))
         return [
             ProjectAnalyticsRow(
@@ -247,7 +288,7 @@ class AnalyticsService:
 
     async def _material_rows(
         self,
-        project_id: UUID | None,
+        project_scope: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
         department: str | None,
@@ -269,17 +310,32 @@ class AnalyticsService:
                     0,
                 ),
             )
-            .outerjoin(InventoryMovement, InventoryMovement.item_id == InventoryItem.id)
+            .outerjoin(
+                InventoryMovement,
+                (InventoryMovement.item_id == InventoryItem.id)
+                & InventoryMovement.deleted_at.is_(None),
+            )
             .where(InventoryItem.deleted_at.is_(None))
         )
-        if project_id:
-            query = query.where(InventoryMovement.project_id == project_id)
-        if date_from:
-            query = query.where(func.date(InventoryMovement.created_at) >= date_from)
-        if date_to:
-            query = query.where(func.date(InventoryMovement.created_at) <= date_to)
-        if department:
-            query = query.where(func.lower(InventoryItem.category).like(f"%{department.lower()}%"))
+        if project_scope is not None:
+            projects = select(Project.id).where(
+                Project.id.in_(project_scope), Project.deleted_at.is_(None)
+            )
+            query = query.where(InventoryMovement.project_id.in_(projects))
+        if date_from or date_to:
+            try:
+                zone = ZoneInfo(self.settings.business_timezone).key
+            except ZoneInfoNotFoundError:
+                zone = "UTC"
+            movement_day = func.date(func.timezone(zone, InventoryMovement.created_at))
+            if date_from:
+                query = query.where(movement_day >= date_from)
+            if date_to:
+                query = query.where(movement_day <= date_to)
+        if department and department.strip():
+            query = query.where(
+                func.lower(InventoryItem.category).like(f"%{department.strip().lower()}%")
+            )
         result = await self.session.execute(
             query.group_by(InventoryItem.id).order_by(InventoryItem.name.asc())
         )
@@ -302,7 +358,7 @@ class AnalyticsService:
         )
 
 
-def build_xlsx(sheet_name: str, rows: list[list[str]]) -> bytes:
+def build_xlsx(sheet_name: str, rows: list[list[str]], *, context: str) -> bytes:
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", CONTENT_TYPES)
@@ -310,6 +366,16 @@ def build_xlsx(sheet_name: str, rows: list[list[str]]) -> bytes:
         archive.writestr("xl/workbook.xml", workbook_xml(sheet_name))
         archive.writestr("xl/_rels/workbook.xml.rels", WORKBOOK_RELS)
         archive.writestr("xl/worksheets/sheet1.xml", worksheet_xml(rows))
+        archive.writestr(
+            "docProps/custom.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/'
+            'custom-properties" '
+            'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+            '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" '
+            'pid="2" name="Filter context">'
+            f"<vt:lpwstr>{escape_xml(context)}</vt:lpwstr></property></Properties>",
+        )
     return buffer.getvalue()
 
 
@@ -363,6 +429,8 @@ CONTENT_TYPES = (
     'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
     '<Override PartName="/xl/worksheets/sheet1.xml" '
     'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+    '<Override PartName="/docProps/custom.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>'
     "</Types>"
 )
 ROOT_RELS = (
@@ -371,6 +439,9 @@ ROOT_RELS = (
     '<Relationship Id="rId1" '
     'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
     'Target="xl/workbook.xml"/>'
+    '<Relationship Id="rId2" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" '
+    'Target="docProps/custom.xml"/>'
     "</Relationships>"
 )
 WORKBOOK_RELS = (

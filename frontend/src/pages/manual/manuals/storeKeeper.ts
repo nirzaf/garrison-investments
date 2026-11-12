@@ -5,12 +5,13 @@ export const storeKeeperManual: Manual = {
   roleLabel: 'Store Keeper',
   tagline: 'Own the stores — manage materials, track stock, and handle suppliers.',
   overview:
-    'As a Store Keeper, you are responsible for the physical and digital management of materials and inventory. You manage stock levels in the portal, record material receipts and issues, and work with supplier records. Your role is critical for ensuring accurate cost tracking and that engineers have the materials they need.',
+    'As a Store Keeper, you are responsible for the physical and digital management of materials and inventory. You manage stock levels in the portal, record material receipts and issues, and work with supplier records. Use requests and movement history to keep stock records aligned with physical balances.',
   permissions: [
     'Scoped dashboard',
     'View inventory',
-    'Manage inventory (add, update, issue materials)',
-    'Manage suppliers'
+    'Add locations and items, receive stock, and reserve or issue approved requests',
+    'Manage suppliers',
+    'Create requests for active projects and track your submissions'
   ],
   limitations: [
     'Cannot view or submit reports',
@@ -27,7 +28,7 @@ export const storeKeeperManual: Manual = {
       title: 'Your Dashboard',
       icon: '🏠',
       content:
-        'Your dashboard gives you a quick overview of current stock levels, recent material movements, and any low-stock alerts.',
+        'Use the Dashboard for unread workflow alerts and Materials for current stock and movements.',
       tips: ['Set a bookmark to the Materials page for quick daily access.']
     },
     {
@@ -41,31 +42,32 @@ export const storeKeeperManual: Manual = {
         {
           step: 2,
           action: 'View current stock',
-          detail: 'See all materials with their current quantities, units, and project assignments.'
+          detail:
+            'Choose an inventory item to view its location-level On hand, Reserved, and Available balances.'
         },
         {
           step: 3,
           action: 'Add a new material',
           detail:
-            'Click "Add Material". Enter the material name, unit of measure (e.g., kg, m³, bags), and initial quantity.'
+            'Fill the Inventory item form with the required name, item code, category, type, and unit, then choose Add item. Record opening stock as a receipt.'
         },
         {
           step: 4,
           action: 'Record a delivery',
           detail:
-            'When materials arrive, find the relevant item and click "Update" or "Receive". Enter the quantity received and the delivery note reference.'
+            'Select the item and use Quick receive. Choose the Receipt destination, enter the quantity and notes, then select Receive stock.'
         },
         {
           step: 5,
           action: 'Issue materials to a project',
           detail:
-            'When issuing materials from store, click "Issue". Select the project, enter the quantity, and confirm.'
+            'Create a material request with an active project, source location, and item quantities. After approval, open Request lines and use Reserve selected and Issue selected for the quantities you are fulfilling.'
         },
         {
           step: 6,
           action: 'Review stock movements',
           detail:
-            'Use the movement history on each material to see a full log of deliveries and issues.'
+            'Use Recent movements to review receipts and issues, and Request lifecycle to check fulfillment status.'
         }
       ],
       tips: [
@@ -84,13 +86,13 @@ Material Flow in the Portal:
 [Stock level increases]
           │
           ▼
-[Engineer uses materials on site]
+[Material request approved]
           │
           ▼
-[You record ISSUE to project in Materials page]
+[Reserve selected quantities → Issue selected quantities]
           │
           ▼
-[Stock level decreases + project cost updated]
+[Stock and request balances update]
 `
     },
     {
@@ -103,37 +105,35 @@ Material Flow in the Portal:
         {
           step: 1,
           action: 'Go to Suppliers',
-          detail:
-            'Navigate to Suppliers from the portal (may appear in the sidebar or via the Materials area).'
+          detail: 'Open Suppliers from the sidebar.'
         },
         {
           step: 2,
           action: 'View supplier list',
           detail:
-            'See all registered suppliers with their names, contact details, and associated materials.'
+            'Use search and the active status filter to find registered suppliers and review contact and compliance details.'
         },
         {
           step: 3,
           action: 'Add a new supplier',
-          detail:
-            'Click "Add Supplier". Fill in the supplier name, contact person, phone, email, and any notes.'
+          detail: 'Choose New supplier and enter the required contact, tax, and compliance details.'
         },
         {
           step: 4,
           action: 'Update supplier details',
           detail:
-            'Click on an existing supplier to edit their information if contact details change.'
+            'Choose Edit supplier to update details. Deactivate supplier makes the supplier unavailable for new selection while retaining historical references.'
         },
         {
           step: 5,
           action: 'Upload TDS documents',
           detail:
-            'For each supplier, you can upload their Technical Data Sheets (TDS) for the materials they supply.'
+            'Select a file and choose Upload TDS document on the supplier card. Update the expiry date in Edit supplier when applicable.'
         }
       ],
       tips: [
         'Keep supplier contact details up to date — they are used by the finance team when processing invoices.',
-        'Link suppliers to the correct materials so the system can provide accurate sourcing reports.'
+        'Keep TDS expiry dates current for compliance review.'
       ]
     },
     {
@@ -144,8 +144,9 @@ Material Flow in the Portal:
       steps: [
         {
           step: 1,
-          action: 'Export the inventory list',
-          detail: 'Print or export the current stock from the Materials page.'
+          action: 'Open the stock matrix',
+          detail:
+            'Select the inventory item and use Filter by location to find the balance you are reconciling.'
         },
         {
           step: 2,
@@ -156,13 +157,13 @@ Material Flow in the Portal:
           step: 3,
           action: 'Investigate discrepancies',
           detail:
-            'Look at the movement history for any item with a discrepancy to find missing receipts or issues.'
+            'Review Recent movements for receipts, issues, and adjustments that explain the discrepancy.'
         },
         {
           step: 4,
           action: 'Correct the record',
           detail:
-            'Make any necessary adjustments with a note explaining the reason for the correction.'
+            'Use Record movement with the adjustment type, applicable location, quantity, and reason in Notes.'
         }
       ],
       tips: [

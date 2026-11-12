@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -14,6 +14,7 @@ from app.schemas.documents import (
     DocumentVersionResponse,
 )
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
+from app.services.idempotency import validate_key
 from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE, PERMISSION_DOCUMENTS_VIEW
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -82,8 +83,11 @@ async def upload_document_version(
     current_user: CanManageDocuments,
     session: DbSession,
     file: Annotated[UploadFile, File()],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> DocumentResponse:
-    document = await DocumentService(session).upload_version(document_id, file, current_user)
+    document = await DocumentService(session).upload_version(
+        document_id, file, current_user, validate_key(idempotency_key)
+    )
     return DocumentResponse.model_validate(document)
 
 

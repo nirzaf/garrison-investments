@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -10,13 +11,16 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.models.activity_log import ActivityLog
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.suppliers import SupplierCreateRequest, SupplierUpdateRequest
 from app.services.audit_service import AuditService
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
-from app.utils.security import utc_now
+from app.utils.permissions import PERMISSION_SUPPLIERS_MANAGE, ensure_permission
+
+logger = logging.getLogger(__name__)
 
 MAX_TDS_FILE_SIZE = 30 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
@@ -35,6 +39,7 @@ class SupplierService:
         self.audit = AuditService(session)
 
     async def create_supplier(self, payload: SupplierCreateRequest, actor: User) -> Supplier:
+        ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
         supplier = Supplier(**payload.model_dump())
         self.session.add(supplier)
         await self.session.flush()
@@ -77,7 +82,9 @@ class SupplierService:
         suppliers = list(
             (
                 await self.session.scalars(
-                    query.order_by(Supplier.name.asc()).limit(limit).offset(offset)
+                    query.order_by(Supplier.name.asc(), Supplier.id.asc())
+                    .limit(limit)
+                    .offset(offset)
                 )
             ).all()
         )
@@ -90,11 +97,18 @@ class SupplierService:
         payload: SupplierUpdateRequest,
         actor: User,
     ) -> Supplier:
-        supplier = await self.get_supplier(supplier_id)
-        updates = payload.model_dump(exclude_unset=True)
+        ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
+        supplier = await self.get_supplier(supplier_id, for_update=True)
+        self._check_revision(supplier, payload.expected_revision)
+        proposed = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        updates = {key: value for key, value in proposed.items() if getattr(supplier, key) != value}
+        if not updates:
+            return supplier
         old_values = {key: getattr(supplier, key) for key in updates}
+        old_values["revision"] = supplier.revision
         for key, value in updates.items():
             setattr(supplier, key, value)
+        supplier.revision += 1
         await self.audit.record(
             action="suppliers.updated",
             user_id=actor.id,
@@ -103,20 +117,30 @@ class SupplierService:
             old_values={
                 key: str(value) if value is not None else None for key, value in old_values.items()
             },
-            new_values=payload.model_dump(mode="json", exclude_unset=True),
+            new_values={
+                **payload.model_dump(mode="json", include=set(updates)),
+                "revision": supplier.revision,
+            },
         )
         await self.session.commit()
         return supplier
 
-    async def deactivate_supplier(self, supplier_id: UUID, actor: User) -> Supplier:
-        supplier = await self.get_supplier(supplier_id)
+    async def deactivate_supplier(
+        self, supplier_id: UUID, actor: User, *, expected_revision: int | None = None
+    ) -> Supplier:
+        ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
+        supplier = await self.get_supplier(supplier_id, for_update=True)
+        self._check_revision(supplier, expected_revision)
+        if not supplier.is_active:
+            return supplier
         supplier.is_active = False
-        supplier.deleted_at = utc_now()
+        supplier.revision += 1
         await self.audit.record(
             action="suppliers.deactivated",
             user_id=actor.id,
             entity_type="suppliers",
             entity_id=supplier.id,
+            new_values={"is_active": False, "revision": supplier.revision},
         )
         await self.session.commit()
         return supplier
@@ -127,7 +151,8 @@ class SupplierService:
         file: UploadFile,
         actor: User,
     ) -> Supplier:
-        supplier = await self.get_supplier(supplier_id)
+        ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
+        supplier = await self.get_supplier(supplier_id, for_update=True)
         data = await file.read()
         mime_type = self._validate_file(file.filename or "tds-document", data)
         extension = ".pdf" if mime_type == "application/pdf" else Path(file.filename or "").suffix
@@ -135,18 +160,43 @@ class SupplierService:
         await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
         old_key = supplier.tds_document_key
         supplier.tds_document_key = object_key
-        await self.audit.record(
-            action="suppliers.tds_uploaded",
-            user_id=actor.id,
-            entity_type="suppliers",
-            entity_id=supplier.id,
-            old_values={"tds_document_key": old_key},
-            new_values={"tds_document_key": object_key},
-        )
-        await self.session.commit()
+        supplier.revision += 1
+        try:
+            await self.audit.record(
+                action="suppliers.tds_uploaded",
+                user_id=actor.id,
+                entity_type="suppliers",
+                entity_id=supplier.id,
+                old_values={"tds_document_key": old_key},
+                new_values={"tds_document_key": object_key, "revision": supplier.revision},
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            try:
+                current_key = await self.session.scalar(
+                    select(Supplier.tds_document_key).where(Supplier.id == supplier_id)
+                )
+                recorded = await self.session.scalar(
+                    select(ActivityLog.id)
+                    .where(
+                        ActivityLog.entity_id == supplier_id,
+                        ActivityLog.action == "suppliers.tds_uploaded",
+                        ActivityLog.new_values["tds_document_key"].as_string() == object_key,
+                    )
+                    .limit(1)
+                )
+                if current_key != object_key and recorded is None:
+                    await asyncio.to_thread(
+                        self._client().remove_object, self.settings.minio_bucket, object_key
+                    )
+            except Exception:
+                logger.warning("Could not clean up a failed supplier TDS upload.")
+            raise
         return supplier
 
     async def signed_tds_url(self, supplier_id: UUID, actor: User) -> str:
+        ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
         supplier = await self.get_supplier(supplier_id)
         if not supplier.tds_document_key:
             raise NotFoundException("Supplier TDS document")
@@ -164,29 +214,42 @@ class SupplierService:
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
         )
 
-    async def get_supplier(self, supplier_id: UUID) -> Supplier:
-        supplier = await self.session.scalar(
-            select(Supplier).where(Supplier.id == supplier_id, Supplier.deleted_at.is_(None))
-        )
+    async def get_supplier(self, supplier_id: UUID, *, for_update: bool = False) -> Supplier:
+        query = select(Supplier).where(Supplier.id == supplier_id, Supplier.deleted_at.is_(None))
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        supplier = await self.session.scalar(query)
         if not supplier:
             raise NotFoundException("Supplier")
         return supplier
 
-    async def get_active_supplier(self, supplier_id: UUID) -> Supplier:
-        supplier = await self.session.scalar(
-            select(Supplier).where(
-                Supplier.id == supplier_id,
-                Supplier.is_active.is_(True),
-                Supplier.deleted_at.is_(None),
-            )
+    async def get_active_supplier(
+        self, supplier_id: UUID, *, lock_selection: bool = False
+    ) -> Supplier:
+        query = select(Supplier).where(
+            Supplier.id == supplier_id,
+            Supplier.is_active.is_(True),
+            Supplier.deleted_at.is_(None),
         )
+        if lock_selection:
+            query = query.with_for_update(read=True)
+        supplier = await self.session.scalar(query)
         if not supplier:
             raise NotFoundException("Active supplier")
         return supplier
 
+    @staticmethod
+    def _check_revision(supplier: Supplier, expected_revision: int | None) -> None:
+        if expected_revision is not None and expected_revision != supplier.revision:
+            raise AppException(
+                "This supplier changed. Compare your edits with the saved record.",
+                status_code=409,
+                error_code="SUPPLIER_REVISION_CONFLICT",
+            )
+
     def _validate_file(self, filename: str, data: bytes) -> str:
         if len(data) > MAX_TDS_FILE_SIZE:
-            raise AppException("File exceeds the 30 MB limit.", status_code=413)
+            raise AppException("File exceeds the 30 MiB limit.", status_code=413)
         if Path(filename).suffix.lower() in BLOCKED_EXTENSIONS:
             raise AppException("File type is blocked.", status_code=422)
         header = data[:32]

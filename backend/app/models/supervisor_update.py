@@ -53,4 +53,12 @@ class SupervisorUpdate(TimestampMixin, SoftDeleteMixin, Base):
         nullable=True,
     )
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_report_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey(
+            "daily_reports.id", name="fk_supervisor_updates_verified_report_id", ondelete="RESTRICT"
+        ),
+        nullable=True,
+        index=True,
+    )
     verification_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -4,6 +4,8 @@ Supervisor site updates with attendance, overtime, progress, and verification me
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/supervisor_update.py)
 
+An engineer’s report submission verifies an eligible update and binds it to that report. A rejected report keeps its bound evidence. The migration leaves legacy ownership unset when more than one historical report could have verified the update.
+
 ## Columns
 
 | Column | PostgreSQL type | Nullable | Server default |
@@ -24,6 +26,7 @@ Supervisor site updates with attendance, overtime, progress, and verification me
 | `submitted_at` | `timestamptz` | Yes | — |
 | `verified_by` | `uuid` | Yes | — |
 | `verified_at` | `timestamptz` | Yes | — |
+| `verified_report_id` | `uuid` | Yes | — |
 | `verification_notes` | `text` | Yes | — |
 | `created_at` | `timestamptz` | No | `now()` |
 | `updated_at` | `timestamptz` | No | `now()` |
@@ -43,6 +46,7 @@ Supervisor site updates with attendance, overtime, progress, and verification me
 | --- | --- | --- | --- |
 | `fk_supervisor_updates_project_id_projects` | `(project_id)` | [`projects(id)`](projects.md) | `CASCADE` |
 | `fk_supervisor_updates_supervisor_id_users` | `(supervisor_id)` | [`users(id)`](users.md) | `CASCADE` |
+| `fk_supervisor_updates_verified_report_id` | `(verified_report_id)` | [`daily_reports(id)`](daily_reports.md) | `RESTRICT` |
 | `fk_supervisor_updates_verified_by_users` | `(verified_by)` | [`users(id)`](users.md) | `SET NULL` |
 
 ## Indexes

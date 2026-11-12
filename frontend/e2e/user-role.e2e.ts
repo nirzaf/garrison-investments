@@ -37,14 +37,17 @@ test('an administrator creates a user, changes their role, and sees the audit en
   const createResponse = await created;
   expect(createResponse.status()).toBe(201);
   const { id }: { id: string } = await createResponse.json();
+  const searchUsers = page.getByPlaceholder('Search', { exact: true });
+  const ownRow = page.getByRole('row').filter({ hasText: admin.email });
+  await searchUsers.fill(admin.email);
+  await expect(ownRow).toBeVisible();
+  await expect(ownRow.getByRole('button', { name: 'Change role' })).toHaveCount(0);
+  await expect(ownRow.getByRole('button', { name: 'Reset password' })).toHaveCount(0);
+  await expect(ownRow.getByRole('button', { name: 'Deactivate' })).toHaveCount(0);
+
   const row = page.getByRole('row').filter({ hasText: email });
+  await searchUsers.fill(email);
   await expect(row.getByRole('cell', { name: /Civil Engineer/ })).toBeVisible();
-  await expect(
-    page
-      .getByRole('row')
-      .filter({ hasText: admin.email })
-      .getByRole('button', { name: 'Change role' })
-  ).toHaveCount(0);
 
   await row.getByRole('button', { name: 'Change role' }).click({ timeout: 5_000 });
   await expect(row.getByRole('button', { name: 'Save role' })).toBeDisabled();
@@ -60,6 +63,7 @@ test('an administrator creates a user, changes their role, and sees the audit en
   ).toBeVisible();
   await expect(row.getByRole('cell', { name: /Civil Supervisor/ })).toBeVisible();
   await page.reload();
+  await searchUsers.fill(email);
   await expect(row.getByRole('cell', { name: /Civil Supervisor/ })).toBeVisible();
 
   await page.getByRole('link', { name: 'Audit', exact: true }).click();

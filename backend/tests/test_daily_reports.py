@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 import httpx
@@ -315,6 +316,94 @@ async def test_non_engineer_cannot_create_daily_report() -> None:
         )
 
         assert response.status_code == 403
+
+
+async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        engineer = {"Authorization": f"Bearer {setup['engineer_token']}"}
+        manager = {"Authorization": f"Bearer {setup['manager_token']}"}
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        created = await client.post("/api/v1/reports", json=payload, headers=engineer)
+        assert created.status_code == 201
+        url = f"/api/v1/reports/{created.json()['id']}"
+        submitted = await client.post(f"{url}/submit", headers=engineer)
+        assert submitted.status_code == 200
+
+        first_draft = await client.post(
+            "/api/v1/reports", json={**payload, "supervisor_update_ids": []}, headers=engineer
+        )
+        assert first_draft.status_code == 201
+        next_business_day = date.fromisoformat(payload["report_date"]) + timedelta(days=1)
+        monkeypatch.setattr("app.services.report_service.business_today", lambda: next_business_day)
+
+        old_unsubmitted = await client.post(
+            f"/api/v1/reports/{first_draft.json()['id']}/submit", headers=engineer
+        )
+        assert old_unsubmitted.status_code == 422
+        assert old_unsubmitted.json()["error_code"] == "DAILY_REPORT_PAST_DATE_REQUIRES_ADMIN"
+
+        rejected = await client.post(f"{url}/reject", json={"comments": "Revise"}, headers=manager)
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "draft"
+        payload["expected_revision"] = rejected.json()["revision"]
+
+        evidence = await client.get(f"{url}/supervisor-updates", headers=manager)
+        assert evidence.status_code == 200
+        retained = evidence.json()[0]
+        assert retained["verified_report_id"] == created.json()["id"]
+        assert retained["verified_by_name"]
+        removed = await client.put(
+            url, json={**payload, "supervisor_update_ids": []}, headers=engineer
+        )
+        assert removed.status_code == 409
+
+        updated = await client.put(
+            url, json={**payload, "work_completed": "Revised"}, headers=engineer
+        )
+        assert updated.status_code == 200
+        resubmitted = await client.post(f"{url}/submit", headers=engineer)
+        assert resubmitted.status_code == 200, resubmitted.json()
+        assert resubmitted.json()["report_number"] == submitted.json()["report_number"]
+        assert resubmitted.json()["report_date"] == payload["report_date"]
+        assert resubmitted.json()["supervisor_update_ids"] == payload["supervisor_update_ids"]
+        evidence_after = await client.get(f"{url}/supervisor-updates", headers=manager)
+        assert evidence_after.json() == [retained]
+
+
+async def test_concurrent_reports_cannot_both_claim_one_supervisor_update() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        engineer = {"Authorization": f"Bearer {setup['engineer_token']}"}
+        payload = report_payload(setup["project_id"], setup["supervisor_update_id"])
+        reports = [
+            await client.post("/api/v1/reports", json=payload, headers=engineer) for _ in range(2)
+        ]
+        assert [report.status_code for report in reports] == [201, 201]
+        submissions = await asyncio.gather(
+            *(
+                client.post(f"/api/v1/reports/{report.json()['id']}/submit", headers=engineer)
+                for report in reports
+            )
+        )
+        assert sorted(submission.status_code for submission in submissions) == [200, 409]
+        accepted = next(
+            submission.json() for submission in submissions if submission.status_code == 200
+        )
+        denied = next(
+            submission.json() for submission in submissions if submission.status_code == 409
+        )
+        assert denied["error_code"] == "SUPERVISOR_UPDATE_ALREADY_VERIFIED"
+        evidence = await client.get(
+            f"/api/v1/reports/{accepted['id']}/supervisor-updates", headers=engineer
+        )
+        assert evidence.json()[0]["verified_report_id"] == accepted["id"]
 
 
 async def test_daily_report_submit_requires_valid_supervisor_update() -> None:
@@ -691,3 +780,45 @@ async def test_project_manager_rejects_with_required_reason() -> None:
         assert rejected["status"] == "draft"
         assert rejected["rejection_comments"] == "Missing WIR evidence."
         assert any(item["decision"] == "rejected" for item in rejected["approval_history"])
+
+
+async def test_report_revision_rejects_stale_edit_and_requires_reload_for_legacy_client() -> None:
+    await skip_if_database_unavailable()
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        headers = {"Authorization": f"Bearer {setup['engineer_token']}"}
+        payload = report_payload(setup["project_id"])
+        created = await client.post("/api/v1/reports", json=payload, headers=headers)
+        assert created.status_code == 201
+        report = created.json()
+        assert report["revision"] == 1
+        path = f"/api/v1/reports/{report['id']}"
+
+        legacy = await client.put(path, json=payload, headers=headers)
+        assert legacy.status_code == 409
+        assert legacy.json()["error_code"] == "DAILY_REPORT_REVISION_REQUIRED"
+
+        edited = await client.put(
+            path,
+            json={**payload, "expected_revision": 1, "work_completed": "Updated site progress"},
+            headers=headers,
+        )
+        assert edited.status_code == 200
+        assert edited.json()["revision"] == 2
+
+        stale = await client.put(
+            path,
+            json={**payload, "expected_revision": 1, "work_completed": "Older local draft"},
+            headers=headers,
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error_code"] == "DAILY_REPORT_REVISION_CONFLICT"
+        persisted = (await client.get(path, headers=headers)).json()
+        assert persisted["revision"] == 2
+        assert persisted["work_completed"] == "Updated site progress"
+        assert persisted["manpower_entries"] == edited.json()["manpower_entries"]
+
+        submitted = await client.post(f"{path}/submit", headers=headers)
+        assert submitted.status_code == 200
+        assert submitted.json()["revision"] == 3

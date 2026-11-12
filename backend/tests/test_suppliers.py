@@ -1,9 +1,10 @@
 from datetime import UTC, date, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
@@ -11,8 +12,11 @@ from app.models.notification import Notification
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.suppliers import SupplierUpdateRequest
+from app.services.supplier_service import SupplierService
 from app.tasks.maintenance import _check_supplier_tds_expiry
 from app.utils.security import hash_password
+from tests.concurrency_helpers import error_codes, race_sessions, status_counts
 
 pytestmark = pytest.mark.asyncio
 
@@ -110,11 +114,45 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
 
         updated = await client.patch(
             f"/api/v1/suppliers/{supplier['id']}",
-            json={"rating": "B", "compliance_status": "pending"},
+            json={
+                "rating": "B",
+                "compliance_status": "pending",
+                "tds_expiry_date": None,
+                "expected_revision": supplier["revision"],
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
         assert updated.status_code == 200
         assert updated.json()["rating"] == "B"
+        assert updated.json()["tds_expiry_date"] is None
+        assert updated.json()["tds_days_remaining"] is None
+
+        async def revise(session: AsyncSession, rating: str) -> int:
+            await SupplierService(session).update_supplier(
+                UUID(supplier["id"]),
+                SupplierUpdateRequest(rating=rating, expected_revision=updated.json()["revision"]),
+                operation_manager,
+            )
+            return 200
+
+        edits = await race_sessions(
+            lambda session: revise(session, "B1"), lambda session: revise(session, "B2")
+        )
+        assert status_counts(edits) == {200: 1, 409: 1}
+        assert error_codes(edits) == ["SUPPLIER_REVISION_CONFLICT"]
+        stale = await client.patch(
+            f"/api/v1/suppliers/{supplier['id']}",
+            json={"rating": "C", "expected_revision": supplier["revision"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["error_code"] == "SUPPLIER_REVISION_CONFLICT"
+        invalid = await client.patch(
+            f"/api/v1/suppliers/{supplier['id']}",
+            json={"tds_expiry_date": "2027-02-29", "name": None},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert invalid.status_code == 422
 
         filtered = await client.get(
             "/api/v1/suppliers",
@@ -141,10 +179,22 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
 
         deactivated = await client.delete(
             f"/api/v1/suppliers/{supplier['id']}",
+            params={"expected_revision": uploaded.json()["revision"]},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert deactivated.status_code == 200
         assert deactivated.json()["is_active"] is False
+        historical = await client.get(
+            f"/api/v1/suppliers/{supplier['id']}/tds-document",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert historical.status_code == 200
+        inactive = await client.get(
+            "/api/v1/suppliers",
+            params={"active": False, "search": "Compliant Supplier"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert {item["id"] for item in inactive.json()["items"]} >= {supplier["id"]}
 
 
 async def test_supplier_tds_expiry_reminder_notifies_accounts_and_operations() -> None:

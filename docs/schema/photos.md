@@ -4,7 +4,7 @@ Original media and generated renditions for reports, updates, and other supporte
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/photo.py)
 
-The [photo service](../../backend/app/services/photo_service.py) uses `entity_type` and `entity_id` to associate files with their parents. Original, compressed, and thumbnail paths are object-storage keys.
+The [photo service](../../backend/app/services/photo_service.py) uses `entity_type` and `entity_id` to associate files with their parents. Original, compressed, and thumbnail paths are object-storage keys. For daily report uploads, `report_revision` preserves the revision assigned to that upload for idempotent replay.
 
 ## Columns
 
@@ -18,6 +18,7 @@ The [photo service](../../backend/app/services/photo_service.py) uses `entity_ty
 | `thumbnail_path` | `varchar(500)` | Yes | — |
 | `mime_type` | `varchar(80)` | No | — |
 | `size_bytes` | `bigint` | No | — |
+| `report_revision` | `integer` | Yes | — |
 | `width` | `integer` | Yes | — |
 | `height` | `integer` | Yes | — |
 | `entity_type` | `varchar(30)` | No | — |

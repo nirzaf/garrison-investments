@@ -1,12 +1,4 @@
-"""Authorization matrix baseline: 8 roles x {own project, other project, no project}.
-
-Written BEFORE the shared authorization helper lands (plan 2.1). Every expected value
-below is the observed pre-refactor behaviour of report_service / finance_service, so a
-refactor that silently widens or narrows access fails here instead of in production.
-
-The matrix is deliberately expressed as HTTP status codes only: the point is the
-allow/deny decision, not the response body.
-"""
+"""Report and finance access for eight roles across project scopes."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -63,11 +55,11 @@ REPORTS_GET: dict[str, dict[str, int]] = {
     "admin": {"own": 200, "other": 200},
     "general_manager": {"own": 200, "other": 200},
     "operation_manager": {"own": 200, "other": 200},
-    "accounts": {"own": 404, "other": 404},
+    "accounts": {"own": 200, "other": 200},
     "project_manager": {"own": 200, "other": 404},
     "civil_engineer": {"own": 200, "other": 404},
     "civil_supervisor": {"own": 404, "other": 404},
-    "store_keeper": {"own": 404, "other": 404},
+    "store_keeper": {"own": 403, "other": 403},
 }
 
 # GET /finance/invoices?project_id=... — list_invoices()

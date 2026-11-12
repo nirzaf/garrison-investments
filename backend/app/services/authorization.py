@@ -26,6 +26,7 @@ from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
     ROLE_ACCOUNTS,
     ROLE_ADMIN,
+    ROLE_CIVIL_SUPERVISOR,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
 )
@@ -110,7 +111,11 @@ async def ensure_entity_access(
         )
         if update is None:
             raise NotFoundException("Supervisor update")
-        if update.supervisor_id == actor.id or actor.role in COMPANY_WIDE_ROLES:
+        if update.supervisor_id == actor.id or actor.role == ROLE_ADMIN:
+            return
+        if update.status == "draft" or actor.role == ROLE_CIVIL_SUPERVISOR:
+            raise NotFoundException("Supervisor update")
+        if actor.role in COMPANY_WIDE_ROLES:
             return
         project_ids = await accessible_project_ids(session, actor) or []
         if update.project_id not in project_ids:

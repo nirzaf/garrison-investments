@@ -1,4 +1,6 @@
-from decimal import Decimal
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -16,16 +18,21 @@ from app.schemas.projects import (
     BoqItemCreateRequest,
     ProjectCreateRequest,
     ProjectMemberCreateRequest,
+    ProjectResponse,
     ProjectTaskCreateRequest,
+    ProjectTaskResponse,
+    ProjectTaskUpdateRequest,
     ProjectUpdateRequest,
 )
 from app.services.audit_service import AuditService
-from app.utils.exceptions import AppException, NotFoundException
+from app.utils.exceptions import AppException, ErrorDetail, NotFoundException
 from app.utils.permissions import (
+    PERMISSION_PROJECTS_MANAGE,
     ROLE_ACCOUNTS,
     ROLE_ADMIN,
     ROLE_GENERAL_MANAGER,
     ROLE_OPERATION_MANAGER,
+    ensure_permission,
 )
 
 PROJECT_STATUSES = {"planning", "active", "on_hold", "completed", "cancelled"}
@@ -73,13 +80,10 @@ class ProjectService:
         return project, members, milestones, boq_items
 
     async def create_project(self, payload: ProjectCreateRequest, actor: User) -> Project:
+        ensure_permission(actor, PERMISSION_PROJECTS_MANAGE)
         self._validate_status(payload.status)
-        if not payload.boq_items:
-            raise AppException(
-                "Project creation requires at least one BOQ item.",
-                status_code=422,
-                error_code="PROJECT_BOQ_REQUIRED",
-            )
+        self._validate_dates(payload.start_date, payload.target_end_date, "target_end_date")
+        amounts = self._validate_setup(payload)
         project = Project(
             name=payload.name.strip(),
             code=await self._generate_project_code(payload.name),
@@ -97,7 +101,7 @@ class ProjectService:
         try:
             await self.projects.add_project(project)
             milestones = await self._create_milestones(project.id, payload)
-            await self._create_boq_items(project.id, payload.boq_items, milestones)
+            await self._create_boq_items(project.id, payload.boq_items, amounts, milestones)
             await self.audit.record(
                 action="projects.created",
                 user_id=actor.id,
@@ -121,39 +125,38 @@ class ProjectService:
         payload: ProjectUpdateRequest,
         actor: User,
     ) -> Project:
-        project = await self._get_authorized_project(project_id, actor)
-        if project.status in READ_ONLY_STATUSES:
-            raise AppException(
-                "Completed or cancelled projects are read-only.",
-                status_code=409,
-                error_code="PROJECT_READ_ONLY",
+        project = await self._get_editable_project(project_id, actor)
+        self._check_revision(
+            project.revision, payload.expected_revision, "PROJECT_REVISION_CONFLICT"
+        )
+        proposed = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        changes = {key: value for key, value in proposed.items() if getattr(project, key) != value}
+        if not changes:
+            return project
+        self._validate_status(changes.get("status"))
+        start = changes.get("start_date", project.start_date)
+        if "start_date" in changes or "target_end_date" in changes:
+            self._validate_dates(
+                start, changes.get("target_end_date", project.target_end_date), "target_end_date"
             )
-        old_values = {"status": project.status, "name": project.name}
-        if payload.status is not None:
-            self._validate_status(payload.status)
-            project.status = payload.status
-        for field in (
-            "name",
-            "scope_of_work",
-            "target_end_date",
-            "location",
-            "description",
-            "budget_amount",
-            "start_date",
-            "actual_end_date",
-            "client_name",
-            "contract_number",
-        ):
-            value = getattr(payload, field)
-            if value is not None:
-                setattr(project, field, value.strip() if isinstance(value, str) else value)
+        if "start_date" in changes or "actual_end_date" in changes:
+            self._validate_dates(
+                start, changes.get("actual_end_date", project.actual_end_date), "actual_end_date"
+            )
+        fields = set(changes) | {"revision"}
+        old_values = ProjectResponse.model_validate(project).model_dump(mode="json", include=fields)
+        for field, value in changes.items():
+            setattr(project, field, value)
+        project.revision += 1
         await self.audit.record(
             action="projects.updated",
             user_id=actor.id,
             entity_type="projects",
             entity_id=project.id,
             old_values=old_values,
-            new_values={"status": project.status, "name": project.name},
+            new_values=ProjectResponse.model_validate(project).model_dump(
+                mode="json", include=fields
+            ),
         )
         await self.session.commit()
         return project
@@ -164,29 +167,31 @@ class ProjectService:
         payload: ProjectMemberCreateRequest,
         actor: User,
     ) -> ProjectMember:
-        project = await self._get_authorized_project(project_id, actor)
-        if project.status in READ_ONLY_STATUSES:
-            raise AppException(
-                "Completed or cancelled projects are read-only.",
-                status_code=409,
-                error_code="PROJECT_READ_ONLY",
-            )
-        user = await self.users.get_by_id(payload.user_id)
+        project = await self._get_editable_project(project_id, actor)
+        self._check_revision(
+            project.revision, payload.expected_revision, "PROJECT_REVISION_CONFLICT"
+        )
+        user = await self.users.get_by_id(payload.user_id, for_update=True)
         if not user or not user.is_active:
             raise NotFoundException("User")
         member = ProjectMember(
             project_id=project.id,
             user_id=user.id,
-            role_in_project=payload.role_in_project,
+            role_in_project=payload.role_in_project or None,
         )
         try:
             await self.projects.add_member(member)
+            project.revision += 1
             await self.audit.record(
                 action="projects.member_assigned",
                 user_id=actor.id,
                 entity_type="projects",
                 entity_id=project.id,
-                new_values={"member_user_id": str(user.id)},
+                new_values={
+                    "member_user_id": str(user.id),
+                    "role_in_project": member.role_in_project,
+                    "revision": project.revision,
+                },
             )
             await self.session.commit()
         except IntegrityError as exc:
@@ -214,51 +219,10 @@ class ProjectService:
         payload: ProjectTaskCreateRequest,
         actor: User,
     ) -> ProjectTask:
-        project = await self._get_authorized_project(project_id, actor)
-        if project.status in READ_ONLY_STATUSES:
-            raise AppException(
-                "Completed or cancelled projects are read-only.",
-                status_code=409,
-                error_code="PROJECT_READ_ONLY",
-            )
-        self._validate_task_status(payload.status)
-        if payload.milestone_id and not await self.projects.get_milestone(
-            project.id, payload.milestone_id
-        ):
-            raise AppException(
-                "Milestone does not belong to this project.",
-                status_code=422,
-                error_code="PROJECT_TASK_INVALID_MILESTONE",
-            )
-        if payload.dependency_task_id and not await self.projects.get_task(
-            project.id, payload.dependency_task_id
-        ):
-            raise AppException(
-                "Dependency task does not belong to this project.",
-                status_code=422,
-                error_code="PROJECT_TASK_INVALID_DEPENDENCY",
-            )
-        if payload.owner_id:
-            owner = await self.users.get_by_id(payload.owner_id)
-            if not owner or not owner.is_active:
-                raise NotFoundException("User")
-        task = ProjectTask(
-            project_id=project.id,
-            milestone_id=payload.milestone_id,
-            dependency_task_id=payload.dependency_task_id,
-            owner_id=payload.owner_id,
-            name=payload.name.strip(),
-            baseline_start_date=payload.baseline_start_date,
-            baseline_end_date=payload.baseline_end_date,
-            planned_start_date=payload.planned_start_date,
-            planned_end_date=payload.planned_end_date,
-            actual_start_date=payload.actual_start_date,
-            actual_end_date=payload.actual_end_date,
-            status=payload.status,
-            progress_percentage=payload.progress_percentage,
-            delay_reason=payload.delay_reason,
-            sort_order=payload.sort_order,
-        )
+        project = await self._get_editable_project(project_id, actor)
+        values = payload.model_dump()
+        await self._validate_task_fields(project.id, values)
+        task = ProjectTask(project_id=project.id, **values)
         await self.projects.add_task(task)
         await self.audit.record(
             action="projects.task_created",
@@ -274,6 +238,138 @@ class ProjectService:
         await self.session.commit()
         return task
 
+    async def update_task(
+        self,
+        project_id: UUID,
+        task_id: UUID,
+        payload: ProjectTaskUpdateRequest,
+        actor: User,
+    ) -> ProjectTask:
+        project = await self._get_editable_project(project_id, actor)
+        task = await self.projects.get_task(project.id, task_id)
+        if task is None:
+            raise NotFoundException("Task")
+        self._check_revision(
+            task.revision, payload.expected_revision, "PROJECT_TASK_REVISION_CONFLICT"
+        )
+        proposed = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        changes = {key: value for key, value in proposed.items() if getattr(task, key) != value}
+        if not changes:
+            return task
+        await self._validate_task_fields(project.id, changes, task=task)
+        fields = set(changes) | {"revision"}
+        old_values = ProjectTaskResponse.model_validate(task).model_dump(
+            mode="json", include=fields
+        )
+        for field, value in changes.items():
+            setattr(task, field, value)
+        task.revision += 1
+        await self.audit.record(
+            action="projects.task_updated",
+            user_id=actor.id,
+            entity_type="project_tasks",
+            entity_id=task.id,
+            old_values=old_values,
+            new_values=ProjectTaskResponse.model_validate(task).model_dump(
+                mode="json", include=fields
+            ),
+        )
+        await self.session.commit()
+        return task
+
+    def _validate_setup(self, payload: ProjectCreateRequest) -> list[Decimal]:
+        milestone_names: set[str] = set()
+        for index, milestone in enumerate(payload.milestones):
+            field = f"milestones.{index}"
+            name = milestone.name.casefold()
+            if name in milestone_names:
+                raise self._invalid_field(
+                    f"{field}.name",
+                    "Milestone names must be unique.",
+                    "PROJECT_MILESTONE_DUPLICATE",
+                )
+            milestone_names.add(name)
+            self._validate_dates(
+                milestone.planned_start_date,
+                milestone.planned_end_date,
+                f"{field}.planned_end_date",
+            )
+        seen_codes: set[str] = set()
+        amounts: list[Decimal] = []
+        for index, item in enumerate(payload.boq_items):
+            field = f"boq_items.{index}"
+            code = item.item_code.casefold()
+            if code in seen_codes:
+                raise self._invalid_field(
+                    f"{field}.item_code",
+                    "BOQ item codes must be unique.",
+                    "BOQ_DUPLICATE_ITEM_CODE",
+                )
+            seen_codes.add(code)
+            if item.milestone_name and item.milestone_name.casefold() not in milestone_names:
+                raise self._invalid_field(
+                    f"{field}.milestone_name",
+                    "Select a milestone included in this project.",
+                    "BOQ_UNKNOWN_MILESTONE",
+                )
+            amount = (item.planned_quantity * item.unit_rate).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            if amount >= Decimal("10000000000000"):
+                raise self._invalid_field(
+                    f"{field}.unit_rate", "The planned amount is too large.", "BOQ_AMOUNT_TOO_LARGE"
+                )
+            amounts.append(amount)
+        return amounts
+
+    async def _validate_task_fields(
+        self, project_id: UUID, fields: dict[str, Any], *, task: ProjectTask | None = None
+    ) -> None:
+        self._validate_task_status(fields.get("status"))
+        for date_type in ("baseline", "planned", "actual"):
+            start = f"{date_type}_start_date"
+            end = f"{date_type}_end_date"
+            if start in fields or end in fields:
+                self._validate_dates(
+                    fields.get(start, getattr(task, start, None)),
+                    fields.get(end, getattr(task, end, None)),
+                    end,
+                )
+        milestone_id = fields.get("milestone_id")
+        if milestone_id and not await self.projects.get_milestone(project_id, milestone_id):
+            raise self._invalid_field(
+                "milestone_id",
+                "Milestone does not belong to this project.",
+                "PROJECT_TASK_INVALID_MILESTONE",
+            )
+        dependency_id = fields.get("dependency_task_id")
+        if dependency_id:
+            dependencies = {
+                existing.id: existing.dependency_task_id
+                for existing in await self.projects.list_tasks(project_id)
+            }
+            if dependency_id not in dependencies:
+                raise self._invalid_field(
+                    "dependency_task_id",
+                    "Dependency task does not belong to this project.",
+                    "PROJECT_TASK_INVALID_DEPENDENCY",
+                )
+            seen = {task.id} if task else set()
+            while dependency_id is not None:
+                if dependency_id in seen:
+                    raise self._invalid_field(
+                        "dependency_task_id",
+                        "The dependency would create a cycle.",
+                        "PROJECT_TASK_DEPENDENCY_CYCLE",
+                    )
+                seen.add(dependency_id)
+                dependency_id = dependencies.get(dependency_id)
+        owner_id = fields.get("owner_id")
+        if owner_id:
+            owner = await self.users.get_by_id(owner_id, for_update=True)
+            if not owner or not owner.is_active:
+                raise NotFoundException("User")
+
     async def _create_milestones(
         self,
         project_id: UUID,
@@ -288,48 +384,56 @@ class ProjectService:
                     discipline=milestone_payload.discipline,
                     planned_start_date=milestone_payload.planned_start_date,
                     planned_end_date=milestone_payload.planned_end_date,
-                    sort_order=milestone_payload.sort_order or index,
+                    sort_order=(
+                        milestone_payload.sort_order
+                        if "sort_order" in milestone_payload.model_fields_set
+                        else index
+                    ),
                 )
             )
-            milestone_map[milestone.name.lower()] = milestone.id
+            milestone_map[milestone.name.casefold()] = milestone.id
         return milestone_map
 
     async def _create_boq_items(
         self,
         project_id: UUID,
         boq_items: list[BoqItemCreateRequest],
+        amounts: list[Decimal],
         milestone_map: dict[str, UUID],
     ) -> None:
-        seen_codes: set[str] = set()
-        for item in boq_items:
-            code = item.item_code.strip()
-            if code.lower() in seen_codes:
-                raise AppException(
-                    "BOQ item codes must be unique within a project.",
-                    status_code=422,
-                    error_code="BOQ_DUPLICATE_ITEM_CODE",
-                )
-            seen_codes.add(code.lower())
-            milestone_id = None
-            if item.milestone_name:
-                milestone_id = milestone_map.get(item.milestone_name.strip().lower())
+        for item, amount in zip(boq_items, amounts, strict=True):
             await self.projects.add_boq_item(
                 BoqItem(
                     project_id=project_id,
-                    milestone_id=milestone_id,
-                    item_code=code,
+                    milestone_id=milestone_map[item.milestone_name.casefold()]
+                    if item.milestone_name
+                    else None,
+                    item_code=item.item_code,
                     description=item.description,
                     discipline=item.discipline,
                     phase=item.phase,
                     unit=item.unit,
                     planned_quantity=item.planned_quantity,
                     unit_rate=item.unit_rate,
-                    planned_amount=Decimal(item.planned_quantity * item.unit_rate),
+                    planned_amount=amount,
                 )
             )
 
-    async def _get_authorized_project(self, project_id: UUID, current_user: User) -> Project:
-        project = await self.projects.get_by_id(project_id)
+    async def _get_editable_project(self, project_id: UUID, actor: User) -> Project:
+        ensure_permission(actor, PERMISSION_PROJECTS_MANAGE)
+        project = await self._get_authorized_project(project_id, actor, for_update=True)
+        if project.status in READ_ONLY_STATUSES:
+            raise AppException(
+                "Completed or cancelled projects are read-only.",
+                status_code=409,
+                error_code="PROJECT_READ_ONLY",
+            )
+        return project
+
+    async def _get_authorized_project(
+        self, project_id: UUID, current_user: User, *, for_update: bool = False
+    ) -> Project:
+        project = await self.projects.get_by_id(project_id, for_update=for_update)
         if not project:
             raise NotFoundException("Project")
         if current_user.role in UNRESTRICTED_PROJECT_ROLES:
@@ -359,3 +463,27 @@ class ProjectService:
                 status_code=422,
                 error_code="INVALID_PROJECT_TASK_STATUS",
             )
+
+    @staticmethod
+    def _check_revision(revision: int, expected_revision: int | None, error_code: str) -> None:
+        if expected_revision is not None and expected_revision != revision:
+            raise AppException(
+                "This record changed. Compare your edits with the latest version.",
+                status_code=409,
+                error_code=error_code,
+            )
+
+    def _validate_dates(self, start: date | None, end: date | None, end_field: str) -> None:
+        if start is not None and end is not None and end < start:
+            raise self._invalid_field(
+                end_field, "End date must be on or after the start date.", "PROJECT_DATE_ORDER"
+            )
+
+    @staticmethod
+    def _invalid_field(field: str, message: str, error_code: str) -> AppException:
+        return AppException(
+            message,
+            status_code=422,
+            error_code=error_code,
+            errors=[ErrorDetail(field=field, message=message)],
+        )

@@ -150,6 +150,7 @@ class MaterialRequest(TimestampMixin, SoftDeleteMixin, Base):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'requested'")
     )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     total_estimated_cost: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,

@@ -3,36 +3,39 @@ import type { Manual } from './common';
 export const adminManual: Manual = {
   roleKey: 'admin',
   roleLabel: 'Admin',
-  tagline: 'Full platform control — you can see and do everything.',
+  tagline: 'Manage accounts, oversee projects, and review audit and workflow activity.',
   overview:
-    'As an Admin, you have unrestricted access to every feature in the Garrisons portal. You are responsible for managing users, overseeing all projects, reviewing audit trails, approving reports, and maintaining the overall health of the system. Your role is the control centre of the entire platform.',
+    'Admin has company-wide oversight and manages accounts, projects, inventory, supplier records, document versions, imports, and audit records. Each workflow still applies its decision and record-state rules.',
   permissions: [
     'Manage and view all users',
     'Create, manage, and view all projects',
     'Access the full company-wide dashboard',
-    'View and approve all reports',
-    'Submit reports',
+    'View and decide submitted official daily reports',
+    'Submit official daily reports',
     'Manage and view all inventory',
     'Manage suppliers',
     'View and manage all documents',
     'Access all financial data',
     'View audit logs and security events',
-    'Access analytics and delivery planning',
+    'Access analytics and launch readiness',
     'Import users in bulk'
   ],
-  limitations: [],
+  limitations: [
+    'Use Profile to change your own password. Account management actions apply to other accounts.',
+    'Completed and cancelled projects are read-only.',
+    'Invoice approval excludes the original creator and current approval submitter.'
+  ],
   sections: [
     {
       id: 'user-management',
       title: 'Managing Users',
       icon: '👥',
-      content:
-        'You can create, edit, and manage all user accounts. Go to Users → Admin → Users from the sidebar.',
+      content: 'Open Users from the sidebar to create accounts and manage other active users.',
       steps: [
         {
           step: 1,
           action: 'Navigate to Users',
-          detail: 'Click "Users" in the sidebar under the Admin section.'
+          detail: 'Click Users in the sidebar.'
         },
         {
           step: 2,
@@ -43,13 +46,13 @@ export const adminManual: Manual = {
           step: 3,
           action: 'Create a new user',
           detail:
-            'Click the "Add User" button, fill in the full name, email, and assign a role, then save.'
+            'Complete the account form with the required details, role, and temporary password. Choose Create user.'
         },
         {
           step: 4,
-          action: 'Edit or deactivate',
+          action: 'Maintain another account',
           detail:
-            'Click on a user row to edit their details or change their role. Deactivate accounts when staff leave.'
+            'Find the account by name or email. Choose Change role, Reset password, or Deactivate as appropriate.'
         }
       ],
       tips: [
@@ -69,18 +72,19 @@ export const adminManual: Manual = {
           step: 2,
           action: 'Prepare your file',
           detail:
-            'Download the sample CSV template and fill in the required columns: full_name, email, role.'
+            'Choose users and download the Template. Complete its required fields, including email, full name, role, employee code, and temporary password.'
         },
         {
           step: 3,
           action: 'Upload and review',
           detail:
-            'Upload the completed CSV. Review any validation errors shown on screen before confirming.'
+            'Select the completed CSV or XLSX file, choose Preview, and correct any validation errors.'
         },
         {
           step: 4,
           action: 'Confirm import',
-          detail: 'Click "Import" to create the accounts. Users will receive credentials by email.'
+          detail:
+            'Choose Run import to create the accounts. Share temporary credentials through your approved account handover process.'
         }
       ],
       tips: ['Double-check email addresses before importing — they are used for login.']
@@ -96,19 +100,20 @@ export const adminManual: Manual = {
         {
           step: 2,
           action: 'Create a project',
-          detail: 'Click "New Project", fill in the project name, location, and assigned staff.'
+          detail:
+            'Choose New project and enter the required project details and BOQ lines. Add milestones and link BOQ items as needed.'
         },
         {
           step: 3,
           action: 'Assign team members',
           detail:
-            'Add engineers, supervisors, and a project manager to each project so they get scoped data access.'
+            'Open the project and use Team to assign engineers, supervisors, and a project manager.'
         },
         {
           step: 4,
           action: 'Monitor progress',
           detail:
-            'Use the project detail page to see submitted reports, approved records, and financials.'
+            'Use Overview for project details, milestones, and BOQ. Use Timeline for tasks, dates, and progress.'
         }
       ]
     },
@@ -117,29 +122,29 @@ export const adminManual: Manual = {
       title: 'Approving Reports',
       icon: '✅',
       content:
-        'Review and approve or reject daily reports and supervisor updates submitted by field staff.',
+        'Review submitted official daily reports. An engineer verifies a linked supervisor update when submitting a report.',
       steps: [
         { step: 1, action: 'Go to Approvals', detail: 'Click "Approvals" in the sidebar.' },
         {
           step: 2,
           action: 'Review pending items',
-          detail:
-            'You will see a list of reports awaiting your decision. Click a report to open it.'
+          detail: 'Open Report approvals and find the submitted report card.'
         },
         {
           step: 3,
           action: 'Read the report',
-          detail: 'Review the description, quantities, photos, and any notes from the submitter.'
+          detail:
+            'Review the report contents, attachments, history, and linked supervisor evidence.'
         },
         {
           step: 4,
           action: 'Approve or reject',
           detail:
-            'Click "Approve" to accept the report or "Reject" with a reason. Submitters are notified automatically.'
+            'Confirm target coverage and choose Approve, or enter a reason and choose Reject to return the report to draft.'
         }
       ],
       tips: [
-        'Check photos carefully before approving material deliveries.',
+        'Review the evidence attached to the report before recording a decision.',
         'Rejected reports can be resubmitted by the original engineer after corrections.'
       ]
     },
@@ -147,8 +152,7 @@ export const adminManual: Manual = {
       id: 'audit',
       title: 'Audit Logs & Security',
       icon: '🔍',
-      content:
-        'Review a complete audit trail of all actions taken in the portal for compliance and investigation.',
+      content: 'Use recorded audit events and security activity to investigate portal changes.',
       steps: [
         { step: 1, action: 'Go to Audit', detail: 'Click "Audit" in the sidebar.' },
         {
@@ -170,10 +174,10 @@ export const adminManual: Manual = {
     },
     {
       id: 'analytics',
-      title: 'Analytics & Delivery Planning',
+      title: 'Analytics and launch readiness',
       icon: '📊',
       content:
-        'Access company-wide analytics and delivery schedule planning, available exclusively to high-level management roles.',
+        'Access company-wide charts and exports. Use Launch readiness for deployment, recovery, and acceptance checks.',
       steps: [
         {
           step: 1,
@@ -182,9 +186,8 @@ export const adminManual: Manual = {
         },
         {
           step: 2,
-          action: 'Click Delivery',
-          detail:
-            'Select "Delivery" from the sidebar to manage material and equipment delivery planning.'
+          action: 'Open Launch readiness',
+          detail: 'Review the deployment, recovery, and user acceptance checks for a release.'
         }
       ]
     },
@@ -193,18 +196,19 @@ export const adminManual: Manual = {
       title: 'Finance Overview',
       icon: '💰',
       content:
-        'Access the finance page to view financial records, supplier invoices, and project cost breakdowns.',
+        'Use Finance for invoices, payments, outstanding balances, and the project budget comparison.',
       steps: [
         { step: 1, action: 'Go to Finance', detail: 'Click "Finance" in the sidebar.' },
         {
           step: 2,
           action: 'Filter by project',
-          detail: 'Use the dropdown or filter options to view financials for a specific project.'
+          detail: 'Use Project filter to show the project budget and billable invoice totals.'
         },
         {
           step: 3,
-          action: 'Export if needed',
-          detail: 'Use the export button to download financial summaries for external reporting.'
+          action: 'Review invoice details',
+          detail:
+            'Open an invoice number to see its attachment, status, available actions, and payments.'
         }
       ]
     }

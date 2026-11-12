@@ -274,6 +274,13 @@
       },
       "ApprovalResponse": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "amount": {
             "anyOf": [
               {
@@ -1084,6 +1091,19 @@
             "title": "Entity Type",
             "type": "string"
           },
+          "expected_report_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required for keyed single-file daily-report uploads.",
+            "title": "Expected Report Revision"
+          },
           "files": {
             "anyOf": [
               {
@@ -1789,6 +1809,10 @@
             ],
             "title": "Report Number"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "safety_incidents": {
             "title": "Safety Incidents",
             "type": "integer"
@@ -1844,6 +1868,7 @@
           "id",
           "project_id",
           "engineer_id",
+          "revision",
           "report_number",
           "report_date",
           "work_location",
@@ -1900,6 +1925,18 @@
             },
             "title": "Equipment Entries",
             "type": "array"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
           },
           "extra_fields": {
             "additionalProperties": true,
@@ -2691,18 +2728,6 @@
             ],
             "title": "Amount"
           },
-          "attachment_key": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attachment Key"
-          },
           "due_date": {
             "format": "date",
             "title": "Due Date",
@@ -2750,6 +2775,7 @@
           "tax_amount": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -2793,6 +2819,20 @@
       },
       "InvoiceResponse": {
         "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "correct",
+                "resubmit",
+                "approve",
+                "reject",
+                "record_payment"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
           "amount": {
             "title": "Amount",
             "type": "string"
@@ -2874,6 +2914,16 @@
             ],
             "title": "Notes"
           },
+          "outstanding_amount": {
+            "readOnly": true,
+            "title": "Outstanding Amount",
+            "type": "string"
+          },
+          "paid_total": {
+            "readOnly": true,
+            "title": "Paid Total",
+            "type": "string"
+          },
           "payment_status": {
             "title": "Payment Status",
             "type": "string"
@@ -2890,6 +2940,21 @@
             "title": "Project Id",
             "type": "string"
           },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2905,6 +2970,17 @@
               }
             ],
             "title": "Supplier Id"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
           },
           "tax_amount": {
             "title": "Tax Amount",
@@ -2932,13 +3008,121 @@
           "approved_by",
           "approved_at",
           "notes",
-          "payments"
+          "revision",
+          "payments",
+          "paid_total",
+          "outstanding_amount"
         ],
         "title": "InvoiceResponse",
         "type": "object"
       },
-      "InvoiceUpdateRequest": {
+      "InvoiceSupplierOption": {
         "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "InvoiceSupplierOption",
+        "type": "object"
+      },
+      "InvoiceSupplierOptionsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceSupplierOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InvoiceSupplierOptionsResponse",
+        "type": "object"
+      },
+      "InvoiceUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_number": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Number"
+          },
           "notes": {
             "anyOf": [
               {
@@ -2961,6 +3145,33 @@
               }
             ],
             "title": "Status"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Amount"
           }
         },
         "title": "InvoiceUpdateRequest",
@@ -3136,6 +3347,57 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MaterialQuantityCommand": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialQuantityLine"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "lines"
+        ],
+        "title": "MaterialQuantityCommand",
+        "type": "object"
+      },
+      "MaterialQuantityLine": {
+        "properties": {
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "required": [
+          "line_id",
+          "quantity"
+        ],
+        "title": "MaterialQuantityLine",
+        "type": "object"
+      },
       "MaterialRequestCreateRequest": {
         "properties": {
           "from_location_id": {
@@ -3147,6 +3409,7 @@
             "items": {
               "$ref": "#/components/schemas/MaterialRequestLineCreate"
             },
+            "maxItems": 100,
             "minItems": 1,
             "title": "Lines",
             "type": "array"
@@ -3308,6 +3571,10 @@
             ],
             "title": "Requester Id"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3324,6 +3591,7 @@
           "requester_id",
           "from_location_id",
           "status",
+          "revision",
           "total_estimated_cost",
           "notes",
           "lines"
@@ -3419,6 +3687,7 @@
           },
           "sort_order": {
             "default": 0,
+            "maximum": 2147483647.0,
             "minimum": 0.0,
             "title": "Sort Order",
             "type": "integer"
@@ -3602,7 +3871,7 @@
                 "type": "string"
               }
             ],
-            "description": "Positive, or negative for a stock adjustment.",
+            "description": "Positive, or negative for a stock adjustment. Up to three decimal places.",
             "title": "Quantity"
           },
           "reference_id": {
@@ -4168,6 +4437,24 @@
         "title": "PaymentResponse",
         "type": "object"
       },
+      "PhotoDecisionRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "PhotoDecisionRequest",
+        "type": "object"
+      },
       "PhotoListResponse": {
         "properties": {
           "items": {
@@ -4191,6 +4478,11 @@
       },
       "PhotoResponse": {
         "properties": {
+          "can_delete": {
+            "default": false,
+            "title": "Can Delete",
+            "type": "boolean"
+          },
           "caption": {
             "anyOf": [
               {
@@ -4212,6 +4504,18 @@
               }
             ],
             "title": "Compressed Path"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           },
           "entity_id": {
             "format": "uuid",
@@ -4257,6 +4561,18 @@
           "processing_status": {
             "title": "Processing Status",
             "type": "string"
+          },
+          "recoverable_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recoverable Until"
           },
           "size_bytes": {
             "title": "Size Bytes",
@@ -4477,6 +4793,7 @@
           },
           "status": {
             "default": "planning",
+            "minLength": 1,
             "title": "Status",
             "type": "string"
           },
@@ -4623,6 +4940,10 @@
             "title": "Progress Percentage",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "scope_of_work": {
             "title": "Scope Of Work",
             "type": "string"
@@ -4664,6 +4985,7 @@
           "client_name",
           "contract_number",
           "progress_percentage",
+          "revision",
           "created_by",
           "created_at",
           "members",
@@ -4697,6 +5019,18 @@
       },
       "ProjectMemberCreateRequest": {
         "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
           "role_in_project": {
             "anyOf": [
               {
@@ -4753,6 +5087,17 @@
             "format": "uuid",
             "title": "User Id",
             "type": "string"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
           }
         },
         "required": [
@@ -4868,6 +5213,10 @@
             "title": "Progress Percentage",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "scope_of_work": {
             "title": "Scope Of Work",
             "type": "string"
@@ -4909,6 +5258,7 @@
           "client_name",
           "contract_number",
           "progress_percentage",
+          "revision",
           "created_by",
           "created_at"
         ],
@@ -5058,12 +5408,14 @@
           },
           "sort_order": {
             "default": 0,
+            "maximum": 2147483647.0,
             "minimum": 0.0,
             "title": "Sort Order",
             "type": "integer"
           },
           "status": {
             "default": "not_started",
+            "minLength": 1,
             "title": "Status",
             "type": "string"
           }
@@ -5218,6 +5570,10 @@
             "title": "Project Id",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "sort_order": {
             "title": "Sort Order",
             "type": "integer"
@@ -5244,9 +5600,198 @@
           "progress_percentage",
           "delay_reason",
           "sort_order",
+          "revision",
           "created_at"
         ],
         "title": "ProjectTaskResponse",
+        "type": "object"
+      },
+      "ProjectTaskUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual End Date"
+          },
+          "actual_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Start Date"
+          },
+          "baseline_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline End Date"
+          },
+          "baseline_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Start Date"
+          },
+          "delay_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Reason"
+          },
+          "dependency_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Task Id"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "planned_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned End Date"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "progress_percentage": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Percentage"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ProjectTaskUpdateRequest",
         "type": "object"
       },
       "ProjectTimelineResponse": {
@@ -5257,6 +5802,16 @@
             },
             "title": "Milestones",
             "type": "array"
+          },
+          "owner_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Owner Names",
+            "type": "object"
           },
           "project": {
             "$ref": "#/components/schemas/ProjectResponse"
@@ -5272,12 +5827,14 @@
         "required": [
           "project",
           "milestones",
-          "tasks"
+          "tasks",
+          "owner_names"
         ],
         "title": "ProjectTimelineResponse",
         "type": "object"
       },
       "ProjectUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "actual_end_date": {
             "anyOf": [
@@ -5341,6 +5898,18 @@
             ],
             "title": "Description"
           },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
           "location": {
             "anyOf": [
               {
@@ -5392,6 +5961,7 @@
           "status": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -5750,6 +6320,51 @@
         "title": "ReportMaterialConsumptionResponse",
         "type": "object"
       },
+      "RequestProjectOption": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "title": "RequestProjectOption",
+        "type": "object"
+      },
+      "RequestProjectOptions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RequestProjectOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "RequestProjectOptions",
+        "type": "object"
+      },
       "StockResponse": {
         "properties": {
           "available_qty": {
@@ -6010,6 +6625,29 @@
             ],
             "title": "Verified By"
           },
+          "verified_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By Name"
+          },
+          "verified_report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified Report Id"
+          },
           "work_location": {
             "title": "Work Location",
             "type": "string"
@@ -6032,6 +6670,7 @@
           "submitted_at",
           "verified_by",
           "verified_at",
+          "verified_report_id",
           "verification_notes"
         ],
         "title": "SupervisorUpdateResponse",
@@ -6222,6 +6861,10 @@
             "title": "Rating",
             "type": "string"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "tax_registration_number": {
             "title": "Tax Registration Number",
             "type": "string"
@@ -6236,6 +6879,18 @@
               }
             ],
             "title": "Tds Certificate Number"
+          },
+          "tds_days_remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "title": "Tds Days Remaining"
           },
           "tds_document_key": {
             "anyOf": [
@@ -6276,12 +6931,15 @@
           "tds_expiry_date",
           "tds_document_key",
           "compliance_status",
-          "is_active"
+          "is_active",
+          "revision",
+          "tds_days_remaining"
         ],
         "title": "SupplierResponse",
         "type": "object"
       },
       "SupplierUpdateRequest": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "anyOf": [
@@ -6344,6 +7002,18 @@
               }
             ],
             "title": "Email"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
           },
           "is_active": {
             "anyOf": [
@@ -7022,6 +7692,17 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status_group",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(open|all)$",
+              "title": "Status Group",
+              "type": "string"
             }
           },
           {
@@ -8476,6 +9157,22 @@
               "title": "Document Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -9383,6 +10080,22 @@
               "title": "Invoice Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -9487,6 +10200,92 @@
           }
         ],
         "summary": "Budget Summary",
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/supplier-options": {
+      "get": {
+        "operationId": "list_supplier_options_api_v1_finance_supplier_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceSupplierOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Supplier Options Api V1 Finance Supplier Options Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Supplier Options",
         "tags": [
           "Finance"
         ]
@@ -10495,6 +11294,24 @@
       },
       "post": {
         "operationId": "create_movement_api_v1_inventory_movements_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -10541,6 +11358,92 @@
           }
         ],
         "summary": "Create Movement",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/request-projects": {
+      "get": {
+        "operationId": "list_material_request_projects_api_v1_inventory_request_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestProjectOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Material Request Projects Api V1 Inventory Request Projects Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Material Request Projects",
         "tags": [
           "Inventory"
         ]
@@ -10771,8 +11674,41 @@
               "title": "Request Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MaterialQuantityCommand"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Command"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -10827,8 +11763,41 @@
               "title": "Request Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MaterialQuantityCommand"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Command"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -11805,6 +12774,16 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "deleted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Deleted",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -11892,7 +12871,14 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Report-Revision": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -11939,6 +12925,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PhotoDecisionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -12098,6 +13101,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PhotoDecisionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -12659,6 +13679,82 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/tasks/{task_id}": {
+      "patch": {
+        "operationId": "update_project_task_api_v1_projects__project_id__tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTaskUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Project Task Api V1 Projects  Project Id  Tasks  Task Id  Patch"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Project Task",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/timeline": {
       "get": {
         "operationId": "get_project_timeline_api_v1_projects__project_id__timeline_get",
@@ -12833,6 +13929,25 @@
                 }
               ],
               "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required for local-* Idempotency-Key values.",
+            "in": "header",
+            "name": "X-Offline-Owner",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required for local-* Idempotency-Key values.",
+              "title": "X-Offline-Owner"
             }
           }
         ],
@@ -13315,6 +14430,66 @@
         ]
       }
     },
+    "/api/v1/reports/{report_id}/supervisor-updates": {
+      "get": {
+        "operationId": "list_report_supervisor_updates_api_v1_reports__report_id__supervisor_updates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupervisorUpdateResponse"
+                  },
+                  "title": "Response List Report Supervisor Updates Api V1 Reports  Report Id  Supervisor Updates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Report Supervisor Updates Api V1 Reports  Report Id  Supervisor Updates Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Report Supervisor Updates",
+        "tags": [
+          "Daily Reports"
+        ]
+      }
+    },
     "/api/v1/supervisor-updates": {
       "get": {
         "operationId": "list_supervisor_updates_api_v1_supervisor_updates_get",
@@ -13774,6 +14949,23 @@
               "format": "uuid",
               "title": "Supplier Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Revision"
             }
           }
         ],

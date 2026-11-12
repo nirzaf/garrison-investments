@@ -1,4 +1,5 @@
-import { apiClient, EXPORT_TIMEOUT_MS } from './client';
+import { apiClient, EXPORT_TIMEOUT_MS, sessionRequestConfig } from './client';
+import type { OfflineScope } from './offlineDb';
 import type { components } from './schema';
 
 export type ReportFileRef = components['schemas']['ReportFileRef'];
@@ -35,24 +36,53 @@ export async function listDailyReports(params: {
 
 export async function createDailyReport(
   payload: DailyReportPayload,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  scope?: OfflineScope
 ): Promise<DailyReportRecord> {
   const response = await apiClient.post<DailyReportRecord>('/reports', payload, {
-    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+    ...sessionRequestConfig(scope),
+    headers: {
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      ...(scope ? { 'X-Offline-Owner': scope.ownerUserId } : {})
+    }
   });
+  return response.data;
+}
+
+export async function getDailyReport(
+  reportId: string,
+  scope?: OfflineScope
+): Promise<DailyReportRecord> {
+  const response = await apiClient.get<DailyReportRecord>(
+    `/reports/${reportId}`,
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 
 export async function updateDailyReport(
   reportId: string,
-  payload: DailyReportPayload
+  payload: DailyReportPayload,
+  expectedRevision: number,
+  scope?: OfflineScope
 ): Promise<DailyReportRecord> {
-  const response = await apiClient.put<DailyReportRecord>(`/reports/${reportId}`, payload);
+  const response = await apiClient.put<DailyReportRecord>(
+    `/reports/${reportId}`,
+    { ...payload, expected_revision: expectedRevision },
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 
-export async function submitDailyReport(reportId: string): Promise<DailyReportRecord> {
-  const response = await apiClient.post<DailyReportRecord>(`/reports/${reportId}/submit`);
+export async function submitDailyReport(
+  reportId: string,
+  scope?: OfflineScope
+): Promise<DailyReportRecord> {
+  const response = await apiClient.post<DailyReportRecord>(
+    `/reports/${reportId}/submit`,
+    undefined,
+    sessionRequestConfig(scope)
+  );
   return response.data;
 }
 

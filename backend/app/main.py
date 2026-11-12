@@ -103,10 +103,9 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Total-Count"],
+        expose_headers=["X-Total-Count", "X-Report-Revision"],
     )
 
-    @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
         request_id, session_id = trusted_correlation_ids(request, settings.trusted_proxy_ips_list)
         request_id = request_id or str(uuid4())
@@ -124,12 +123,9 @@ def create_app() -> FastAPI:
             cli_session_id=request.headers.get("X-Log-CLI-Session"),
         )
         start = perf_counter()
-        try:
-            response = await call_next(request)
+
+        def log_completion(status_code: int) -> float:
             duration = perf_counter() - start
-            response.headers["X-Request-ID"] = request_id
-            response.headers["X-Session-ID"] = session_id
-            response.headers["X-Process-Time"] = f"{duration:.6f}"
             if settings.log_healthchecks or request.url.path not in {
                 "/health",
                 "/health/readiness",
@@ -143,9 +139,21 @@ def create_app() -> FastAPI:
                     event_type="api_request",
                     method=request.method,
                     route=getattr(route, "path", request.url.path),
-                    status_code=response.status_code,
+                    status_code=status_code,
                     duration_ms=round(duration * 1000, 2),
                 )
+            return duration
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            log_completion(500)
+            raise
+        else:
+            duration = log_completion(response.status_code)
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Session-ID"] = session_id
+            response.headers["X-Process-Time"] = f"{duration:.6f}"
             return response
         finally:
             clear_log_context()
@@ -181,6 +189,9 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         await audit_authenticated_request(request, response)
         return response
+
+    # Register last so correlation and completion surround rate limiting and audit logging.
+    app.middleware("http")(request_context_middleware)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -281,8 +292,14 @@ def create_app() -> FastAPI:
                 exception_type=type(exc).__name__,
             )
         await report_unhandled_exception(request, exc)
+        headers = {}
+        if request_id := getattr(request.state, "request_id", None):
+            headers["X-Request-ID"] = request_id
+        if session_id := getattr(request.state, "session_id", None):
+            headers["X-Session-ID"] = session_id
         return JSONResponse(
             status_code=500,
+            headers=headers,
             content={
                 "detail": "Internal server error.",
                 "error_code": "INTERNAL_SERVER_ERROR",

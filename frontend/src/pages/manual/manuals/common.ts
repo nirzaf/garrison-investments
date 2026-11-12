@@ -40,7 +40,8 @@ export const COMMON_SECTIONS: ManualSection[] = [
       {
         step: 2,
         action: 'Enter OTP',
-        detail: 'A one-time password (OTP) will be shown or sent. Enter it to complete login.'
+        detail:
+          'Enter the one-time verification code sent to your email, then select Verify and sign in.'
       },
       {
         step: 3,
@@ -58,7 +59,7 @@ export const COMMON_SECTIONS: ManualSection[] = [
     id: 'profile-security',
     title: 'Your Profile & Security',
     icon: '👤',
-    content: 'All users can manage their own profile and account security.',
+    content: 'View your account details and manage your password.',
     steps: [
       {
         step: 1,
@@ -68,13 +69,14 @@ export const COMMON_SECTIONS: ManualSection[] = [
       {
         step: 2,
         action: 'Go to Profile',
-        detail: 'Click "Profile" to view and edit your full name, email, and other details.'
+        detail:
+          'Open Profile to view your account details. Contact an authorized administrator for corrections.'
       },
       {
         step: 3,
         action: 'Change your password',
         detail:
-          'Click "Security" in the user menu dropdown, then enter your current password followed by your new password.'
+          'Choose Change password from Profile, or choose Security from the user menu. Enter your current password and your new password.'
       }
     ],
     tips: [
@@ -104,6 +106,25 @@ export const COMMON_SECTIONS: ManualSection[] = [
         action: 'Review and act',
         detail:
           'Read each notification and take any required action (e.g., reviewing an approval request).'
+      }
+    ]
+  },
+  {
+    id: 'approval-views',
+    title: 'Approval Views',
+    icon: '✅',
+    content: 'Approvals separates official report decisions from other workflow requests.',
+    steps: [
+      {
+        step: 1,
+        action: 'Track your requests',
+        detail: 'Open My submitted requests to see your workflow submissions and their status.'
+      },
+      {
+        step: 2,
+        action: 'Open your review queue',
+        detail:
+          'If you have review access, use Report approvals for submitted daily reports and Inbox for other workflow requests. The request card shows the actions available to you.'
       }
     ]
   },

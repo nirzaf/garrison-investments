@@ -3,7 +3,7 @@ from __future__ import annotations
 import structlog
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import task_failure, worker_ready
+from celery.signals import setup_logging, task_failure, worker_ready
 
 from app.config import get_settings
 from app.observability import configure_logging
@@ -79,6 +79,12 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=0),
     },
 }
+
+
+@setup_logging.connect
+def _configure_worker_logging(**_) -> None:
+    # Celery's task formatter otherwise bypasses the JSON handler used by Loki queries.
+    configure_logging(settings, source_service="celery", force=True)
 
 
 @worker_ready.connect

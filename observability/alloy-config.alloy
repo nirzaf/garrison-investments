@@ -48,12 +48,12 @@ loki.source.docker "containers" {
 
 loki.process "container_logs" {
   stage.replace {
-    expression = "(?i)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token)=([^&\\s\\\"]+)"
+    expression = "(?i)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token|x[_-]amz[_-](?:credential|signature|security[_-]token))=([^&\\s\\\"]+)"
     replace    = "<redacted>"
   }
 
   stage.replace {
-    expression = "(?i)\\\"(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token)\\\"\\s*:\\s*\\\"([^\\\"]*)\\\""
+    expression = "(?i)\\\"(?:access[_-]?token|api[_-]?key|auth(?:orization)?|cookie|jwt|otp|pass(?:word)?|secret|session|token|x[_-]amz[_-](?:credential|signature|security[_-]token))\\\"\\s*:\\s*\\\"([^\\\"]*)\\\""
     replace    = "<redacted>"
   }
 

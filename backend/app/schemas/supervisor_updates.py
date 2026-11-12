@@ -44,6 +44,8 @@ class SupervisorUpdateResponse(BaseModel):
     submitted_at: datetime | None
     verified_by: UUID | None
     verified_at: datetime | None
+    verified_report_id: UUID | None
+    verified_by_name: str | None = None
     verification_notes: str | None
 
     model_config = ConfigDict(from_attributes=True)

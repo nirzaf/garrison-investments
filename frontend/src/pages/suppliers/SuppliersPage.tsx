@@ -1,263 +1,471 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState, type FormEvent } from 'react';
 
+import { formatApiError } from '../../api/errors';
 import {
   createSupplier,
   getSupplierTdsDocumentUrl,
-  listSuppliers,
-  uploadSupplierTdsDocument
+  uploadSupplierTdsDocument,
+  type SupplierCreatePayload,
+  type SupplierRecord
 } from '../../api/inventory';
-import { EmptyState } from '../../components/shared/EmptyState';
+import { deactivateSupplier, listSupplierRegister, updateSupplier } from '../../api/suppliers';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { useDebouncedSearch } from '../../useDebouncedSearch';
+import { supplierExpiry } from './supplierExpiry';
 
-const complianceTones: Record<string, 'info' | 'success' | 'warning' | 'danger'> = {
+const pageSize = 25;
+const complianceOptions = ['compliant', 'pending', 'expired', 'blocked'];
+const tones = {
   compliant: 'success',
   pending: 'warning',
   expired: 'danger',
   blocked: 'danger'
-};
+} as const;
+const buttonClass = 'rounded-md border border-theme-border px-3 py-2 text-sm disabled:opacity-50';
+const submitClass =
+  'rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50';
+const fields = [
+  ['name', 'Supplier name', 'text'],
+  ['category', 'Category', 'text'],
+  ['rating', 'Rating', 'text'],
+  ['payment_terms', 'Payment terms', 'text'],
+  ['contact_person', 'Contact person', 'text'],
+  ['phone', 'Phone', 'tel'],
+  ['email', 'Email', 'email'],
+  ['address', 'Address', 'text'],
+  ['tax_registration_number', 'Tax registration number', 'text'],
+  ['tds_certificate_number', 'TDS certificate number', 'text'],
+  ['tds_expiry_date', 'TDS expiry date', 'date']
+] as const;
 
 export function SuppliersPage() {
   const queryClient = useQueryClient();
-  const suppliers = useQuery({ queryKey: ['suppliers'], queryFn: listSuppliers });
-  const createSupplierMutation = useMutation({
-    mutationFn: createSupplier,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['suppliers'] })
-  });
-  const supplierTdsMutation = useMutation({
-    mutationFn: ({ supplierId, file }: { supplierId: string; file: File }) =>
-      uploadSupplierTdsDocument(supplierId, file),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  const [search, setSearch] = useState('');
+  const [active, setActive] = useState('active');
+  const [compliance, setCompliance] = useState('');
+  const [page, setPage] = useState(0);
+  const [editor, setEditor] = useState<SupplierRecord | 'new' | null>(null);
+  const query = useDebouncedSearch(search);
+  const suppliers = useQuery({
+    queryKey: ['suppliers', 'register', query, active, compliance, page],
+    queryFn: () =>
+      listSupplierRegister({
+        active: active ? active === 'active' : undefined,
+        compliance_status: compliance || undefined,
+        search: query || undefined,
+        limit: pageSize,
+        offset: page * pageSize
+      }),
+    placeholderData: keepPreviousData
   });
 
-  async function openSupplierTdsDocument(supplierId: string) {
-    const { url } = await getSupplierTdsDocumentUrl(supplierId);
-    window.open(url, '_blank', 'noopener,noreferrer');
+  function refresh() {
+    void queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    void queryClient.invalidateQueries({ queryKey: ['finance-supplier-options'] });
+    void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    void queryClient.invalidateQueries({ queryKey: ['invoice-detail'] });
   }
 
-  const complianceSummary = summarizeCompliance(suppliers.data ?? []);
-
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-sm font-medium text-brand-600">Vendor network</p>
-          <h2 className="text-2xl font-semibold text-theme-text-primary">
-            Suppliers And Compliance
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-theme-text-secondary">
-            Manage supplier records, track compliance status, and maintain TDS supporting documents
-            from one place.
-          </p>
-        </div>
-        <StatusBadge tone={complianceSummary.expired > 0 ? 'warning' : 'success'}>
-          {`${suppliers.data?.length ?? 0} active suppliers`}
-        </StatusBadge>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Compliant" tone="success" value={complianceSummary.compliant} />
-        <SummaryCard label="Pending" tone="warning" value={complianceSummary.pending} />
-        <SummaryCard label="Expired" tone="danger" value={complianceSummary.expired} />
-        <SummaryCard label="Blocked" tone="danger" value={complianceSummary.blocked} />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
-        <form
-          className="rounded-lg border border-theme-border bg-theme-card p-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            createSupplierMutation.mutate({
-              name: String(form.get('name')),
-              category: String(form.get('category')),
-              rating: String(form.get('rating')),
-              payment_terms: String(form.get('payment_terms')),
-              contact_person: String(form.get('contact_person')),
-              phone: String(form.get('phone')),
-              email: String(form.get('email')),
-              address: String(form.get('address')),
-              tax_registration_number: String(form.get('tax_registration_number')),
-              tds_certificate_number: String(form.get('tds_certificate_number') || ''),
-              compliance_status: String(form.get('compliance_status'))
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <h3 className="text-base font-semibold text-theme-text-primary">New supplier</h3>
-          <p className="mt-1 text-sm text-theme-text-secondary">
-            Capture the vendor profile used by Materials and Finance.
-          </p>
-          <div className="mt-3 grid gap-3">
-            <input className="form-field" name="name" placeholder="Supplier name" required />
-            <input className="form-field" name="category" placeholder="Category" required />
-            <input className="form-field" name="rating" placeholder="Rating" required />
-            <input
-              className="form-field"
-              name="payment_terms"
-              placeholder="Payment terms"
-              required
-            />
-            <input
-              className="form-field"
-              name="contact_person"
-              placeholder="Contact person"
-              required
-            />
-            <input className="form-field" name="phone" placeholder="Phone" required />
-            <input className="form-field" name="email" placeholder="Email" required type="email" />
-            <input className="form-field" name="address" placeholder="Address" required />
-            <input
-              className="form-field"
-              name="tax_registration_number"
-              placeholder="Tax registration"
-              required
-            />
-            <input
-              className="form-field"
-              name="tds_certificate_number"
-              placeholder="TDS certificate"
-            />
-            <select className="form-field" name="compliance_status">
-              <option value="compliant">Compliant</option>
-              <option value="pending">Pending</option>
-              <option value="expired">Expired</option>
-              <option value="blocked">Blocked</option>
-            </select>
-          </div>
-          <button className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Add supplier
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-2xl font-semibold">Suppliers And Compliance</h2>
+        {!editor && (
+          <button className={submitClass} type="button" onClick={() => setEditor('new')}>
+            New supplier
           </button>
-        </form>
-
-        <div className="rounded-lg border border-theme-border bg-theme-card">
-          <div className="border-b border-theme-border px-4 py-3">
-            <h3 className="text-base font-semibold text-theme-text-primary">Compliance register</h3>
-            <p className="mt-1 text-sm text-theme-text-secondary">
-              Track TDS evidence and highlight suppliers that need attention.
-            </p>
-          </div>
-          {suppliers.data && suppliers.data.length > 0 ? (
-            <div className="divide-y divide-theme-border">
-              {suppliers.data.map((supplier) => {
-                const isExpiring =
-                  supplier.tds_expiry_date &&
-                  new Date(supplier.tds_expiry_date).getTime() - Date.now() <
-                    1000 * 60 * 60 * 24 * 30;
-
-                return (
-                  <article
-                    className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_auto]"
-                    key={supplier.id}
-                  >
-                    <div className="space-y-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-medium text-theme-text-primary">{supplier.name}</p>
-                          <p className="text-sm text-theme-text-muted">
-                            {supplier.category} · {supplier.contact_person} · {supplier.phone}
-                          </p>
-                        </div>
-                        <StatusBadge tone={complianceTones[supplier.compliance_status] ?? 'info'}>
-                          {supplier.compliance_status}
-                        </StatusBadge>
-                      </div>
-
-                      <div className="grid gap-3 text-sm text-theme-text-secondary sm:grid-cols-2">
-                        <div>
-                          <p className="font-medium text-theme-text-primary">Commercial terms</p>
-                          <p>{supplier.payment_terms}</p>
-                          <p>{supplier.email}</p>
-                        </div>
-                        <div>
-                          <p className="font-medium text-theme-text-primary">Tax and TDS</p>
-                          <p>Tax registration: {supplier.tax_registration_number}</p>
-                          <p
-                            className={
-                              isExpiring
-                                ? 'text-[var(--status-warning-text)]'
-                                : 'text-theme-text-secondary'
-                            }
-                          >
-                            TDS {supplier.tds_certificate_number ?? '-'} expires{' '}
-                            {supplier.tds_expiry_date ?? '-'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-3 lg:min-w-48">
-                      <input
-                        accept=".pdf,image/png,image/jpeg"
-                        className="text-xs text-theme-text-secondary"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) {
-                            supplierTdsMutation.mutate({ supplierId: supplier.id, file });
-                          }
-                        }}
-                        type="file"
-                      />
-                      {supplier.tds_document_key ? (
-                        <button
-                          className="rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-brand-600 hover:bg-theme-main"
-                          onClick={() => void openSupplierTdsDocument(supplier.id)}
-                          type="button"
-                        >
-                          View TDS
-                        </button>
-                      ) : (
-                        <p className="text-xs text-theme-text-muted">
-                          No TDS document uploaded yet.
-                        </p>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="p-4">
-              <EmptyState
-                title="No suppliers configured"
-                description="Create a supplier record to start linking inventory items and invoices."
-              />
-            </div>
-          )}
+        )}
+      </div>
+      {editor && (
+        <SupplierForm
+          key={editor === 'new' ? 'new' : editor.id}
+          supplier={editor === 'new' ? undefined : editor}
+          onCancel={() => setEditor(null)}
+          onSaved={() => {
+            setEditor(null);
+            refresh();
+          }}
+        />
+      )}
+      <div className="grid gap-3 rounded-md border border-theme-border bg-theme-card p-4 sm:grid-cols-3">
+        <label className="block text-sm">
+          Search suppliers
+          <input
+            type="search"
+            maxLength={100}
+            className="form-field mt-1 w-full"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(0);
+            }}
+          />
+        </label>
+        <div>
+          <label className="block text-sm" htmlFor="supplier-active">
+            Supplier state
+          </label>
+          <select
+            id="supplier-active"
+            className="form-field mt-1 w-full"
+            value={active}
+            onChange={(event) => {
+              setActive(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="">All states</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm" htmlFor="supplier-compliance">
+            Compliance filter
+          </label>
+          <select
+            id="supplier-compliance"
+            className="form-field mt-1 w-full"
+            value={compliance}
+            onChange={(event) => {
+              setCompliance(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">All compliance states</option>
+            {complianceOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
+      {suppliers.isPending && <p role="status">Loading suppliers…</p>}
+      {suppliers.isError && (
+        <p role="alert">
+          {formatApiError(suppliers.error, 'Unable to load suppliers.')}{' '}
+          <button type="button" className="underline" onClick={() => void suppliers.refetch()}>
+            Retry suppliers
+          </button>
+        </p>
+      )}
+      {suppliers.isFetching && suppliers.data && <p role="status">Refreshing suppliers…</p>}
+      {suppliers.isError && suppliers.data && (
+        <p className="text-sm">Showing the last loaded suppliers.</p>
+      )}
+      {suppliers.data && (
+        <div className="rounded-md border border-theme-border bg-theme-card p-4">
+          <div className="flex flex-wrap gap-3 text-sm">
+            <p>{suppliers.data.total} matching suppliers</p>
+            {suppliers.data.items.length > 0 && (
+              <p>
+                On this page{' '}
+                {complianceOptions
+                  .map(
+                    (status) =>
+                      `${suppliers.data.items.filter((item) => item.compliance_status === status).length} ${status}`
+                  )
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+          <div className="divide-y divide-theme-border">
+            {suppliers.data.items.map((supplier) => (
+              <SupplierCard
+                key={supplier.id}
+                supplier={supplier}
+                refresh={refresh}
+                canEdit={!editor}
+                onEdit={() => setEditor(supplier)}
+              />
+            ))}
+          </div>
+          {!suppliers.data.items.length && (
+            <p className="py-3 text-sm">No suppliers match the selected filters.</p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={!page || suppliers.isFetching}
+              onClick={() => setPage(page - 1)}
+            >
+              Previous suppliers
+            </button>
+            <button
+              type="button"
+              className={buttonClass}
+              disabled={(page + 1) * pageSize >= suppliers.data.total || suppliers.isFetching}
+              onClick={() => setPage(page + 1)}
+            >
+              Next suppliers
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function SummaryCard({
-  label,
-  tone,
-  value
+function SupplierForm({
+  supplier,
+  onSaved,
+  onCancel
 }: {
-  label: string;
-  tone: 'info' | 'success' | 'warning' | 'danger';
-  value: number;
+  supplier?: SupplierRecord;
+  onSaved: () => void;
+  onCancel: () => void;
 }) {
+  const [draft, setDraft] = useState({
+    name: supplier?.name ?? '',
+    category: supplier?.category ?? '',
+    rating: supplier?.rating ?? '',
+    payment_terms: supplier?.payment_terms ?? '',
+    contact_person: supplier?.contact_person ?? '',
+    phone: supplier?.phone ?? '',
+    email: supplier?.email ?? '',
+    address: supplier?.address ?? '',
+    tax_registration_number: supplier?.tax_registration_number ?? '',
+    tds_certificate_number: supplier?.tds_certificate_number ?? '',
+    tds_expiry_date: supplier?.tds_expiry_date ?? '',
+    compliance_status: supplier?.compliance_status ?? 'pending'
+  });
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+  const locked = useRef(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (locked.current) return;
+    locked.current = true;
+    setPending(true);
+    setError('');
+    const payload: SupplierCreatePayload = {
+      ...draft,
+      tds_certificate_number: draft.tds_certificate_number.trim() || null,
+      tds_expiry_date: draft.tds_expiry_date || null
+    };
+    try {
+      if (supplier)
+        await updateSupplier(supplier.id, { ...payload, expected_revision: supplier.revision });
+      else await createSupplier(payload);
+      onSaved();
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to save supplier.'));
+    } finally {
+      locked.current = false;
+      setPending(false);
+    }
+  }
+
   return (
-    <div className="rounded-lg border border-theme-border bg-theme-card p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-theme-text-muted">{label}</p>
-        <StatusBadge tone={tone}>{String(value)}</StatusBadge>
-      </div>
-    </div>
+    <form
+      className="space-y-3 rounded-md border border-theme-border bg-theme-card p-4"
+      onSubmit={(event) => void submit(event)}
+    >
+      <h3 className="font-semibold">{supplier ? `Edit ${supplier.name}` : 'New supplier'}</h3>
+      {error && (
+        <p className="alert-error rounded-md p-2 text-sm" role="alert">
+          {error}
+        </p>
+      )}
+      <fieldset disabled={pending} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {fields.map(([field, label, type]) => (
+          <label className="block text-sm" key={field}>
+            {label}
+            <input
+              className="form-field mt-1 w-full"
+              required={!field.startsWith('tds_')}
+              type={type}
+              value={draft[field]}
+              onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+            />
+          </label>
+        ))}
+        <div>
+          <label className="block text-sm" htmlFor="supplier-form-compliance">
+            Compliance status
+          </label>
+          <select
+            id="supplier-form-compliance"
+            className="form-field mt-1 w-full"
+            value={draft.compliance_status}
+            onChange={(event) => setDraft({ ...draft, compliance_status: event.target.value })}
+          >
+            {complianceOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className={submitClass}>
+            {pending ? 'Saving…' : supplier ? 'Save supplier' : 'Add supplier'}
+          </button>
+          <button type="button" className={buttonClass} onClick={onCancel}>
+            Discard supplier edits
+          </button>
+        </div>
+      </fieldset>
+    </form>
   );
 }
 
-function summarizeCompliance(
-  suppliers: Array<{ compliance_status: string }>
-): Record<'blocked' | 'compliant' | 'expired' | 'pending', number> {
-  return suppliers.reduce(
-    (summary, supplier) => {
-      if (supplier.compliance_status in summary) {
-        summary[supplier.compliance_status as keyof typeof summary] += 1;
-      }
-      return summary;
-    },
-    { blocked: 0, compliant: 0, expired: 0, pending: 0 }
+function SupplierCard({
+  supplier,
+  canEdit,
+  refresh,
+  onEdit
+}: {
+  supplier: SupplierRecord;
+  canEdit: boolean;
+  refresh: () => void;
+  onEdit: () => void;
+}) {
+  const [file, setFile] = useState<File>();
+  const [link, setLink] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const locked = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  async function action(run: () => Promise<void>) {
+    if (locked.current) return;
+    locked.current = true;
+    setPending(true);
+    setError('');
+    try {
+      await run();
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to complete supplier action.'));
+    } finally {
+      locked.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <article className="space-y-2 py-4" aria-label={supplier.name}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">{supplier.name}</h3>
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge tone={tones[supplier.compliance_status as keyof typeof tones] ?? 'info'}>
+            {supplier.compliance_status}
+          </StatusBadge>
+          <StatusBadge tone={supplier.is_active ? 'success' : 'info'}>
+            {supplier.is_active ? 'Active' : 'Inactive'}
+          </StatusBadge>
+        </div>
+      </div>
+      <p className="text-sm text-theme-text-secondary">
+        {supplier.category} · {supplier.contact_person} · {supplier.payment_terms}
+      </p>
+      <p className="text-sm">
+        TDS expiry {supplier.tds_expiry_date || '—'} · {supplierExpiry(supplier.tds_days_remaining)}
+      </p>
+      {error && (
+        <p role="alert" className="alert-error rounded-md p-2 text-sm">
+          {error}
+        </p>
+      )}
+      <fieldset disabled={pending || !canEdit} className="flex flex-wrap items-end gap-2">
+        <button type="button" className={buttonClass} onClick={onEdit}>
+          Edit supplier
+        </button>
+        {supplier.is_active && (
+          <button type="button" className={buttonClass} onClick={() => setConfirming(!confirming)}>
+            Deactivate supplier
+          </button>
+        )}
+        <label className="block text-sm">
+          TDS document (30 MiB)
+          <input
+            ref={input}
+            className="form-field mt-1 w-full"
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            onChange={(event) => setFile(event.target.files?.[0])}
+          />
+        </label>
+        <button
+          type="button"
+          className={buttonClass}
+          disabled={!file}
+          onClick={() => {
+            if (!file) return;
+            if (file.size > 30 * 1024 * 1024) {
+              setError('TDS documents must be 30 MiB or smaller.');
+              return;
+            }
+            void action(async () => {
+              await uploadSupplierTdsDocument(supplier.id, file);
+              setFile(undefined);
+              setLink('');
+              if (input.current) input.current.value = '';
+              refresh();
+            });
+          }}
+        >
+          Upload TDS document
+        </button>
+        {supplier.tds_document_key && (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() =>
+              void action(async () => {
+                setLink((await getSupplierTdsDocumentUrl(supplier.id)).url);
+              })
+            }
+          >
+            Get TDS link
+          </button>
+        )}
+      </fieldset>
+      {pending && (
+        <p role="status" className="text-sm">
+          Processing supplier action…
+        </p>
+      )}
+      {link && (
+        <a href={link} className="text-sm underline" target="_blank" rel="noopener noreferrer">
+          Open TDS document
+        </a>
+      )}
+      {confirming && supplier.is_active && (
+        <div className="space-y-2 rounded-md border border-theme-border p-3">
+          <p className="text-sm">
+            Deactivate {supplier.name}? It will be unavailable for new selection. Existing records
+            and TDS documents stay linked.
+          </p>
+          <button
+            type="button"
+            className={buttonClass}
+            disabled={pending || !canEdit}
+            onClick={() =>
+              void action(async () => {
+                await deactivateSupplier(supplier.id, supplier.revision);
+                setConfirming(false);
+                refresh();
+              })
+            }
+          >
+            Confirm deactivation
+          </button>
+          <button
+            type="button"
+            className="ml-2 text-sm underline"
+            disabled={pending}
+            onClick={() => setConfirming(false)}
+          >
+            Cancel deactivation
+          </button>
+        </div>
+      )}
+    </article>
   );
 }

@@ -1,8 +1,20 @@
+import asyncio
 from functools import lru_cache
 
+import structlog
 from minio import Minio
 
 from app.config import Settings
+
+logger = structlog.get_logger(__name__)
+
+
+async def discard_new_uploads(client: Minio, bucket: str, object_keys: list[str]) -> None:
+    for object_key in object_keys:
+        try:
+            await asyncio.to_thread(client.remove_object, bucket, object_key)
+        except Exception as error:
+            logger.warning("upload_cleanup_failed", error_type=type(error).__name__)
 
 
 def minio_client(settings: Settings) -> Minio:

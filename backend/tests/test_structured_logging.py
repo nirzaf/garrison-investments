@@ -1,5 +1,7 @@
 import json
 import logging
+import subprocess
+import sys
 from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import Mock
@@ -66,6 +68,10 @@ def test_structured_logging_redacts_nested_secrets_and_credentials(capfd) -> Non
         payload={"api_token": "nested-secret", "safe": "visible"},
         endpoint="postgresql://user:password@postgres/garrison",
         authorization_text="Bearer abc.def.ghi",
+        file_url=(
+            "https://store.example.invalid/portal-files/item?"
+            "X-Amz-Credential=fixture-credential&X-Amz-Signature=fixture-signature"
+        ),
     )
 
     output = capfd.readouterr().err
@@ -77,6 +83,8 @@ def test_structured_logging_redacts_nested_secrets_and_credentials(capfd) -> Non
     assert record["authorization_text"] == "[redacted]"
     assert "plain-secret" not in output
     assert "nested-secret" not in output
+    assert "fixture-credential" not in output
+    assert "fixture-signature" not in output
 
 
 @pytest.mark.parametrize(
@@ -186,9 +194,7 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
 
     assert response.status_code == 200
     records = [
-        json.loads(line)
-        for line in capfd.readouterr().err.splitlines()
-        if line.startswith("{")
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
     ]
     completion = next(
         record for record in records if record.get("message") == "http_request_completed"
@@ -196,6 +202,29 @@ def test_http_request_completion_contains_route_status_and_duration(capfd) -> No
     assert completion["route"] == "/api/v1/"
     assert completion["status_code"] == 200
     assert completion["duration_ms"] >= 0
+
+
+def test_unhandled_http_failure_records_completion_and_correlation(capfd) -> None:
+    app = create_app()
+
+    @app.get("/fixture-failure")
+    async def fixture_failure():
+        raise RuntimeError("Synthetic request failure.")
+
+    capfd.readouterr()
+    response = TestClient(app, raise_server_exceptions=False).get("/fixture-failure")
+    assert response.status_code == 500
+    records = [
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
+    ]
+    completion = [record for record in records if record.get("message") == "http_request_completed"]
+    assert len(completion) == 1
+    failure = next(
+        record for record in records if record.get("message") == "unhandled_request_exception"
+    )
+    assert completion[0]["status_code"] == 500
+    assert completion[0]["duration_ms"] >= 0
+    assert completion[0]["request_id"] == failure["request_id"] == response.headers["X-Request-ID"]
 
 
 def test_http_request_context_is_cleared_and_query_string_is_not_logged(capfd) -> None:
@@ -245,9 +274,7 @@ def test_healthcheck_completion_is_suppressed_by_default(capfd) -> None:
 
     assert response.status_code == 200
     records = [
-        json.loads(line)
-        for line in capfd.readouterr().err.splitlines()
-        if line.startswith("{")
+        json.loads(line) for line in capfd.readouterr().err.splitlines() if line.startswith("{")
     ]
     assert not any(record.get("message") == "http_request_completed" for record in records)
     assert log_context_dict() == {}
@@ -287,3 +314,20 @@ def test_celery_lifecycle_logs_context_without_args_or_results(monkeypatch) -> N
     assert "args" not in started.kwargs
     assert "kwargs" not in started.kwargs
     assert log_context_dict() == {}
+
+
+def test_celery_worker_logging_setup_preserves_task_json() -> None:
+    worker_startup = """
+import structlog
+from app.tasks.celery_app import celery_app
+
+celery_app.log.setup_logging_subsystem(loglevel="INFO", colorize=False)
+structlog.get_logger("celery.task").warning("task_retried", task_id="synthetic-task")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", worker_startup], check=True, capture_output=True, text=True
+    )
+    records = [json.loads(line) for line in result.stderr.splitlines() if line.startswith("{")]
+    task_log = next(record for record in records if record.get("message") == "task_retried")
+    assert task_log["task_id"] == "synthetic-task"
+    assert task_log["source_service"] == "celery"

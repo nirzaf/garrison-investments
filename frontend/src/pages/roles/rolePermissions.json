@@ -1,0 +1,101 @@
+{
+  "permissions": [
+    "users:manage",
+    "users:read",
+    "projects:manage",
+    "projects:read",
+    "audit:view",
+    "dashboard:company",
+    "dashboard:scoped",
+    "reports:view",
+    "reports:submit",
+    "reports:approve",
+    "inventory:view",
+    "inventory:manage",
+    "suppliers:manage",
+    "documents:view",
+    "documents:manage",
+    "financial:view"
+  ],
+  "roles": {
+    "admin": [
+      "users:manage",
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "audit:view",
+      "dashboard:company",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "reports:approve",
+      "inventory:view",
+      "inventory:manage",
+      "suppliers:manage",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
+    ],
+    "general_manager": [
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "dashboard:company",
+      "reports:view",
+      "reports:approve",
+      "inventory:view",
+      "suppliers:manage",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
+    ],
+    "operation_manager": [
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "dashboard:company",
+      "reports:view",
+      "reports:approve",
+      "inventory:view",
+      "suppliers:manage",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
+    ],
+    "project_manager": [
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:approve",
+      "inventory:view",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
+    ],
+    "civil_engineer": [
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "inventory:view",
+      "documents:view",
+      "documents:manage"
+    ],
+    "civil_supervisor": [
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "documents:view"
+    ],
+    "store_keeper": ["dashboard:scoped", "inventory:view", "inventory:manage", "suppliers:manage"],
+    "accounts": [
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
+    ]
+  }
+}

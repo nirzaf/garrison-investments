@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -11,14 +11,34 @@ from app.schemas.finance import (
     InvoiceCreateRequest,
     InvoiceListResponse,
     InvoiceResponse,
+    InvoiceSupplierOption,
+    InvoiceSupplierOptionsResponse,
     InvoiceUpdateRequest,
     PaymentCreateRequest,
 )
 from app.services.finance_service import SIGNED_URL_SECONDS, FinanceService
+from app.services.idempotency import validate_key
 from app.utils.permissions import PERMISSION_FINANCIAL_VIEW
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
 CanViewFinance = Annotated[User, Depends(require_permission(PERMISSION_FINANCIAL_VIEW))]
+
+
+@router.get("/supplier-options", response_model=InvoiceSupplierOptionsResponse)
+async def list_supplier_options(
+    current_user: CanViewFinance,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> InvoiceSupplierOptionsResponse:
+    suppliers, total = await FinanceService(session).list_supplier_options(
+        current_user, search=search, limit=limit, offset=offset
+    )
+    return InvoiceSupplierOptionsResponse(
+        items=[InvoiceSupplierOption(id=supplier_id, name=name) for supplier_id, name in suppliers],
+        total=total,
+    )
 
 
 @router.get("/invoices", response_model=InvoiceListResponse)
@@ -30,7 +50,8 @@ async def list_invoices(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> InvoiceListResponse:
-    invoices, total = await FinanceService(session).list_invoices(
+    service = FinanceService(session)
+    invoices, total = await service.list_invoices(
         current_user,
         project_id=project_id,
         status=status_filter,
@@ -38,7 +59,7 @@ async def list_invoices(
         offset=offset,
     )
     return InvoiceListResponse(
-        items=[InvoiceResponse.model_validate(invoice) for invoice in invoices],
+        items=await service.invoice_responses(invoices, current_user),
         total=total,
     )
 
@@ -49,8 +70,9 @@ async def create_invoice(
     current_user: CanViewFinance,
     session: DbSession,
 ) -> InvoiceResponse:
-    invoice = await FinanceService(session).create_invoice(payload, current_user)
-    return InvoiceResponse.model_validate(invoice)
+    service = FinanceService(session)
+    invoice = await service.create_invoice(payload, current_user)
+    return (await service.invoice_responses([invoice], current_user))[0]
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
@@ -59,8 +81,9 @@ async def get_invoice(
     current_user: CanViewFinance,
     session: DbSession,
 ) -> InvoiceResponse:
-    invoice = await FinanceService(session).get_invoice(invoice_id, current_user)
-    return InvoiceResponse.model_validate(invoice)
+    service = FinanceService(session)
+    invoice = await service.get_invoice(invoice_id, current_user)
+    return (await service.invoice_responses([invoice], current_user))[0]
 
 
 @router.patch("/invoices/{invoice_id}", response_model=InvoiceResponse)
@@ -70,8 +93,9 @@ async def update_invoice(
     current_user: CanViewFinance,
     session: DbSession,
 ) -> InvoiceResponse:
-    invoice = await FinanceService(session).update_invoice(invoice_id, payload, current_user)
-    return InvoiceResponse.model_validate(invoice)
+    service = FinanceService(session)
+    invoice = await service.update_invoice(invoice_id, payload, current_user)
+    return (await service.invoice_responses([invoice], current_user))[0]
 
 
 @router.post("/invoices/{invoice_id}/attachment", response_model=InvoiceResponse)
@@ -81,12 +105,13 @@ async def upload_invoice_attachment(
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> InvoiceResponse:
-    invoice = await FinanceService(session).upload_invoice_attachment(
+    service = FinanceService(session)
+    invoice = await service.upload_invoice_attachment(
         invoice_id,
         file,
         current_user,
     )
-    return InvoiceResponse.model_validate(invoice)
+    return (await service.invoice_responses([invoice], current_user))[0]
 
 
 @router.get("/invoices/{invoice_id}/attachment", response_model=InvoiceAttachmentUrlResponse)
@@ -105,9 +130,13 @@ async def create_payment(
     payload: PaymentCreateRequest,
     current_user: CanViewFinance,
     session: DbSession,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> InvoiceResponse:
-    invoice = await FinanceService(session).create_payment(invoice_id, payload, current_user)
-    return InvoiceResponse.model_validate(invoice)
+    service = FinanceService(session)
+    invoice = await service.create_payment(
+        invoice_id, payload, current_user, idempotency_key=validate_key(idempotency_key)
+    )
+    return (await service.invoice_responses([invoice], current_user))[0]
 
 
 @router.get("/projects/{project_id}/budget-summary", response_model=BudgetSummaryResponse)

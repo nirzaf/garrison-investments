@@ -4,7 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import DbSession, require_permission
+from app.models.project_member import ProjectMember
 from app.models.user import User
+from app.repositories.user_repository import UserRepository
 from app.schemas.projects import (
     BoqItemResponse,
     MilestoneResponse,
@@ -16,6 +18,7 @@ from app.schemas.projects import (
     ProjectResponse,
     ProjectTaskCreateRequest,
     ProjectTaskResponse,
+    ProjectTaskUpdateRequest,
     ProjectTimelineResponse,
     ProjectUpdateRequest,
 )
@@ -26,6 +29,18 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 CanReadProjects = Annotated[User, Depends(require_permission(PERMISSION_PROJECTS_READ))]
 CanManageProjects = Annotated[User, Depends(require_permission(PERMISSION_PROJECTS_MANAGE))]
+
+
+async def _member_responses(
+    members: list[ProjectMember], session: DbSession
+) -> list[ProjectMemberResponse]:
+    names = await UserRepository(session).display_names({member.user_id for member in members})
+    return [
+        ProjectMemberResponse.model_validate(member).model_copy(
+            update={"user_name": names.get(member.user_id)}
+        )
+        for member in members
+    ]
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -72,7 +87,7 @@ async def get_project(
     )
     return ProjectDetailResponse(
         **ProjectResponse.model_validate(project).model_dump(),
-        members=[ProjectMemberResponse.model_validate(member) for member in members],
+        members=await _member_responses(members, session),
         milestones=[MilestoneResponse.model_validate(milestone) for milestone in milestones],
         boq_items=[BoqItemResponse.model_validate(item) for item in boq_items],
         is_read_only=project.status in READ_ONLY_STATUSES,
@@ -97,7 +112,7 @@ async def list_project_members(
     session: DbSession,
 ) -> list[ProjectMemberResponse]:
     members = await ProjectService(session).list_members(project_id, current_user)
-    return [ProjectMemberResponse.model_validate(member) for member in members]
+    return await _member_responses(members, session)
 
 
 @router.post(
@@ -112,7 +127,8 @@ async def assign_project_member(
     session: DbSession,
 ) -> ProjectMemberResponse:
     member = await ProjectService(session).assign_member(project_id, payload, current_user)
-    return ProjectMemberResponse.model_validate(member)
+    responses = await _member_responses([member], session)
+    return responses[0]
 
 
 @router.get("/{project_id}/timeline", response_model=ProjectTimelineResponse)
@@ -128,6 +144,9 @@ async def get_project_timeline(
         project=ProjectResponse.model_validate(project),
         milestones=[MilestoneResponse.model_validate(milestone) for milestone in milestones],
         tasks=[ProjectTaskResponse.model_validate(task) for task in tasks],
+        owner_names=await UserRepository(session).display_names(
+            {task.owner_id for task in tasks if task.owner_id is not None}
+        ),
     )
 
 
@@ -143,4 +162,16 @@ async def create_project_task(
     session: DbSession,
 ) -> ProjectTaskResponse:
     task = await ProjectService(session).create_task(project_id, payload, current_user)
+    return ProjectTaskResponse.model_validate(task)
+
+
+@router.patch("/{project_id}/tasks/{task_id}", response_model=ProjectTaskResponse)
+async def update_project_task(
+    project_id: UUID,
+    task_id: UUID,
+    payload: ProjectTaskUpdateRequest,
+    current_user: CanManageProjects,
+    session: DbSession,
+) -> ProjectTaskResponse:
+    task = await ProjectService(session).update_task(project_id, task_id, payload, current_user)
     return ProjectTaskResponse.model_validate(task)
