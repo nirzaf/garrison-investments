@@ -97,7 +97,7 @@ async def preview(
                 audit, verified, captured_cutoff, category, limit=limit, after=after
             )
             candidates = await audit.preview_purge(cutoff_at=captured_cutoff)
-            payload = {
+            payload: dict[str, object] = {
                 "cutoff_utc": captured_cutoff.isoformat(),
                 "policy_revision": verified.policy.revision if verified else None,
                 "policy_sha256": verified.sha256 if verified else None,

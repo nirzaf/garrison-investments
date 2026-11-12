@@ -168,7 +168,7 @@ async def test_preview_covers_complete_population_and_purge_is_bounded(
     async with AsyncSessionLocal() as session:
         ids = [uuid4() for _ in range(1002)]
         await session.execute(insert(ActivityLog), [{**base, "id": id_} for id_ in ids])
-        protected = {
+        protected: dict[UUID, dict[str, object]] = {
             uuid4(): {"retention_until": None},
             uuid4(): {"retention_until": cutoff + timedelta(seconds=1)},
             uuid4(): {"retention_until": created + timedelta(days=1)},
@@ -345,7 +345,13 @@ async def test_extension_plan_checks_exact_bytes_rejects_stale_batch_and_resumes
         receipts = (
             await AuditService(session).list_logs(action="maintenance.audit_retention_extension")
         )[0]
-        assert sum(receipt.context_payload["plan_sha256"] == digest for receipt in receipts) == 1
+        assert (
+            sum(
+                (receipt.context_payload or {}).get("plan_sha256") == digest
+                for receipt in receipts
+            )
+            == 1
+        )
 
 
 async def test_purge_skips_a_record_locked_by_an_extension(
