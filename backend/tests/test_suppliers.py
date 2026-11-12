@@ -15,8 +15,8 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.suppliers import SupplierUpdateRequest
 from app.services.supplier_service import SupplierService
 from app.tasks.maintenance import _check_supplier_tds_expiry
-from app.utils.security import hash_password
 from tests.concurrency_helpers import error_codes, race_sessions, status_counts
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,7 +41,7 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[User, str
         employee_code=f"SUP-{uuid4().hex[:8]}",
         phone="+97455550777",
         designation=role.replace("_", " ").title(),
-        password_hash=hash_password(password),
+        password_hash=hash_fixture_password(password),
         must_change_password=False,
     )
     async with AsyncSessionLocal() as session:

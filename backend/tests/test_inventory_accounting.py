@@ -38,8 +38,9 @@ from app.services.email_service import EmailDeliveryError
 from app.services.inventory_service import InventoryService
 from app.tasks.email import _send_email_notification
 from app.utils.exceptions import AppException
-from app.utils.security import hash_password, utc_now
+from app.utils.security import utc_now
 from tests.concurrency_helpers import SessionOperation, error_codes, race_sessions, status_counts
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,7 +67,7 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[User, str
         employee_code=f"ACC-{uuid4().hex[:8]}",
         phone="+97455550555",
         designation=role.replace("_", " ").title(),
-        password_hash=hash_password(password),
+        password_hash=hash_fixture_password(password),
         must_change_password=False,
     )
     async with AsyncSessionLocal() as session:

@@ -15,7 +15,8 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password, utc_now
+from app.utils.security import utc_now
+from tests.password_fixtures import hash_fixture_password
 from tests.test_finance import add_invoice
 
 pytestmark = pytest.mark.asyncio
@@ -48,7 +49,7 @@ async def create_user(role: str, *, active: bool = True) -> User:
         employee_code=f"DEL-{uuid4().hex[:8]}",
         phone="+97455550555",
         designation=role.replace("_", " ").title(),
-        password_hash=hash_password(PASSWORD),
+        password_hash=hash_fixture_password(PASSWORD),
         must_change_password=False,
         is_active=active,
     )

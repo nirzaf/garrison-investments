@@ -21,7 +21,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.import_service import ImportService
 from app.tasks.imports import _run_import_async
 from app.utils.exceptions import AppException
-from app.utils.security import hash_password
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -46,7 +46,7 @@ async def create_admin(password: str = "Start123!") -> User:
         employee_code=f"IMP-{uuid4().hex[:8]}",
         phone="+97455551111",
         designation="Admin",
-        password_hash=hash_password(password),
+        password_hash=hash_fixture_password(password),
         must_change_password=False,
     )
     async with AsyncSessionLocal() as session:

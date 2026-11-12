@@ -7,7 +7,7 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,7 +35,7 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[str, str]
                 employee_code=f"TEST-{uuid4().hex[:8]}",
                 phone="+97455550000",
                 designation=role.replace("_", " ").title(),
-                password_hash=hash_password(password),
+                password_hash=hash_fixture_password(password),
                 must_change_password=False,
             )
         )

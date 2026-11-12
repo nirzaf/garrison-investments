@@ -18,7 +18,8 @@ from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.tasks.report import generate_excel_export
-from app.utils.security import hash_password, utc_now
+from app.utils.security import utc_now
+from tests.password_fixtures import hash_fixture_password
 from tests.test_blocking_io_offload import pdf_text
 
 ANALYTICS_PATHS = (
@@ -49,7 +50,7 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[User, str
         employee_code=f"ANL-{uuid4().hex[:8]}",
         phone="+97455551000",
         designation=role.replace("_", " ").title(),
-        password_hash=hash_password(password),
+        password_hash=hash_fixture_password(password),
         must_change_password=False,
     )
     async with AsyncSessionLocal() as session:

@@ -38,7 +38,9 @@ CI_JOBS = {
     "Backend lint and types",
     "Frontend lint, types, tests and build",
     "Compose files are valid",
-    "Backend tests",
+    "Backend tests (1/2)",
+    "Backend tests (2/2)",
+    "Browser regressions",
 }
 ROLE_IDS = {
     "admin",

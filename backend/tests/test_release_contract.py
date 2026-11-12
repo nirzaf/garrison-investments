@@ -413,6 +413,15 @@ def ci_receipt(bundle: Bundle) -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize("job", ["Browser regressions", "Backend tests (2/2)"])
+def test_ci_receipt_requires_all_parallel_suites(tmp_path: Path, job: str) -> None:
+    bundle = Bundle(tmp_path)
+    receipt = ci_receipt(bundle)
+    receipt["jobs"] = [row for row in receipt["jobs"] if row["name"] != job]
+    with pytest.raises(contract.ContractError, match="Required CI jobs are missing"):
+        contract.receipt_ci(receipt, bundle.validator("predeploy").evidence, SHA, None, 11)
+
+
 def phase_results(
     bundle: Bundle,
     phase: str,

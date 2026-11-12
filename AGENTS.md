@@ -5,6 +5,8 @@ The [root README](README.md) covers features, architecture diagrams, local setup
 Check the linked code, migrations, or workflows before updating a behavior claim. Keep changes in
 the guide that owns the topic and link to it from related pages.
 
+On every release iteration, review the [CI and deployment timings](docs/OPERATIONS_AND_DEPLOYMENT.md#review-pipeline-time-on-every-release) for the exact candidate. Look for ways to shorten the slowest path while preserving required checks.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

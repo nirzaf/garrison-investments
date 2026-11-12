@@ -35,6 +35,14 @@ If the approval bundle becomes available after CI, dispatch `deploy.yml` from `m
 
 The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub and requires approved evidence before fetching the candidate. After building the exact revision, it compares the image identities, Alembic heads and frontend hashes with the authorization. For runtime changes it also checks protected resources and runs the application and Grafana backup command in a one-off container before activation. It swaps the frontend index atomically, verifies the served sign-in HTML, JavaScript and service worker hashes, and checks public readiness. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and hashes in `DEPLOYED`. Failed activations follow the [rollback procedure](#rollback).
 
+### Review pipeline time on every release
+
+Compare the candidate's Actions run with the previous release. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests. Use those timings to look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and retain the same required checks and test coverage.
+
+The two backend shards and the Chromium browser suite run in parallel on separate PostgreSQL, Redis and object storage services. Each job applies the migrations to its own database. Backend shards keep test modules together and each test belongs to exactly one shard; local `pytest` without `--garrison-shard` still runs the full suite. The release receipt requires success from both backend shards and the browser job.
+
+For deployment, compare build, pre-activation backup, activation, and readback time. Reuse the reviewed, SHA-tagged staging images when available: the host checks their image IDs and served hashes against the exact release authorization before activation.
+
 ### Host bootstrap and runner maintenance
 
 Provision the existing stack and an initial active release before registering the production runner. The script expects the project `garrison-portal`, an active release under `/opt/garrison-portal/releases/`, and the `garrison-portal_frontend_dist` volume. Under `/opt/garrison-portal/deploy/`, keep the following root-controlled.

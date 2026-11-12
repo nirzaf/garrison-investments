@@ -19,8 +19,9 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
-from app.utils.security import hash_password, utc_now
+from app.utils.security import utc_now
 from scripts import log_cli
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -48,7 +49,7 @@ async def create_user(role: str, password: str = "Start123!") -> tuple[str, str]
                 employee_code=f"LOG-{uuid4().hex[:8]}",
                 phone="+97455550333",
                 designation=role.replace("_", " ").title(),
-                password_hash=hash_password(password),
+                password_hash=hash_fixture_password(password),
                 must_change_password=False,
             )
         )

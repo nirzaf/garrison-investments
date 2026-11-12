@@ -12,6 +12,8 @@ from uuid import UUID, uuid4
 import uvicorn
 from sqlalchemy.engine import make_url
 
+from tests.password_fixtures import hash_fixture_password
+
 
 def configure() -> None:
     database_url = os.environ.get(
@@ -53,7 +55,6 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
     from app.models.project import Project
     from app.models.project_member import ProjectMember
     from app.models.user import User
-    from app.utils.security import hash_password
     from app.utils.time import business_today
 
     identifier = uuid4().hex[:12]
@@ -66,7 +67,7 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
                 full_name=f"Browser Test {role.replace('_', ' ').title()}",
                 role=role,
                 employee_code=f"E2E-{identifier}",
-                password_hash=hash_password(password),
+                password_hash=hash_fixture_password(password),
                 must_change_password=False,
             )
             session.add(user)

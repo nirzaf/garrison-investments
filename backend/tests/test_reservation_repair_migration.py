@@ -28,7 +28,7 @@ from app.models.inventory import (
 from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.utils.security import hash_password
+from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
 
@@ -82,7 +82,7 @@ async def seed_legacy_drift() -> LegacyDrift:
             employee_code=f"REP-{suffix}",
             phone="+97455550555",
             designation="Storekeeper",
-            password_hash=hash_password("Start123!"),
+            password_hash=hash_fixture_password("Start123!"),
             must_change_password=False,
         )
         await UserRepository(session).add(actor)
