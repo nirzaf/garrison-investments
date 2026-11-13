@@ -200,7 +200,7 @@ jobs:
           BROWSER_SHARD: ${{ matrix.shard }}
         run: |
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --shard="$BROWSER_SHARD/2" --workers=2 --reporter=list,junit
+            npm run test:browser -- --fully-parallel --shard="$BROWSER_SHARD/2" --workers=2 --reporter=list,junit
       - name: Remove the test S3 container
         if: always()
         run: |
