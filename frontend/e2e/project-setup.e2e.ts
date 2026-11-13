@@ -8,7 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
 type TestAccount = { email: string; password: string };
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
 
-function seedAdministrator(): TestAccount {
+function seedAdministrator(): TestAccount & { projectId: string } {
   return JSON.parse(
     execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', ['-m', 'tests.browser_fixtures', 'seed'], {
       cwd: backendDirectory,
@@ -98,7 +98,8 @@ test('project teams and task dates persist through reload at narrow and desktop 
   test.setTimeout(70_000);
   const errors: Error[] = [];
   page.on('pageerror', (error) => errors.push(error));
-  const token = await signIn(page, seedAdministrator());
+  const admin = seedAdministrator();
+  const token = await signIn(page, admin);
   const headers = { Authorization: `Bearer ${token}` };
   const suffix = randomUUID().slice(0, 8);
   const name = `Project workflow ${suffix}`;
@@ -229,8 +230,30 @@ test('project teams and task dates persist through reload at narrow and desktop 
   await expect(detail.getByText('Site engineer', { exact: false })).toBeVisible();
 
   await detail.getByRole('button', { name: 'Timeline', exact: true }).click();
+  const tasksUrl = `${projectUrl}/tasks`;
+  const otherTaskResponse = await request.post(`/api/v1/projects/${admin.projectId}/tasks`, {
+    headers,
+    data: { name: 'Other project task' }
+  });
+  expect(otherTaskResponse.status()).toBe(201);
+  const otherTask = await otherTaskResponse.json();
+  await detail.getByRole('button', { name: 'New task', exact: true }).click();
+  await detail.getByLabel('Task name').fill('Confirm site access');
+  const predecessorCreated = page.waitForResponse(
+    (reply) => reply.request().method() === 'POST' && new URL(reply.url()).pathname === tasksUrl
+  );
+  await detail.getByRole('button', { name: 'Add task', exact: true }).click();
+  const predecessorResponse = await predecessorCreated;
+  expect(predecessorResponse.status()).toBe(201);
+  const predecessor = await predecessorResponse.json();
+  await expect(detail.getByRole('button', { name: 'Edit task Confirm site access' })).toBeVisible();
+
   await detail.getByRole('button', { name: 'New task', exact: true }).click();
   await detail.getByLabel('Task name').fill('Prepare site');
+  await expect(detail.getByRole('option', { name: 'Other project task', exact: true })).toHaveCount(
+    0
+  );
+  await detail.getByLabel('Depends on').selectOption(predecessor.id);
   await detail.getByLabel('Baseline start').fill('2027-02-10');
   await detail.getByLabel('Baseline end').fill('2027-02-12');
   await detail.getByLabel('Planned start').fill('2027-02-11');
@@ -248,6 +271,23 @@ test('project teams and task dates persist through reload at narrow and desktop 
   const chart = detail.getByRole('region', { name: 'Scrollable task Gantt chart' });
   await expect(chart.getByRole('img', { name: 'Actual 2027-02-14 to 2027-02-15' })).toBeVisible();
   expect(await chart.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  await detail.getByRole('button', { name: 'Edit task Confirm site access' }).click();
+  const dependency = detail.getByLabel('Depends on');
+  await expect(
+    dependency.getByRole('option', { name: 'Confirm site access', exact: true })
+  ).toHaveCount(0);
+  await dependency.selectOption({ label: 'Prepare site' });
+  const cycleResponse = page.waitForResponse(
+    (reply) =>
+      reply.request().method() === 'PATCH' &&
+      new URL(reply.url()).pathname === `${tasksUrl}/${predecessor.id}`
+  );
+  await detail.getByRole('button', { name: 'Save task', exact: true }).click();
+  const cycle = await cycleResponse;
+  expect(cycle.status()).toBe(422);
+  expect(await cycle.json()).toMatchObject({ error_code: 'PROJECT_TASK_DEPENDENCY_CYCLE' });
+  await expect(detail.getByRole('alert')).toContainText('The dependency would create a cycle.');
+  await expect(dependency.locator('option:checked')).toHaveText('Prepare site');
 
   await page.reload();
   await page.getByRole('button', { name, exact: true }).click();
@@ -255,12 +295,21 @@ test('project teams and task dates persist through reload at narrow and desktop 
   await detail.getByRole('button', { name: 'Team', exact: true }).click();
   await expect(detail.getByText('Site engineer', { exact: false })).toBeVisible();
   await detail.getByRole('button', { name: 'Timeline', exact: true }).click();
+  const schedule = detail.getByRole('table', { name: 'Project tasks' });
+  const taskRow = schedule.getByRole('row').filter({
+    has: page.getByRole('rowheader', { name: 'Prepare site', exact: true })
+  });
   await expect(
-    detail
-      .getByRole('table', { name: 'Project tasks' })
-      .getByRole('row')
-      .filter({ hasText: 'Prepare site' })
-  ).toContainText('2027-02-14 to 2027-02-15');
+    taskRow.getByRole('cell', { name: 'Confirm site access', exact: true })
+  ).toBeVisible();
+  for (const [label, range] of [
+    ['Baseline', '2027-02-10 to 2027-02-12'],
+    ['Planned', '2027-02-11 to 2027-02-13'],
+    ['Actual', '2027-02-14 to 2027-02-15']
+  ]) {
+    await expect(taskRow.getByRole('cell', { name: range, exact: true })).toBeVisible();
+    await expect(chart.getByRole('img', { name: `${label} ${range}`, exact: true })).toBeVisible();
+  }
 
   const engineerPage = await browser.newPage({ baseURL });
   try {
@@ -284,12 +333,33 @@ test('project teams and task dates persist through reload at narrow and desktop 
   }
   const persisted = await request.get(`/api/v1/projects/${project.id}/timeline`, { headers });
   expect(persisted.status()).toBe(200);
-  expect((await persisted.json()).tasks[0]).toMatchObject({
+  const { tasks } = await persisted.json();
+  const savedTask = tasks.find((task: { name: string }) => task.name === 'Prepare site');
+  expect(savedTask).toMatchObject({
+    dependency_task_id: predecessor.id,
     baseline_end_date: '2027-02-12',
     planned_end_date: '2027-02-13',
     actual_end_date: '2027-02-15',
     revision: 2
   });
+  expect(tasks.find((task: { id: string }) => task.id === predecessor.id)).toMatchObject({
+    dependency_task_id: null,
+    revision: predecessor.revision
+  });
+  for (const [dependencyId, errorCode] of [
+    [savedTask.id, 'PROJECT_TASK_DEPENDENCY_CYCLE'],
+    [otherTask.id, 'PROJECT_TASK_INVALID_DEPENDENCY']
+  ]) {
+    const invalid = await request.patch(`${tasksUrl}/${savedTask.id}`, {
+      headers,
+      data: { dependency_task_id: dependencyId, expected_revision: savedTask.revision }
+    });
+    expect(invalid.status()).toBe(422);
+    expect(await invalid.json()).toMatchObject({ error_code: errorCode });
+  }
+  const afterInvalidDependencies = await request.get(`${projectUrl}/timeline`, { headers });
+  expect(afterInvalidDependencies.ok()).toBe(true);
+  expect((await afterInvalidDependencies.json()).tasks).toEqual(tasks);
   await detail.getByRole('button', { name: 'Overview', exact: true }).click();
   await detail.getByRole('button', { name: 'Edit project', exact: true }).click();
   await detail.getByLabel('Location', { exact: true }).fill('');
