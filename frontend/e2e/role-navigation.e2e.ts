@@ -157,14 +157,20 @@ const cases: RoleCase[] = [
 
 test.use({ trace: 'off' });
 
+function browserFixture(...args: string[]) {
+  return execFileSync(
+    env.BROWSER_TEST_PYTHON ?? 'python',
+    ['-m', 'tests.browser_fixtures', ...args],
+    { cwd: backendDirectory, encoding: 'utf8' }
+  );
+}
+
+function seedAccount(role: string) {
+  return JSON.parse(browserFixture('seed', '--role', role)) as { email: string; password: string };
+}
+
 async function signIn(page: Page, role: string) {
-  const account = JSON.parse(
-    execFileSync(
-      env.BROWSER_TEST_PYTHON ?? 'python',
-      ['-m', 'tests.browser_fixtures', 'seed', '--role', role],
-      { cwd: backendDirectory, encoding: 'utf8' }
-    )
-  ) as { email: string; password: string };
+  const account = seedAccount(role);
 
   await page.goto('/login');
   await page.getByLabel('Email', { exact: true }).fill(account.email);
@@ -179,6 +185,71 @@ async function signIn(page: Page, role: string) {
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
   return ((await (await verification).json()) as { access_token: string }).access_token;
 }
+
+test('an expired login code requires a new challenge before a session is restored', async ({
+  page,
+  context,
+  request
+}) => {
+  const account = seedAccount('project_manager');
+  const submitPassword = async () => {
+    await page.getByLabel('Password', { exact: true }).fill(account.password);
+    const login = page.waitForResponse(
+      (response) => response.url().endsWith('/api/v1/auth/login') && response.ok()
+    );
+    await page.getByRole('button', { name: 'Continue' }).click();
+    const result = await (await login).json() as { challenge_id: string; dev_otp: string };
+    await expect(page.getByText(/^Development code:/)).toBeVisible();
+    return result;
+  };
+  const submitCode = async (code: string, status: number) => {
+    await page.getByLabel('Verification code').fill(code);
+    const verification = page.waitForResponse(
+      (response) => response.url().endsWith('/api/v1/auth/verify-otp')
+    );
+    await page.getByRole('button', { name: 'Verify and sign in' }).click();
+    const response = await verification;
+    expect(response.status()).toBe(status);
+    return response;
+  };
+
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(account.email);
+  const initial = await submitPassword();
+  const wrong = initial.dev_otp === '000000' ? '000001' : '000000';
+  expect((await (await submitCode(wrong, 401)).json()).error_code).toBe('OTP_FAILED');
+  await expect(page).toHaveURL('/login');
+
+  browserFixture('expire-login', '--challenge-id', initial.challenge_id);
+  expect((await (await submitCode(initial.dev_otp, 401)).json()).error_code).toBe('OTP_FAILED');
+  await expect(page.getByRole('alert')).toContainText('Check the code or request a new one.');
+  expect((await context.cookies()).some((cookie) => cookie.name === 'refresh_token')).toBe(false);
+  expect((await request.get('/api/v1/auth/me')).status()).toBe(401);
+
+  const requestNew = page.getByRole('button', { name: 'Request a new code' });
+  await expect(requestNew).toBeVisible();
+  await requestNew.click();
+  await expect(page.getByLabel('Email', { exact: true })).toHaveValue(account.email);
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+  await expect(page.getByText(/^Development code:/)).toHaveCount(0);
+  const fresh = await submitPassword();
+  expect(fresh.challenge_id).not.toBe(initial.challenge_id);
+  await expect(page.getByLabel('Verification code')).toHaveValue('');
+  await expect(page.getByLabel('Verification code')).toBeFocused();
+  const verified = await (await submitCode(fresh.dev_otp, 200)).json();
+  expect(verified.user).toMatchObject({ email: account.email, role: 'project_manager' });
+  await expect(page).toHaveURL('/dashboard');
+
+  const refresh = page.waitForResponse(
+    (response) => response.url().endsWith('/api/v1/auth/refresh') && response.ok()
+  );
+  await page.reload();
+  const restored = await (await refresh).json();
+  expect(restored.user).toMatchObject({ id: verified.user.id, role: 'project_manager' });
+  await expect(page).toHaveURL('/dashboard');
+  await expect((await sidebar(page)).getByRole('link', { name: 'Projects', exact: true })).toBeVisible();
+});
 
 async function sidebar(page: Page) {
   const nav = page.getByRole('complementary').getByRole('navigation');

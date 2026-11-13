@@ -5,7 +5,7 @@ import asyncio
 import json
 import os
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -105,17 +105,46 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
     print(json.dumps({"email": email, "password": password, "projectId": project_id}))
 
 
+async def expire_login_challenge(challenge_id: UUID) -> None:
+    from app.database import AsyncSessionLocal, engine
+    from app.models.auth import AuthOtpChallenge
+    from app.models.user import User
+
+    try:
+        async with AsyncSessionLocal() as session:
+            challenge = await session.get(AuthOtpChallenge, challenge_id)
+            user = await session.get(User, challenge.user_id) if challenge else None
+            if (
+                not challenge
+                or challenge.purpose != "login"
+                or challenge.consumed_at is not None
+                or not user
+                or not user.email.startswith("browser-")
+                or not user.email.endswith("@example.com")
+            ):
+                raise ValueError("Expected an unconsumed browser fixture login challenge.")
+            challenge.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+
 if __name__ == "__main__":
     from app.utils.permissions import VALID_ROLES
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["seed", "seed-supervisor", "serve"])
+    parser.add_argument("command", choices=["seed", "seed-supervisor", "serve", "expire-login"])
     parser.add_argument("--role", choices=sorted(VALID_ROLES), default="admin")
     parser.add_argument("--project-id", type=UUID)
+    parser.add_argument("--challenge-id", type=UUID)
     args = parser.parse_args()
+    if args.command == "expire-login" and args.challenge_id is None:
+        parser.error("expire-login requires --challenge-id")
     configure()
     if args.command == "serve":
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
+    elif args.command == "expire-login":
+        asyncio.run(expire_login_challenge(args.challenge_id))
     else:
         asyncio.run(
             seed(

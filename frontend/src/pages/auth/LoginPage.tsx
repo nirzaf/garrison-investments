@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
@@ -15,6 +15,17 @@ export function LoginPage() {
   const [devOtp, setDevOtp] = useState<string | null | undefined>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
+  const restarting = useRef(false);
+
+  useEffect(() => {
+    if (challengeId) codeInput.current?.focus();
+    if (!challengeId && restarting.current) {
+      restarting.current = false;
+      passwordInput.current?.focus();
+    }
+  }, [challengeId]);
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -27,6 +38,7 @@ export function LoginPage() {
     try {
       if (!challengeId) {
         const challenge = await login(email, password);
+        setPassword('');
         setChallengeId(challenge.challengeId);
         setDevOtp(challenge.devOtp);
       } else {
@@ -34,7 +46,9 @@ export function LoginPage() {
         navigate('/dashboard', { replace: true });
       }
     } catch {
-      setError('Sign in failed. Check your details and try again.');
+      setError(challengeId
+        ? 'Sign in failed. Check the code or request a new one.'
+        : 'Sign in failed. Check your details and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -56,6 +70,7 @@ export function LoginPage() {
             <input
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               disabled={Boolean(challengeId) || isSubmitting}
+              autoComplete="username"
               onChange={(event) => setEmail(event.target.value)}
               placeholder="name@company.com"
               required
@@ -69,8 +84,10 @@ export function LoginPage() {
               <input
                 className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
                 disabled={isSubmitting}
+                autoComplete="current-password"
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Password"
+                ref={passwordInput}
                 required
                 type="password"
                 value={password}
@@ -84,11 +101,13 @@ export function LoginPage() {
               <input
                 className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm tracking-widest text-theme-text-primary"
                 disabled={isSubmitting}
+                autoComplete="one-time-code"
                 inputMode="numeric"
                 maxLength={6}
                 onChange={(event) => setOtp(event.target.value)}
                 pattern="[0-9]{6}"
                 placeholder="000000"
+                ref={codeInput}
                 required
                 value={otp}
               />
@@ -105,7 +124,9 @@ export function LoginPage() {
             </p>
           ) : null}
           {error ? (
-            <p className="text-sm font-medium text-[var(--status-error-text)]">{error}</p>
+            <p className="text-sm font-medium text-[var(--status-error-text)]" role="alert">
+              {error}
+            </p>
           ) : null}
           <button
             className="w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70"
@@ -115,14 +136,29 @@ export function LoginPage() {
             {challengeId ? 'Verify and sign in' : 'Continue'}
           </button>
         </form>
-        {!challengeId ? (
+        {challengeId ? (
+          <button
+            className="mt-4 inline-flex text-sm font-medium text-brand-700 hover:text-brand-800 disabled:opacity-70"
+            disabled={isSubmitting}
+            onClick={() => {
+              restarting.current = true;
+              setChallengeId(null);
+              setOtp('');
+              setDevOtp(null);
+              setError(null);
+            }}
+            type="button"
+          >
+            Request a new code
+          </button>
+        ) : (
           <Link
             className="mt-4 inline-flex text-sm font-medium text-brand-700 hover:text-brand-800"
             to="/password-reset"
           >
             Forgot password?
           </Link>
-        ) : null}
+        )}
       </section>
     </main>
   );
