@@ -337,7 +337,10 @@ def runtime() -> dict[str, Any]:
 
 def github_stub(path: str, token: str | None) -> dict[str, Any]:
     jobs = [
-        {"id": i, "name": name, "head_sha": SHA, "status": "completed", "conclusion": "success"}
+        {
+            "id": i, "name": name, "head_sha": SHA, "status": "completed",
+            "conclusion": "success", "run_id": 11, "run_attempt": 1,
+        }
         for i, name in enumerate(sorted(contract.CI_JOBS), 1)
     ]
     if "/jobs?" in path:
@@ -439,6 +442,7 @@ def ci_receipt(bundle: Bundle) -> dict[str, Any]:
         )
     return {
         "run_id": 11,
+        "run_attempt": 1,
         "run_url": contract.run_url(11),
         "repository": contract.REPOSITORY,
         "ref": "refs/heads/main",
@@ -460,6 +464,47 @@ def test_ci_receipt_requires_all_parallel_suites(tmp_path: Path, job: str) -> No
     receipt["jobs"] = [row for row in receipt["jobs"] if row["name"] != job]
     with pytest.raises(contract.ContractError, match="Required CI jobs are missing"):
         contract.receipt_ci(receipt, bundle.validator("predeploy").evidence, SHA, None, 11)
+
+
+def test_ci_receipt_uses_the_recorded_attempt_after_a_failed_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = Bundle(tmp_path)
+    receipt = ci_receipt(bundle)
+    requested = []
+
+    def runs(path: str, token: str | None) -> dict[str, Any]:
+        requested.append(path)
+        result = github_stub(path, token)
+        if path == "actions/runs/11":
+            return {**result, "run_attempt": 2, "conclusion": "failure"}
+        return result
+
+    monkeypatch.setattr(contract, "github_record", runs)
+    contract.receipt_ci(receipt, bundle.validator("predeploy").evidence, SHA, None, 11)
+    assert requested == [
+        "actions/runs/11/attempts/1",
+        "actions/runs/11/attempts/1/jobs?per_page=100",
+    ]
+
+
+@pytest.mark.parametrize(("field", "value"), [("run_id", 12), ("run_attempt", 2)])
+def test_ci_receipt_rejects_jobs_from_another_run_or_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: int
+) -> None:
+    bundle = Bundle(tmp_path)
+
+    def runs(path: str, token: str | None) -> dict[str, Any]:
+        result = github_stub(path, token)
+        if "/jobs?" in path:
+            result["jobs"][0][field] = value
+        return result
+
+    monkeypatch.setattr(contract, "github_record", runs)
+    with pytest.raises(contract.ContractError, match="GitHub jobs differ"):
+        contract.receipt_ci(
+            ci_receipt(bundle), bundle.validator("predeploy").evidence, SHA, None, 11
+        )
 
 
 def test_junit_counts_derive_results_from_actual_cases() -> None:

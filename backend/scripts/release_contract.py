@@ -948,9 +948,12 @@ def receipt_ci(
     artifact_hashes: set[str] | None = None,
 ) -> None:
     data = fields(
-        payload, "run_id run_url repository ref conclusion jobs suites checks", label="CI result"
+        payload,
+        "run_id run_url run_attempt repository ref conclusion jobs suites checks",
+        label="CI result",
     )
     run_id = count(data["run_id"], "CI run ID", minimum=1)
+    attempt = count(data["run_attempt"], "CI run attempt", minimum=1)
     require(
         (required_run is None or run_id == required_run)
         and data["run_url"] == run_url(run_id)
@@ -973,15 +976,17 @@ def receipt_ci(
         )
         jobs[job_id] = name
     require(CI_JOBS <= set(jobs.values()), "Required CI jobs are missing.", 3)
-    checked_run(run_id, sha, token, ci=True)
-    live = github_record(f"actions/runs/{run_id}/jobs?per_page=100", token)
+    checked_run(run_id, sha, token, ci=True, attempt=attempt)
+    live = github_record(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", token)
     live_jobs = live.get("jobs")
     if not isinstance(live_jobs, list) or live.get("total_count") != len(live_jobs):
         raise ContractError(5, "Incomplete GitHub job verification.")
     observed = {
         row["id"]: row["name"]
         for row in live_jobs
-        if row.get("head_sha") == sha
+        if row.get("run_id") == run_id
+        and row.get("run_attempt") == attempt
+        and row.get("head_sha") == sha
         and row.get("status") == "completed"
         and row.get("conclusion") == "success"
     }
