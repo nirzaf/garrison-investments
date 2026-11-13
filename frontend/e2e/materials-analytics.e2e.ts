@@ -278,6 +278,78 @@ test('store requester selects company project and fulfills chosen quantities acr
   await movementForm.getByRole('button', { name: 'Record movement' }).click();
   expect((await corrected).status()).toBe(201);
   await expect(movementQuantity).toHaveValue('');
+
+  const pendingRequestResponse = await storePage.request.post('/api/v1/inventory/requests', {
+    headers: storeHeaders,
+    data: {
+      project_id: admin.projectId,
+      from_location_id: location.id,
+      lines: [{ item_id: items[0].id, quantity: '2' }]
+    }
+  });
+  expect(pendingRequestResponse.status()).toBe(201);
+  const pendingRequest = await pendingRequestResponse.json();
+  expect(pendingRequest.status).toBe('requested');
+  const pendingOutbox = await storePage.request.get('/api/v1/approvals?box=outbox', {
+    headers: storeHeaders
+  });
+  expect(pendingOutbox.ok()).toBe(true);
+  const pendingApproval = (await pendingOutbox.json()).items.find(
+    (item: { request_id: string }) => item.request_id === pendingRequest.id
+  );
+  expect(pendingApproval.status).toBe('pending');
+  await adminPage.goto(`/approvals?tab=workflow&approvalId=${pendingApproval.id}`);
+  await storePage.goto(`/materials?materialRequestId=${pendingRequest.id}`);
+  const staleApproval = adminPage
+    .getByRole('article')
+    .filter({ hasText: pendingRequest.request_number });
+  const pendingCard = storePage
+    .getByRole('article')
+    .filter({ hasText: pendingRequest.request_number });
+  const overrideUrl = `**/api/v1/approvals/${pendingApproval.id}/override`;
+  let releaseDecision!: () => void;
+  const cancellationCommitted = new Promise<void>((resolve) => {
+    releaseDecision = resolve;
+  });
+  await adminPage.route(
+    overrideUrl,
+    async (route) => {
+      await cancellationCommitted;
+      await route.continue();
+    },
+    { times: 1 }
+  );
+  await staleApproval.getByPlaceholder('Override reason').fill('Stale approval after cancellation');
+  const submitted = adminPage.waitForRequest(overrideUrl);
+  const decision = adminPage.waitForResponse(overrideUrl);
+  try {
+    await staleApproval.getByRole('button', { name: 'Override', exact: true }).click();
+    await submitted;
+    await pendingCard.getByRole('button', { name: 'Cancel request' }).click();
+    await expect(pendingCard).toContainText('cancelled');
+  } finally {
+    releaseDecision();
+  }
+  const rejectedDecision = await decision;
+  expect(rejectedDecision.status()).toBe(409);
+  expect(await rejectedDecision.json()).toMatchObject({ error_code: 'APPROVAL_FINAL' });
+  await expect(adminPage.getByRole('alert')).toContainText(
+    'The approval changed while this page was open.'
+  );
+  await expect(staleApproval).toContainText('cancelled');
+  await expect(staleApproval.getByRole('button', { name: 'Override', exact: true })).toHaveCount(0);
+  await storePage.reload();
+  await expect(pendingCard).toContainText('cancelled');
+  const stockAfterConflict = await storePage.request.get(
+    `/api/v1/inventory/items/${items[0].id}/stock`,
+    { headers: storeHeaders }
+  );
+  expect(stockAfterConflict.ok()).toBe(true);
+  expect(
+    (await stockAfterConflict.json()).find(
+      (row: { location_id: string }) => row.location_id === location.id
+    )
+  ).toMatchObject({ on_hand_qty: '8.000', reserved_qty: '0.000', available_qty: '8.000' });
   await storePage.close();
   await adminPage.close();
 });
