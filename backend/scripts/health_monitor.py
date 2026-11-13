@@ -626,7 +626,9 @@ def observe(
     )
 
 
-def check_backup(profile: BackupCheck, environment: str, now: datetime, timeout: int) -> Result:
+def check_backup(
+    profile: BackupCheck, environment: str, now: datetime, timeout: int, *, source_sha: str
+) -> Result:
     from scripts.backup_set_contract import read_policy
     from scripts.backup_set_storage import read_latest_publication, read_latest_scheduled_attempt
 
@@ -654,6 +656,7 @@ def check_backup(profile: BackupCheck, environment: str, now: datetime, timeout:
             now = max(now, datetime.now(UTC))
             if (
                 attempt.source_environment != environment
+                or attempt.source_sha != source_sha
                 or attempt.policy_revision != profile.policy_revision
                 or attempt.policy_sha256 != profile.policy_sha256
                 or attempt.configuration_sha256 != profile.configuration_sha256
@@ -682,6 +685,7 @@ def check_backup(profile: BackupCheck, environment: str, now: datetime, timeout:
         age = (now - receipt.snapshot_at_utc).total_seconds()
         if (
             receipt.source_environment != environment
+            or receipt.source_sha != source_sha
             or receipt.policy_revision != profile.policy_revision
             or receipt.policy_sha256 != profile.policy_sha256
             or receipt.configuration_sha256 != profile.configuration_sha256
@@ -873,7 +877,13 @@ def run(profile_path: Path, expected_sha256: str, state_dir: Path, receipt_path:
                     state,
                     state_file,
                     profile.backup.check_id,
-                    check_backup(profile.backup, profile.environment, now, profile.timeout_seconds),
+                    check_backup(
+                        profile.backup,
+                        profile.environment,
+                        now,
+                        profile.timeout_seconds,
+                        source_sha=profile.source_sha,
+                    ),
                     datetime.now(UTC),
                     send,
                 )

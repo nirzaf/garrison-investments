@@ -194,7 +194,10 @@ def test_long_maintenance_resumes_initial_delivery_before_escalating(
     during = end - timedelta(seconds=1)
     muted = sample("readiness", outage, during)
     assert muted.suppressed and muted.event == "initial" and muted.delivery == "none"
-    freshness = sample("recovery", monitor.check_backup(backup, "staging", during, 4), during)
+    backup_result = monitor.check_backup(
+        backup, "staging", during, 4, source_sha=configured.source_sha
+    )
+    freshness = sample("recovery", backup_result, during)
     assert freshness.result.category == "backup_current" and not freshness.suppressed
     assert not deliveries
 
@@ -369,6 +372,7 @@ def backup_probe(
         alert_margin_minutes=5,
     )
     evidence = SimpleNamespace(
+        source_sha="a" * 40,
         source_environment="staging",
         policy_revision="1",
         policy_sha256="a" * 64,
@@ -378,6 +382,7 @@ def backup_probe(
         remote_verified_at_utc=now - timedelta(minutes=9),
     )
     attempt = SimpleNamespace(
+        source_sha="a" * 40,
         source_environment="staging",
         policy_revision="1",
         policy_sha256="a" * 64,
@@ -402,6 +407,51 @@ def backup_probe(
     return now, policy, approved_policy, attempt, evidence
 
 
+@pytest.mark.parametrize(
+    ("old_attempt", "old_publication", "expected"),
+    [
+        (True, True, "backup_attempt_mismatch"),
+        (True, False, "backup_attempt_mismatch"),
+        (False, True, "backup_receipt_mismatch"),
+    ],
+)
+def test_monitor_rejects_backup_evidence_from_another_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    backup_probe,
+    old_attempt: bool,
+    old_publication: bool,
+    expected: str,
+) -> None:
+    _, backup, _, attempt, publication = backup_probe
+    configured = profile(backup=backup, probe_interval_seconds=20)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(configured.model_dump_json())
+    digest = sha256(profile_path.read_bytes()).hexdigest()
+    receipt = tmp_path / "receipt.json"
+    monkeypatch.setattr(monitor, "transport_sender", lambda _: lambda *_: "fixture-message")
+    monkeypatch.setattr(monitor, "check_url", lambda *_: monitor.Result(ok=True, category="ready"))
+    assert monitor.run(profile_path, digest, tmp_path, receipt) == 0
+    state_path = tmp_path / f"{configured.profile_id}.json"
+    before = monitor.load_state(state_path, digest).checks[backup.check_id]
+    assert before.last_verified_digest == publication.manifest_sha256
+
+    if old_attempt:
+        attempt.source_sha = "b" * 40
+    if old_publication:
+        publication.source_sha = "b" * 40
+    publication.snapshot_at_utc += timedelta(seconds=1)
+    publication.manifest_sha256 = "d" * 64
+    assert monitor.run(profile_path, digest, tmp_path, receipt) == 1
+    observation = monitor.Receipt.model_validate_json(receipt.read_bytes()).observations[1]
+    assert observation.check_id == backup.check_id
+    assert not observation.result.ok and observation.result.category == expected
+    assert observation.result.digest is None and observation.result.snapshot_at is None
+    after = monitor.load_state(state_path, digest).checks[backup.check_id]
+    assert after.last_verified_snapshot == before.last_verified_snapshot
+    assert after.last_verified_digest == before.last_verified_digest
+
+
 def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -415,7 +465,7 @@ def test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state
     approved = profile()
 
     def check(at: datetime):
-        outcome = monitor.check_backup(policy, "staging", at, 4)
+        outcome = monitor.check_backup(policy, "staging", at, 4, source_sha=approved.source_sha)
         return monitor.observe(
             approved,
             state,
@@ -493,7 +543,9 @@ def test_failed_scheduled_backup_alerts_with_a_fresh_publication_and_recovers(
 
     def check(seconds):
         at = now + timedelta(seconds=seconds)
-        result = monitor.check_backup(policy, "staging", at, approved.timeout_seconds)
+        result = monitor.check_backup(
+            policy, "staging", at, approved.timeout_seconds, source_sha=approved.source_sha
+        )
         return monitor.observe(approved, state, state_file, policy.check_id, result, at, send)
 
     assert check(0).result.category == "backup_current"
@@ -550,7 +602,7 @@ def test_unavailable_or_unauthenticated_attempt_cannot_hide_behind_a_fresh_backu
         raise error("private-synthetic-storage-details")
 
     monkeypatch.setattr(backup_set_storage, "read_latest_scheduled_attempt", missing_or_tampered)
-    result = monitor.check_backup(policy, "staging", now, 4)
+    result = monitor.check_backup(policy, "staging", now, 4, source_sha="a" * 40)
     assert not result.ok and result.category == "backup_attempt_unavailable_or_invalid"
     assert "private-synthetic-storage-details" not in result.model_dump_json()
 
@@ -570,7 +622,7 @@ def test_unavailable_or_unauthenticated_attempt_cannot_hide_behind_a_fresh_backu
 def test_mismatched_scheduled_attempt_is_unhealthy(backup_probe, field: str, value) -> None:
     now, policy, _, attempt, _ = backup_probe
     setattr(attempt, field, now + value if isinstance(value, timedelta) else value)
-    result = monitor.check_backup(policy, "staging", now, 4)
+    result = monitor.check_backup(policy, "staging", now, 4, source_sha="a" * 40)
     assert not result.ok and result.category == "backup_attempt_mismatch"
 
 
@@ -585,8 +637,11 @@ def test_backup_attempt_overdue_uses_approved_cadence_from_completion(backup_pro
     assert due - publication.snapshot_at_utc < timedelta(
         minutes=policy.rpo_minutes - policy.alert_margin_minutes
     )
-    assert monitor.check_backup(policy, "staging", due - timedelta(seconds=1), 4).ok
-    result = monitor.check_backup(policy, "staging", due, 4)
+    before_due = monitor.check_backup(
+        policy, "staging", due - timedelta(seconds=1), 4, source_sha="a" * 40
+    )
+    assert before_due.ok
+    result = monitor.check_backup(policy, "staging", due, 4, source_sha="a" * 40)
     assert not result.ok and result.category == "backup_attempt_overdue"
 
 
