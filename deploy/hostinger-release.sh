@@ -9,7 +9,6 @@ repository=nirzaf/garrison-investments
 portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
-verifier=/usr/local/libexec/garrison-release-contract.py
 
 die() {
   printf '%s\n' "$*" >&2
@@ -21,8 +20,8 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && "$4" == release-contract-v1 ]] ||
-  die 'Expected a CI run ID, full SHA, rollback-v2 and release-contract-v1.'
+   "$3" == rollback-v2 && "$4" == technical-checks-v1 ]] ||
+  die 'Expected a CI run ID, full SHA, rollback-v2 and technical-checks-v1.'
 run_id=$1
 sha=$2
 IFS= read -r token || die 'A GitHub Actions token is required on stdin.'
@@ -31,6 +30,23 @@ IFS= read -r deploy_run_id || die 'A deployment workflow run ID is required on s
 [[ "$deploy_run_id" =~ ^[1-9][0-9]*$ ]] || die 'Invalid deployment workflow run ID.'
 IFS= read -r deploy_attempt || die 'A deployment workflow attempt is required on stdin.'
 [[ "$deploy_attempt" =~ ^[1-9][0-9]*$ ]] || die 'Invalid deployment workflow attempt.'
+
+# Keep the privileged entrypoint's inputs under host operator control.
+[[ $EUID == 0 ]] || die 'Production deployment must run as root.'
+for directory in /opt "$base" "$state" "$base/releases"; do
+  [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
+    die 'Production deployment directories must be root-owned and free of symlinks.'
+  mode=$(stat -c '%a' "$directory")
+  (( (8#$mode & 022) == 0 )) || die 'Production deployment directories must be protected from runner writes.'
+done
+for file in "$state/production.env" "$state/compose.vps.yml"; do
+  [[ -f "$file" && ! -L "$file" && -O "$file" ]] ||
+    die 'Production configuration must be root-owned and free of symlinks.'
+  mode=$(stat -c '%a' "$file")
+  (( (8#$mode & 022) == 0 )) || die 'Production configuration must be protected from runner writes.'
+done
+mode=$(stat -c '%a' "$state/production.env")
+(( (8#$mode & 077) == 0 )) || die 'Production secrets must be readable only by root.'
 
 exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
@@ -49,49 +65,93 @@ if json.load(sys.stdin)["object"]["sha"] != sys.argv[1]:
 ' "$sha"
 }
 
-verify_authorization() {
-  local component mode
-  [[ $EUID == 0 && -f "$verifier" ]] ||
-    die 'The root-installed release verifier is unavailable.'
-  for component in / /usr /usr/local /usr/local/libexec "$verifier"; do
-    [[ ! -L "$component" && -O "$component" ]] ||
-      die 'The release verifier path must be root-owned and free of symlinks.'
-    mode=$(stat -c '%a' "$component")
-    (( (8#$mode & 022) == 0 )) ||
-      die 'The release verifier must be protected from runner writes.'
-  done
-  printf '%s\n' "$token" | /usr/bin/python3 -I "$verifier" \
-    --host-state "$state" --commit "$sha" --ci-run "$run_id" --deploy-run "$deploy_run_id" \
-    --deploy-attempt "$deploy_attempt" "$@"
-}
-
-github "actions/runs/$run_id" | python3 -c '
+verify_ci() {
+  local attempt
+  attempt=$(github "actions/runs/$run_id" | python3 -c '
 import json, sys
-r = json.load(sys.stdin)
+
+run = json.load(sys.stdin)
+attempt = run.get("run_attempt")
 if not (
-    r["path"] == ".github/workflows/ci.yml"
-    and r["event"] == "push"
-    and r["status"] == "completed"
-    and r["conclusion"] == "success"
-    and r["head_branch"] == "main"
-    and r["head_repository"]["full_name"] == sys.argv[1]
-    and r["head_sha"] == sys.argv[2]
+    run.get("id") == int(sys.argv[1])
+    and run.get("path") == ".github/workflows/ci.yml"
+    and run.get("event") == "push"
+    and run.get("status") == "completed"
+    and run.get("conclusion") == "success"
+    and run.get("head_branch") == "main"
+    and (run.get("head_repository") or {}).get("full_name") == sys.argv[2]
+    and run.get("head_sha") == sys.argv[3]
+    and type(attempt) is int and attempt > 0
 ):
     sys.exit("The candidate does not match a successful CI push to main.")
-' "$repository" "$sha"
+print(attempt)
+' "$run_id" "$repository" "$sha") || return
+  github "actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" | python3 -c '
+import json, sys
+
+required = {
+    "Backend lint and types", "Frontend lint, types, tests and build",
+    "Compose files are valid", "Backend tests (1/2)", "Backend tests (2/2)",
+    "Browser regressions (1/2)", "Browser regressions (2/2)",
+}
+response = json.load(sys.stdin)
+jobs = response["jobs"]
+names = [job.get("name") for job in jobs if job.get("name") in required]
+if (
+    response["total_count"] != len(jobs)
+    or set(names) != required
+    or len(names) != len(required)
+    or any(
+        job.get("run_id") != int(sys.argv[1])
+        or job.get("head_sha") != sys.argv[2]
+        or job.get("run_attempt") != int(sys.argv[3])
+        or job.get("status") != "completed"
+        or job.get("conclusion") != "success"
+        for job in jobs if job.get("name") in required
+    )
+):
+    sys.exit("The successful CI attempt is missing a passed required job.")
+' "$run_id" "$sha" "$attempt"
+}
+
+verify_ci
+github "actions/runs/$deploy_run_id/attempts/$deploy_attempt" | python3 -c '
+import json, sys
+
+run = json.load(sys.stdin)
+if not (
+    run.get("id") == int(sys.argv[1])
+    and run.get("run_attempt") == int(sys.argv[2])
+    and run.get("path") == ".github/workflows/deploy.yml"
+    and run.get("status") == "in_progress"
+    and run.get("head_branch") == "main"
+    and (run.get("head_repository") or {}).get("full_name") == sys.argv[3]
+    and (run.get("event") == "workflow_run"
+         or (run.get("event") == "workflow_dispatch" and run.get("head_sha") == sys.argv[4]))
+):
+    sys.exit("The production deployment run does not match this invocation.")
+' "$deploy_run_id" "$deploy_attempt" "$repository" "$sha"
 verify_main
+
+check_readiness() {
+  python3 -c '
+import json, sys
+
+if json.load(sys.stdin) != {"status": "ready", "database": "connected"}:
+    sys.exit("The served readiness response does not report a connected database.")
+'
+}
 
 previous=$(readlink -f "$state/current")
 [[ "$previous" == "$base/releases/"* && -f "$previous/.env" ]] ||
   die 'The active production release has not been initialized.'
 if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
-  curl --fail --silent --show-error --max-time 10 "$portal/health/readiness"
+  curl --fail --silent --show-error --max-time 10 "$portal/health/readiness" | check_readiness
   printf '\nCommit %s is already deployed.\n' "$sha"
   exit 0
 fi
 
 phase_started=$SECONDS
-authorization=$(verify_authorization)
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
 for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEPLOY.json READINESS.json; do
@@ -100,13 +160,22 @@ for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEP
 done
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
-report_duration 'Release authorization and source preparation' "$phase_started"
+report_duration 'CI verification and source preparation' "$phase_started"
 
 generation=$(cat "$candidate/deploy/rollback-generation")
 [[ "$generation" =~ ^[1-9][0-9]*$ ]] || die 'Invalid candidate rollback generation.'
 previous_generation=
 if [[ -f "$previous/deploy/rollback-generation" ]]; then
   previous_generation=$(cat "$previous/deploy/rollback-generation")
+fi
+
+if [[ "$generation" != "$previous_generation" ]]; then
+  running=$(docker ps --filter "label=com.docker.compose.project=$project" \
+    --filter 'label=com.docker.compose.oneoff=False' \
+    --format '{{.Label "com.docker.compose.service"}}')
+  if [[ "$running" =~ (^|[[:space:]])(nginx|backend|celery_worker|celery_beat)([[:space:]]|$) ]]; then
+    die 'Rollback generation changed. Stop production ingress and application writers during maintenance before retrying.'
+  fi
 fi
 
 same_backend_runtime() (
@@ -130,6 +199,7 @@ same_backend_runtime() (
 
 runtime_changed=0
 if [[ "$generation" != "$previous_generation" ]] ||
+   ! cmp -s "$previous/.env" "$candidate/.env" ||
    ! same_backend_runtime "$previous/backend" "$candidate/backend" ||
    ! cmp -s "$previous/docker-compose.prod.yml" "$candidate/docker-compose.prod.yml" ||
    ! diff -qr --exclude=ssl "$previous/nginx" "$candidate/nginx" >/dev/null ||
@@ -156,10 +226,19 @@ compose() {
 }
 
 phase_started=$SECONDS
-compose "$candidate" config --quiet
-if ! docker image inspect "$frontend_image" >/dev/null 2>&1; then
-  compose "$candidate" build frontend_dist
-fi
+# Inspect effective service settings, including any host Compose override.
+compose "$candidate" config --format json | python3 -c '
+import json, sys
+
+services = json.load(sys.stdin)["services"]
+for name in ("backend", "celery_worker", "celery_beat"):
+    environment = services[name].get("environment", {})
+    if any(key.upper() == "LOG_PURGE_ENABLED" and str(value).lower() not in {"false", "0", "no", "off"}
+           for key, value in environment.items()):
+        sys.exit("Production audit deletion must be disabled for this release.")
+'
+# Build from the tested archive. Docker can reuse its layer cache.
+compose "$candidate" build frontend_dist
 image_heads() {
   docker run --rm --network none --entrypoint alembic "$1" heads |
     awk 'NF {print $1}' | sort
@@ -196,22 +275,13 @@ PY
     cmp -s "$previous/$file" "$candidate/$file" ||
       die 'Storage bootstrap files changed. Prepare a maintenance rollout first.'
   done
-  if ! docker image inspect "$backend_image" >/dev/null 2>&1; then
-    compose "$candidate" build backend
-  fi
+  compose "$candidate" build backend
   compose "$candidate" pull --policy missing nginx grafana loki alloy
 fi
 report_duration 'Image preparation and configuration checks' "$phase_started"
 
 backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
 frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
-printf '%s' "$authorization" | python3 -c '
-import json, sys
-approved = json.load(sys.stdin)["runtime_identity"]["image_digests"]
-if approved != {"backend": sys.argv[1], "frontend": sys.argv[2]}:
-    sys.exit("Built images differ from the authorized candidate.")
-' "$backend_id" "$frontend_id"
-
 heads=$(image_heads "$backend_image")
 current=$(docker exec "$project-postgres-1" sh -ec \
   'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
@@ -251,10 +321,6 @@ read_frontend_identity() {
 }
 
 read_frontend_identity "$frontend_image"
-runtime_args=()
-while IFS= read -r head; do
-  runtime_args+=(--schema-head "$head")
-done <<< "$current"
 
 publish_frontend() {
   docker run --rm --network none -v "$frontend_volume:/site" "$1" sh -ec '
@@ -311,15 +377,11 @@ rollback() {
 trap rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-if (( runtime_changed )); then
-  phase_started=$SECONDS
-  compose "$candidate" run --rm --no-deps --pull never -T backend \
-    python scripts/backup.py --target all --skip-retention
-  report_duration 'Pre-activation backup' "$phase_started"
-fi
+phase_started=$SECONDS
+compose "$candidate" run --rm --no-deps --pull never -T backend \
+  python scripts/backup.py --target all --skip-retention
+report_duration 'Pre-activation backup' "$phase_started"
 verify_main
-verify_authorization "${runtime_args[@]}" --backend-image "$backend_id" --frontend-image "$frontend_id" \
-  --frontend-sha256 "$expected_asset" --service-worker-sha256 "$expected_worker" > "$candidate/PREDEPLOY.json"
 unset token
 phase_started=$SECONDS
 if (( runtime_changed )); then
@@ -334,7 +396,7 @@ phase_started=$SECONDS
 for service in backend celery_worker celery_beat; do
   container=$(compose "$candidate" ps -q "$service")
   [[ -n "$container" && "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] ||
-    die "The active $service image differs from the approved backend build."
+    die "The active $service image differs from the candidate backend build."
 done
 actual=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/login" | hash)
 [[ "$expected" == "$actual" ]] || die 'The served sign-in page differs from the release image.'
@@ -343,18 +405,11 @@ actual_asset=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$porta
 actual_worker=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/sw.js" | hash)
 [[ "$expected_worker" == "$actual_worker" ]] || die 'The served service worker differs from the release image.'
 curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/health/readiness" > "$candidate/READINESS.json"
-python3 - "$candidate/READINESS.json" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1]) as file:
-    if json.load(file) != {"status": "ready", "database": "connected"}:
-        sys.exit("The served readiness response does not report a connected database.")
-PY
+check_readiness < "$candidate/READINESS.json"
 report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
 
-printf 'Commit: %s\nCI run: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
   "$sha" "$run_id" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
