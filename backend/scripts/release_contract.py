@@ -335,6 +335,9 @@ class Evidence:
     def load_junit(self, ref: Any) -> dict[str, int]:
         return self._load(ref, junit_counts)
 
+    def load_deployment_receipt(self, ref: Any) -> dict[str, str]:
+        return self._load(ref, deployment_receipt_fields)
+
     def junit_archive_member(self, ref: Any, name: str) -> str:
         def decode(raw: bytes) -> str:
             limit = 4 * 1024 * 1024
@@ -1852,6 +1855,58 @@ def readback(payload: Any, identity: dict[str, Any]) -> None:
     )
 
 
+def deployment_receipt_fields(raw: bytes) -> dict[str, str]:
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        raise ContractError(2, "Invalid host deployment receipt encoding.") from None
+    result: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition(": ")
+        require(
+            separator and key not in result and value.strip(),
+            "Invalid or duplicate host deployment receipt field.",
+        )
+        result[key] = value.strip()
+    return result
+
+
+def verify_host_deployment_receipt(
+    host: dict[str, str],
+    deployed: dict[str, Any],
+    sha: str,
+    identity: dict[str, Any],
+    deployed_at: datetime,
+) -> None:
+    expected = {
+        "Status": "Deployed — Formal Acceptance Pending",
+        "Commit": sha,
+        "CI run": str(deployed["ci_run_id"]),
+        "CI attempt": str(deployed["ci_run_attempt"]),
+        "Deploy run": str(deployed["run_id"]),
+        "Deploy attempt": str(deployed["run_attempt"]),
+        "Asset SHA-256": identity["frontend_sha256"],
+        "Service worker SHA-256": identity["service_worker_sha256"],
+        "Backend image": identity["image_digests"]["backend"],
+        "Frontend image": identity["image_digests"]["frontend"],
+    }
+    require(
+        host.keys() == expected.keys() | {"UTC", "Schema heads", "Frontend asset"},
+        "Invalid host deployment receipt fields.",
+    )
+    require(
+        all(host[key] == value for key, value in expected.items())
+        and utc(host["UTC"], "host deployment activation") == deployed_at
+        and sorted(host["Schema heads"].split()) == identity["schema_heads"],
+        "Host deployment receipt differs from the reviewed activation or frozen build.",
+        3,
+    )
+    require(
+        re.fullmatch(r"/assets/index-[A-Za-z0-9_-]+\.js", host["Frontend asset"]),
+        "Invalid host deployment frontend asset path.",
+    )
+
+
 def observation(
     payload: Any,
     start: datetime,
@@ -2525,7 +2580,8 @@ class Validation:
         elif kind == "deployment":
             deployed = fields(
                 result,
-                "run_id run_url run_attempt ci_run_id ci_run_attempt deployed_at readback",
+                "run_id run_url run_attempt ci_run_id ci_run_attempt deployed_at readback "
+                "host_receipt",
                 label="deployment result",
             )
             run_id = count(deployed["run_id"], "deployment run ID", minimum=1)
@@ -2551,6 +2607,16 @@ class Validation:
                 3,
             )
             readback(deployed["readback"], self.identity)
+            host_ref = deployed["host_receipt"]
+            host = self.evidence.load_deployment_receipt(host_ref)
+            require(
+                host_ref["sha256"] in artifact_hashes,
+                "The host deployment receipt must be a classified artifact.",
+                3,
+            )
+            verify_host_deployment_receipt(
+                host, deployed, self.sha, self.identity, self.deployed_at
+            )
         elif kind == "runtime_readback":
             readback(result, self.identity)
         elif kind == "observation":

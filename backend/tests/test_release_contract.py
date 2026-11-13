@@ -35,6 +35,7 @@ class Bundle:
         self.recovery_artifacts: dict[str, list[dict[str, Any]]] = {}
         self.observation_artifacts: list[dict[str, Any]] = []
         self.inventory_artifacts: list[dict[str, Any]] = []
+        self.deployment_artifacts: list[dict[str, Any]] = []
         self.sequence = 0
         self.artifact = self.write("artifacts/report.json", {"actual": "Synthetic fixture"})
         self.artifact["sensitivity"] = "sanitized"
@@ -118,6 +119,7 @@ class Bundle:
                 *(self.recovery_artifacts[phase] if kind == "recovery" else []),
                 *(self.observation_artifacts if kind == "observation" else []),
                 *(self.inventory_artifacts if kind == "data_reconciliation" else []),
+                *(self.deployment_artifacts if kind == "deployment" else []),
             ],
         }
         row["review"] = self.approval(
@@ -917,7 +919,12 @@ def reconciliation_inventory(
 
 
 def manifest(
-    bundle: Bundle, phase: str = "predeploy", *, deployment_ci_attempt: int = 1
+    bundle: Bundle,
+    phase: str = "predeploy",
+    *,
+    deployment_ci_attempt: int = 1,
+    host_receipt_override: dict[str, str] | None = None,
+    classify_host_receipt: bool = True,
 ) -> dict[str, Any]:
     decisions = decision_values(bundle)
     decision_refs = {}
@@ -1053,6 +1060,26 @@ def manifest(
             "readiness": {"status": "ready", "database": "connected"},
             "services": true("backend", "frontend", "worker", "database", "storage"),
         }
+        host_fields = {
+            "Status": "Deployed — Formal Acceptance Pending",
+            "Commit": SHA,
+            "CI run": "11",
+            "CI attempt": str(deployment_ci_attempt),
+            "Deploy run": "22",
+            "Deploy attempt": "1",
+            "UTC": DEPLOYED.isoformat(),
+            "Frontend asset": "/assets/index-fixture.js",
+            "Asset SHA-256": readback["frontend_sha256"],
+            "Service worker SHA-256": readback["service_worker_sha256"],
+            "Backend image": readback["image_digests"]["backend"],
+            "Frontend image": readback["image_digests"]["frontend"],
+            "Schema heads": " ".join(readback["schema_heads"]) + " ",
+            **(host_receipt_override or {}),
+        }
+        data = "".join(f"{key}: {value}\n" for key, value in host_fields.items())
+        host_ref = bundle.write_bytes("artifacts/DEPLOYED", data.encode())
+        if classify_host_receipt:
+            bundle.deployment_artifacts.append({**host_ref, "sensitivity": "sanitized"})
         final = phase_results(bundle, "final", decisions)
         final.update(
             deployment={
@@ -1063,6 +1090,7 @@ def manifest(
                 "ci_run_attempt": deployment_ci_attempt,
                 "deployed_at": DEPLOYED.isoformat(),
                 "readback": readback,
+                "host_receipt": host_ref,
             },
             runtime_readback=readback,
             observation=scheduled_observation(bundle, subject, decisions),
@@ -1130,6 +1158,45 @@ def test_final_requires_the_ci_attempt_used_by_deployment(
     with pytest.raises(
         contract.ContractError, match="Deployment did not use the accepted CI attempt"
     ):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("Commit", "b" * 40, "Host deployment receipt differs"),
+        ("CI attempt", "2", "Host deployment receipt differs"),
+        ("Deploy attempt", "2", "Host deployment receipt differs"),
+        ("Service worker SHA-256", "e" * 64, "Host deployment receipt differs"),
+        ("Backend image", "sha256:" + "f" * 64, "Host deployment receipt differs"),
+        ("Schema heads", "other", "Host deployment receipt differs"),
+        ("UTC", NOW.isoformat(), "Host deployment receipt differs"),
+        ("Frontend asset", "/assets/../index-fixture.js", "Invalid host deployment frontend asset"),
+        ("CI run", "11\nCI run: 11", "duplicate host deployment receipt field"),
+    ],
+)
+def test_final_rejects_a_mismatched_or_malformed_host_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: str, reason: str
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    bundle.write(
+        "release_manifest.json",
+        manifest(bundle, "final", host_receipt_override={field: value}),
+    )
+
+    with pytest.raises(contract.ContractError, match=reason):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+def test_final_requires_the_host_receipt_as_a_classified_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    bundle.write("release_manifest.json", manifest(bundle, "final", classify_host_receipt=False))
+
+    with pytest.raises(contract.ContractError, match="must be a classified artifact"):
         bundle.validator("final").run(bundle.root / "release_manifest.json")
 
 
