@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -9,7 +10,7 @@ const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url
 
 test.use({ trace: 'off' });
 
-test('opening stock import retries the committed batch after losing its response', async ({
+test('launch imports reconcile linked records and retry opening stock without duplication', async ({
   page,
   request
 }) => {
@@ -35,37 +36,102 @@ test('opening stock import retries the committed batch after losing its response
   const marker = randomUUID().slice(0, 8);
   const itemCode = `ITEM-${marker}`;
   const locationCode = `LOC-${marker}`;
-  const supplier = await request.post('/api/v1/suppliers', {
-    headers,
-    data: {
-      name: `Import supplier ${marker}`,
-      category: 'Civil',
-      rating: 'A',
-      payment_terms: '30 days',
-      contact_person: 'Test contact',
-      phone: '1234567',
-      email: `import-${marker}@example.com`,
-      address: 'Test warehouse',
-      tax_registration_number: `TAX-${marker}`,
-      compliance_status: 'compliant'
-    }
-  });
-  expect(supplier.status()).toBe(201);
-  const { id: supplierId } = await supplier.json();
-  const item = await request.post('/api/v1/inventory/items', {
-    headers,
-    data: {
-      name: `Opening stock ${marker}`,
-      item_code: itemCode,
-      category: 'Civil',
-      item_type: 'consumable',
-      unit: 'KG',
-      unit_cost: '3.25',
-      supplier_id: supplierId
-    }
-  });
-  expect(item.status()).toBe(201);
-  const { id: itemId } = await item.json();
+  const projectCode = `PRJ-${marker}`;
+  const supplierName = `Import supplier ${marker}`;
+  const userEmail = `import-${marker}@example.com`;
+  const documentTitle = `Import drawing ${marker}`;
+
+  await page.goto('/admin/imports');
+  const template = page.getByLabel('Import template');
+  const file = page.getByLabel('Import file');
+  const preview = page.getByRole('button', { name: 'Preview', exact: true });
+  const run = page.getByRole('button', { name: 'Run import', exact: true });
+  const get = async (path: string, params?: Record<string, string>) => {
+    const response = await request.get(`/api/v1${path}`, { headers, params });
+    expect(response.ok(), `${path} returned HTTP ${response.status()}`).toBe(true);
+    return response.json();
+  };
+  const selectCsv = async (type: string, rows: string[]) => {
+    const source = readFileSync(
+      new URL(`../../docs/import_templates/${type}.csv`, import.meta.url), 'utf8'
+    );
+    const [columns] = source.split(/\r?\n/);
+    await template.selectOption(type);
+    await file.setInputFiles({
+      name: `${type}-${marker}.csv`,
+      mimeType: 'text/csv',
+      buffer: Buffer.from([columns, ...rows, ''].join('\n'))
+    });
+    await preview.click();
+  };
+  const importRows = async (type: string, rows: string[]) => {
+    await selectCsv(type, rows);
+    await expect(page.getByText('valid', { exact: true })).toBeVisible();
+    const completed = page.waitForResponse((response) =>
+      response.url().endsWith(`/imports/${type}/run`)
+    );
+    await run.click();
+    const response = await completed;
+    expect(response.ok()).toBe(true);
+    expect(await response.json()).toMatchObject({
+      template_type: type, status: 'completed', row_count: rows.length, error_count: 0,
+      summary: { created: rows.length }
+    });
+    await expect(page.getByText(`Import completed: ${rows.length} rows, 0 errors.`)).toBeVisible();
+  };
+
+  await selectCsv('users', [
+    `${userEmail},Imported Operator,invalid_role,EMP-${marker},1234567,Operator,FixturePass123!`
+  ]);
+  await expect(page.getByText(/Row 2, role:/)).toBeVisible();
+  await expect(run).toHaveCount(0);
+  expect((await get('/users', { search: userEmail })).items).toEqual([]);
+  await importRows('users', [
+    `${userEmail},Imported Operator,store_keeper,EMP-${marker},1234567,Operator,FixturePass123!`
+  ]);
+  expect((await get('/users', { search: userEmail })).items).toEqual([
+    expect.objectContaining({ email: userEmail, role: 'store_keeper', employee_code: `EMP-${marker}` })
+  ]);
+  await importRows('projects', [
+    `${projectCode},Import Project ${marker},Fixture yard,Fit out,active,12500.25,2026-01-01,2027-01-01,Client,CON-${marker}`
+  ]);
+  const projects = await get('/projects', { search: projectCode });
+  expect(projects.items).toEqual([expect.objectContaining({ code: projectCode, budget_amount: '12500.25' })]);
+  const projectId = projects.items[0].id;
+  await importRows('suppliers', [
+    `${supplierName},Civil,A,30 days,Test contact,1234567,supplier-${marker}@example.com,Fixture yard,TAX-${marker},,,compliant`
+  ]);
+  const suppliers = await get('/suppliers', { search: supplierName });
+  expect(suppliers.items).toEqual([expect.objectContaining({ name: supplierName, compliance_status: 'compliant' })]);
+  await importRows('materials', [
+    `Opening stock ${marker},${itemCode},Civil,consumable,KG,0,0,3.25,${supplierName}`
+  ]);
+  const items = await get('/inventory/items', { search: itemCode });
+  expect(items).toEqual([expect.objectContaining({
+    item_code: itemCode, unit_cost: '3.25', supplier_id: suppliers.items[0].id
+  })]);
+  const itemId = items[0].id;
+  await importRows('boq', [
+    `${projectCode},BOQ-${marker}-A,Panel works,Civil,Phase 1,m2,12.500,3.20`,
+    `${projectCode},BOQ-${marker}-B,Finish works,Civil,Phase 1,m2,2.125,10.00`
+  ]);
+  const { boq_items } = await get(`/projects/${projectId}`);
+  expect(boq_items).toHaveLength(2);
+  expect(boq_items).toEqual(expect.arrayContaining([
+    expect.objectContaining({ item_code: `BOQ-${marker}-A`, planned_quantity: '12.500', planned_amount: '40.00' }),
+    expect.objectContaining({ item_code: `BOQ-${marker}-B`, planned_quantity: '2.125', planned_amount: '21.25' })
+  ]));
+  await importRows('documents', [
+    `${documentTitle},drawing,${projectCode},A,Fixture metadata,drawing.pdf`
+  ]);
+  const documents = await get('/documents', { project_id: projectId });
+  expect(documents.items).toEqual([expect.objectContaining({
+    title: documentTitle, active_version: null, versions: [],
+    metadata_json: expect.objectContaining({ file_name: 'drawing.pdf' })
+  })]);
+  const metadataOnly = await request.get(`/api/v1/documents/${documents.items[0].id}/download`, { headers });
+  expect(metadataOnly.status()).toBe(404);
+
   const location = await request.post('/api/v1/inventory/locations', {
     headers,
     data: { name: `Opening warehouse ${marker}`, code: locationCode, location_type: 'warehouse' }
@@ -73,10 +139,8 @@ test('opening stock import retries the committed batch after losing its response
   expect(location.status()).toBe(201);
   const { id: locationId } = await location.json();
 
-  await page.goto('/admin/imports');
-  await page.getByLabel('Import template').selectOption('opening_stock');
+  await template.selectOption('opening_stock');
   const fileName = `opening-${marker}.csv`;
-  const file = page.getByLabel('Import file');
   const selectFile = (quantity: string) =>
     file.setInputFiles({
       name: fileName,
@@ -85,8 +149,6 @@ test('opening stock import retries the committed batch after losing its response
         `item_code,location_code,quantity,notes\n${itemCode},${locationCode},${quantity},Opening balance\n`
       )
     });
-  const preview = page.getByRole('button', { name: 'Preview', exact: true });
-  const run = page.getByRole('button', { name: 'Run import', exact: true });
   await selectFile('0');
   await preview.click();
   await expect(page.getByText('1 errors', { exact: true })).toBeVisible();
