@@ -205,8 +205,15 @@ jobs:
         env:
           BROWSER_SHARD: ${{ matrix.shard }}
         run: |
+          # Balance by measured test time. The complement also picks up new test files.
+          group='/(materials-analytics|offline-isolation|role-navigation|user-role)\.e2e\.ts$'
+          case "$BROWSER_SHARD" in
+            1) filter="$group" ;;
+            2) filter="^(?!.*$group)" ;;
+            *) exit 2 ;;
+          esac
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --fully-parallel --shard="$BROWSER_SHARD/2" --workers=2 --reporter=list,junit
+            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$filter"
       - name: Remove the test S3 container
         if: always()
         run: |
