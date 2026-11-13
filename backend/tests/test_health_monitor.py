@@ -113,12 +113,13 @@ def test_notification_retry_repeat_escalation_and_resolution(tmp_path: Path) -> 
     assert attempts[0] == attempts[1]
     assert check(30).delivery == "none"
     assert check(40).event == "repeat"
-    assert check(50).event == "escalation"
-    assert check(60, ready).delivery == "none"
-    assert check(70, ready).event == "resolved"
-    assert check(80, ready).event is None
+    assert check(50).event is None
+    assert check(60).event == "escalation"
+    assert check(70, ready).delivery == "none"
+    assert check(80, ready).event == "resolved"
+    assert check(90, ready).event is None
     saved = monitor.MonitorState.model_validate_json(state_file.read_bytes())
-    assert saved.checks["readiness"].resolved == start + timedelta(seconds=70)
+    assert saved.checks["readiness"].resolved == start + timedelta(seconds=80)
 
 
 def test_bounded_maintenance_expires_and_lock_prevents_overlapping_checks(tmp_path: Path) -> None:
@@ -155,6 +156,60 @@ def test_bounded_maintenance_expires_and_lock_prevents_overlapping_checks(tmp_pa
         )
     assert first.suppressed and first.delivery == "none"
     assert not after.suppressed and after.delivery == "accepted"
+
+
+def test_long_maintenance_resumes_initial_delivery_before_escalating(
+    tmp_path: Path, backup_probe
+) -> None:
+    start, backup, *_ = backup_probe
+    end = start + timedelta(minutes=4)
+    configured = profile(
+        failure_threshold=1,
+        probe_interval_seconds=20,
+        backup=backup,
+        maintenance=[
+            {
+                "check_ids": ["readiness"],
+                "approved_by": "Operator A",
+                "approval_ref": "fixture",
+                "starts_at": start,
+                "ends_at": end,
+            }
+        ],
+    )
+    path = tmp_path / "state.json"
+    deliveries = []
+
+    def send(check_id, event, message_id, recipient):
+        deliveries.append((check_id, event, recipient))
+        return message_id
+
+    def sample(check_id, result, now):
+        return monitor.observe(
+            configured, monitor.load_state(path, "fixture"), path, check_id, result, now, send
+        )
+
+    outage = monitor.Result(ok=False, category="timeout")
+    assert sample("readiness", outage, start).suppressed
+    during = end - timedelta(seconds=1)
+    muted = sample("readiness", outage, during)
+    assert muted.suppressed and muted.event == "initial" and muted.delivery == "none"
+    freshness = sample("recovery", monitor.check_backup(backup, "staging", during, 4), during)
+    assert freshness.result.category == "backup_current" and not freshness.suppressed
+    assert not deliveries
+
+    resumed = sample("readiness", outage, end)
+    assert not resumed.suppressed and resumed.event == "initial" and resumed.delivery == "accepted"
+    assert deliveries == [("readiness", "initial", configured.transport.recipients[0])]
+    before_limit = sample("readiness", outage, end + timedelta(seconds=49))
+    assert before_limit.event == "repeat"
+    at_limit = sample("readiness", outage, end + timedelta(seconds=50))
+    assert at_limit.event == "escalation" and at_limit.delivery == "accepted"
+    assert deliveries[-1] == (
+        "readiness",
+        "escalation",
+        configured.transport.escalation_recipients[0],
+    )
 
 
 def test_corrupt_state_and_invalid_profile_fail_closed(tmp_path: Path) -> None:

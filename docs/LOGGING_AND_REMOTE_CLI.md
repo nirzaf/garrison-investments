@@ -130,6 +130,8 @@ If the notification credential is missing, the monitor still runs its probes and
 
 The monitor tracks pending primary and escalation deliveries separately. A successful escalation does not clear a failed primary delivery. Retries keep the original message ID for each pending recipient, and resolution goes to recipients that received an incident notification. Keep the current monitor version if its state contains pending escalation. Older versions cannot read that state field.
 
+Maintenance windows suppress delivery only for the listed checks. Probes and receipts continue, and the receipt records suppression. If an outage starts during maintenance and persists, the first probe after expiry attempts the initial notification. The acknowledgement clock starts at the first unsuppressed notification attempt, including a failed attempt so a broken primary route can still escalate. Keep the current monitor version when reusing state that records this clock.
+
 ```bash
 cd backend
 python -m scripts.health_monitor \

@@ -288,6 +288,7 @@ class Incident(StrictModel):
     recoveries: int = Field(default=0, ge=0)
     first_failure: AwareDatetime | None = None
     started: AwareDatetime | None = None
+    first_notification_attempt: AwareDatetime | None = None
     last_attempt: AwareDatetime | None = None
     last_sent: AwareDatetime | None = None
     message_id: str | None = None
@@ -359,6 +360,7 @@ def advance(incident: Incident, result: Result, profile: Profile, now: datetime)
         incident.failures = 0
         incident.first_failure = None
         incident.started = None
+        incident.first_notification_attempt = None
         incident.last_attempt = None
         incident.last_sent = None
         incident.message_id = None
@@ -381,10 +383,15 @@ def advance(incident: Incident, result: Result, profile: Profile, now: datetime)
         return None
     if incident.started is None:
         incident.started = incident.first_failure
+    notification_started = incident.first_notification_attempt
+    if notification_started is None and incident.last_attempt is not None:
+        # Older state files recorded attempts without a separate acknowledgement clock.
+        notification_started = incident.started
     if (
         not incident.escalated
         and incident.acknowledgement is None
-        and (now - incident.started).total_seconds() >= profile.acknowledgement_limit_seconds
+        and notification_started is not None
+        and (now - notification_started).total_seconds() >= profile.acknowledgement_limit_seconds
     ):
         return "escalation"
     if incident.pending_event in ("initial", "repeat"):
@@ -535,6 +542,8 @@ def observe(
     delivery: Literal["none", "accepted", "failed"] = "none"
     message_id = None
     if event and not suppressed:
+        if event == "initial" and incident.last_attempt is None:
+            incident.first_notification_attempt = now
         deliveries: list[tuple[Event, list[str], datetime | None]] = []
         if event == "escalation":
             if incident.pending_escalation is None:
