@@ -126,6 +126,8 @@ The backup check authenticates the latest scheduled attempt before checking the 
 
 Keep an existing owner-only directory for incident state and write each structured receipt to a separate private path. The command exits nonzero for a failed check or delivery and rejects corrupt state or an overlapping invocation.
 
+The monitor follows readiness redirects only within the target's HTTPS origin. A malformed or out-of-origin redirect fails that check. Other configured probes still run and the receipt records the outcome for each check.
+
 If the notification credential is missing, the monitor still runs its probes and writes a receipt with `transport_ready=false`. It exits nonzero and preserves pending deliveries for retry once credentials are restored. A receipt with that flag cannot satisfy the final scheduled observation check. The flag reports local credential availability. Provider acceptance and responder receipt are verified through the delivery exercise.
 
 The monitor tracks pending primary and escalation deliveries separately. A successful escalation does not clear a failed primary delivery. Retries keep the original message ID for each pending recipient, and resolution goes to recipients that received an incident notification. Keep the current monitor version if its state contains pending escalation. Older versions cannot read that state field.

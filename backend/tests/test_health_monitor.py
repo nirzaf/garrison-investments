@@ -73,11 +73,73 @@ def test_rejects_redirects_outside_origin_and_records_timeout() -> None:
     def timeout(request):
         raise httpx.ReadTimeout("private.example.invalid?secret=redacted", request=request)
 
-    with httpx.Client(transport=httpx.MockTransport(redirect)) as client:
+    with httpx.Client(transport=httpx.MockTransport(redirect), follow_redirects=True) as client:
         assert monitor.check_url(client, target).category == "invalid_redirect"
     assert len(requested) == 1
     with httpx.Client(transport=httpx.MockTransport(timeout)) as client:
         assert monitor.check_url(client, target).category == "timeout"
+
+
+def test_follows_same_origin_redirect() -> None:
+    requested = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        if request.url.path == "/health/readiness":
+            return httpx.Response(302, headers={"Location": "/ready"})
+        return httpx.Response(200, json={"status": "ready", "database": "connected"})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        assert monitor.check_url(client, profile().targets[0].url).category == "ready"
+    assert requested == ["/health/readiness", "/ready"]
+
+
+def test_malformed_redirect_does_not_abort_scheduled_monitor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = profile(
+        approved_hosts=["portal.example.invalid", "second.example.invalid"],
+        targets=[
+            {"check_id": "first", "url": "https://portal.example.invalid/health/readiness"},
+            {"check_id": "second", "url": "https://second.example.invalid/health/readiness"},
+        ],
+        probe_interval_seconds=20,
+        failure_threshold=1,
+    )
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(configured.model_dump_json(), encoding="utf-8")
+    digest = sha256(profile_path.read_bytes()).hexdigest()
+    receipt_path = tmp_path / "receipt.json"
+    requested = []
+    notifications = []
+    client = httpx.Client
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.host)
+        if request.url.host == "portal.example.invalid":
+            return httpx.Response(302, headers={"Location": "https://[invalid"})
+        return httpx.Response(200, json={"status": "ready", "database": "connected"})
+
+    def send(check_id: str, event: str, message_id: str, recipient: str) -> str:
+        notifications.append((check_id, event, recipient))
+        return message_id
+
+    monkeypatch.setattr(
+        monitor.httpx,
+        "Client",
+        lambda **kwargs: client(transport=httpx.MockTransport(respond), **kwargs),
+    )
+    monkeypatch.setattr(monitor, "transport_sender", lambda _: send)
+
+    assert monitor.run(profile_path, digest, tmp_path, receipt_path) == 1
+    receipt = monitor.Receipt.model_validate_json(receipt_path.read_bytes())
+    assert [(item.check_id, item.result.category) for item in receipt.observations] == [
+        ("first", "invalid_redirect"),
+        ("second", "ready"),
+    ]
+    assert requested == configured.approved_hosts
+    assert notifications == [("first", "initial", configured.transport.recipients[0])]
+    assert "https://[invalid" not in receipt_path.read_text()
 
 
 def test_notification_retry_repeat_escalation_and_resolution(tmp_path: Path) -> None:

@@ -219,19 +219,20 @@ def check_url(client: httpx.Client, url: str) -> Result:
     origin = https_origin(url)
     try:
         for _ in range(4):
-            with client.stream("GET", url) as response:
+            with client.stream("GET", url, follow_redirects=False) as response:
                 if response.is_redirect:
                     location = response.headers.get("location")
                     if not location:
                         return Result(
                             ok=False, category="invalid_redirect", status=response.status_code
                         )
-                    url = urljoin(url, location)
                     try:
-                        if https_origin(url) != origin:
+                        next_url = urljoin(url, location)
+                        if https_origin(next_url) != origin:
                             return Result(ok=False, category="invalid_redirect")
                     except (MonitorError, ValueError):
                         return Result(ok=False, category="invalid_redirect")
+                    url = next_url
                     continue
                 if response.status_code != 200:
                     return Result(ok=False, category="http_status", status=response.status_code)
