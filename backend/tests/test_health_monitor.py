@@ -178,6 +178,64 @@ def test_corrupt_state_and_invalid_profile_fail_closed(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("mode", ["smtp_starttls", "usesend"])
+def test_missing_transport_credentials_preserve_probe_results_and_pending_delivery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, backup_probe
+) -> None:
+    _, backup, *_ = backup_probe
+    transport = profile().transport.model_dump()
+    if mode == "usesend":
+        transport.update(mode=mode, endpoint="https://mail.example.invalid/send")
+    configured = profile(
+        transport=transport, failure_threshold=1, backup=backup, probe_interval_seconds=20
+    )
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(configured.model_dump_json(), encoding="utf-8")
+    digest = sha256(profile_path.read_bytes()).hexdigest()
+    receipt = tmp_path / "receipt.json"
+    for name in ("SMTP_USERNAME", "SMTP_PASSWORD", "USESEND_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    probe_results = iter(
+        [
+            monitor.Result(ok=True, category="ready"),
+            monitor.Result(ok=False, category="timeout"),
+            monitor.Result(ok=False, category="timeout"),
+        ]
+    )
+    monkeypatch.setattr(monitor, "check_url", lambda *_: next(probe_results))
+    assert monitor.run(profile_path, digest, tmp_path, receipt) == 1
+    healthy = monitor.Receipt.model_validate_json(receipt.read_bytes())
+    assert not healthy.transport_ready
+    assert healthy.observations[0].result.category == "ready"
+    assert healthy.observations[1].result.category == "backup_current"
+
+    assert monitor.run(profile_path, digest, tmp_path, receipt) == 1
+    failure = monitor.Receipt.model_validate_json(receipt.read_bytes())
+    assert not failure.transport_ready
+    assert failure.observations[0].delivery == "failed"
+    state_file = tmp_path / f"{configured.profile_id}.json"
+    pending = monitor.load_state(state_file, digest).checks["readiness"]
+    assert pending.pending_event == "initial"
+    assert pending.last_sent is None
+    assert pending.pending_recipients == configured.transport.recipients
+    assert pending.notified_recipients == []
+
+    delivered = []
+
+    def send(check_id, event, message_id, recipient):
+        delivered.append((check_id, event, recipient))
+        return message_id
+
+    monkeypatch.setattr(monitor, "transport_sender", lambda _: send)
+    assert monitor.run(profile_path, digest, tmp_path, receipt) == 1
+    retried = monitor.Receipt.model_validate_json(receipt.read_bytes())
+    assert retried.transport_ready
+    assert retried.observations[0].delivery == "accepted"
+    assert delivered == [("readiness", "initial", configured.transport.recipients[0])]
+    assert monitor.load_state(state_file, digest).checks["readiness"].pending_event is None
+
+
 def test_heartbeat_targets_the_approved_readiness_stream() -> None:
     rule = monitor.heartbeat_rule(profile())["groups"][0]["rules"][0]
     query = rule["data"][0]["model"]["expr"]

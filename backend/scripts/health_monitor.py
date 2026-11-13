@@ -495,6 +495,7 @@ class Receipt(StrictModel):
     completed_at: AwareDatetime
     executed_by: str
     observations: list[Observation]
+    transport_ready: bool = True
 
 
 def observe(
@@ -825,7 +826,15 @@ def heartbeat_rule(profile: Profile) -> dict:
 
 def run(profile_path: Path, expected_sha256: str, state_dir: Path, receipt_path: Path) -> int:
     profile, digest = load_profile(profile_path, expected_sha256)
-    send = transport_sender(profile)
+    transport_ready = True
+    try:
+        send = transport_sender(profile)
+    except MonitorError:
+        transport_ready = False
+
+        def send(_check_id: str, _event: Event, _message_id: str, _recipient: str) -> str:
+            raise MonitorError("The configured notification transport is unavailable.")
+
     with locked_state(state_dir, profile.profile_id) as state_file:
         if receipt_path.resolve() in {state_file.resolve(), profile_path.resolve()} or (
             receipt_path.resolve() == state_dir.resolve() / f"{profile.profile_id}.lock"
@@ -872,10 +881,12 @@ def run(profile_path: Path, expected_sha256: str, state_dir: Path, receipt_path:
                 completed_at=datetime.now(UTC),
                 executed_by=pwd.getpwuid(os.geteuid()).pw_name,
                 observations=observations,
+                transport_ready=transport_ready,
             ),
         )
     return int(
-        any(
+        not transport_ready
+        or any(
             not observation.result.ok or observation.delivery == "failed"
             for observation in observations
         )

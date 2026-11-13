@@ -1072,6 +1072,7 @@ def test_final_rejects_activation_before_the_verified_attempt(
         ("short window", "Invalid approved observation window"),
         ("missing evidence", "Scheduled activity must be attached"),
         ("different backup", "Backup freshness did not verify the observed scheduled backup"),
+        ("transport unavailable", "Scheduled monitor notification transport was unavailable"),
     ],
 )
 def test_final_requires_scheduled_activity_evidence(
@@ -1093,7 +1094,10 @@ def test_final_requires_scheduled_activity_evidence(
     else:
         monitor_ref = result["scheduled_monitoring"]
         monitor = json.loads((bundle.root / monitor_ref["path"]).read_text())
-        monitor["observations"][1]["result"]["digest"] = "0" * 64
+        if change == "transport unavailable":
+            monitor["transport_ready"] = False
+        else:
+            monitor["observations"][1]["result"]["digest"] = "0" * 64
         result["scheduled_monitoring"] = bundle.write(monitor_ref["path"], monitor)
         bundle.observation_artifacts[-1] = {
             **result["scheduled_monitoring"],

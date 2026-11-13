@@ -1852,7 +1852,13 @@ def observation(
         evidence.load(monitor_ref, parse=True),
         "profile_id profile_revision source_sha environment profile_sha256 checked_at completed_at "
         "executed_by observations",
+        optional="transport_ready",
         label="scheduled monitor receipt",
+    )
+    require(
+        monitor.get("transport_ready", True) is True,
+        "Scheduled monitor notification transport was unavailable.",
+        4,
     )
     meaningful(monitor["executed_by"], "scheduled monitor executor")
     check_start = utc(monitor["checked_at"], "scheduled check time")
