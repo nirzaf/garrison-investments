@@ -1,7 +1,7 @@
 # Graph Report - garrison-investments  (2026-11-13)
 
 ## Corpus Check
-- 434 files · ~357,714 words
+- 434 files · ~357,749 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ad931c57`
+- Built from commit: `e16cdd65`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -341,8 +341,8 @@ Cohesion: 0.08
 Nodes (95): alias, DbSession, File, ge, Header, InvoiceCreateRequest, InvoiceResponse, InvoiceUpdateRequest (+87 more)
 
 ### Community 27 - "Docs Map and Generated Types"
-Cohesion: 0.04
-Nodes (77): graphify, Repository documentation, components, $defs, operations, paths, webhooks, get_db() (+69 more)
+Cohesion: 0.03
+Nodes (90): graphify, Repository documentation, components, $defs, operations, paths, webhooks, get_db() (+82 more)
 
 ### Community 28 - "Notification Delivery"
 Cohesion: 0.11
@@ -417,8 +417,8 @@ Cohesion: 0.31
 Nodes (24): Response, User, UUID, candidates(), create_approval(), create_project(), create_test_client(), create_user() (+16 more)
 
 ### Community 46 - "docker-compose.staging.yml cluster"
-Cohesion: 0.05
-Nodes (45): Alert delivery, Grafana, Loki, and Alloy, Incident fallback, nginx/grafana.prod.conf.template, nginx/nginx.conf, nginx/nginx.prod.conf, observability/alloy-config.alloy, observability/grafana/provisioning/alerting/alerts.yml (+37 more)
+Cohesion: 0.11
+Nodes (22): nginx/nginx.conf, backend (dev), celery_beat (dev), celery_worker (dev), frontend (dev), minio (dev), nginx (dev), postgres (dev) (+14 more)
 
 ### Community 47 - "report_export_service.py cluster"
 Cohesion: 0.15
@@ -725,8 +725,8 @@ Cohesion: 0.40
 Nodes (5): ImportBatchListResponse, ImportErrorItem, ImportPreviewResponse, ImportQueueResponse, ImportRunResponse
 
 ### Community 126 - "photos.py cluster"
-Cohesion: 0.29
-Nodes (7): 3. Operations, Backup & Restore, Backup and restore, Data checks and repairs, Independent database and file recovery drill, Offline storage upgrade, Rollback, Scheduled jobs
+Cohesion: 0.12
+Nodes (17): nginx/grafana.prod.conf.template, nginx/nginx.prod.conf, Repository guide, alloy (prod), backend (prod), celery_beat (prod), celery_worker (prod), frontend_dist (prod) (+9 more)
 
 ### Community 127 - "generate_assets.py cluster"
 Cohesion: 0.67
