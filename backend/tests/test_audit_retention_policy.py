@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import insert, select, text
+from sqlalchemy import delete, insert, select, text
 from structlog.testing import capture_logs
 
 from app.config import Settings, get_settings
@@ -23,8 +24,25 @@ from app.services.audit_retention_policy import (
 from app.services.audit_service import AuditService
 from app.tasks.maintenance import _archive_and_purge_logs
 from app.utils.security import utc_now
-from scripts import apply_audit_retention
+from scripts import apply_audit_retention, preview_audit_retention
 from scripts.preview_audit_retention import category_page
+
+
+@pytest.mark.parametrize("cursor_flag", ["--after", "--missing-after"])
+def test_retention_preview_cursor_requires_original_cutoff(
+    cursor_flag: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def collect(**_kwargs: object) -> None:
+        pytest.fail("A continuation without the original cutoff reached the inventory scan.")
+
+    monkeypatch.setattr(preview_audit_retention, "preview", collect)
+    monkeypatch.setattr(sys, "argv", ["preview_audit_retention", cursor_flag, str(uuid4())])
+
+    with pytest.raises(SystemExit) as error:
+        preview_audit_retention.main()
+
+    assert error.value.code == 2
+    assert "Paginated previews require the original --cutoff." in capsys.readouterr().err
 
 
 def policy_fields(
@@ -201,6 +219,46 @@ async def test_preview_covers_complete_population_and_purge_is_bounded(
             select(ActivityLog.id).where(ActivityLog.id.in_(protected))
         )
         assert set(remaining) == set(protected)
+
+
+async def test_retention_inventory_can_resume_at_the_original_cutoff(
+    database, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    action = f"test.audit.{uuid4().hex}"
+    settings = policy_settings(tmp_path / "policy.json", policy_fields(action, mode="retain_only"))
+    monkeypatch.setattr(audit_service, "get_settings", lambda: settings)
+    # Keep the fixture isolated from rows committed by other tests in the same database.
+    cutoff = datetime(2000, 1, 1, tzinfo=UTC)
+    ids = sorted(uuid4() for _ in range(3))
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                insert(ActivityLog),
+                [
+                    {
+                        "id": id_,
+                        "action": action,
+                        "created_at": cutoff + timedelta(seconds=offset),
+                    }
+                    for id_, offset in zip(ids, (-1, 0, 1), strict=True)
+                ],
+            )
+        await preview_audit_retention.preview(limit=1, cutoff=cutoff)
+        first = json.loads(capsys.readouterr().out)
+        assert first["next_after"] == str(ids[0])
+        await preview_audit_retention.preview(
+            limit=1, after=UUID(first["next_after"]), cutoff=cutoff
+        )
+        second = json.loads(capsys.readouterr().out)
+        assert first["cutoff_utc"] == second["cutoff_utc"] == cutoff.isoformat()
+        assert first["counts"]["missing"] == second["counts"]["missing"] == 2
+        assert second["next_after"] is None
+        assert [row["id"] for row in first["rows"] + second["rows"]] == [
+            str(id_) for id_ in ids[:2]
+        ]
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(ActivityLog).where(ActivityLog.id.in_(ids)))
 
 
 async def test_calendar_sql_matches_python_with_non_utc_database_session(

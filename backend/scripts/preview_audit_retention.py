@@ -168,7 +168,7 @@ def main() -> None:
     args = parser.parse_args()
     if not 1 <= args.limit <= 1000:
         parser.error("--limit must be between 1 and 1000.")
-    if args.after is not None and args.cutoff is None and args.category != "missing":
+    if args.after is not None and args.cutoff is None:
         parser.error("Paginated previews require the original --cutoff.")
     if args.cutoff is not None and args.cutoff > utc_now():
         parser.error("--cutoff cannot be in the future.")
