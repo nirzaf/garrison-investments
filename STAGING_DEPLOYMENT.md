@@ -37,7 +37,7 @@ MINIO_PUBLIC_ENDPOINT=erp.garrisons.lk
 MINIO_PUBLIC_SECURE=true
 ```
 
-Set `DOCKER_SOCKET_GID` to the host's Docker socket group from `stat -c %g /var/run/docker.sock`. Alloy uses that supplemental group and discovers containers for the staging project. The application prefixes outgoing messages with `[Testing]`. Use approved staging recipients and credentials. If the approved UAT procedure uses `STAGING_LOGIN_OTP`, set the six-digit value in the private environment. The backend checks this value only for login with `APP_ENV=staging`.
+Set `DOCKER_SOCKET_GID` to the host's Docker socket group from `stat -Lc '%g' /var/run/docker.sock`. Alloy uses that supplemental group and discovers containers for the staging project. The application prefixes outgoing messages with `[Testing]`. Use approved staging recipients and credentials. If the approved UAT procedure uses `STAGING_LOGIN_OTP`, set the six-digit value in the private environment. The backend checks this value only for login with `APP_ENV=staging`.
 
 ## Deploy a reviewed revision
 
