@@ -396,6 +396,55 @@ def test_lock_failure_leaves_previous_attempt_and_backup_unchanged(
 
 
 @pytest.mark.parametrize(
+    ("env_name", "entry"),
+    [
+        ("RECOVERY_PUBLISH_ENV", "  DATABASE_URL=fixture-source"),
+        ("RECOVERY_PUBLISH_ENV", "BACKUP_GRAFANA_DATABASE_URL=fixture-source"),
+        ("RECOVERY_CAPTURE_ENV", "  DR_BACKUP_SECRET_KEY=fixture-destination"),
+        ("RECOVERY_CAPTURE_ENV", "DR_BACKUP_SECRET_KEY"),
+        ("RECOVERY_CAPTURE_ENV", "DATABASE_URL=duplicate-value"),
+        ("RECOVERY_PUBLISH_ENV", "OTHER_CREDENTIAL"),
+    ],
+)
+def test_recovery_environment_rejects_ambiguous_or_mixed_credentials(
+    scheduled_capture: ScheduledCapture, env_name: str, entry: str
+) -> None:
+    path = Path(scheduled_capture.env[env_name])
+    with path.open("a") as environment:
+        environment.write(f"\n{entry}\n")
+    result = scheduled_capture.run()
+    assert result.returncode != 0
+    assert "Capture and publisher credential inputs must be explicit and isolated." in result.stderr
+    assert scheduled_capture.events.read_text() == ""
+    assert json.loads(scheduled_capture.writer_state.read_text()) == scheduled_capture.before
+    assert not scheduled_capture.evidence.exists()
+
+
+def test_recovery_environment_requires_nonempty_credentials(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    path = Path(scheduled_capture.env["RECOVERY_PUBLISH_ENV"])
+    content = path.read_text()
+    path.write_text(content.replace("DR_BACKUP_ACCESS_KEY=fixture", "DR_BACKUP_ACCESS_KEY="))
+    result = scheduled_capture.run()
+    assert result.returncode != 0
+    assert "Capture and publisher credential inputs must be explicit and isolated." in result.stderr
+    assert scheduled_capture.events.read_text() == ""
+
+
+def test_recovery_environment_accepts_explicit_indented_assignments(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    for name in ("RECOVERY_CAPTURE_ENV", "RECOVERY_PUBLISH_ENV"):
+        path = Path(scheduled_capture.env[name])
+        assignments = "\n".join(f"  {item}" for item in path.read_text().splitlines())
+        path.write_text("\n  # Fixture comment\n\n" + assignments)
+    result = scheduled_capture.run()
+    assert result.returncode == 0, result.stderr
+    assert (scheduled_capture.evidence / "latest-success.json").read_text() == "1"
+
+
+@pytest.mark.parametrize(
     "failure", ["preflight", "invalid-limits", "failed-after-limits", "preflight-and-status"]
 )
 def test_policy_preflight_failure_records_status_without_touching_writers_or_last_good(

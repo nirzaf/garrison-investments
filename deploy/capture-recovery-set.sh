@@ -45,19 +45,39 @@ done
 [[ "$capture_env" != "$publisher_env" ]] || die 'Capture and publisher need separate credentials.'
 [[ "$(stat -c %s "$auth_key")" == 32 ]] || die 'Authentication key must be exactly 32 bytes.'
 python3 - "$capture_env" "$publisher_env" <<'PY'
+import re
 import sys
 from pathlib import Path
 
-def names(path):
-    return {line.split("=", 1)[0] for line in Path(path).read_text().splitlines() if "=" in line}
+error = "Capture and publisher credential inputs must be explicit and isolated."
 
-capture, publish = (names(path) for path in sys.argv[1:])
+def assignments(path):
+    entries = {}
+    with Path(path).open(encoding="utf-8-sig", newline="\n") as environment:
+        lines = environment.read().split("\n")
+    for raw in lines:
+        line = raw.lstrip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, value = line.partition("=")
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name in entries:
+            sys.exit(error)
+        entries[name] = value
+    return entries
+
+capture, publish = (assignments(path) for path in sys.argv[1:])
 source = {"DATABASE_URL", "MINIO_ENDPOINT", "MINIO_BUCKET", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
           "BACKUP_ENCRYPTION_PASSWORD"}
 destination = {"DR_BACKUP_ENDPOINT", "DR_BACKUP_BUCKET", "DR_BACKUP_PREFIX", "DR_BACKUP_SECURE",
                "DR_BACKUP_ACCESS_KEY", "DR_BACKUP_SECRET_KEY"}
-if not source <= capture or not destination <= publish or source & publish or destination & capture:
-    sys.exit("Capture and publisher credential inputs must be explicit and isolated.")
+source_only = source | {"BACKUP_GRAFANA_DATABASE_URL", "MINIO_SECURE"}
+if (
+    not all(capture.get(name, "").strip() for name in source)
+    or not all(publish.get(name, "").strip() for name in destination)
+    or source_only & publish.keys()
+    or destination & capture.keys()
+):
+    sys.exit(error)
 PY
 
 exec 9>>"$state/deploy.lock"
