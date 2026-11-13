@@ -5,14 +5,13 @@ import { StatusBadge } from '../../components/shared/StatusBadge';
 const deliveryItems = [
   {
     label: 'Hosting',
-    detail: 'Cloud VPS with Docker Compose for MVP.',
+    detail: 'The production deployment uses Docker Compose on the VPS.',
     icon: Cloud,
     status: 'configured'
   },
   {
     label: 'Environments',
-    detail:
-      'The operations guide describes the approved staging and production deployment procedures.',
+    detail: 'Use isolated test environments for acceptance checks that need test data or fault injection.',
     icon: Route,
     status: 'external proof'
   },
@@ -25,7 +24,7 @@ const deliveryItems = [
   },
   {
     label: 'Backups',
-    detail: 'Daily 30-day and monthly 12-month backup schedules.',
+    detail: 'Scheduled database backups are configured. Independent recovery also needs the referenced files and an executed restore drill.',
     icon: Database,
     status: 'configured'
   },
@@ -57,8 +56,8 @@ const acceptanceScenarios = [
 ];
 
 const remainingInputs = [
-  'Operation Manager or delegated release approver sign-off for the launch run',
-  'Hosting provider, backup destination, server owner, and monitoring provider',
+  'Formal acceptance from the business sponsor, finance/data owner, QA lead, and operations owner',
+  'Independent backup and monitoring destinations and named operators',
   'Company-approved report, export, BOQ, and numbering templates',
   'Source spreadsheets for launch users, projects, suppliers, inventory, BOQ, and opening stock',
   'Browser/device UAT sign-off for supported mobile and desktop targets'

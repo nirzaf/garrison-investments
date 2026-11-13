@@ -184,6 +184,9 @@ describe('App route smoke tests', () => {
 
     expect(html).toContain('Launch readiness');
     expect(html).toContain('operations guide');
+    expect(html).toContain('Use isolated test environments for acceptance checks');
+    expect(html).toContain('Scheduled database backups are configured');
+    expect(html).toContain('Independent recovery also needs the referenced files');
   });
 
   it('renders profile route for signed-in users', () => {
