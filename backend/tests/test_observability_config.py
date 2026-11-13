@@ -176,7 +176,14 @@ _EXPECTED_ALERT_PREDICATES = {
         '__error__=""',
         "by (environment)",
     ],
-    "garrison-log-pipeline-errors": ['service=~"loki|alloy"'],
+    "garrison-log-pipeline-errors": [
+        'service="loki"',
+        "| logfmt level",
+        'service="alloy"',
+        '| json level="level"',
+        'level=~"(?i)error|fatal|panic"',
+        '__error__=""',
+    ],
 }
 
 

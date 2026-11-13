@@ -95,7 +95,7 @@ Request, session, user, and task IDs are JSON fields queried after `| json`. Kee
 
 ### Alert delivery
 
-[Provisioned alerts](../observability/grafana/provisioning/alerting/alerts.yml) cover unhandled failures, HTTP 5xx bursts, repeated Celery retries, sustained slow requests, and Loki/Alloy errors. Query failures enter the alerting state. Ordinary no-data periods remain healthy.
+[Provisioned alerts](../observability/grafana/provisioning/alerting/alerts.yml) cover unhandled failures, HTTP 5xx bursts, repeated Celery retries, sustained slow requests, and Loki/Alloy errors. The pipeline rule reads severity from Loki's logfmt records and Alloy's JSON records. Query failures enter the alerting state. Ordinary no-data periods remain healthy.
 
 The default [Grafana contact point](../observability/grafana/provisioning/alerting/contact-point.yml) uses SMTP. To use the [useSend webhook](../observability/grafana/contact-points/usesend.yml), set these values in the private deployment environment. Use the full HTTPS email API endpoint and the authorized sender:
 

@@ -156,7 +156,13 @@ groups:
             model:
               datasource: {type: loki, uid: loki}
               editorMode: code
-              expr: 'sum(count_over_time({environment=~"production|staging", service=~"loki|alloy"} |~ "(?i)(error|failed)" [5m]))'
+              expr: >-
+                sum(
+                  count_over_time({environment=~"production|staging", service="loki"}
+                    | logfmt level | level=~"(?i)error|fatal|panic" | __error__="" [5m])
+                  or count_over_time({environment=~"production|staging", service="alloy"}
+                    | json level="level" | level=~"(?i)error|fatal|panic" | __error__="" [5m])
+                )
               queryType: instant
               refId: A
           - refId: B
