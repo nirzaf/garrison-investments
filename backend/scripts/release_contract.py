@@ -2223,9 +2223,9 @@ def verify_recovery_artifacts(
         "Backup manifest identity differs from the release or restored set.",
         3,
     )
+    object_count = len(items(manifest.get("objects"), "backup object inventory", minimum=0))
     require(
-        len(items(manifest.get("objects"), "backup object inventory", minimum=0))
-        == result["required_object_count"]
+        object_count == result["required_object_count"]
         and isinstance(manifest.get("application_dump"), dict),
         "Backup manifest does not match recovered object or configuration coverage.",
         4,
@@ -2242,10 +2242,21 @@ def verify_recovery_artifacts(
         "Backup manifest omits required configuration paths or repeats them.",
         4,
     )
+    manifest_counts = {
+        "application_database": 1,
+        "configuration": len(config_paths),
+        "objects": object_count,
+        "grafana_database": int(isinstance(manifest.get("grafana_dump"), dict)),
+    }
     require(
-        not result["required_category_counts"].get("grafana_database")
-        or isinstance(manifest.get("grafana_dump"), dict),
+        "grafana_database" not in decision["required_artifact_categories"]
+        or manifest_counts["grafana_database"] == 1,
         "Backup manifest lacks the approved Grafana database.",
+        4,
+    )
+    require(
+        result["required_category_counts"] == manifest_counts,
+        "Reviewed recovery coverage differs from backup manifest category counts.",
         4,
     )
     auth = fields(
@@ -2306,7 +2317,8 @@ def verify_recovery_artifacts(
         "operation outcome assurance source_sha backup_set_id manifest_sha256 "
         "configuration_sha256 snapshot_at_utc restore_started_at_utc "
         "database_restored_at_utc objects_verified_at_utc expected_migration_heads "
-        "observed_migration_heads required_object_count restored_object_count",
+        "observed_migration_heads required_object_count restored_object_count "
+        "restored_category_counts",
         label="restore command receipt",
     )
     require(restore_ref["sha256"] in refs, "Restore command receipt must be classified.", 3)
@@ -2315,6 +2327,12 @@ def verify_recovery_artifacts(
         and restored["outcome"] == "pass"
         and restored["assurance"] == "authenticated format 2",
         "Restore command did not complete an authenticated restore.",
+        4,
+    )
+    require(
+        quantities(restored["restored_category_counts"], "restore command category")
+        == manifest_counts,
+        "Restore command category counts differ from the manifest coverage.",
         4,
     )
     require(

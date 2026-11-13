@@ -692,6 +692,7 @@ def phase_results(
     include_restore_receipt: bool = True,
     restore_override: dict[str, Any] | None = None,
     classify_restore_receipt: bool = True,
+    category_override: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     start = STAGE_START if phase == "predeploy" else FINAL_START
     backup_policy = decisions["D-29-RECOVERY"]
@@ -705,7 +706,13 @@ def phase_results(
         "objects_verified_at_utc",
         "business_ready_at_utc",
     )
-    artifact_counts = {item: 1 for item in backup_policy["required_artifact_categories"]}
+    artifact_counts = {
+        "application_database": 1,
+        "configuration": 1,
+        "objects": 1,
+        "grafana_database": 0,
+    }
+    artifact_counts.update(category_override or {})
     manifest_ref = bundle.write(
         f"artifacts/{phase}-backup-manifest.json",
         {
@@ -781,6 +788,12 @@ def phase_results(
                 "observed_migration_heads": heads(),
                 "required_object_count": 1,
                 "restored_object_count": 1,
+                "restored_category_counts": {
+                    "application_database": 1,
+                    "configuration": 1,
+                    "objects": 1,
+                    "grafana_database": 0,
+                },
                 **(restore_override or {}),
             },
         )
@@ -1356,6 +1369,22 @@ def test_operations_rejects_profile_drift_from_the_approved_contact_route(
             "reviewed recovery summary",
         ),
         ({"restore_override": {"restored_object_count": 0}}, "reviewed recovery summary"),
+        ({"category_override": {"configuration": 2}}, "manifest category counts"),
+        ({"category_override": {"objects": 0}}, "manifest category counts"),
+        ({"category_override": {"grafana_database": 1}}, "manifest category counts"),
+        (
+            {
+                "restore_override": {
+                    "restored_category_counts": {
+                        "application_database": 1,
+                        "configuration": 0,
+                        "objects": 1,
+                        "grafana_database": 0,
+                    }
+                }
+            },
+            "Restore command category counts",
+        ),
         (
             {"restore_override": {"objects_verified_at_utc": NOW.isoformat()}},
             "reviewed recovery summary",

@@ -1191,6 +1191,7 @@ async def restore(
                 output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 shutil.copyfile(path, output)
                 output.chmod(0o600)
+                verify_plaintext(output, config.plaintext)
     assurance = (
         "authenticated format 2"
         if isinstance(manifest, AuthenticatedManifest)
@@ -1216,6 +1217,14 @@ async def restore(
             manifest_sha256=hashlib.sha256(canonical_bytes(manifest)).hexdigest(),
             snapshot_at_utc=manifest.snapshot_at_utc.isoformat(),
             configuration_sha256=manifest.configuration_sha256,
+            restored_category_counts={
+                "application_database": 1,
+                "grafana_database": int(grafana_url is not None),
+                "configuration": len(manifest.configuration_artifacts)
+                if configuration_destination
+                else 0,
+                "objects": len(manifest.objects),
+            },
         )
     return result
 

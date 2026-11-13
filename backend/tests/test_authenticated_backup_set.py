@@ -306,8 +306,19 @@ async def test_restore_checks_working_space_after_decrypting_all_artifacts(
         restore_database.assert_not_called()
         storage.make_bucket.assert_not_called()
     else:
-        result = await backup_set.restore(directory, manifest, "fixture", policy=policy)
+        output = directory / "restored-config" if largest_artifact == "object" else None
+        result = await backup_set.restore(
+            directory, manifest, "fixture", policy=policy, configuration_destination=output
+        )
         assert result["outcome"] == "pass"
+        assert result["restored_category_counts"] == {
+            "application_database": 1,
+            "grafana_database": 1,
+            "configuration": int(output is not None),
+            "objects": len(objects),
+        }
+        if output is not None:
+            assert checksum(output / configuration.path).sha256 == config.sha256
         assert restore_database.call_count == 2
         storage.make_bucket.assert_called_once_with("garrison-restore-test-app")
 
