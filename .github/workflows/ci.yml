@@ -169,7 +169,13 @@ jobs:
             (
               cd ../frontend
               npm ci
-              npx playwright install --with-deps --only-shell chromium
+              # Downloads and system packages are independent. Wait for both before testing.
+              npx playwright install-deps chromium &
+              system_deps_pid=$!
+              browser_failed=0
+              npx playwright install --only-shell chromium || browser_failed=1
+              wait "$system_deps_pid" || browser_failed=1
+              exit "$browser_failed"
             ) &
             browser_pid=$!
           fi
