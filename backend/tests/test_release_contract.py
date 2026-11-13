@@ -36,6 +36,7 @@ class Bundle:
         self.observation_artifacts: list[dict[str, Any]] = []
         self.inventory_artifacts: list[dict[str, Any]] = []
         self.deployment_artifacts: list[dict[str, Any]] = []
+        self.alert_artifacts: dict[str, list[dict[str, Any]]] = {}
         self.sequence = 0
         self.artifact = self.write("artifacts/report.json", {"actual": "Synthetic fixture"})
         self.artifact["sensitivity"] = "sanitized"
@@ -120,6 +121,7 @@ class Bundle:
                 *(self.observation_artifacts if kind == "observation" else []),
                 *(self.inventory_artifacts if kind == "data_reconciliation" else []),
                 *(self.deployment_artifacts if kind == "deployment" else []),
+                *(self.alert_artifacts.get(phase, []) if kind == "observability" else []),
             ],
         }
         row["review"] = self.approval(
@@ -130,7 +132,9 @@ class Bundle:
         )
         return self.write(f"receipts/{phase}-{kind}.json", row)
 
-    def alert(self, name: str, start: datetime) -> dict[str, Any]:
+    def alert(
+        self, name: str, start: datetime, phase: str, profile_hash: str
+    ) -> dict[str, Any]:
         times = ["trigger_at", "evaluated_at", "fired_at", "recovered_at", "resolved_at"]
         result = {
             "rule_id": name,
@@ -138,16 +142,46 @@ class Bundle:
             "synthetic": True,
             **{
                 key: (start + timedelta(seconds=index)).isoformat()
-                for index, key in enumerate(times)
+                for index, key in zip((0, 1, 2, 6, 7), times, strict=True)
             },
             "message_id": f"fixture-{name}",
             "recipient": "Fixture Primary",
             "independent_path": True,
             "acknowledged_at": (start + timedelta(seconds=5)).isoformat(),
         }
+        for notification, received, message_id, key in (
+            ("firing", start + timedelta(seconds=3), result["message_id"], "firing_delivery"),
+            ("resolved", start + timedelta(seconds=8), f"resolved-{name}", "resolution_delivery"),
+        ):
+            prefix = f"artifacts/{phase}-{name}-{notification}"
+            receipt = self.write_bytes(f"{prefix}.eml", f"Message-ID: {message_id}\n".encode())
+            delivery = self.write(
+                f"{prefix}.json",
+                {
+                    "rule_id": name,
+                    "environment": "test",
+                    "profile_sha256": profile_hash,
+                    "notification": notification,
+                    "message_id": message_id,
+                    "recipient": result["recipient"],
+                    "destination": "operator@example.test",
+                    "received_at": received.isoformat(),
+                    "receipt_ref": receipt,
+                },
+            )
+            self.alert_artifacts.setdefault(phase, []).extend(
+                {**ref, "sensitivity": "sanitized"} for ref in (receipt, delivery)
+            )
+            result[key] = delivery
         result["acknowledgement_ref"] = self.approval(
             "acknowledge_alert",
-            contract.canonical_digest(result),
+            contract.canonical_digest(
+                {
+                    key: value
+                    for key, value in result.items()
+                    if key not in {"recovered_at", "resolved_at", "resolution_delivery"}
+                }
+            ),
             "alert_recipient",
             "Fixture Primary",
             at=start + timedelta(seconds=5),
@@ -772,7 +806,12 @@ def phase_results(
         "observability": {
             "profile_sha256": decisions["D-30-OPERATIONS"]["profile_ref"]["sha256"],
             "trace_ids": ["fixture-web", "fixture-worker"],
-            "alert_events": [bundle.alert(rule, start) for rule in sorted(contract.ALERT_RULES)],
+            "alert_events": [
+                bundle.alert(
+                    rule, start, phase, decisions["D-30-OPERATIONS"]["profile_ref"]["sha256"]
+                )
+                for rule in sorted(contract.ALERT_RULES)
+            ],
             "assertions": true(
                 "ingestion", "pipeline_silence", "off_host_failure", "backup_freshness"
             ),
@@ -1146,6 +1185,66 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
     assert verdict["status"] == "validated_test_evidence"
     assert verdict["accepted_scope_complete"] is False
     assert verdict["ready_for_authorized_deployment"] is False
+
+
+@pytest.mark.parametrize(
+    ("problem", "reason"),
+    [
+        ("missing", "Missing alert delivery evidence"),
+        ("wrong-profile", "differs from the reviewed rule, route or recipient"),
+        ("unclassified", "must be classified artifacts"),
+        ("early-resolution", "outside its execution window"),
+        ("reused-id", "must have distinct delivery evidence"),
+        ("reused-receipt", "must have distinct delivery evidence"),
+        ("wrong-destination", "for the same destination"),
+        ("ack-before-receipt", "acknowledgement exceeded the approved bound"),
+    ],
+)
+def test_observability_requires_matching_firing_and_resolution_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str, reason: str
+) -> None:
+    class AlertBundle(Bundle):
+        def alert(
+            self, name: str, start: datetime, phase: str, profile_hash: str
+        ) -> dict[str, Any]:
+            result = super().alert(name, start, phase, profile_hash)
+            if problem == "missing":
+                del result["resolution_delivery"]
+                return result
+            if problem == "unclassified":
+                self.alert_artifacts[phase].pop()
+                return result
+            key = "firing_delivery" if problem == "ack-before-receipt" else "resolution_delivery"
+            original = result[key]
+            path = original["path"]
+            record = json.loads((self.root / path).read_text())
+            firing = json.loads(
+                (self.root / result["firing_delivery"]["path"]).read_text()
+            )
+            field, value = {
+                "wrong-profile": ("profile_sha256", "0" * 64),
+                "early-resolution": ("received_at", start.isoformat()),
+                "reused-id": ("message_id", firing["message_id"]),
+                "reused-receipt": ("receipt_ref", firing["receipt_ref"]),
+                "wrong-destination": ("destination", "other@example.test"),
+                "ack-before-receipt": (
+                    "received_at", (start + timedelta(seconds=6)).isoformat()
+                ),
+            }[problem]
+            record[field] = value
+            ref = self.write(path, record)
+            artifacts = self.alert_artifacts[phase]
+            artifacts[:] = [a for a in artifacts if a["sha256"] != original["sha256"]]
+            artifacts.append({**ref, "sensitivity": "sanitized"})
+            result[key] = ref
+            return result
+
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = AlertBundle(tmp_path)
+    bundle.write("release_manifest.json", manifest(bundle, "final"))
+
+    with pytest.raises(contract.ContractError, match=reason):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
 
 
 def test_final_requires_the_ci_attempt_used_by_deployment(

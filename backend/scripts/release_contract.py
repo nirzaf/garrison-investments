@@ -1289,6 +1289,47 @@ ALERT_RULES = {
 }
 
 
+def alert_delivery(
+    ref: Any,
+    evidence: Evidence,
+    artifact_hashes: set[str],
+    row: dict[str, Any],
+    profile_hash: str,
+    notification: str,
+    sent_at: datetime,
+    end: datetime,
+) -> tuple[str, str, datetime, str]:
+    record = fields(
+        evidence.load(ref, parse=True),
+        "rule_id environment profile_sha256 notification message_id recipient destination "
+        "received_at receipt_ref",
+        label="alert delivery",
+    )
+    raw_ref = record["receipt_ref"]
+    require(
+        ref["sha256"] in artifact_hashes and evidence.load(raw_ref) in artifact_hashes,
+        "Alert delivery records and notification receipts must be classified artifacts.",
+        3,
+    )
+    require(
+        record["rule_id"] == row["rule_id"]
+        and record["environment"] == row["environment"]
+        and record["profile_sha256"] == profile_hash
+        and record["notification"] == notification
+        and record["recipient"] == row["recipient"],
+        "Alert delivery differs from the reviewed rule, route or recipient.",
+        3,
+    )
+    received = utc(record["received_at"], "alert receipt")
+    require(sent_at <= received <= end, "Alert delivery is outside its execution window.", 3)
+    return (
+        meaningful(record["message_id"], "notification message ID"),
+        meaningful(record["destination"], "notification destination"),
+        received,
+        raw_ref["sha256"],
+    )
+
+
 def receipt_observability(
     payload: Any,
     profile_hash: str,
@@ -1297,6 +1338,8 @@ def receipt_observability(
     environment: str,
     start: datetime,
     end: datetime,
+    *,
+    artifact_hashes: set[str],
 ) -> None:
     data = fields(
         payload, "profile_sha256 trace_ids alert_events assertions", label="observability result"
@@ -1315,7 +1358,13 @@ def receipt_observability(
             "rule_id environment synthetic trigger_at evaluated_at fired_at recovered_at "
             "resolved_at "
             "message_id recipient acknowledged_at acknowledgement_ref independent_path",
+            optional="firing_delivery resolution_delivery",
             label="alert event",
+        )
+        require(
+            {"firing_delivery", "resolution_delivery"} <= row.keys(),
+            "Missing alert delivery evidence for firing or resolution.",
+            3,
         )
         rule = meaningful(row["rule_id"], "alert rule ID")
         require(rule not in rules, "Duplicate alert rule.")
@@ -1334,11 +1383,41 @@ def receipt_observability(
             3,
         )
         require(type(row["independent_path"]) is bool, "Invalid independent alert path marker.")
-        meaningful(row["message_id"], "provider message ID")
+        firing_id, firing_destination, firing_received, firing_hash = alert_delivery(
+            row["firing_delivery"],
+            approvals.evidence,
+            artifact_hashes,
+            row,
+            profile_hash,
+            "firing",
+            executed[2],
+            end,
+        )
+        resolution_id, resolution_destination, resolution_received, resolution_hash = (
+            alert_delivery(
+                row["resolution_delivery"],
+                approvals.evidence,
+                artifact_hashes,
+                row,
+                profile_hash,
+                "resolved",
+                executed[4],
+                end,
+            )
+        )
+        require(
+            firing_id == row["message_id"]
+            and resolution_id != firing_id
+            and firing_hash != resolution_hash
+            and firing_destination.casefold() == resolution_destination.casefold()
+            and firing_received <= resolution_received,
+            "Firing and resolution must have distinct delivery evidence for the same destination.",
+            3,
+        )
         recipient = meaningful(row["recipient"], "alert recipient identity")
         ack = utc(row["acknowledged_at"], "alert acknowledgement")
         require(
-            executed[2] <= ack <= end
+            firing_received <= ack <= end
             and (ack - executed[2]).total_seconds() <= approved["acknowledgement_limit_seconds"],
             "Alert acknowledgement exceeded the approved bound.",
             4,
@@ -1347,7 +1426,13 @@ def receipt_observability(
             row["acknowledgement_ref"],
             "acknowledge_alert",
             canonical_digest(
-                {key: item for key, item in row.items() if key != "acknowledgement_ref"}
+                {
+                    key: item
+                    for key, item in row.items()
+                    if key not in {
+                        "acknowledgement_ref", "recovered_at", "resolved_at", "resolution_delivery"
+                    }
+                }
             ),
             role="alert_recipient",
         )
@@ -2548,7 +2633,14 @@ class Validation:
             )
             assert profile is not None
             receipt_observability(
-                result, profile, operations, self.approvals, environment, start, end
+                result,
+                profile,
+                operations,
+                self.approvals,
+                environment,
+                start,
+                end,
+                artifact_hashes=artifact_hashes,
             )
         elif kind == "uat":
             self.uat_defects.update(
