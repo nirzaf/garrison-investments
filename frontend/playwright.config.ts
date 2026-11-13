@@ -2,8 +2,12 @@ import { env } from 'node:process';
 
 import { defineConfig } from '@playwright/test';
 
-// The required frontend CI job already type-checks the application build.
-const buildCommand = env.GITHUB_ACTIONS === 'true' ? 'npm exec --offline -- vite build' : 'npm run build';
+const previewCommand =
+  'npm run preview -- --config e2e/vite.config.ts --host 127.0.0.1 --port 4325 --strictPort';
+const frontendCommand =
+  env.BROWSER_TEST_PREBUILT === 'true'
+    ? previewCommand
+    : `VITE_API_BASE_URL=/api/v1 npm run build && ${previewCommand}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,7 +25,7 @@ export default defineConfig({
       url: 'http://127.0.0.1:8425/health/readiness'
     },
     {
-      command: `VITE_API_BASE_URL=/api/v1 ${buildCommand} && npm run preview -- --config e2e/vite.config.ts --host 127.0.0.1 --port 4325 --strictPort`,
+      command: frontendCommand,
       url: 'http://127.0.0.1:4325'
     }
   ]
