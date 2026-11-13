@@ -51,6 +51,7 @@ test('offline report photos and verified supervisor evidence survive rejection a
 }) => {
   const account = seed('seed');
   const supervisor = seed('seed-supervisor', '--project-id', account.projectId);
+  const projectManager = seed('seed', '--role', 'project_manager', '--project-id', account.projectId);
   const supervisorPage = await browser.newPage();
   await signIn(supervisorPage, supervisor);
   await supervisorPage.getByRole('link', { name: 'Reports', exact: true }).click();
@@ -172,9 +173,32 @@ test('offline report photos and verified supervisor evidence survive rejection a
   expect(before).toMatchObject({ status: 'verified', verified_report_id: original.id });
 
   const reviewer = await browser.newPage();
-  await signIn(reviewer, seed('seed', '--role', 'operation_manager'));
+  await signIn(reviewer, projectManager);
   const inbox = `/approvals?tab=reports&reportId=${original.id}`;
-  await reviewer.goto(inbox);
+  // Reproduce a notification target outside the API's first page.
+  async function omitLinkedReport(target: Page) {
+    await target.route(/\/api\/v1\/reports(?:\?.*)?$/, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const result: Reports = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...result, items: result.items.filter((report) => report.id !== original.id) }
+      });
+    });
+  }
+  await omitLinkedReport(reviewer);
+  await reviewer.getByRole('link', { name: 'Notifications', exact: true }).click();
+  const reviewNotice = reviewer.getByRole('article').filter({
+    hasText: `${number} is ready for approval.`
+  });
+  const approvalLink = reviewNotice.getByRole('link', { name: 'Open approval', exact: true });
+  await expect(approvalLink).toHaveAttribute('href', inbox);
+  await approvalLink.click();
+  await expect(reviewer).toHaveURL(inbox);
   const submittedCard = reviewer.getByRole('article').filter({ hasText: number ?? '' });
   await submittedCard.getByText('Supervisor evidence', { exact: true }).click();
   await submittedCard.getByText(/Linked supervisor evidence/).click();
@@ -213,7 +237,13 @@ test('offline report photos and verified supervisor evidence survive rejection a
   await expect(reviewer.getByText(`Approved ${number}.`, { exact: true })).toBeVisible();
   const approved = await getReports();
   expect(approved.items[0].status).toBe('approved');
-  await page.reload();
+  await omitLinkedReport(page);
+  await page.getByRole('link', { name: 'Notifications', exact: true }).click();
+  const decisionNotice = page.getByRole('article').filter({
+    hasText: `${number} has been approved.`
+  });
+  await decisionNotice.getByRole('link', { name: 'Open report', exact: true }).click();
+  await expect(page).toHaveURL(`/reports/daily?reportId=${original.id}`);
   const approvedCard = page.getByRole('article').filter({
     has: page.getByText(number, { exact: true })
   });
@@ -226,5 +256,18 @@ test('offline report photos and verified supervisor evidence survive rejection a
   const pdf = readFileSync(await download.path());
   expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   expect(pdf.subarray(-128).toString()).toContain('%%EOF');
+
+  // Reopening an old approval link never offers another decision.
+  await reviewer.goto(inbox);
+  await expect(reviewer.getByRole('heading', { name: number, exact: true })).toHaveCount(0);
+  const unrelated = await browser.newPage();
+  const unrelatedHeaders = await signIn(unrelated, seed('seed', '--role', 'project_manager'));
+  await unrelated.goto(`/reports/daily?reportId=${original.id}`);
+  await expect(unrelated.getByRole('alert')).toContainText('not found');
+  await expect(unrelated.getByRole('heading', { name: number, exact: true })).toHaveCount(0);
+  expect((await request.get(`/api/v1/reports/${original.id}/pdf`, {
+    headers: unrelatedHeaders
+  })).status()).toBe(404);
+  await unrelated.close();
   await reviewer.close();
 });

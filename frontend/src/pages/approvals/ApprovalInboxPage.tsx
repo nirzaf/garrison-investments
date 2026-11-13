@@ -17,6 +17,7 @@ import {
 import { formatApiError } from '../../api/errors';
 import {
   approveDailyReport,
+  getDailyReport,
   listDailyReports,
   overrideDailyReport,
   rejectDailyReport,
@@ -120,7 +121,15 @@ export function ApprovalInboxPage() {
     try {
       if (tab === 'reports' && canApprove) {
         const response = await listDailyReports({ status: 'submitted' });
-        if (version === requestVersion.current) setReports(response.items);
+        const focusedReport =
+          focusedReportId && !response.items.some((report) => report.id === focusedReportId)
+            ? await getDailyReport(focusedReportId).catch(() => null)
+            : null;
+        if (version === requestVersion.current) {
+          setReports(
+            focusedReport?.status === 'submitted' ? [focusedReport, ...response.items] : response.items
+          );
+        }
         return;
       }
       const box = tab === 'workflow' && canApprove ? 'inbox' : 'outbox';
@@ -151,7 +160,7 @@ export function ApprovalInboxPage() {
     } finally {
       if (version === requestVersion.current) setIsLoading(false);
     }
-  }, [canApprove, focusedApprovalId, offset, statusFilter, tab]);
+  }, [canApprove, focusedApprovalId, focusedReportId, offset, statusFilter, tab]);
 
   useEffect(() => {
     void loadReports();

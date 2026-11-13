@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Check, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -199,7 +200,25 @@ export function DailyReportPage() {
   const focusedReportId = searchParams.get('reportId');
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
-  const [reports, setReports] = useState<DailyReportRecord[]>([]);
+  const [reportList, setReports] = useState<DailyReportRecord[]>([]);
+  const focusedReport = useQuery({
+    queryKey: ['daily-report', 'detail', currentUserId, focusedReportId],
+    queryFn: () => getDailyReport(focusedReportId!, scope),
+    enabled: Boolean(
+      currentUserId && focusedReportId && !reportList.some((report) => report.id === focusedReportId)
+    ),
+    retry: false
+  });
+  const linkedReport = focusedReport.isSuccess ? focusedReport.data : null;
+  const reports = useMemo(
+    () => linkedReport && !reportList.some((report) => report.id === linkedReport.id)
+      ? [linkedReport, ...reportList]
+      : reportList,
+    [linkedReport, reportList]
+  );
+  const linkedReportError = focusedReport.isError
+    ? formatApiError(focusedReport.error, 'Unable to open linked report.')
+    : null;
   const [form, setForm] = useState(createEmptyPayload);
   const [photoNames, setPhotoNames] = useState('');
   const [attachmentNames, setAttachmentNames] = useState('');
@@ -917,6 +936,7 @@ export function DailyReportPage() {
         </div>
 
         {error ? <Alert tone="error" message={error} /> : null}
+        {linkedReportError ? <Alert tone="error" message={linkedReportError} /> : null}
 
         {reports.length === 0 ? (
           <EmptyState
@@ -1015,6 +1035,7 @@ export function DailyReportPage() {
 
         {notice ? <Alert tone="success" message={notice} /> : null}
         {error ? <Alert tone="error" message={error} /> : null}
+        {linkedReportError ? <Alert tone="error" message={linkedReportError} /> : null}
         {draftStatus === 'conflict' || syncConflicts > 0 ? (
           <div
             className="alert-warning rounded-md border border-[var(--status-warning-border)] px-3 py-2 text-sm"
@@ -1717,7 +1738,10 @@ function Alert({ message, tone }: { message: string; tone: 'error' | 'success' }
   const Icon = tone === 'success' ? Check : AlertTriangle;
   const cls = tone === 'success' ? 'alert-success' : 'alert-error';
   return (
-    <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${cls}`}>
+    <div
+      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${cls}`}
+      role={tone === 'error' ? 'alert' : 'status'}
+    >
       <Icon className="h-4 w-4" />
       <span>{message}</span>
     </div>

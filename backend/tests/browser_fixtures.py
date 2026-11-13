@@ -40,6 +40,7 @@ def configure() -> None:
         AUTH_RATE_LIMIT_MAX_REQUESTS="60",
         EXCEPTION_EMAIL_ENABLED="false",
         LOG_LEVEL="WARNING",
+        FRONTEND_BASE_URL="http://127.0.0.1:4325",
         SMTP_HOST="127.0.0.1",
         SMTP_PORT="1",
         USESEND_API_URL="http://127.0.0.1:1",
@@ -91,6 +92,12 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
                 await session.flush()
             if role == "civil_supervisor":
                 session.add(ProjectMember(project_id=project.id, user_id=user.id))
+            if role == "project_manager" and existing_project_id is not None:
+                session.add(
+                    ProjectMember(
+                        project_id=project.id, user_id=user.id, role_in_project="project_manager"
+                    )
+                )
             project_id = str(project.id)
             await session.commit()
     finally:
