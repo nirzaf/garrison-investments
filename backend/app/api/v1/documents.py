@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
 
 from app.api.dependencies import DbSession, require_permission
 from app.models.user import User
@@ -121,6 +121,7 @@ async def approve_document_version(
 @router.get("/{document_id}/download", response_model=DocumentDownloadResponse)
 async def get_document_download_url(
     document_id: UUID,
+    response: Response,
     current_user: CanViewDocuments,
     session: DbSession,
     version_id: Annotated[UUID | None, Query()] = None,
@@ -130,6 +131,7 @@ async def get_document_download_url(
         version_id=version_id,
         actor=current_user,
     )
+    response.headers["Cache-Control"] = "no-store"
     return DocumentDownloadResponse(
         url=url,
         expires_in_seconds=SIGNED_URL_SECONDS,

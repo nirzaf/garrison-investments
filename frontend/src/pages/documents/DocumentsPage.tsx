@@ -56,8 +56,15 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState('');
+  const [preview, setPreview] = useState<{
+    documentId: string;
+    versionId: string;
+    title: string;
+    url: string;
+  } | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewRequest = useRef(0);
   const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
   const canUseCompanyScope = ['admin', 'general_manager', 'operation_manager', 'accounts'].includes(user?.role ?? '');
@@ -188,14 +195,23 @@ export function DocumentsPage() {
     }
   }
 
-  async function preview(document: DocumentRecord, versionId?: string) {
+  async function openPreview(documentId: string, versionId: string, title: string) {
+    const request = ++previewRequest.current;
+    setPreviewPending(true);
+    setPreviewError(null);
+    setError(null);
     try {
-      const response = await getDocumentDownloadUrl(document.id, versionId);
-      setPreviewUrl(response.url);
-      setPreviewTitle(document.title);
+      const response = await getDocumentDownloadUrl(documentId, versionId);
+      if (request !== previewRequest.current) return;
+      setPreview({ documentId, versionId, title, url: response.url });
       if (response.superseded_warning) setNotice('This is a superseded document version.');
     } catch (reason) {
-      setError(formatApiError(reason, 'Unable to load document preview.'));
+      if (request !== previewRequest.current) return;
+      const message = formatApiError(reason, 'Unable to load document preview.');
+      if (preview) setPreviewError(message);
+      else setError(message);
+    } finally {
+      if (request === previewRequest.current) setPreviewPending(false);
     }
   }
 
@@ -424,7 +440,8 @@ export function DocumentsPage() {
                       <>
                         <button
                           className="inline-flex min-h-10 items-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary"
-                          onClick={() => void preview(document)}
+                          disabled={previewPending}
+                          onClick={() => void openPreview(document.id, active.id, document.title)}
                           type="button"
                         >
                           <Eye className="h-4 w-4" />
@@ -537,26 +554,45 @@ export function DocumentsPage() {
         </nav>
       ) : null}
 
-      {previewUrl ? (
+      {preview ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="relative max-h-[90vh] w-full max-w-4xl rounded-lg bg-theme-card shadow-xl">
+          <div
+            aria-label={preview.title}
+            aria-modal="true"
+            className="relative max-h-[90vh] w-full max-w-4xl rounded-lg bg-theme-card shadow-xl"
+            role="dialog"
+          >
             <div className="flex items-center justify-between border-b border-theme-border px-4 py-3">
               <h3 className="text-sm font-semibold text-theme-text-primary truncate">
-                {previewTitle}
+                {preview.title}
               </h3>
-              <button
-                aria-label="Close preview"
-                className="rounded-md p-1 text-theme-text-muted hover:bg-theme-card-elevated"
-                onClick={() => {
-                  setPreviewUrl(null);
-                  setPreviewTitle('');
-                }}
-                type="button"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  className="form-button"
+                  disabled={previewPending}
+                  onClick={() => void openPreview(preview.documentId, preview.versionId, preview.title)}
+                  type="button"
+                >
+                  {previewPending ? 'Refreshing…' : 'Refresh preview'}
+                </button>
+                <button
+                  aria-label="Close preview"
+                  className="rounded-md p-1 text-theme-text-muted hover:bg-theme-card-elevated"
+                  onClick={() => {
+                    previewRequest.current += 1;
+                    setPreview(null);
+                    setPreviewPending(false);
+                    setPreviewError(null);
+                  }}
+                  type="button"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-            <iframe className="h-[80vh] w-full" src={previewUrl} title={previewTitle} />
+            {previewError ? <Alert tone="error" message={previewError} /> : (
+              <iframe className="h-[80vh] w-full" src={preview.url} title={preview.title} />
+            )}
           </div>
         </div>
       ) : null}

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 
 type TestAccount = { email: string; password: string; projectId: string };
+type SignedDocument = { url: string; expires_in_seconds: number; superseded_warning: boolean };
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
 const jpeg = readFileSync(
   new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url)
@@ -16,9 +17,10 @@ const pdfFile = (name: string) => ({
   buffer: Buffer.from(`%PDF-1.4\n1 0 obj<<>>endobj\n% ${name}\n%%EOF`)
 });
 
-async function signIn(page: Page, seedCommand = 'seed') {
+async function signIn(page: Page, ...seedArgs: string[]) {
+  const args = seedArgs.length ? seedArgs : ['seed'];
   const account: TestAccount = JSON.parse(
-    execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', ['-m', 'tests.browser_fixtures', seedCommand], {
+    execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', ['-m', 'tests.browser_fixtures', ...args], {
       cwd: backendDirectory,
       encoding: 'utf8'
     })
@@ -42,6 +44,7 @@ async function signIn(page: Page, seedCommand = 'seed') {
 }
 
 test('document type filtering and replacement preserve the active version', async ({
+  browser,
   page,
   request
 }) => {
@@ -85,6 +88,62 @@ test('document type filtering and replacement preserve the active version', asyn
   await typeFilter.fill('wir');
   await expect(card.getByText('Linked document outside the current results')).toBeVisible();
   await expect(uploadType).toHaveValue('wir');
+
+  const downloadPath = `/api/v1/documents/${document.id}/download`;
+  const versions = await (await request.get(`/api/v1/documents/${document.id}/versions`, { headers })).json();
+  const version = versions.find((item: { version: number }) => item.version === 2);
+  expect(version).toBeDefined();
+  const waitForLink = () => page.waitForResponse(
+    (response) => new URL(response.url()).pathname === downloadPath && response.ok()
+  );
+  const initial = waitForLink();
+  await card.getByRole('button', { name: 'View', exact: true }).click();
+  const initialResponse = await initial;
+  expect(initialResponse.headers()['cache-control']).toBe('no-store');
+  expect(new URL(initialResponse.url()).searchParams.get('version_id')).toBe(version.id);
+  const first: SignedDocument = await initialResponse.json();
+  const dialog = page.getByRole('dialog', { name: title });
+  const preview = dialog.locator('iframe');
+  await expect(preview).toHaveAttribute('src', first.url);
+  const storage = env.BROWSER_TEST_MINIO_ENDPOINT ?? '127.0.0.1:9000';
+  expect(new URL(first.url).host).toBe(storage);
+  expect(first.expires_in_seconds).toBe(300);
+  if (env.BROWSER_TEST_VERIFY_SIGNED_EXPIRY === '1') {
+    const stale = await request.get(first.url);
+    expect(stale.status()).toBe(403);
+    expect(await stale.text()).toMatch(/expired/i);
+  }
+
+  const refresh = dialog.getByRole('button', { name: 'Refresh preview', exact: true });
+  await expect(refresh).toBeVisible();
+  await page.route(`**${downloadPath}?*`, (route) => route.fulfill({
+    status: 404,
+    json: { detail: 'Document version not found' }
+  }), { times: 1 });
+  await refresh.click();
+  await expect(dialog.getByRole('alert')).toHaveText('Document version not found');
+  await expect(preview).toHaveCount(0);
+
+  const refreshed = waitForLink();
+  await refresh.click();
+  const response = await refreshed;
+  const second: SignedDocument = await response.json();
+  expect(new URL(response.url()).searchParams.get('version_id')).toBe(version.id);
+  expect(new URL(second.url).host).toBe(storage);
+  if (env.BROWSER_TEST_VERIFY_SIGNED_EXPIRY === '1') expect(second.url === first.url).toBe(false);
+  await expect(preview).toHaveAttribute('src', second.url);
+  const file = await request.get(second.url);
+  expect(file.status()).toBe(200);
+  expect(await file.body()).toEqual(pdfFile('v2.pdf').buffer);
+  await dialog.getByRole('button', { name: 'Close preview' }).click();
+
+  const other = await browser.newPage();
+  const { headers: unrelated } = await signIn(other, 'seed', '--role', 'project_manager');
+  await other.goto(`/documents?documentId=${document.id}`);
+  await expect(other.getByRole('alert')).toContainText('Document not found');
+  await expect(other.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
+  expect((await request.get(downloadPath, { headers: unrelated })).status()).toBe(404);
+  await other.close();
 });
 
 test('supervisor selects supported photo formats and retrieves the original HEIC', async ({
