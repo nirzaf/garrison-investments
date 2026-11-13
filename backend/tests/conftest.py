@@ -5,16 +5,21 @@ from pathlib import Path
 
 import pytest
 
-# Rounded module runtimes in milliseconds from CI run 43287367122.
+# Median module runtimes in milliseconds from CI runs 43290811493,
+# 43293023176, and 43359757307, rounded to the nearest 100 ms.
 SLOW_MODULE_MS = {
-    "tests/test_capture_recovery_wrapper.py": 16_000,
-    "tests/test_authorization_matrix.py": 10_000,
-    "tests/test_daily_reports.py": 10_000,
-    "tests/test_scope_authorization.py": 10_000,
-    "tests/test_session_revocation.py": 9_000,
+    "tests/test_capture_recovery_wrapper.py": 18_000,
+    "tests/test_scope_authorization.py": 11_700,
+    "tests/test_authorization_matrix.py": 10_300,
+    "tests/test_daily_reports.py": 9_300,
+    "tests/test_session_revocation.py": 8_600,
     "tests/test_auth.py": 8_000,
-    "tests/test_photos.py": 5_000,
-    "tests/test_idempotency.py": 4_000,
+    "tests/test_photos.py": 5_600,
+    "tests/test_delegation_guards.py": 5_000,
+    "tests/test_finance.py": 4_700,
+    "tests/test_idempotency.py": 4_500,
+    "tests/test_inventory.py": 3_700,
+    "tests/test_report_payment_concurrency.py": 3_400,
 }
 
 
