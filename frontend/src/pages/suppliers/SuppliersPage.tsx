@@ -7,6 +7,7 @@ import {
   getSupplierTdsDocumentUrl,
   uploadSupplierTdsDocument,
   type SupplierCreatePayload,
+  type SupplierListResponse,
   type SupplierRecord
 } from '../../api/inventory';
 import { deactivateSupplier, listSupplierRegister, updateSupplier } from '../../api/suppliers';
@@ -67,6 +68,22 @@ export function SuppliersPage() {
     void queryClient.invalidateQueries({ queryKey: ['invoice-detail'] });
   }
 
+  async function saveToRegister(saved: SupplierRecord) {
+    const registers = { queryKey: ['suppliers', 'register'] };
+    await queryClient.cancelQueries(registers);
+    queryClient.setQueriesData<SupplierListResponse>(registers, (previous) => {
+      if (!previous?.items.some((item) => item.id === saved.id && item.revision < saved.revision)) {
+        return previous;
+      }
+      return {
+        ...previous,
+        items: previous.items.map((item) =>
+          item.id === saved.id && item.revision < saved.revision ? saved : item
+        )
+      };
+    });
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -82,7 +99,8 @@ export function SuppliersPage() {
           key={editor === 'new' ? 'new' : editor.id}
           supplier={editor === 'new' ? undefined : editor}
           onCancel={() => setEditor(null)}
-          onSaved={() => {
+          onSaved={async (saved) => {
+            await saveToRegister(saved);
             setEditor(null);
             refresh();
           }}
@@ -215,7 +233,7 @@ function SupplierForm({
   onCancel
 }: {
   supplier?: SupplierRecord;
-  onSaved: () => void;
+  onSaved: (supplier: SupplierRecord) => Promise<void>;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState({
@@ -248,10 +266,10 @@ function SupplierForm({
       tds_expiry_date: draft.tds_expiry_date || null
     };
     try {
-      if (supplier)
-        await updateSupplier(supplier.id, { ...payload, expected_revision: supplier.revision });
-      else await createSupplier(payload);
-      onSaved();
+      const saved = supplier
+        ? await updateSupplier(supplier.id, { ...payload, expected_revision: supplier.revision })
+        : await createSupplier(payload);
+      await onSaved(saved);
     } catch (failure) {
       setError(formatApiError(failure, 'Unable to save supplier.'));
     } finally {

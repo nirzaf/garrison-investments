@@ -310,21 +310,20 @@ test('supplier manager edits expiry, replaces evidence, and deactivates a suppli
   const suffix = randomUUID().slice(0, 8);
   const supplier = await createSupplier(request, headers, suffix);
   await page.goto('/suppliers');
+  const searched = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/suppliers' && url.searchParams.get('search') === supplier.name;
+  });
   await page.getByLabel('Search suppliers', { exact: true }).fill(supplier.name);
+  expect((await searched).status()).toBe(200);
   const card = page.getByRole('article', { name: supplier.name });
-  await card.getByRole('button', { name: 'Edit supplier', exact: true }).click();
-  await page.getByLabel('TDS expiry date', { exact: true }).fill('2027-04-20');
-  await page.getByLabel('Contact person', { exact: true }).fill('Updated contact');
-  await page.getByRole('button', { name: 'Save supplier', exact: true }).click();
-  await expect(card).toContainText('2027-04-20');
-  await expect(card).toContainText('Updated contact');
 
   const pdf = execFileSync(python, [
     '-c',
     'import sys; from reportlab.pdfgen.canvas import Canvas; c=Canvas(sys.stdout.buffer); c.drawString(50, 700, "Synthetic TDS fixture"); c.save()'
   ]);
   const input = card.getByLabel('TDS document (30 MiB)', { exact: true });
-  // The next action must use the upload receipt even while the register refresh is pending.
+  // The register must show committed edits and use committed revisions while refresh is pending.
   let releaseRegisterRefresh: (() => void) | undefined;
   const registerRefresh = new Promise<void>((resolve) => {
     releaseRegisterRefresh = resolve;
@@ -337,6 +336,27 @@ test('supplier manager edits expiry, replaces evidence, and deactivates a suppli
     }
   );
   try {
+    await card.getByRole('button', { name: 'Edit supplier', exact: true }).click();
+    await page.getByLabel('TDS expiry date', { exact: true }).fill('2027-04-20');
+    await page.getByLabel('Contact person', { exact: true }).fill('Updated contact');
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PATCH' &&
+        new URL(response.url()).pathname === `/api/v1/suppliers/${supplier.id}`
+    );
+    await page.getByRole('button', { name: 'Save supplier', exact: true }).click();
+    const savedResponse = await saved;
+    expect(savedResponse.status()).toBe(200);
+    expect(await savedResponse.json()).toMatchObject({
+      tds_expiry_date: '2027-04-20',
+      contact_person: 'Updated contact'
+    });
+    await expect(card).toContainText('2027-04-20');
+    await expect(card).toContainText('Updated contact');
+    await card.getByRole('button', { name: 'Edit supplier', exact: true }).click();
+    await expect(page.getByLabel('TDS expiry date', { exact: true })).toHaveValue('2027-04-20');
+    await page.getByRole('button', { name: 'Discard supplier edits', exact: true }).click();
+
     let uploadedRevision = 0;
     for (const name of ['evidence.pdf', 'replacement.pdf']) {
       await input.setInputFiles({ name, mimeType: 'application/pdf', buffer: pdf });
@@ -377,4 +397,9 @@ test('supplier manager edits expiry, replaces evidence, and deactivates a suppli
     params: { search: supplier.name }
   });
   expect(await lookup.json()).toEqual({ items: [], total: 0 });
+  await page.reload();
+  await page.getByLabel('Supplier state', { exact: true }).selectOption('inactive');
+  await page.getByLabel('Search suppliers', { exact: true }).fill(supplier.name);
+  await expect(card).toContainText('Updated contact');
+  await expect(card).toContainText('2027-04-20');
 });
