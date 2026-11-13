@@ -158,7 +158,19 @@ jobs:
           backend_pid=$!
 
           (
-            timeout 120s docker run --detach --name garrison-ci-s3 --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
+            # Retry the pinned image pull without retrying container creation.
+            if ! docker image inspect "$TEST_S3_IMAGE" >/dev/null 2>&1; then
+              for attempt in 1 2 3; do
+                if timeout 40s docker pull "$TEST_S3_IMAGE" >/dev/null; then
+                  break
+                fi
+                if [[ "$attempt" == 3 ]]; then
+                  exit 1
+                fi
+                sleep "$attempt"
+              done
+            fi
+            docker run --pull never --detach --name garrison-ci-s3 --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
             # The Docker port proxy can reset a connection before Moto starts listening.
             curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 \
               --retry-max-time 25 --max-time 5 http://127.0.0.1:9000/ -o /dev/null
