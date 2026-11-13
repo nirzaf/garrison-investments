@@ -423,6 +423,126 @@ test('store keeper transfers a tagged asset and preserves reserved stock', async
     .toEqual([expect.objectContaining({ id: moved.id })]);
 });
 
+test('analytics downloads match the filtered project and material control totals', async ({ browser, page }) => {
+  const account = seed('admin');
+  const headers = await signIn(page, account);
+  const suffix = account.projectId.slice(0, 8);
+  const location = `Analytics yard ${suffix}`;
+  const updateProject = await page.request.patch(`/api/v1/projects/${account.projectId}`, {
+    headers, data: { location }
+  });
+  expect(updateProject.ok()).toBe(true);
+  const project = await updateProject.json();
+  const post = async (path: string, data: object) => {
+    const response = await page.request.post(`/api/v1${path}`, { headers, data });
+    expect(response.ok(), `${path} returned HTTP ${response.status()}`).toBe(true);
+    return response.json();
+  };
+  const itemName = `Analytics material ${suffix}`;
+  const supplier = await post('/suppliers', {
+    name: `Analytics supplier ${suffix}`, category: 'Civil', rating: 'A',
+    payment_terms: '30 days', contact_person: 'Fixture contact', phone: '1234567',
+    email: `analytics-${suffix}@example.com`, address: 'Fixture yard',
+    tax_registration_number: `AN-${suffix}`, compliance_status: 'compliant'
+  });
+  const item = await post('/inventory/items', {
+    name: itemName, item_code: `AN-${suffix}`, category: 'Browser regression tests',
+    item_type: 'consumable', unit: 'KG', supplier_id: supplier.id
+  });
+  const yard = await post('/inventory/locations', {
+    name: location, code: `AN-${suffix}`, location_type: 'warehouse'
+  });
+  await post('/inventory/movements', {
+    item_id: item.id, movement_type: 'receive', quantity: '10.000', to_location_id: yard.id
+  });
+  for (const [movement_type, quantity] of [['issue', '2.750'], ['consume', '1.125']]) {
+    await post('/inventory/movements', {
+      item_id: item.id, movement_type, quantity, from_location_id: yard.id,
+      project_id: account.projectId
+    });
+  }
+  const invoice = await post('/finance/invoices', {
+    invoice_number: `AN-${suffix}-1`, project_id: account.projectId, amount: '100.00',
+    tax_amount: '7.25', invoice_date: '2024-01-01', due_date: '2024-01-31'
+  });
+  await post('/finance/invoices', {
+    invoice_number: `AN-${suffix}-2`, project_id: account.projectId, amount: '100.00',
+    tax_amount: '7.25', invoice_date: '2024-01-01', due_date: '2024-01-31'
+  });
+  const approver = await browser.newPage();
+  const approvalHeaders = await signIn(approver, seed('admin'));
+  const approval = await approver.request.patch(`/api/v1/finance/invoices/${invoice.id}`, {
+    headers: approvalHeaders, data: { status: 'approved', expected_revision: invoice.revision }
+  });
+  expect(approval.ok()).toBe(true);
+  await post(`/finance/invoices/${invoice.id}/payments`, {
+    amount: '42.15', payment_date: '2024-01-15', method: 'bank transfer'
+  });
+  await approver.close();
+
+  await page.goto('/analytics');
+  await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(account.projectId);
+  await page.getByLabel('Activity from').fill('2025-01-01');
+  await page.getByLabel('Project-panel location').fill(location);
+  await page.getByLabel('Project scope or material category').fill('Browser regression tests');
+  const summary = page.waitForResponse((response) =>
+    response.url().includes('/api/v1/analytics/summary?') &&
+    new URL(response.url()).searchParams.get('project_id') === account.projectId
+  );
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  const applied = await summary;
+  expect(applied.ok()).toBe(true);
+  expect(await applied.json()).toMatchObject({
+    projects: [{ project_id: account.projectId, invoice_total: '214.50', paid_total: '42.15', report_count: 0 }],
+    material_usage: [{ item_name: itemName, issued_quantity: '2.750', consumed_quantity: '1.125' }]
+  });
+  await expect(page.getByText(`${project.name}: 0 reports, 214.50 invoiced`, { exact: true })).toBeVisible();
+
+  for (const [label, filename] of [
+    ['Project XLSX', 'project-progress.xlsx'],
+    ['Material XLSX', 'material-usage.xlsx'],
+    ['Summary PDF', 'management-summary.pdf']
+  ]) {
+    const response = page.waitForResponse((reply) =>
+      new URL(reply.url()).pathname === `/api/v1/export/${filename.split('.')[0]}`
+    );
+    const downloaded = page.waitForEvent('download');
+    await page.getByRole('button', { name: label, exact: true }).click();
+    const exportResponse = await response;
+    expect(exportResponse.ok()).toBe(true);
+    const params = new URL(exportResponse.url()).searchParams;
+    expect(params.get('project_id')).toBe(account.projectId);
+    expect(params.get('date_from')).toBe('2025-01-01');
+    expect(params.get('department')).toBe('Browser regression tests');
+    expect(params.get('location')).toBe(label === 'Material XLSX' ? null : location);
+    const download = await downloaded;
+    expect(download.suggestedFilename()).toBe(filename);
+    const path = await download.path();
+    if (!path) throw new Error(`Missing download for ${filename}`);
+    const content = execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', [
+      '-c', [
+        'import json, sys',
+        'from pathlib import Path',
+        'from tests.test_analytics import xlsx_rows',
+        'from tests.test_blocking_io_offload import pdf_text',
+        'data = Path(sys.argv[1]).read_bytes()',
+        'print(json.dumps(pdf_text(data) if sys.argv[2].endswith(".pdf") else xlsx_rows(data)))'
+      ].join('\n'), path, filename
+    ], { cwd: backendDirectory, encoding: 'utf8' });
+    const lines = content.trim().split('\n');
+    const report = JSON.parse(lines[lines.length - 1]);
+    if (label === 'Project XLSX') {
+      expect(report.slice(1)).toEqual([[project.name, '0', '0', '214.50', '42.15']]);
+    } else if (label === 'Material XLSX') {
+      expect(report.slice(1)).toEqual([[itemName, '2.750', '1.125']]);
+    } else {
+      for (const text of [project.name, '214.50', '42.15', itemName, '2.750', '1.125', location]) {
+        expect(report).toContain(text);
+      }
+    }
+  }
+});
+
 test('analytics preserves labelled results and filters through a failed refresh', async ({
   browser
 }) => {
