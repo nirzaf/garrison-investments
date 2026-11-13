@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Download } from 'lucide-react';
-import { useRef, useState, type FormEvent } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { lazy, Suspense, useRef, useState, type FormEvent } from 'react';
 
 import {
   downloadExport,
@@ -14,8 +13,17 @@ import {
 import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { ErrorBoundary } from '../../components/shared/ErrorBoundary';
 import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
+
+const ProjectProgressChart = lazy(() =>
+  import('./AnalyticsCharts').then(({ ProjectProgressChart }) => ({ default: ProjectProgressChart }))
+);
+const MaterialUsageChart = lazy(() =>
+  import('./AnalyticsCharts').then(({ MaterialUsageChart }) => ({ default: MaterialUsageChart }))
+);
+const chartLoading = <p className="min-h-[300px]" role="status">Loading chart…</p>;
 
 const exportOptions: [AnalyticsExport, string][] = [
   ['project-progress', 'Project XLSX'],
@@ -111,8 +119,7 @@ export function AnalyticsPage() {
   const progressData =
     displayed?.projects.map((project) => ({
       name: project.project_name,
-      Progress: Number(project.progress_percentage),
-      Reports: project.report_count
+      Progress: Number(project.progress_percentage)
     })) ?? [];
 
   const materialData =
@@ -258,15 +265,11 @@ export function AnalyticsPage() {
             <h3 className="text-base font-semibold text-theme-text-primary">Project progress</h3>
             {progressData.length > 0 ? (
               <div className="mt-4">
-                <ResponsiveContainer height={300} width="100%">
-                  <BarChart data={progressData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={11} tickLine={false} />
-                    <YAxis domain={[0, 100]} fontSize={11} tickLine={false} unit="%" />
-                    <Tooltip />
-                    <Bar dataKey="Progress" fill="#0f766e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <ErrorBoundary>
+                  <Suspense fallback={chartLoading}>
+                    <ProjectProgressChart data={progressData} />
+                  </Suspense>
+                </ErrorBoundary>
                 <div className="mt-2 space-y-2">
                   {displayed.projects.map((project) => (
                     <p className="text-xs text-theme-text-muted" key={project.project_id}>
@@ -288,16 +291,11 @@ export function AnalyticsPage() {
             <h3 className="text-base font-semibold text-theme-text-primary">Material usage</h3>
             {materialData.length > 0 ? (
               <div className="mt-4">
-                <ResponsiveContainer height={300} width="100%">
-                  <BarChart data={materialData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={11} tickLine={false} />
-                    <YAxis fontSize={11} tickLine={false} />
-                    <Tooltip />
-                    <Bar dataKey="Issued" fill="#0f766e" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Consumed" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <ErrorBoundary>
+                  <Suspense fallback={chartLoading}>
+                    <MaterialUsageChart data={materialData} />
+                  </Suspense>
+                </ErrorBoundary>
               </div>
             ) : (
               <EmptyState

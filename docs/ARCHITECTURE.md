@@ -21,6 +21,8 @@ The [production runtime diagram](../README.md#production-runtime) shows the publ
 
 Portal email can use useSend or SMTP through `EmailService`. Login and password-reset codes send during the auth request. Notification and report email tasks record delivery state and retry transport failures. [Mail transport](../backend/app/services/email_service.py) · [Auth service](../backend/app/services/auth_service.py) · [Email tasks](../backend/app/tasks/email.py)
 
+Analytics loads its chart bundle when the summary has chart data. The filter controls and project totals can render while the chart code downloads. [Analytics page](../frontend/src/pages/analytics/AnalyticsPage.tsx) · [Chart module](../frontend/src/pages/analytics/AnalyticsCharts.tsx)
+
 ## API contract
 
 | Question | Source |

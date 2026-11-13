@@ -424,10 +424,22 @@ test('store keeper transfers a tagged asset and preserves reserved stock', async
 });
 
 test('analytics preserves labelled results and filters through a failed refresh', async ({
-  page
+  browser
 }) => {
+  // Let Playwright observe the cold chart request before the app-shell worker can cache it.
+  const page = await browser.newPage({ serviceWorkers: 'block' });
+  let finishChartRequest!: () => void;
+  const chartGate = new Promise<void>((resolve) => { finishChartRequest = resolve; });
+  let chartRequests = 0;
+  await page.route('**/assets/AnalyticsCharts-*.js', async (route) => {
+    chartRequests += 1;
+    await chartGate;
+    await route.continue();
+  });
   const account = seed('admin');
   const headers = await signIn(page, account);
+  await expect(page.getByRole('heading', { name: 'Launch Operations' })).toBeVisible();
+  expect(chartRequests).toBe(0);
   const project = await page.request.get(`/api/v1/projects/${account.projectId}`, { headers });
   expect(project.ok()).toBe(true);
   const { name: projectName } = await project.json();
@@ -447,10 +459,18 @@ test('analytics preserves labelled results and filters through a failed refresh'
   });
   await page.goto('/analytics');
   await expect(page.getByRole('alert').filter({ hasText: 'Analytics unavailable' })).toBeVisible();
+  expect(chartRequests).toBe(0);
   failure = null;
-  await page.getByRole('button', { name: 'Retry' }).click();
   const fixtureSummary = page.getByText(`${projectName}: 0 reports, 0 invoiced`, { exact: true });
-  await expect(fixtureSummary).toBeVisible();
+  try {
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(fixtureSummary).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Loading chart…' }).first()).toBeVisible();
+    await expect.poll(() => chartRequests).toBe(1);
+  } finally {
+    finishChartRequest();
+  }
+  await expect(page.locator('.recharts-surface').first()).toBeVisible();
 
   failure = 'filter';
   await page.getByLabel('Project-panel location').fill('Unknown fixture location');
@@ -490,4 +510,5 @@ test('analytics preserves labelled results and filters through a failed refresh'
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Project progress' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Summary PDF' })).toBeDisabled();
+  await page.close();
 });
