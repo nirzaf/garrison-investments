@@ -459,14 +459,10 @@
       "desktop"
     ],
     "UAT-07": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-08": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-09": [
       "desktop"
@@ -496,61 +492,40 @@
       "desktop"
     ],
     "UAT-18": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-19": [
       "desktop"
     ],
     "UAT-20": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-21": [
-      "android",
-      "ios"
+      "desktop"
     ],
     "UAT-22": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-23": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-24": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-25": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-26": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-27": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-28": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-29": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-30": [
       "desktop"
@@ -566,14 +541,10 @@
       "operations"
     ],
     "UAT-34": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-35": [
-      "android",
-      "desktop",
-      "ios"
+      "desktop"
     ],
     "UAT-36": [
       "operations"

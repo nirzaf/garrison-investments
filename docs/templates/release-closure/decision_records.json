@@ -113,7 +113,7 @@
     },
     "approved_at": null,
     "desktop_targets": null,
-    "physical_mobile_targets": null,
+    "physical_mobile_targets": [],
     "scenario_platform_map": null,
     "network_profiles": null,
     "budgets": null,

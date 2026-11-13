@@ -31,4 +31,6 @@ Use the `Deploy run` and `Deploy attempt` values recorded in the host's `DEPLOYE
 
 For production `scheduled_expiry`, add a separately verified `purge` approval under `approvals.operations`. Its subject binds `source_sha`, `environment`, `configuration_sha256` and `policy_sha256`. Record the named release authorizer, authorization reference and validity window covering activation. Build the support matrix from the required platforms and role groups in `control_registry.json`, with one of the allowed roles from each group on every applicable platform.
 
+For D-32-SUPPORT, list desktop Chrome and Edge in `desktop_targets` and keep `physical_mobile_targets` empty. Each desktop scenario and required role needs a result from both browsers. Keep the operator-only results and approved network and performance measurements in the acceptance bundle.
+
 Run the strict validation command in the operations guide with the exact release SHA and a GitHub token authorized to read Actions records. A zero exit confirms only the requested phase and environment. Production final acceptance is the only phase and environment that can return `accepted_scope_complete=true`. Exit `2` reports invalid input, `3` missing or unauthorized evidence, `4` a failed control, and `5` unavailable external verification.

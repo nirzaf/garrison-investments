@@ -81,7 +81,7 @@ UAT_REQUIRED_ROLES = {
     "UAT-28": ({"civil_engineer"},),
     "UAT-33": ({"admin"},),
 }
-MOBILE_SCENARIOS = {7, 8, 18, 20, *range(21, 30), 34, 35}
+DESKTOP_BROWSERS = {"Chrome", "Edge"}
 OPERATOR_SCENARIOS = {33, 36, 37, 38, 40}
 FINAL_SCENARIOS = {36, 37, 38, 40}
 CONTROL_FINAL_ONLY = {
@@ -133,10 +133,6 @@ def required_platforms(scenario: str) -> set[str]:
     platforms = {"operations"} if number in {36, 37, 38} else {"desktop"}
     if number in OPERATOR_SCENARIOS:
         platforms.add("operations")
-    if number in MOBILE_SCENARIOS:
-        platforms.update(("ios", "android"))
-    if number == 21:
-        platforms.discard("desktop")
     return platforms
 
 
@@ -741,10 +737,10 @@ def device_key(target: Any) -> tuple[str, str, str, str, str]:
         target, "platform device_model os_version browser browser_version", label="supported device"
     )
     return (
-        exact(row["platform"], {"desktop", "ios", "android"}, "device platform"),
+        exact(row["platform"], {"desktop"}, "device platform"),
         meaningful(row["device_model"], "device model"),
         meaningful(row["os_version"], "OS version"),
-        meaningful(row["browser"], "browser"),
+        exact(row["browser"], DESKTOP_BROWSERS, "desktop browser"),
         meaningful(row["browser_version"], "browser version"),
     )
 
@@ -764,7 +760,7 @@ def scenario_matrix(record: Any) -> dict[str, set[tuple[str, str]]]:
             (
                 exact(
                     row["platform"],
-                    {"desktop", "ios", "android", "operations"},
+                    set(expected[scenario]),
                     "scenario platform",
                 ),
                 meaningful(row["role"], "scenario role"),
@@ -795,16 +791,14 @@ def scenario_matrix(record: Any) -> dict[str, set[tuple[str, str]]]:
 
 def decision_support(record: dict[str, Any]) -> None:
     desktop = {device_key(value) for value in items(record["desktop_targets"], "desktop targets")}
-    mobile = {
-        device_key(value) for value in items(record["physical_mobile_targets"], "physical targets")
-    }
-    require(all(device[0] == "desktop" for device in desktop), "Invalid desktop platform.")
     require(
-        {"Chrome", "Edge"} <= {device[3] for device in desktop}
-        and {("ios", "Safari"), ("android", "Chrome")}
-        <= {(device[0], device[3]) for device in mobile}
-        and all(device[0] != "desktop" for device in mobile),
-        "Approved desktop and physical mobile browser targets are incomplete.",
+        {device[3] for device in desktop} == DESKTOP_BROWSERS,
+        "Approved desktop targets must include Chrome and Edge.",
+        3,
+    )
+    require(
+        record["physical_mobile_targets"] == [],
+        "Physical mobile targets are outside the approved acceptance scope.",
         3,
     )
     scenario_matrix(record["scenario_platform_map"])
@@ -1310,12 +1304,8 @@ def receipt_uat(
 ) -> set[str]:
     data = fields(payload, "scenarios measurements assertions", label="UAT result")
     matrix = scenario_matrix(support["scenario_platform_map"])
-    devices = {
-        device_key(value)
-        for value in support["desktop_targets"] + support["physical_mobile_targets"]
-    }
+    devices = {device_key(value) for value in support["desktop_targets"]}
     observed: set[tuple[str, str, str, str]] = set()
-    observed_browsers: set[tuple[str, str]] = set()
     defect_ids: set[str] = set()
     for value in items(data["scenarios"], "UAT scenario results"):
         row = fields(
@@ -1342,7 +1332,6 @@ def receipt_uat(
             device = device_key(row["device"])
             require(device in devices, "UAT device/browser is outside approved support.", 3)
             platform = device[0]
-            observed_browsers.add((platform, device[3]))
         require(
             (platform, role) in matrix[scenario],
             "UAT scenario role/platform is outside the frozen map.",
@@ -1352,8 +1341,6 @@ def receipt_uat(
             (scenario, platform, role, row["device"]["browser"] if platform != "operations" else "")
         )
         require(type(row["physical_device"]) is bool, "Invalid physical device marker.")
-        if platform in {"ios", "android"}:
-            require(row["physical_device"] is True, "Mobile UAT requires a physical device.", 3)
         require(
             row["source_sha"] == sha
             and row["environment"] == environment
@@ -1401,24 +1388,16 @@ def receipt_uat(
             "Each UAT result requires an independent reviewer after execution.",
             3,
         )
-    browsers = {"desktop": ("Chrome", "Edge"), "ios": ("Safari",), "android": ("Chrome",)}
     expected = {
         (scenario, platform, role, browser)
         for scenario, pairs in matrix.items()
         if (int(scenario.removeprefix("UAT-")) in FINAL_SCENARIOS) == (phase == "final")
         for platform, role in pairs
-        for browser in browsers.get(platform, ("",))
+        for browser in (DESKTOP_BROWSERS if platform == "desktop" else ("",))
     }
     require(
         expected <= observed, "A required UAT scenario, platform or role has no executed pass.", 3
     )
-    if phase == "predeploy":
-        require(
-            {("desktop", "Chrome"), ("desktop", "Edge"), ("ios", "Safari"), ("android", "Chrome")}
-            <= observed_browsers,
-            "Desktop and physical mobile UAT coverage is incomplete.",
-            3,
-        )
     measurements = data["measurements"]
     require(
         isinstance(measurements, dict) and set(support["budgets"]) <= measurements.keys(),

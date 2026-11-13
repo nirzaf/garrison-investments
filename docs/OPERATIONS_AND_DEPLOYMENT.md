@@ -221,7 +221,7 @@ For an authorized rollback after a successful release, apply the same generation
 
 ## User acceptance
 
-Use sample data only in an approved non-production environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). At launch or when affected, verify account creation, permission and project scope, daily report submission and review, document and photo access, signed previews, exports, and login mail. Include iOS Safari and Android Chrome when validating mobile capture and offline retries. Record the tested role, scenario, result, and any accepted issue.
+Use sample data only in an approved non-production environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). Run browser acceptance in desktop Chrome and Edge, including offline retries, file selection and downloads, and degraded-network checks. For UAT-21, use representative JPEG, PNG and HEIC files to verify format and size boundaries and original-only HEIC behavior. Record the browser version, role, scenario, result, and any accepted issue.
 
 ## Deferred — Post-release
 
@@ -233,7 +233,7 @@ The current portal scope limits Delivery to Launch readiness and excludes G-01. 
 | D-28-POLICY | Records owner | Approve retain-only classes, deadlines and holds. Review the complete preview, archived access and storage capacity. | Audit records accumulate and capacity still needs review. |
 | D-29-RECOVERY | System owner | Approve independent storage, key custody, RPO/RTO and operator access. Restore an authenticated database and object backup and record measured results. | Recovery after loss of the primary and recovery of file objects remain unproven. |
 | D-30-OPERATIONS | Operations owner | Approve and exercise the independent monitor, recipients and responders. Record alert delivery, acknowledgement and recovery. | An outage affecting the primary host may delay detection. |
-| D-32-SUPPORT | QA lead | Approve the device and role matrix. Execute physical-device and degraded-network UAT with retained results. | Device-specific failures may surface after deployment. |
+| D-32-SUPPORT | QA lead | Approve Chrome and Edge versions, testers, roles and performance budgets. Execute the desktop scenarios and degraded-network checks with retained results. | Desktop workflow and performance acceptance remains pending. |
 | D-33-BUSINESS | Finance/data owner | Approve assignments, sample outputs, financial conventions and import controls. Reconcile the data and obtain final sign-off after observation. | Business inputs and acceptance remain pending. |
 
 <a id="5-launch-evidence-capture--sign-off"></a>

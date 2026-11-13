@@ -30,7 +30,7 @@ const deliveryItems = [
   },
   {
     label: 'Testing',
-    detail: 'Chrome, Edge, iOS Safari, Android Chrome, and low-speed QA.',
+    detail: 'Desktop Chrome and Edge, including degraded-network checks.',
     icon: BookOpenCheck,
     status: 'pending QA'
   },
@@ -52,7 +52,7 @@ const acceptanceScenarios = [
   'Document version upload and approval',
   'Notification and report export',
   'Inventory receive, request, reserve, issue, transfer, and return',
-  'Mobile draft/photo queue behavior'
+  'Offline drafts and queued photo uploads'
 ];
 
 const remainingInputs = [
@@ -60,7 +60,7 @@ const remainingInputs = [
   'Independent backup and monitoring destinations and named operators',
   'Company-approved report, export, BOQ, and numbering templates',
   'Source spreadsheets for launch users, projects, suppliers, inventory, BOQ, and opening stock',
-  'Browser/device UAT sign-off for supported mobile and desktop targets'
+  'QA sign-off for desktop Chrome and Edge'
 ];
 
 export function DeliveryPlanPage() {
@@ -110,12 +110,12 @@ export function DeliveryPlanPage() {
         <div className="flex items-center gap-2">
           <Smartphone className="h-5 w-5 text-brand-600" />
           <h3 className="text-base font-semibold text-theme-text-primary">
-            Mobile and offline acceptance scenarios
+            Offline and file acceptance scenarios
           </h3>
         </div>
         <div className="mt-3 grid gap-3 text-sm text-theme-text-secondary md:grid-cols-4">
           <span>30-second draft autosave</span>
-          <span>Camera capture</span>
+          <span>Photo file selection</span>
           <span>Queued photo upload</span>
           <span>Active document viewing</span>
         </div>

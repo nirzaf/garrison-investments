@@ -187,6 +187,7 @@ describe('App route smoke tests', () => {
     expect(html).toContain('Use isolated test environments for acceptance checks');
     expect(html).toContain('Scheduled database backups are configured');
     expect(html).toContain('Independent recovery also needs the referenced files');
+    expect(html).toContain('Desktop Chrome and Edge, including degraded-network checks.');
   });
 
   it('renders profile route for signed-in users', () => {
