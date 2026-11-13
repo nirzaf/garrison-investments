@@ -278,6 +278,11 @@ class Acknowledgement(StrictModel):
     at: AwareDatetime
 
 
+class PendingEscalation(StrictModel):
+    recipients: list[str]
+    message_reference: AwareDatetime | None
+
+
 class Incident(StrictModel):
     failures: int = Field(default=0, ge=0)
     recoveries: int = Field(default=0, ge=0)
@@ -293,6 +298,7 @@ class Incident(StrictModel):
     last_verified_digest: str | None = None
     pending_event: Event | None = None
     pending_recipients: list[str] = Field(default_factory=list)
+    pending_escalation: PendingEscalation | None = None
     delivered_messages: list[str] = Field(default_factory=list)
     notified_recipients: list[str] = Field(default_factory=list)
 
@@ -344,6 +350,9 @@ def advance(incident: Incident, result: Result, profile: Profile, now: datetime)
         if incident.notified_recipients:
             return "resolved"
         incident.resolved = now
+        incident.pending_event = None
+        incident.pending_recipients.clear()
+        incident.pending_escalation = None
         return None
 
     if incident.resolved is not None:
@@ -358,9 +367,13 @@ def advance(incident: Incident, result: Result, profile: Profile, now: datetime)
         incident.acknowledgement = None
         incident.pending_event = None
         incident.pending_recipients.clear()
+        incident.pending_escalation = None
         incident.delivered_messages.clear()
         incident.notified_recipients.clear()
     incident.recoveries = 0
+    if incident.pending_event == "resolved":
+        incident.pending_event = None
+        incident.pending_recipients.clear()
     incident.failures += 1
     if incident.first_failure is None:
         incident.first_failure = now
@@ -374,6 +387,8 @@ def advance(incident: Incident, result: Result, profile: Profile, now: datetime)
         and (now - incident.started).total_seconds() >= profile.acknowledgement_limit_seconds
     ):
         return "escalation"
+    if incident.pending_event in ("initial", "repeat"):
+        return incident.pending_event
     if incident.last_sent is None:
         return "initial"
     if (now - incident.last_sent).total_seconds() >= profile.repeat_interval_seconds:
@@ -492,6 +507,13 @@ def observe(
     send: Sender,
 ) -> Observation:
     incident = state.checks.setdefault(check_id, Incident())
+    if incident.pending_event == "escalation":
+        # Read older state files that kept escalation in the primary delivery slot.
+        incident.pending_escalation = PendingEscalation(
+            recipients=incident.pending_recipients, message_reference=incident.last_sent
+        )
+        incident.pending_event = None
+        incident.pending_recipients = []
     if result.ok and result.snapshot_at:
         if incident.last_verified_snapshot and (
             result.snapshot_at < incident.last_verified_snapshot
@@ -512,51 +534,76 @@ def observe(
     delivery: Literal["none", "accepted", "failed"] = "none"
     message_id = None
     if event and not suppressed:
-        if incident.pending_event != event:
+        deliveries: list[tuple[Event, list[str], datetime | None]] = []
+        if event == "escalation":
+            if incident.pending_escalation is None:
+                incident.pending_escalation = PendingEscalation(
+                    recipients=recipients(profile.transport, event, incident),
+                    message_reference=incident.last_sent,
+                )
+            escalation = incident.pending_escalation
+            deliveries.append((event, escalation.recipients, escalation.message_reference))
+            if incident.pending_event is None and incident.last_sent is None:
+                incident.pending_event = "initial"
+                incident.pending_recipients = recipients(profile.transport, "initial", incident)
+        elif incident.pending_event != event:
             incident.pending_event = event
             incident.pending_recipients = recipients(profile.transport, event, incident)
+        if incident.pending_event:
+            deliveries.append(
+                (incident.pending_event, incident.pending_recipients, incident.last_sent)
+            )
         incident.last_attempt = now
-        try:
-            with deadline(profile.timeout_seconds):
-                for recipient in list(incident.pending_recipients):
-                    message_key = hashlib.sha256(
-                        f"{state.profile_sha256}:{check_id}:{incident.started}:"
-                        f"{event}:{incident.last_sent}:{recipient}".encode()
-                    ).hexdigest()
-                    save_json(state_file, state)
-                    try:
-                        message_id = send(
-                            check_id, event, f"<{message_key}@garrisons-monitor>", recipient
-                        )
-                    except TimeoutError:
-                        raise
-                    except (
-                        OSError,
-                        smtplib.SMTPException,
-                        httpx.HTTPError,
-                        ValueError,
-                        MonitorError,
-                    ):
-                        continue
-                    incident.pending_recipients.remove(recipient)
-                    if recipient not in incident.notified_recipients:
-                        incident.notified_recipients.append(recipient)
-                    if message_id not in incident.delivered_messages:
-                        incident.delivered_messages.append(message_id)
-                    incident.message_id = message_id
-                    save_json(state_file, state)
-        except TimeoutError:
-            pass
-        if incident.pending_recipients:
-            delivery = "failed"
-        else:
-            delivery = "accepted"
-            incident.last_sent = now
-            incident.pending_event = None
-            if event == "escalation":
+        for sending_event, pending, message_reference in deliveries:
+            try:
+                with deadline(profile.timeout_seconds / len(deliveries)):
+                    for recipient in list(pending):
+                        message_key = hashlib.sha256(
+                            f"{state.profile_sha256}:{check_id}:{incident.started}:"
+                            f"{sending_event}:{message_reference}:{recipient}".encode()
+                        ).hexdigest()
+                        save_json(state_file, state)
+                        try:
+                            delivered_id = send(
+                                check_id,
+                                sending_event,
+                                f"<{message_key}@garrisons-monitor>",
+                                recipient,
+                            )
+                        except TimeoutError:
+                            raise
+                        except (
+                            OSError,
+                            smtplib.SMTPException,
+                            httpx.HTTPError,
+                            ValueError,
+                            MonitorError,
+                        ):
+                            continue
+                        pending.remove(recipient)
+                        if recipient not in incident.notified_recipients:
+                            incident.notified_recipients.append(recipient)
+                        if delivered_id not in incident.delivered_messages:
+                            incident.delivered_messages.append(delivered_id)
+                        incident.message_id = delivered_id
+                        if sending_event == event:
+                            message_id = delivered_id
+                        save_json(state_file, state)
+            except TimeoutError:
+                pass
+        delivery = "failed" if any(pending for _, pending, _ in deliveries) else "accepted"
+        for sending_event, pending, _ in deliveries:
+            if pending:
+                continue
+            if sending_event == "escalation":
                 incident.escalated = True
-            if event == "resolved":
-                incident.resolved = now
+                incident.pending_escalation = None
+            else:
+                incident.last_sent = now
+                incident.pending_event = None
+                if sending_event == "resolved":
+                    incident.resolved = now
+                    incident.pending_escalation = None
     save_json(state_file, state)
     return Observation(
         check_id=check_id,
@@ -705,6 +752,7 @@ def acknowledge(
             recorded_by=pwd.getpwuid(os.geteuid()).pw_name,
             at=datetime.now(UTC),
         )
+        incident.pending_escalation = None
         save_json(state_file, state)
 
 

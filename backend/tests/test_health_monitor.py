@@ -491,33 +491,93 @@ def test_failed_primary_retries_only_failed_recipients_and_escalates_to_substitu
             ),
         }
     )
-    state = monitor.MonitorState(profile_sha256="test")
     attempts = []
+    primary_recipient_available = False
+    state_file = tmp_path / "state.json"
 
-    def send(_check, event, _message, recipient):
-        attempts.append((event, recipient))
-        if recipient == "rejects@example.invalid":
+    def send(_check, event, message, recipient):
+        attempts.append((event, recipient, message))
+        if recipient == "rejects@example.invalid" and not primary_recipient_available:
             raise OSError("synthetic refusal")
         return f"message-{len(attempts)}"
 
-    def check(seconds):
+    def check(seconds, *, ok=False):
         return monitor.observe(
             configured,
-            state,
-            tmp_path / "state.json",
+            monitor.load_state(state_file, "test"),
+            state_file,
             "readiness",
-            monitor.Result(ok=False, category="timeout"),
+            monitor.Result(ok=ok, category="ready" if ok else "timeout"),
             start + timedelta(seconds=seconds),
             send,
         )
 
     assert check(0).delivery == "failed"
     assert check(10).delivery == "failed"
-    assert check(60).event == "escalation"
-    assert attempts == [
+    escalation = check(60)
+    assert escalation.event == "escalation"
+    assert escalation.delivery == "failed"
+    saved = monitor.load_state(state_file, "test")
+    assert saved.checks["readiness"].escalated
+    primary_recipient_available = True
+    assert check(70).delivery == "accepted"
+    assert [(event, recipient) for event, recipient, _message in attempts] == [
         ("initial", "works@example.invalid"),
         ("initial", "rejects@example.invalid"),
         ("initial", "rejects@example.invalid"),
         ("escalation", "substitute@example.invalid"),
+        ("initial", "rejects@example.invalid"),
+        ("initial", "rejects@example.invalid"),
     ]
-    assert state.checks["readiness"].escalated
+    failed_recipient_ids = {
+        message
+        for event, recipient, message in attempts
+        if event == "initial" and recipient == "rejects@example.invalid"
+    }
+    assert len(failed_recipient_ids) == 1
+    assert check(80, ok=True).event is None
+    assert check(90, ok=True).delivery == "accepted"
+    assert check(100, ok=True).event is None
+    assert [(event, recipient) for event, recipient, _message in attempts[-3:]] == [
+        ("resolved", "works@example.invalid"),
+        ("resolved", "substitute@example.invalid"),
+        ("resolved", "rejects@example.invalid"),
+    ]
+
+
+def test_escalation_retry_keeps_its_message_id_after_primary_delivery(tmp_path: Path) -> None:
+    start = datetime(2026, 11, 12, tzinfo=UTC)
+    configured = profile(failure_threshold=1)
+    state_file = tmp_path / "state.json"
+    attempts = []
+
+    for seconds in (0, 50, 60):
+
+        def send(_check, event, message, recipient, elapsed=seconds):
+            attempts.append((event, message, recipient))
+            if elapsed == 0 or (elapsed == 50 and event == "escalation"):
+                raise TimeoutError("synthetic timeout")
+            return message
+
+        result = monitor.observe(
+            configured,
+            monitor.load_state(state_file, "test"),
+            state_file,
+            "readiness",
+            monitor.Result(ok=False, category="timeout"),
+            start + timedelta(seconds=seconds),
+            send,
+        )
+        assert result.delivery == ("failed" if seconds < 60 else "accepted")
+
+    assert [event for event, _message, _recipient in attempts] == [
+        "initial",
+        "escalation",
+        "initial",
+        "escalation",
+    ]
+    assert attempts[0] == attempts[2]
+    assert attempts[1] == attempts[3]
+    incident = monitor.load_state(state_file, "test").checks["readiness"]
+    assert incident.escalated
+    assert incident.pending_event is None and incident.pending_escalation is None
