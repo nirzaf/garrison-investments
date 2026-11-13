@@ -987,11 +987,34 @@ async def check_empty_database(url: str) -> None:
     engine = create_async_engine(async_database_url(url))
     try:
         async with engine.connect() as connection:
+            # information_schema hides objects the restore role cannot access.
             existing = await connection.scalar(
-                text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+                text("""
+                    WITH public_schema AS (
+                        SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'public'
+                    )
+                    SELECT EXISTS (
+                        SELECT FROM pg_catalog.pg_namespace
+                        WHERE nspname NOT IN ('public', 'information_schema')
+                          AND left(nspname, 3) <> 'pg_'
+                        UNION ALL
+                        SELECT FROM pg_catalog.pg_class
+                        WHERE relnamespace IN (SELECT oid FROM public_schema)
+                        UNION ALL
+                        SELECT FROM pg_catalog.pg_proc
+                        WHERE pronamespace IN (SELECT oid FROM public_schema)
+                        UNION ALL
+                        SELECT FROM pg_catalog.pg_type
+                        WHERE typnamespace IN (SELECT oid FROM public_schema)
+                        UNION ALL
+                        SELECT FROM pg_catalog.pg_largeobject_metadata
+                    )
+                    """)
             )
             if existing:
-                raise BackupSetError("The restore database already contains tables.")
+                raise BackupSetError(
+                    "The restore database already contains user objects or schemas."
+                )
     finally:
         await engine.dispose()
 

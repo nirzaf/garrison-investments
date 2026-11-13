@@ -2,15 +2,22 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.config import get_settings
 from scripts import backup
 from scripts.backup_set import (
     MANIFEST,
     BackupSetError,
     Manifest,
     StoredObject,
+    check_empty_database,
     checksum,
     load_verified_manifest,
     require_disposable_bucket,
@@ -58,6 +65,59 @@ def test_restore_database_guard_rejects_shared_or_external_targets(destination: 
         "postgresql+asyncpg://127.0.0.1/garrison_restore_test_app",
         "127.0.0.1:5432/garrison_restore_test_source",
     )
+
+
+async def test_restore_preflight_rejects_objects_in_any_schema() -> None:
+    settings = get_settings()
+    url = make_url(settings.database_url)
+    if (
+        settings.app_env.lower() not in {"test", "development", "local"}
+        or url.host not in {"127.0.0.1", "localhost", "::1"}
+        or url.query
+    ):
+        pytest.skip("restore preflight regression requires local test PostgreSQL")
+    database = f"garrison_restore_test_{uuid4().hex}"
+    target_url = url.set(database=database)
+    admin = create_async_engine(url, isolation_level="AUTOCOMMIT")
+    target = create_async_engine(target_url)
+    try:
+        try:
+            async with admin.connect() as connection:
+                can_create = await connection.scalar(
+                    text(
+                        "SELECT rolcreatedb OR rolsuper FROM pg_roles WHERE rolname = current_user"
+                    )
+                )
+        except (OSError, OperationalError):
+            pytest.skip("local PostgreSQL is unavailable")
+        if not can_create:
+            pytest.skip("restore preflight fixture requires a database-creation role")
+
+        async with admin.connect() as connection:
+            await connection.execute(text(f"CREATE DATABASE {database} TEMPLATE template0"))
+        try:
+            target_dsn = target_url.render_as_string(hide_password=False)
+            await check_empty_database(target_dsn)
+            async with target.begin() as connection:
+                await connection.execute(text("CREATE SEQUENCE public.restore_probe"))
+            with pytest.raises(BackupSetError, match="already contains"):
+                await check_empty_database(target_dsn)
+
+            async with target.begin() as connection:
+                await connection.execute(text("DROP SEQUENCE public.restore_probe"))
+                await connection.execute(text("CREATE SCHEMA preserved"))
+                await connection.execute(text("CREATE TABLE preserved.evidence (value integer)"))
+                await connection.execute(text("INSERT INTO preserved.evidence VALUES (42)"))
+            with pytest.raises(BackupSetError, match="already contains"):
+                await check_empty_database(target_dsn)
+            async with target.connect() as connection:
+                assert await connection.scalar(text("SELECT value FROM preserved.evidence")) == 42
+        finally:
+            await target.dispose()
+            async with admin.connect() as connection:
+                await connection.execute(text(f"DROP DATABASE {database}"))
+    finally:
+        await admin.dispose()
 
 
 @pytest.mark.parametrize(
