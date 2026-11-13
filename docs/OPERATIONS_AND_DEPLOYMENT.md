@@ -2,7 +2,7 @@
 
 [Documentation index](README.md) · [Architecture](ARCHITECTURE.md) · [Staging](../STAGING_DEPLOYMENT.md) · [Logging and alerts](LOGGING_AND_REMOTE_CLI.md)
 
-Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore) and [launch evidence](#5-launch-evidence-capture--sign-off) cover recovery and sign-off.
+Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore), [post-release actions](POST_RELEASE_ACTIONS.md), and [formal acceptance evidence](#5-launch-evidence-capture--sign-off) cover recovery, deferred governance, and sign-off.
 
 ## Environment and configuration
 

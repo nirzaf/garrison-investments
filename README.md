@@ -20,7 +20,7 @@ The portal connects daily site reporting with project oversight, document contro
 | Analytics and exports | Scoped analytics with filters for project, date range, location, and department where supported. Download project progress and material usage as XLSX files or a management summary as PDF. |
 | Data imports | Downloadable templates, CSV and XLSX validation previews, synchronous and background processing, batch status, and import history for users, projects, suppliers, materials, BOQ, opening stock, and document metadata. Document binaries are uploaded through the document library. |
 | Notifications and guidance | Notification history, unread counts, read and mute controls, email delivery through useSend or SMTP, role-specific in-app manuals, a permission reference, and a launch acceptance checklist. |
-| Mobile and offline reporting | Installable progressive web app (PWA), responsive screens, camera-friendly file capture, account-owned local drafts, and file uploads that resume after reconnecting. Valid daily report drafts can sync without files, and revision checks protect newer server changes. |
+| Offline and file reporting | Installable progressive web app (PWA), responsive screens, photo file selection, account-owned local drafts, and file uploads that resume after reconnecting. Valid daily report drafts can sync without files, and revision checks protect newer server changes. |
 | Audit and operations | Business and security audit records, an audit and security UI for authorized users, filtered operational log search and streaming through the API and remote CLI, structured application logs, Grafana dashboards and alerting, and encrypted backups with restore procedures. |
 
 ### Roles and access
@@ -112,9 +112,9 @@ flowchart TB
     smoke -->|"No"| rollback["Restore a compatible release or stop writers for forward recovery"]
 ```
 
-[CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) checks the upstream CI run and commit, publishes the frontend, and verifies the public readiness endpoint and served asset hashes. Application service updates take encrypted backups before activation. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
+[CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run, required CI jobs, current `main` commit, protected host configuration, and disabled audit deletion, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
 
-The [launch checklist](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) records release approval, backup and restore evidence, and browser and device acceptance. The [staging guide](STAGING_DEPLOYMENT.md) covers the separate staging target.
+Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers optional post-release release approval, backup and restore evidence, and desktop Chrome and Edge acceptance. The [staging guide](STAGING_DEPLOYMENT.md) covers the separate staging target.
 
 ## Getting started
 
