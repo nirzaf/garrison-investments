@@ -31,9 +31,9 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 [CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency and a host lock serialize releases.
 
-If the approval bundle becomes available after CI, dispatch `deploy.yml` from `main` with `ci_run_id` set to the original successful CI run ID. The host verifies the same CI run, current `main` SHA, active deployment run and approval bundle. It checks separation of duties against the deployment run's verified operator. This preserves the job IDs already recorded in the bundle.
+The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, required jobs and current `main` before fetching the tested archive.
 
-The workflow invokes the installed [host release script](../deploy/hostinger-release.sh). The script verifies the CI run and current `main` SHA through GitHub and requires approved evidence before fetching the candidate. After building the exact revision, it compares the image identities, Alembic heads and frontend hashes with the authorization. For runtime changes it also checks protected resources and runs the application and Grafana backup command in a one-off container before activation. It swaps the frontend index atomically, verifies the served sign-in HTML, JavaScript and service worker hashes, and checks public readiness. A successful release advances the `current` link and records the commit, CI run, UTC timestamp, and hashes in `DEPLOYED`. Failed activations follow the [rollback procedure](#rollback).
+The installed [host release script](../deploy/hostinger-release.sh) checks protected configuration, audit deletion settings, stateful Compose resources and Alembic heads. It builds from the tested source and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [post-release backlog](#deferred--post-release).
 
 ### Review pipeline time on every release
 
@@ -43,7 +43,7 @@ The backend suite and Chromium browser suite each run in two shards with separat
 
 Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
 
-For deployment, measure time awaiting approval or a runner separately from the phase timings in the host release log. Reuse the reviewed, SHA-tagged staging images when available. The host checks their image IDs and served hashes against the exact release authorization before activation. An edit limited to the backend architecture guide can reuse the running backend image. The release script reads the frontend image hashes in one container before checking the served bytes after activation.
+For deployment, measure runner queue time separately from the host phase timings. The host builds the tested archive using Docker's layer cache and reuses the running backend image when only tests, backend documentation or frontend files change. The release script reads the frontend hashes in one container and checks the served bytes after activation.
 
 ### Host bootstrap and runner maintenance
 
@@ -55,11 +55,8 @@ Provision the existing stack and an initial active release before registering th
 | `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
 | `current` | Link to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
 | `deploy.lock` | Host-side serialization across release attempts. |
-| `authorizations/<sha>/release_manifest.json` | Restricted, source-bound predeployment evidence and approvals with artifacts under the same release directory. |
-| `approval-trust.json` | Root-controlled registry of independently verified approval artifacts, outside the candidate and evidence bundle. |
-| `authorized-configuration.json` | Approved configuration digest and protected input hashes, including `production.env` and `compose.vps.yml`. |
 
-Before activation with `rollback-v2 release-contract-v1`, the authorized host operator installs the reviewed [verifier](../backend/scripts/release_contract.py) at `/usr/local/libexec/garrison-release-contract.py` and the [release script](../deploy/hostinger-release.sh) at `/usr/local/sbin/garrison-deploy`. Keep both root-owned and protected from runner writes. The operator verifies the actual approval provenance before adding registry entries. The runner account needs only noninteractive `sudo` for the release script. Older installed scripts reject the four-argument protocol before activation.
+Before using the new workflow, the host operator installs the reviewed `deploy/hostinger-release.sh` as root-owned `/usr/local/sbin/garrison-deploy` with mode `0755`. The runner needs noninteractive `sudo` for this entrypoint. The workflow and host must both support the `rollback-v2 technical-checks-v1` arguments. Set `LOG_PURGE_ENABLED=false` in the protected environment and keep the encryption password and application secrets there. The entrypoint checks effective Compose settings and stops if audit deletion is enabled.
 
 On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 
@@ -75,10 +72,10 @@ prod() {
 
 ### Production maintenance
 
-Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its initializer, the Grafana database initializer, Compose volumes, or networks require a reviewed maintenance window. Production CD blocks those changes before activation. A change in rollback generation also requires a maintenance window so incompatible clients and scheduled writers are quiesced before switching.
+Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its initializer, the Grafana database initializer, Compose volumes, or networks require a reviewed maintenance window. Production CD blocks those changes before activation. A change in rollback generation also requires a maintenance window. The entrypoint stops before activation while Nginx, the backend, worker or scheduler is running. During the authorized window, block ingress and drain writes, stop those four services while leaving PostgreSQL and object storage available for the backup, then dispatch the tested candidate. Have a recovery-forward procedure ready before this switch.
 
 1. Identify the candidate SHA, successful CI run, deployed SHA, current database revision, and affected volumes. Review the migration, data repair prerequisites, and compatibility with the running application. Rehearse the exact change against an isolated restore.
-2. Record the backup object names and tested recovery plan. The pre-activation database backup uses `--skip-retention` to preserve existing backups. It supplements the independently verified database and file recovery set. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
+2. Record the backup object names and tested recovery plan. The pre-activation database backup uses `--skip-retention` to preserve existing backups. It protects the databases. Independent database and object recovery remains in the post-release backlog. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
 3. Apply the approved migration or infrastructure change using the candidate's images and the host override. Compare the resulting Alembic revision and persistent resource layout with the plan before resuming writes.
 4. Verify health, data and permissions, relevant background jobs, and the affected browser workflow. Capture the deployment and restore evidence. If a rollback needs data recovery, account for writes after the recovery point before reopening traffic.
 
@@ -226,11 +223,26 @@ For an authorized rollback after a successful release, apply the same generation
 
 Use sample data only in an approved non-production environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). At launch or when affected, verify account creation, permission and project scope, daily report submission and review, document and photo access, signed previews, exports, and login mail. Include iOS Safari and Android Chrome when validating mobile capture and offline retries. Record the tested role, scenario, result, and any accepted issue.
 
-## 5. Launch Evidence Capture & Sign-Off
+## Deferred — Post-release
+
+The current portal scope limits Delivery to Launch readiness and excludes G-01. Audit deletion stays disabled. Each item below remains open for formal acceptance.
+
+| Decision | Responsible role | Work and evidence | Risk until verified |
+| --- | --- | --- | --- |
+| D-27-SCOPE | Business sponsor | Approve the scope inventory digest and exclusion in a signed decision. | The deployed scope still needs formal business acknowledgement. |
+| D-28-POLICY | Records owner | Approve retain-only classes, deadlines and holds. Review the complete preview, archived access and storage capacity. | Audit records accumulate and capacity still needs review. |
+| D-29-RECOVERY | System owner | Approve independent storage, key custody, RPO/RTO and operator access. Restore an authenticated database and object backup and record measured results. | Recovery after loss of the primary and recovery of file objects remain unproven. |
+| D-30-OPERATIONS | Operations owner | Approve and exercise the independent monitor, recipients and responders. Record alert delivery, acknowledgement and recovery. | An outage affecting the primary host may delay detection. |
+| D-32-SUPPORT | QA lead | Approve the device and role matrix. Execute physical-device and degraded-network UAT with retained results. | Device-specific failures may surface after deployment. |
+| D-33-BUSINESS | Finance/data owner | Approve assignments, sample outputs, financial conventions and import controls. Reconcile the data and obtain final sign-off after observation. | Business inputs and acceptance remain pending. |
+
+<a id="5-launch-evidence-capture--sign-off"></a>
+
+## 5. Formal Acceptance Evidence
 
 Freeze the source SHA and approved configuration. Collect the signed scope, retention, recovery, operations, device/support and business decisions together with executed control receipts. Use the [unsigned release templates](templates/release-closure/README.md) and keep sensitive evidence private. Record the operator and approvers as separate roles and have the trusted reviewer verify the actual approvals before populating the approval registry.
 
-Run strict predeployment validation against the frozen bundle before activation:
+For formal acceptance, use the standalone validator to check the predeployment evidence bundle when available:
 
 ```bash
 cd backend
@@ -240,7 +252,7 @@ python scripts/launch_evidence.py --target production --commit "$RELEASE_SHA" \
   --output "$PREDEPLOY_REPORT" --json-output "$PREDEPLOY_VERDICT"
 ```
 
-After deployed readback, live checks, the approved observation cycle, and final owner acceptance, run the same command with `--phase final` and separate verdict paths. Only the final successful verdict can certify the frozen scope. The existing collection command below remains useful for a draft evidence summary.
+After deployed readback, live checks, the approved observation cycle, and final owner sign-off, run the same command with `--phase final` and separate verdict paths. Its evidence requirements apply to formal acceptance. The production workflow runs its technical checks independently. Only the final successful verdict can certify the frozen scope. The existing collection command below remains useful for a draft evidence summary.
 
 [launch_evidence.py](../backend/scripts/launch_evidence.py) checks the supplied URLs and records hashes for attached evidence files. Run it from a trusted checkout using private output paths and the actual release values:
 
