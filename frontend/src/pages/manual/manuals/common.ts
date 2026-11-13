@@ -52,6 +52,7 @@ export const COMMON_SECTIONS: ManualSection[] = [
     tips: [
       'Bookmark the portal URL for quick access.',
       'If a verification code has expired, select Request a new code and enter your password again.',
+      'If an older tab blocks the offline storage upgrade, close the older tab and select Verify and sign in again.',
       'Always sign out from shared computers using the user menu → "Sign out".',
       'If you forget your password, use the "Forgot password?" link on the login page.'
     ]

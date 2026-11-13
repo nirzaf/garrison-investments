@@ -208,6 +208,87 @@ test('a supervisor draft survives session expiry for its owner and legacy data s
   expect(await ownedRecordCount(nextTab, 'photoQueue')).toBe(1);
 });
 
+test('a blocked offline storage upgrade leaves the verification code usable', async ({
+  page,
+  context
+}) => {
+  const account = seed();
+  await context.route('**/__offline_fixture', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<title>Older portal tab</title>' })
+  );
+  const olderTab = await context.newPage();
+  await olderTab.goto('/__offline_fixture');
+  await olderTab.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('garrisons-offline', 1);
+        open.onupgradeneeded = () => {
+          open.result
+            .createObjectStore('reportDrafts')
+            .put({ payload: 'Unowned report in the older tab' }, 'daily-report');
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          // The old tab deliberately keeps the version 1 connection open.
+          window.addEventListener('pagehide', () => db.close(), { once: true });
+          resolve();
+        };
+        open.onerror = () => reject(open.error);
+      })
+  );
+
+  const upgradingTab = await context.newPage();
+  await upgradingTab.goto('/__offline_fixture');
+  await upgradingTab.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('garrisons-offline', 2);
+        // Queue a request before the sign-in tab. Only the first request receives "blocked".
+        open.onblocked = () => resolve();
+        open.onupgradeneeded = () => open.transaction?.abort();
+        open.onerror = () => {
+          if (open.error?.name !== 'AbortError') reject(open.error);
+        };
+      })
+  );
+
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(account.email);
+  await page.getByLabel('Password', { exact: true }).fill(account.password);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  const code = (await page.getByText(/^Development code:/).innerText()).match(/\d{6}/)?.[0];
+  if (!code) throw new Error('The test API did not expose the verification code.');
+  const input = page.getByLabel('Verification code');
+  const verify = page.getByRole('button', { name: 'Verify and sign in' });
+  const verificationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/auth/verify-otp')) verificationRequests.push(request.url());
+  });
+  await input.fill(code);
+  await verify.click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'Close older portal tabs to upgrade offline storage, then try signing in again.'
+  );
+  await expect(input).toHaveValue(code);
+  expect(verificationRequests).toHaveLength(0);
+
+  await olderTab.close();
+  await expect
+    .poll(() =>
+      page.evaluate(async () =>
+        (await indexedDB.databases()).find(({ name }) => name === 'garrisons-offline')?.version
+      )
+    )
+    .toBe(3);
+  await verify.click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  expect(verificationRequests).toHaveLength(1);
+  await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page.getByLabel('Work completed')).toHaveValue('');
+  expect(await ownedRecordCount(page, 'reportDrafts')).toBe(1);
+  expect(await ownedRecordCount(page, 'ownedReportDrafts')).toBe(0);
+});
+
 test('standalone worker uploads only files owned by its verified account', async ({
   page,
   context,

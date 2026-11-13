@@ -122,6 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyOtp = useCallback(
     async (challengeId: string, otp: string): Promise<void> => {
       await withSessionLock(async () => {
+        // Verify the browser can open the durable session store before consuming the OTP.
+        await readOfflineSession(OFFLINE_NAMESPACE);
         const verified = await verifyOtpRequest(challengeId, otp);
         const scope: OfflineSession = {
           namespace: OFFLINE_NAMESPACE,

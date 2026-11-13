@@ -15,6 +15,15 @@ export type OfflineScope = {
 
 export type OfflineSession = OfflineScope & { state: 'active' | 'signed-out' | 'suspended' };
 
+export class OfflineStorageUpgradeBlockedError extends Error {
+  constructor() {
+    super('Close older portal tabs to upgrade offline storage, then try signing in again.');
+  }
+}
+
+let blockedOpen: IDBOpenDBRequest | undefined;
+const OPEN_WAIT_MS = 3000;
+
 export function ownerKey(scope: OfflineScope): [string, string] {
   return [scope.namespace, scope.ownerUserId];
 }
@@ -28,8 +37,24 @@ export function sameScope(left: OfflineScope | null | undefined, right: OfflineS
 }
 
 function openDb(): Promise<IDBDatabase> {
+  if (blockedOpen) return Promise.reject(new OfflineStorageUpgradeBlockedError());
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VERSION);
+    let waiting = false;
+    const rejectWhileWaiting = () => {
+      window.clearTimeout(timeout);
+      waiting = true;
+      blockedOpen = request;
+      reject(new OfflineStorageUpgradeBlockedError());
+    };
+    // Another tab or the service worker may be first in the upgrade queue.
+    // In that case, only its request receives the blocked event.
+    const timeout = window.setTimeout(rejectWhileWaiting, OPEN_WAIT_MS);
+    const finish = () => {
+      window.clearTimeout(timeout);
+      if (blockedOpen === request) blockedOpen = undefined;
+    };
+    request.onblocked = rejectWhileWaiting;
     request.onupgradeneeded = (event) => {
       if (event.oldVersion >= 2) return;
       const db = request.result;
@@ -45,18 +70,17 @@ function openDb(): Promise<IDBDatabase> {
       });
       db.createObjectStore(SESSION_STORE, { keyPath: 'namespace' });
     };
-    let blocked = false;
-    request.onblocked = () => {
-      blocked = true;
-      reject(new Error('Close older portal tabs to upgrade offline storage.'));
-    };
     request.onsuccess = () => {
+      finish();
       const db = request.result;
       db.onversionchange = () => db.close();
-      if (blocked) db.close();
+      if (waiting) db.close();
       else resolve(db);
     };
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      finish();
+      reject(request.error);
+    };
   });
 }
 

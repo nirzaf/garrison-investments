@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import { OfflineStorageUpgradeBlockedError } from '../../api/offlineDb';
 import { useAuth } from '../../context/useAuth';
 
 export function LoginPage() {
@@ -45,10 +46,14 @@ export function LoginPage() {
         await verifyOtp(challengeId, otp);
         navigate('/dashboard', { replace: true });
       }
-    } catch {
-      setError(challengeId
-        ? 'Sign in failed. Check the code or request a new one.'
-        : 'Sign in failed. Check your details and try again.');
+    } catch (failure) {
+      if (failure instanceof OfflineStorageUpgradeBlockedError) {
+        setError(failure.message);
+      } else {
+        setError(challengeId
+          ? 'Sign in failed. Check the code or request a new one.'
+          : 'Sign in failed. Check your details and try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
