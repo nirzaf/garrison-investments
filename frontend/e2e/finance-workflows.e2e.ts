@@ -111,7 +111,7 @@ async function submitInvoice(
   return (await (await response).json()) as { id: string; supplier_name: string };
 }
 
-test('Accounts and assigned Project Manager use the finance lookup and complete invoice correction and payment', async ({
+test('Accounts and assigned Project Manager correct, retry, and race invoice payments without overpaying', async ({
   page,
   browser,
   request,
@@ -225,15 +225,77 @@ test('Accounts and assigned Project Manager use the finance lookup and complete 
       details.getByRole('table', { name: 'Payment history' }).getByRole('row')
     ).toHaveCount(2);
     await accountsPage.unroute(paymentUrl);
-    await details.getByRole('button', { name: 'Record payment', exact: true }).click();
-    await expect(details.getByText('paid', { exact: true })).toBeVisible();
+
+    await managerPage.goto(path);
+    const paymentSessions = [accountsPage, managerPage].map((payerPage) => ({
+      page: payerPage,
+      invoice: payerPage.getByRole('region', { name: 'Invoice details', exact: true })
+    }));
+    let releasePayments!: () => void;
+    const bothPaymentsReady = new Promise<void>((resolve) => {
+      releasePayments = resolve;
+    });
+    const paymentKeys: (string | undefined)[] = [];
+    for (const session of paymentSessions) {
+      const amount = session.invoice.getByLabel('Payment amount', { exact: true });
+      await expect(amount).toHaveValue('104.90');
+      await amount.fill('75.00');
+      await session.page.route(
+        paymentUrl,
+        async (route) => {
+          paymentKeys.push(route.request().headers()['idempotency-key']);
+          if (paymentKeys.length === paymentSessions.length) releasePayments();
+          await bothPaymentsReady;
+          await route.continue();
+        },
+        { times: 1 }
+      );
+    }
+    const competingPayments = await Promise.all(
+      paymentSessions.map(async (session) => {
+        const [response] = await Promise.all([
+          session.page.waitForResponse(
+            (result) =>
+              result.request().method() === 'POST' &&
+              new URL(result.url()).pathname === `/api/v1/finance/invoices/${invoice.id}/payments`
+          ),
+          session.invoice.getByRole('button', { name: 'Record payment', exact: true }).click()
+        ]);
+        return { response, invoice: session.invoice };
+      })
+    );
+    expect(paymentKeys).toEqual([expect.any(String), expect.any(String)]);
+    expect(new Set([firstKey, ...paymentKeys]).size).toBe(3);
+    expect(competingPayments.map(({ response }) => response.status()).sort()).toEqual([200, 409]);
+    const conflict = competingPayments.find(({ response }) => response.status() === 409)!;
+    expect(await conflict.response.json()).toMatchObject({ error_code: 'PAYMENT_EXCEEDS_BALANCE' });
+    await expect(conflict.invoice.getByRole('alert')).toContainText(
+      'Payment exceeds the outstanding balance of 29.90.'
+    );
+    const conflictedAmount = conflict.invoice.getByLabel('Payment amount', { exact: true });
+    await expect(conflictedAmount).toHaveValue('75.00');
+    await conflict.invoice.getByRole('button', { name: 'Refresh invoice' }).click();
+    await expect(conflict.invoice.getByText('29.90', { exact: true })).toBeVisible();
+    await conflictedAmount.fill('29.90');
+    await conflict.invoice.getByRole('button', { name: 'Record payment', exact: true }).click();
+    await expect(conflict.invoice.getByText('paid', { exact: true })).toBeVisible();
+
     await accountsPage.reload();
-    await expect(
-      details.getByRole('table', { name: 'Payment history' }).getByRole('row')
-    ).toHaveCount(3);
+    const history = details.getByRole('table', { name: 'Payment history' });
+    await expect(history.getByRole('row')).toHaveCount(4);
+    for (const amount of ['40.10', '75.00', '29.90']) {
+      await expect(history.getByRole('cell', { name: amount, exact: true })).toHaveCount(1);
+    }
     await expect(details.getByRole('button', { name: 'Record payment', exact: true })).toHaveCount(
       0
     );
+    await expect(details.getByText('0.00', { exact: true })).toBeVisible();
+    await accountsPage.getByLabel('Search project filter options').fill(projectName);
+    await accountsPage.getByLabel('Project filter', { exact: true }).selectOption(admin.projectId);
+    await expect(accountsPage.getByText('270.50', { exact: true })).toBeVisible();
+    await expect(
+      accountsPage.getByText('Recorded payments', { exact: true }).locator('..')
+    ).toHaveText('Recorded payments145.00');
   } finally {
     await Promise.all([accountsPage.close(), managerPage.close(), operationsPage.close()]);
   }
@@ -267,10 +329,13 @@ test('supplier manager edits expiry, replaces evidence, and deactivates a suppli
   const registerRefresh = new Promise<void>((resolve) => {
     releaseRegisterRefresh = resolve;
   });
-  await page.route((url) => url.pathname === '/api/v1/suppliers', async (route) => {
-    await registerRefresh;
-    await route.continue();
-  });
+  await page.route(
+    (url) => url.pathname === '/api/v1/suppliers',
+    async (route) => {
+      await registerRefresh;
+      await route.continue();
+    }
+  );
   try {
     let uploadedRevision = 0;
     for (const name of ['evidence.pdf', 'replacement.pdf']) {
