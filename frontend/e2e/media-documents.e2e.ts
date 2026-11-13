@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -76,7 +77,14 @@ test('document type filtering and replacement preserve the active version', asyn
 
   const active = await request.get(`/api/v1/documents/${document.id}/download`, { headers });
   expect(active.ok()).toBe(true);
-  expect((await active.json()).superseded_warning).toBe(false);
+  const pendingLink: SignedDocument = await active.json();
+  expect(pendingLink.superseded_warning).toBe(false);
+  // The separate expiry rehearsal backdates the first link per fixture object.
+  if (env.BROWSER_TEST_VERIFY_SIGNED_EXPIRY !== '1') {
+    const activeFile = await request.get(pendingLink.url);
+    expect(activeFile.ok()).toBe(true);
+    expect(await activeFile.body()).toEqual(pdfFile('v1.pdf').buffer);
+  }
 
   await card.getByRole('button', { name: 'Approve v2', exact: true }).click();
   await expect(card.getByText(/Active v2/)).toBeVisible();
@@ -137,6 +145,15 @@ test('document type filtering and replacement preserve the active version', asyn
   expect(await file.body()).toEqual(pdfFile('v2.pdf').buffer);
   await dialog.getByRole('button', { name: 'Close preview' }).click();
 
+  const oldVersion = versions.find((item: { version: number }) => item.version === 1);
+  const oldResponse = await request.get(downloadPath, { headers, params: { version_id: oldVersion.id } });
+  expect(oldResponse.ok()).toBe(true);
+  const oldLink: SignedDocument = await oldResponse.json();
+  expect(oldLink.superseded_warning).toBe(true);
+  const oldFile = await request.get(oldLink.url);
+  expect(oldFile.ok()).toBe(true);
+  expect(await oldFile.body()).toEqual(pdfFile('v1.pdf').buffer);
+
   const other = await browser.newPage();
   const { headers: unrelated } = await signIn(other, 'seed', '--role', 'project_manager');
   await other.goto(`/documents?documentId=${document.id}`);
@@ -144,6 +161,89 @@ test('document type filtering and replacement preserve the active version', asyn
   await expect(other.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
   expect((await request.get(downloadPath, { headers: unrelated })).status()).toBe(404);
   await other.close();
+});
+
+test('a document reader combines filters, navigates pages and clears the result count', async ({
+  browser,
+  page
+}) => {
+  const admin = await browser.newPage();
+  const { account, headers } = await signIn(admin);
+  const second = await signIn(page, 'seed', '--role', 'accounts');
+  const marker = `Library${randomUUID().replace(/-/g, '')}`;
+  const titles = Array.from({ length: 26 }, (_, index) => `${marker} structural plan ${index}`);
+  const fixtures = [
+    ...titles.map((title) => ({ title, project_id: account.projectId, document_type: 'drawing' })),
+    { title: `${marker} inspection plan`, project_id: account.projectId, document_type: 'wir' },
+    { title: `${marker} electrical plan`, project_id: account.projectId, document_type: 'drawing' },
+    { title: `${marker} structural remote`, project_id: second.account.projectId, document_type: 'drawing' }
+  ];
+  for (let offset = 0; offset < fixtures.length; offset += 5) {
+    await Promise.all(fixtures.slice(offset, offset + 5).map(async (row) => {
+      const response = await admin.request.post('/api/v1/documents', {
+        headers,
+        multipart: { ...row, file: pdfFile('library-fixture.pdf') }
+      });
+      expect(response.status()).toBe(201);
+    }));
+  }
+  await admin.close();
+  await page.goto('/documents');
+
+  const project = page.getByRole('combobox', { name: 'Filter documents by project' });
+  const projectSearch = page.getByRole('textbox', { name: 'Find projects by name or code' });
+  const type = page.getByRole('combobox', { name: 'Filter documents by type' });
+  const search = page.getByRole('textbox', { name: 'Search documents' });
+  const pagination = page.getByRole('navigation', { name: 'Document pages' });
+  const resultCount = page.getByRole('status').filter({ hasText: /matching document/ });
+  const cards = page.getByRole('article');
+  const titlesOnPage = () => cards.getByRole('heading', { level: 3 }).allTextContents();
+
+  const projectResponse = await page.request.get(`/api/v1/projects/${account.projectId}`, {
+    headers: second.headers
+  });
+  expect(projectResponse.ok()).toBe(true);
+  const { code } = await projectResponse.json();
+  await projectSearch.fill(code);
+  await project.selectOption(account.projectId);
+  await type.fill('DRAWING');
+  await search.fill(`  ${marker.toUpperCase()} STRUCTURAL  `);
+  await expect(resultCount).toHaveText('26 matching documents');
+  await expect(pagination.getByText('Page 1 of 2')).toBeVisible();
+  await expect(cards).toHaveCount(25);
+  const first = await titlesOnPage();
+
+  await pagination.getByRole('button', { name: 'Next' }).click();
+  await expect(pagination.getByText('Page 2 of 2')).toBeVisible();
+  await expect(cards).toHaveCount(1);
+  await expect(pagination.getByRole('button', { name: 'Next' })).toBeDisabled();
+  const secondPage = await titlesOnPage();
+  expect([...first, ...secondPage].sort()).toEqual([...titles].sort());
+  await pagination.getByRole('button', { name: 'Previous' }).click();
+  await expect(cards).toHaveCount(25);
+  expect(await titlesOnPage()).toEqual(first);
+
+  await type.fill('WIR');
+  await expect(resultCount).toHaveText('0 matching documents');
+  await expect(page.getByText('No documents found')).toBeVisible();
+  await search.fill(`${marker} INSPECTION`);
+  await expect(resultCount).toHaveText('1 matching document');
+  await expect(cards.getByRole('heading', { name: `${marker} inspection plan` })).toBeVisible();
+
+  const unfiltered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/documents' &&
+      !['document_type', 'project_id', 'search'].some((key) => url.searchParams.has(key)) &&
+      url.searchParams.get('offset') === '0' && response.ok();
+  });
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  const { total } = await (await unfiltered).json();
+  await expect(resultCount).toHaveText(`${total} matching documents`);
+  await expect(project).toHaveValue('');
+  await expect(projectSearch).toHaveValue('');
+  await expect(type).toHaveValue('');
+  await expect(search).toHaveValue('');
+  await expect(pagination.getByText(`Page 1 of ${Math.ceil(total / 25)}`)).toBeVisible();
 });
 
 test('supervisor selects supported photo formats and retrieves the original HEIC', async ({

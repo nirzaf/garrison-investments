@@ -76,12 +76,13 @@ export function DocumentsPage() {
     (option) => !projectsQuery.data?.items.some((item) => item.id === option.id)
   )];
 
+  const normalizedType = filterType.trim().toLowerCase();
   const documentList = useQuery({
-    queryKey: ['documents', 'page', projectId, committedSearch, filterType, page],
+    queryKey: ['documents', 'page', projectId, committedSearch, normalizedType, page],
     queryFn: ({ signal }) => listDocuments({
       search: committedSearch || undefined,
       project_id: projectId || undefined,
-      document_type: filterType.trim() || undefined,
+      document_type: normalizedType || undefined,
       limit: documentPageSize,
       offset: page * documentPageSize
     }, signal)
@@ -101,6 +102,7 @@ export function DocumentsPage() {
   }, [documentList.data, focusedDocument.data]);
   const totalPages = Math.max(1, Math.ceil((documentList.data?.total ?? 0) / documentPageSize));
   const pagingDisabled = documentList.isPending || search.trim() !== committedSearch;
+  const resultTotal = !pagingDisabled && documentList.isSuccess ? documentList.data.total : null;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -289,11 +291,12 @@ export function DocumentsPage() {
       {focusedDocument.isError ? (
         <Alert tone="error" message={formatApiError(focusedDocument.error, 'Unable to open linked document.')} />
       ) : null}
-      {projectId || filterType || search ? (
+      {projectId || projectSearch || filterType || search ? (
         <button
           className="form-field"
           onClick={() => {
             setProjectId('');
+            setProjectSearch('');
             setFilterType('');
             setSearch('');
             setCommittedSearch('');
@@ -304,6 +307,12 @@ export function DocumentsPage() {
           Clear filters
         </button>
       ) : null}
+
+      <p className="text-sm text-theme-text-secondary" role="status">
+        {resultTotal === null
+          ? ''
+          : `${resultTotal} matching document${resultTotal === 1 ? '' : 's'}`}
+      </p>
 
       {canManageDocuments ? (
         <form
