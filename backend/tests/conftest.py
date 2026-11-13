@@ -5,21 +5,25 @@ from pathlib import Path
 
 import pytest
 
-# Median module runtimes in milliseconds from CI runs 43290811493,
-# 43293023176, and 43359757307, rounded to the nearest 100 ms.
+# Median module runtimes in milliseconds from CI runs 43293023176,
+# 43359757307, 43375671327, and 43379155322, rounded to the nearest 100 ms.
 SLOW_MODULE_MS = {
-    "tests/test_capture_recovery_wrapper.py": 18_000,
-    "tests/test_scope_authorization.py": 11_700,
-    "tests/test_authorization_matrix.py": 10_300,
-    "tests/test_daily_reports.py": 9_300,
-    "tests/test_session_revocation.py": 8_600,
-    "tests/test_auth.py": 8_000,
-    "tests/test_photos.py": 5_600,
-    "tests/test_delegation_guards.py": 5_000,
-    "tests/test_finance.py": 4_700,
-    "tests/test_idempotency.py": 4_500,
-    "tests/test_inventory.py": 3_700,
-    "tests/test_report_payment_concurrency.py": 3_400,
+    "tests/test_capture_recovery_wrapper.py": 21_500,
+    "tests/test_scope_authorization.py": 12_500,
+    "tests/test_daily_reports.py": 11_800,
+    "tests/test_authorization_matrix.py": 11_500,
+    "tests/test_session_revocation.py": 8_900,
+    "tests/test_auth.py": 8_700,
+    "tests/test_delegation_guards.py": 6_300,
+    "tests/test_photos.py": 5_900,
+    "tests/test_idempotency.py": 5_600,
+    "tests/test_finance.py": 5_200,
+    "tests/test_report_payment_concurrency.py": 4_400,
+    "tests/test_inventory.py": 4_000,
+    "tests/test_projects.py": 3_900,
+    "tests/test_repair_offline_duplicates.py": 2_900,
+    "tests/test_documents.py": 2_800,
+    "tests/test_inventory_accounting.py": 2_700,
 }
 
 
