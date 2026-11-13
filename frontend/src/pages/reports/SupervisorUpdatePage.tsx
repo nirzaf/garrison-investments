@@ -16,6 +16,8 @@ import { formatApiError } from '../../api/errors';
 import { MAX_REPORT_PHOTOS, PDF_IMAGE_ACCEPT, REPORT_PHOTO_ACCEPT } from '../../api/fileValidation';
 import {
   deletePhoto,
+  getPhotoDownloadUrl,
+  getPhotoThumbnailUrl,
   listPhotos,
   prepareMediaFiles,
   uploadMediaFiles,
@@ -120,6 +122,7 @@ export function SupervisorUpdatePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastAutosavedAt, setLastAutosavedAt] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<PhotoRecord[]>([]);
+  const [openingFile, setOpeningFile] = useState(false);
   const [failedUpload, setFailedUpload] = useState<{
     entityId: string;
     items: MediaUploadIntent[];
@@ -343,6 +346,19 @@ export function SupervisorUpdatePage() {
     });
   }
 
+  async function openFile(file: PhotoRecord, preview: boolean) {
+    setOpeningFile(true);
+    setError(null);
+    try {
+      const url = preview ? await getPhotoThumbnailUrl(file.id) : await getPhotoDownloadUrl(file.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to open this file.'));
+    } finally {
+      setOpeningFile(false);
+    }
+  }
+
   async function saveDraft(values: UpdateFormValues) {
     if (!scope) return null;
     setError(null);
@@ -403,7 +419,7 @@ export function SupervisorUpdatePage() {
           </div>
         ) : null}
         {error ? (
-          <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm">
+          <div className="alert-error flex items-center gap-2 rounded-md px-3 py-2 text-sm" role="alert">
             <AlertTriangle className="h-4 w-4" />
             <span>{error}</span>
           </div>
@@ -529,15 +545,38 @@ export function SupervisorUpdatePage() {
               </button>
             ) : null}
             {uploadedFiles.length > 0 ? (
-              <div className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
+              <ul className="mt-4 grid gap-2 text-sm text-theme-text-secondary">
                 {uploadedFiles.map((file) => (
-                  <div
-                    className="flex items-center justify-between rounded-md border border-theme-border px-3 py-2"
+                  <li
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-theme-border px-3 py-2"
                     key={file.id}
                   >
-                    <span>{file.original_name}</span>
-                    <div className="flex items-center gap-2">
+                    <div>
+                      <p>{file.original_name}</p>
+                      {file.mime_type === 'image/heic' && (
+                        <p className="text-theme-text-muted">Original only</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge tone="success">{file.processing_status}</StatusBadge>
+                      {file.thumbnail_path && (
+                        <button
+                          className="form-field"
+                          disabled={openingFile || isSaving}
+                          onClick={() => void openFile(file, true)}
+                          type="button"
+                        >
+                          Preview
+                        </button>
+                      )}
+                      <button
+                        className="form-field"
+                        disabled={openingFile || isSaving}
+                        onClick={() => void openFile(file, false)}
+                        type="button"
+                      >
+                        {file.mime_type === 'image/heic' ? 'Download original' : 'Open file'}
+                      </button>
                       {savedDraft?.status === 'draft' ? (
                         <button
                           className="form-field"
@@ -549,9 +588,9 @@ export function SupervisorUpdatePage() {
                         </button>
                       ) : null}
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : null}
           </div>
 

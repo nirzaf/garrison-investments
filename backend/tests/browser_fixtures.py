@@ -47,6 +47,8 @@ def configure() -> None:
         MINIO_ENDPOINT=s3_endpoint,
         MINIO_BUCKET="garrison-browser-test",
         MINIO_SECURE="false",
+        MINIO_PUBLIC_ENDPOINT=s3_endpoint,
+        MINIO_PUBLIC_SECURE="false",
     )
 
 

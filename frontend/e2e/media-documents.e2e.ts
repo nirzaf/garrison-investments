@@ -16,9 +16,9 @@ const pdfFile = (name: string) => ({
   buffer: Buffer.from(`%PDF-1.4\n1 0 obj<<>>endobj\n% ${name}\n%%EOF`)
 });
 
-async function signIn(page: Page) {
+async function signIn(page: Page, seedCommand = 'seed') {
   const account: TestAccount = JSON.parse(
-    execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', ['-m', 'tests.browser_fixtures', 'seed'], {
+    execFileSync(env.BROWSER_TEST_PYTHON ?? 'python', ['-m', 'tests.browser_fixtures', seedCommand], {
       cwd: backendDirectory,
       encoding: 'utf8'
     })
@@ -85,6 +85,82 @@ test('document type filtering and replacement preserve the active version', asyn
   await typeFilter.fill('wir');
   await expect(card.getByText('Linked document outside the current results')).toBeVisible();
   await expect(uploadType).toHaveValue('wir');
+});
+
+test('supervisor selects supported photo formats and retrieves the original HEIC', async ({
+  page,
+  request
+}) => {
+  const { account, headers } = await signIn(page, 'seed-supervisor');
+  await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(account.projectId);
+  await page.getByLabel('Work location').fill('Photo format verification');
+  await page.getByLabel('Progress notes').fill('Verify uploaded site evidence.');
+  await page.getByLabel('Required notes').fill('Retain the original HEIC file.');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible();
+
+  const input = page.locator('input[type="file"][capture="environment"]');
+  const limit = 10 * 1024 * 1024;
+  const fixture = readFileSync(new URL('./fixtures/site.heic', import.meta.url));
+  const original = Buffer.alloc(limit);
+  fixture.copy(original);
+  // A free-space ISO BMFF box pads the valid image to the exact upload limit.
+  original.writeUInt32BE(limit - fixture.length, fixture.length);
+  original.write('free', fixture.length + 4, 'ascii');
+  const oversized = Buffer.concat([original, Buffer.alloc(1)]);
+  await input.setInputFiles({ name: 'oversized.heic', mimeType: 'image/heic', buffer: oversized });
+  await expect(page.getByRole('alert')).toContainText('File exceeds the 10 MiB limit.');
+
+  const png = readFileSync(new URL('../public/brand/icon-32.png', import.meta.url));
+  const accepted = [
+    { name: 'site.jpeg', mimeType: 'image/jpeg', buffer: jpeg },
+    { name: 'site.png', mimeType: 'image/png', buffer: png },
+    { name: 'site.heic', mimeType: 'image/heic', buffer: original }
+  ];
+  await input.setInputFiles(accepted);
+  await expect(page.getByText('3 files saved.', { exact: true })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('article').filter({ hasText: 'Photo format verification' })
+    .getByRole('button', { name: 'Resume draft' }).click();
+  const card = (name: string) => page.getByRole('listitem').filter({ hasText: name });
+  for (const name of ['site.jpeg', 'site.png']) {
+    await expect(card(name).getByRole('button', { name: 'Preview', exact: true })).toBeVisible();
+  }
+  const heic = card('site.heic');
+  await expect(heic.getByText('Original only', { exact: true })).toBeVisible();
+  await expect(heic.getByRole('button', { name: 'Preview' })).toHaveCount(0);
+  await expect(card('oversized.heic')).toHaveCount(0);
+
+  const linkResponse = page.waitForResponse(
+    (response) => /\/api\/v1\/photos\/[^/]+\/download$/.test(new URL(response.url()).pathname)
+  );
+  await heic.getByRole('button', { name: 'Download original' }).click();
+  const link = await linkResponse;
+  expect(link.status()).toBe(200);
+  const { url }: { url: string } = await link.json();
+  expect(['127.0.0.1', 'localhost']).toContain(new URL(url).hostname);
+  const bytes = await request.get(url);
+  expect(bytes.status()).toBe(200);
+  expect(await bytes.body()).toEqual(original);
+
+  const photoUrl = new URL(link.url()).pathname.replace(/\/download$/, '');
+  const unauthorized = await request.get(`${photoUrl}/download`);
+  expect(unauthorized.status()).toBe(401);
+  const record = await request.get(photoUrl, { headers });
+  expect(record.status()).toBe(200);
+  const { entity_id } = await record.json();
+  const rejected = await request.post('/api/v1/photos/upload', {
+    headers,
+    multipart: {
+      entity_type: 'supervisor_update',
+      entity_id,
+      kind: 'photo',
+      files: { name: 'oversized.heic', mimeType: 'image/heic', buffer: oversized }
+    }
+  });
+  expect(rejected.status()).toBe(413);
 });
 
 test('media removal and recovery persist after reload', async ({ page, request }) => {
