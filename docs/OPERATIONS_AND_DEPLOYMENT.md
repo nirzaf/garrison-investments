@@ -60,6 +60,10 @@ Provision the existing stack and an initial active release before registering th
 
 Before using the new workflow, the host operator installs the reviewed `deploy/hostinger-release.sh` as root-owned `/usr/local/sbin/garrison-deploy` with mode `0755`. The runner needs noninteractive `sudo` for this entrypoint. The workflow and host must both support the `rollback-v2 technical-checks-v1` arguments. Set `LOG_PURGE_ENABLED=false` in the protected environment and keep the encryption password and application secrets there. The entrypoint checks effective Compose settings and stops if audit deletion is enabled.
 
+For a release that changes the entrypoint, compare the exact candidate script with the installed copy and record both SHA-256 digests. After release authorization and before the main update can trigger automatic CD, confirm no deployment job is queued or running. Take the production deployment lock, preserve the previous executable in the root-controlled deployment directory, and verify the candidate's digest and Bash syntax. Install it with owner `root:root` and mode `0755` using an atomic rename from the same directory. Confirm the installed digest and runner's existing sudo permission. Release the lock before triggering CD. Keep the deployment protocol and generation compatible with the active release during this step.
+
+After activation, collect the original `DEPLOYED` file and confirm its CI run and attempt, deployment run and attempt, and candidate SHA. A retry of the active SHA only checks readiness. It does not recreate a missing receipt field. Preserve the prior release receipt as recorded. [Formal acceptance receipt instructions](templates/release-closure/README.md)
+
 On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 
 ```bash

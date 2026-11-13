@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.release_contract import deployment_receipt_fields, utc, verify_host_deployment_receipt
+
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "hostinger-release.sh"
 
 
@@ -465,10 +467,10 @@ github() {
 docker() {
   case "$1 $2" in
     'ps --filter') [[ "$scenario" == quiesced-generation-change ]] || echo nginx ;;
-    'image inspect') echo fixture-image ;;
+    'image inspect') printf 'sha256:%s\n' "$asset_digest" ;;
     'exec garrison-portal-postgres-1') echo fixture-head ;;
     'exec garrison-portal-nginx-1') : ;;
-    'inspect --format') echo fixture-image ;;
+    'inspect --format') printf 'sha256:%s\n' "$asset_digest" ;;
     'run --rm')
       if [[ "$*" == *alembic* ]]; then
         if [[ "$scenario" == schema-change && "$*" != *old-backend* ]]; then
@@ -557,7 +559,21 @@ curl() {
     if scenario in {"success", "manual", "quiesced-generation-change"}:
         assert result.returncode == 0, result.stderr
         assert current != previous
-        assert "Deployed — Formal Acceptance Pending" in (current / "DEPLOYED").read_text()
+        receipt = deployment_receipt_fields((current / "DEPLOYED").read_bytes())
+        asset_digest = sha256(b"fixture asset").hexdigest()
+        image = f"sha256:{asset_digest}"
+        verify_host_deployment_receipt(
+            receipt,
+            {"ci_run_id": 12, "ci_run_attempt": 2, "run_id": 34, "run_attempt": 1},
+            sha,
+            {
+                "frontend_sha256": asset_digest,
+                "service_worker_sha256": asset_digest,
+                "image_digests": {"backend": image, "frontend": image},
+                "schema_heads": ["fixture-head"],
+            },
+            utc(receipt["UTC"], "fixture activation"),
+        )
         assert events[:2] == ["download", "backup"]
         assert events[2].startswith("activate ")
         assert events[3].startswith("publish ")
