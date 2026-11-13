@@ -10,6 +10,7 @@ import {
   listDocuments,
   uploadDocument,
   uploadDocumentVersion,
+  type DocumentListResponse,
   type DocumentRecord
 } from '../../api/documents';
 import { formatApiError } from '../../api/errors';
@@ -180,7 +181,19 @@ export function DocumentsPage() {
 
   function approve(document: DocumentRecord, versionId: string) {
     void saveDocument(async () => {
-      await approveDocumentVersion({ documentId: document.id, versionId });
+      const approved = await approveDocumentVersion({ documentId: document.id, versionId });
+      const listQueries = { queryKey: ['documents', 'page'] };
+      const detailQuery = { queryKey: ['documents', 'detail', approved.id], exact: true };
+      await Promise.all([
+        queryClient.cancelQueries(listQueries),
+        queryClient.cancelQueries(detailQuery)
+      ]);
+      queryClient.setQueriesData<DocumentListResponse>(listQueries, (previous) =>
+        previous?.items.some((item) => item.id === approved.id)
+          ? { ...previous, items: previous.items.map((item) => item.id === approved.id ? approved : item) }
+          : previous
+      );
+      queryClient.setQueryData<DocumentRecord>(detailQuery.queryKey, approved);
       setNotice('Document version approved.');
     }, 'Unable to approve document version.');
   }

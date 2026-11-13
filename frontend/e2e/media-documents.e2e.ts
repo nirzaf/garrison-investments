@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
 
 type TestAccount = { email: string; password: string; projectId: string };
 type SignedDocument = { url: string; expires_in_seconds: number; superseded_warning: boolean };
@@ -66,7 +66,18 @@ test('document type filtering and replacement preserve the active version', asyn
   await page.getByRole('button', { name: 'Upload', exact: true }).click();
   const document = await (await created).json();
   const card = page.getByRole('article').filter({ hasText: title });
-  await card.getByRole('button', { name: 'Approve v1', exact: true }).click();
+  const approve = async (version: number) => {
+    const completed = page.waitForResponse((response) => {
+      const path = new URL(response.url()).pathname;
+      return response.request().method() === 'POST' &&
+        path.startsWith(`/api/v1/documents/${document.id}/versions/`) && path.endsWith('/approve');
+    });
+    await card.getByRole('button', { name: `Approve v${version}`, exact: true }).click();
+    const response = await completed;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toMatchObject({ active_version: version });
+  };
+  await approve(1);
   await expect(card.getByText(/Active v1/)).toBeVisible();
 
   await card.getByRole('button', { name: 'Upload replacement' }).click();
@@ -86,8 +97,23 @@ test('document type filtering and replacement preserve the active version', asyn
     expect(await activeFile.body()).toEqual(pdfFile('v1.pdf').buffer);
   }
 
-  await card.getByRole('button', { name: 'Approve v2', exact: true }).click();
-  await expect(card.getByText(/Active v2/)).toBeVisible();
+  // Approval returns the committed version. Keep the list refresh in flight so
+  // the active card and toast have to use that response.
+  let releaseRefresh!: () => void;
+  const refreshBlocked = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const delayRefresh = async (route: Route) => {
+    await refreshBlocked;
+    await route.fallback();
+  };
+  await page.route('**/api/v1/documents?*', delayRefresh);
+  try {
+    await approve(2);
+    await expect(page.getByText('Document version approved.')).toBeVisible();
+    await expect(card.getByText(/Active v2/)).toBeVisible();
+  } finally {
+    releaseRefresh();
+  }
+  await page.unroute('**/api/v1/documents?*', delayRefresh);
   await page.reload();
   await expect(card.getByText(/Active v2/)).toBeVisible();
   await expect(card.getByText('superseded', { exact: true })).toBeVisible();
