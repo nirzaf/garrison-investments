@@ -13,11 +13,14 @@ import sys
 from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
+from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
+from zlib import error as CompressionError
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 REPOSITORY = "nirzaf/garrison-investments"
@@ -331,6 +334,33 @@ class Evidence:
 
     def load_junit(self, ref: Any) -> dict[str, int]:
         return self._load(ref, junit_counts)
+
+    def junit_archive_member(self, ref: Any, name: str) -> str:
+        def decode(raw: bytes) -> str:
+            limit = 4 * 1024 * 1024
+            try:
+                with ZipFile(BytesIO(raw)) as archive:
+                    members = archive.infolist()
+                    require(
+                        len(members) == 1
+                        and members[0].filename == name
+                        and 0 < members[0].file_size <= limit
+                        and members[0].compress_type in {ZIP_STORED, ZIP_DEFLATED},
+                        "Unexpected member in the published GitHub archive.",
+                        3,
+                    )
+                    with archive.open(members[0]) as report:
+                        body = report.read(limit + 1)
+                    require(
+                        len(body) == members[0].file_size,
+                        "Unexpected report size in the published GitHub archive.",
+                        3,
+                    )
+            except (BadZipFile, CompressionError, OSError, EOFError, RuntimeError):
+                raise ContractError(3, "Invalid published GitHub archive.") from None
+            return hashlib.sha256(body).hexdigest()
+
+        return self._load(ref, decode)
 
     def _load(self, ref: Any, decoder: Callable[[bytes], Any] | None) -> Any:
         record = fields(ref, "path sha256 size_bytes", optional="sensitivity", label="artifact")
@@ -999,6 +1029,7 @@ def receipt_ci(
     suites = set()
     report_paths: set[str] = set()
     report_hashes: set[str] = set()
+    reports_to_verify = []
     for value in items(data["suites"], "test suites"):
         suite = fields(value, "name passed failed skipped warnings reports", label="test suite")
         name = exact(suite["name"], set(CI_TEST_JOBS), "test suite name")
@@ -1020,7 +1051,7 @@ def receipt_ci(
         report_jobs: set[int] = set()
         reported = dict.fromkeys(counts, 0)
         for value in items(suite["reports"], "JUnit job reports"):
-            row = fields(value, "job_id report", label="JUnit job report")
+            row = fields(value, "job_id report archive", label="JUnit job report")
             job_id = count(row["job_id"], "JUnit report job ID", minimum=1)
             require(
                 job_id in expected_jobs and job_id not in report_jobs,
@@ -1050,9 +1081,48 @@ def receipt_ci(
             report_hashes.add(sha256)
             for key, result in evidence.load_junit(ref).items():
                 reported[key] += result
+            shard = re.search(r"\(([12])/2\)$", jobs[job_id])
+            suffix = f"-{shard[1]}" if shard else ""
+            reports_to_verify.append((
+                f"ci-{attempt}-{name}{suffix}",
+                "frontend.xml" if name == "frontend" else "test-report.xml",
+                row["archive"],
+                sha256,
+            ))
         require(report_jobs == expected_jobs, "A required CI job is missing its JUnit report.", 3)
         require(reported == counts, "JUnit test report counts differ from the receipt.", 3)
     require(suites == set(CI_TEST_JOBS), "Missing a mandatory test suite.", 3)
+    catalog = github_record(f"actions/runs/{run_id}/artifacts?per_page=100", token)
+    artifacts = catalog.get("artifacts")
+    if not isinstance(artifacts, list) or catalog.get("total_count") != len(artifacts):
+        raise ContractError(5, "Incomplete GitHub CI artifact verification.")
+    for name, member, archive_ref, report_hash in reports_to_verify:
+        matches = [item for item in artifacts if item.get("name") == name]
+        require(len(matches) == 1, "Missing or ambiguous published GitHub archive.", 3)
+        published = matches[0]
+        archive = fields(
+            archive_ref, "path sha256 size_bytes", optional="sensitivity", label="CI archive"
+        )
+        published_run = published.get("workflow_run") or {}
+        require(
+            published.get("digest") == f"sha256:{archive['sha256']}"
+            and published.get("size_in_bytes") == archive["size_bytes"]
+            and published_run.get("id") == run_id
+            and published_run.get("head_sha") == sha
+            and published_run.get("head_branch") == "main",
+            "CI archive does not match the published GitHub archive.",
+            3,
+        )
+        require(
+            artifact_hashes is None or archive["sha256"] in artifact_hashes,
+            "CI archive is missing from the classified receipt artifacts.",
+            3,
+        )
+        require(
+            evidence.junit_archive_member(archive, member) == report_hash,
+            "JUnit report does not match the published GitHub archive.",
+            3,
+        )
     assertions(
         data["checks"],
         {"lint", "typing", "openapi", "typescript_contract", "frontend_build", "compose"},

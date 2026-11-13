@@ -4,8 +4,10 @@ import argparse
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+from zipfile import ZipFile, ZipInfo
 
 import pytest
 
@@ -336,7 +338,7 @@ def runtime() -> dict[str, Any]:
 
 
 def github_stub(path: str, token: str | None) -> dict[str, Any]:
-    jobs = [
+    jobs: list[dict[str, Any]] = [
         {
             "id": i, "name": name, "head_sha": SHA, "status": "completed",
             "conclusion": "success", "run_id": 11, "run_attempt": 1,
@@ -345,6 +347,20 @@ def github_stub(path: str, token: str | None) -> dict[str, Any]:
     ]
     if "/jobs?" in path:
         return {"jobs": jobs, "total_count": len(jobs)}
+    if "/artifacts?" in path:
+        artifacts = []
+        for job in jobs:
+            fixture = ci_archive_fixture(job["id"], job["name"])
+            if fixture is None:
+                continue
+            name, archive, _ = fixture
+            artifacts.append({
+                "name": name,
+                "digest": "sha256:" + hashlib.sha256(archive).hexdigest(),
+                "size_in_bytes": len(archive),
+                "workflow_run": {"id": 11, "head_sha": SHA, "head_branch": "main"},
+            })
+        return {"artifacts": artifacts, "total_count": len(artifacts)}
     parts = path.split("/")
     run_id = int(parts[2])
     ci = run_id == 11
@@ -406,8 +422,23 @@ def test_operator_comes_from_active_deployment_not_ci(
         assert contract.deployment_operator(run_id, sha, None) == expected_operator
 
 
+def ci_archive_fixture(job_id: int, job_name: str) -> tuple[str, bytes, bytes] | None:
+    suite = next((name for name, jobs in contract.CI_TEST_JOBS.items() if job_name in jobs), None)
+    if suite is None:
+        return None
+    suffix = f"-{job_name.split(' (')[1][0]}" if suite != "frontend" else ""
+    raw = (
+        f'<testsuites><testsuite tests="1"><testcase name="test-job-{job_id}"/>'
+        "</testsuite></testsuites>"
+    ).encode()
+    stream = BytesIO()
+    with ZipFile(stream, "w") as archive:
+        archive.writestr(ZipInfo("frontend.xml" if suite == "frontend" else "test-report.xml"), raw)
+    return f"ci-1-{suite}{suffix}", stream.getvalue(), raw
+
+
 def ci_receipt(bundle: Bundle) -> dict[str, Any]:
-    jobs = [
+    jobs: list[dict[str, Any]] = [
         {
             "id": i,
             "name": name,
@@ -423,13 +454,14 @@ def ci_receipt(bundle: Bundle) -> dict[str, Any]:
             if job["name"] not in names:
                 continue
             job_id = job["id"]
-            raw = (
-                f'<testsuites><testsuite tests="1"><testcase name="test-job-{job_id}"/>'
-                "</testsuite></testsuites>"
-            ).encode()
+            fixture = ci_archive_fixture(job_id, job["name"])
+            assert fixture is not None
+            name, zipped, raw = fixture
             report = bundle.write_bytes(f"artifacts/ci-job-{job_id}.xml", raw)
+            archive = bundle.write_bytes(f"artifacts/{name}.zip", zipped)
             bundle.ci_artifacts.append({**report, "sensitivity": "sanitized"})
-            reports.append({"job_id": job_id, "report": report})
+            bundle.ci_artifacts.append({**archive, "sensitivity": "sanitized"})
+            reports.append({"job_id": job_id, "report": report, "archive": archive})
         suites.append(
             {
                 "name": suite,
@@ -485,6 +517,7 @@ def test_ci_receipt_uses_the_recorded_attempt_after_a_failed_rerun(
     assert requested == [
         "actions/runs/11/attempts/1",
         "actions/runs/11/attempts/1/jobs?per_page=100",
+        "actions/runs/11/artifacts?per_page=100",
     ]
 
 
@@ -546,6 +579,9 @@ def test_junit_rejects_invalid_or_summary_only_xml(raw: bytes, message: str) -> 
 @pytest.mark.parametrize(
     ("scenario", "message"),
     [
+        ("substituted-report", "published GitHub archive"),
+        ("wrong-archive", "does not match the published GitHub archive"),
+        ("unclassified-archive", "archive is missing from the classified receipt artifacts"),
         ("missing-shard", "missing its JUnit report"),
         ("duplicate-job", "unexpected or duplicated"),
         ("wrong-suite", "unexpected or duplicated"),
@@ -586,6 +622,15 @@ def test_ci_receipt_requires_hashed_job_reports_matching_totals(
         artifact_hashes.remove(first["report"]["sha256"])
     elif scenario == "incorrect-count":
         backend["passed"] += 1
+    elif scenario == "substituted-report":
+        first["report"] = bundle.write_bytes(
+            "artifacts/substitute.xml", b"<testsuite><testcase name='substitute'/></testsuite>"
+        )
+        artifact_hashes.add(first["report"]["sha256"])
+    elif scenario == "wrong-archive":
+        first["archive"] = second["archive"]
+    elif scenario == "unclassified-archive":
+        artifact_hashes.remove(first["archive"]["sha256"])
     else:
         outcome = "error" if scenario == "concealed-failure" else "skipped"
         raw = f'<testsuite><testcase name="altered"><{outcome}/></testcase></testsuite>'.encode()
