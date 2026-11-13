@@ -223,7 +223,7 @@ jobs:
           BROWSER_TEST_PREBUILT: "true"
         run: |
           # Balance by measured test time. The complement also picks up new test files.
-          group='/(materials-analytics|offline-isolation|role-navigation|user-role)\.e2e\.ts$'
+          group='/(finance-workflows|media-documents|offline-isolation|role-navigation)\.e2e\.ts$'
           case "$BROWSER_SHARD" in
             1) filter="$group" ;;
             2) filter="^(?!.*$group)" ;;
