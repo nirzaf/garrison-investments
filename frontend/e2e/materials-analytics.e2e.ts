@@ -282,6 +282,147 @@ test('store requester selects company project and fulfills chosen quantities acr
   await adminPage.close();
 });
 
+test('store keeper transfers a tagged asset and preserves reserved stock', async ({ browser, page }) => {
+  const headers = await signIn(page, seed('store_keeper'));
+  const admin = await browser.newPage();
+  const adminHeaders = await signIn(admin, seed('admin'));
+  const mark = randomUUID().slice(0, 8);
+  const supplierResponse = await admin.request.post('/api/v1/suppliers', {
+    headers: adminHeaders,
+    data: {
+      name: `Tools ${mark}`, category: 'Civil', rating: 'A', payment_terms: '30 days',
+      contact_person: 'Test contact', phone: '1234567', email: `${mark}@example.com`,
+      address: 'Test warehouse', tax_registration_number: `TAX-${mark}`,
+      compliance_status: 'compliant'
+    }
+  });
+  expect(supplierResponse.status()).toBe(201);
+  const { id: supplierId } = await supplierResponse.json();
+  await admin.close();
+  const create = async (path: string, data: object) => {
+    const response = await page.request.post(`/api/v1/inventory${path}`, { headers, data });
+    expect(response.status()).toBe(201);
+    return response.json();
+  };
+  const makeLocation = (name: string) => create('/locations', {
+    name: `${name} ${mark}`, code: `${name}-${mark}`, location_type: 'warehouse'
+  });
+  const source = await makeLocation('Source');
+  const destination = await makeLocation('Destination');
+  const item = await create('/items', {
+    name: `Laser ${mark}`, item_code: `LASER-${mark}`, item_type: 'asset',
+    category: 'Tools', unit: 'Nos', supplier_id: supplierId
+  });
+  const other = await create('/items', {
+    name: `Level ${mark}`, item_code: `LEVEL-${mark}`, item_type: 'asset',
+    category: 'Tools', unit: 'Nos', supplier_id: supplierId
+  });
+  const tag = `TAG-${mark}`;
+  const asset = await create('/assets', {
+    item_id: item.id, asset_tag: tag, current_location_id: source.id
+  });
+  await create('/assets', {
+    item_id: other.id, asset_tag: `OTHER-${mark}`, current_location_id: source.id
+  });
+  const transfer = {
+    item_id: other.id, asset_id: asset.id, movement_type: 'transfer', quantity: '1',
+    from_location_id: source.id, to_location_id: destination.id
+  };
+  const invalid = await page.request.post('/api/v1/inventory/movements', { headers, data: transfer });
+  expect(invalid.status()).toBe(422);
+  expect((await invalid.json()).error_code).toBe('INVALID_ASSET_TRANSFER');
+  const wrongQuantity = await page.request.post('/api/v1/inventory/movements', {
+    headers, data: { ...transfer, item_id: item.id, quantity: '0.5' }
+  });
+  expect(wrongQuantity.status()).toBe(422);
+  const missingLocation = await page.request.post('/api/v1/inventory/movements', {
+    headers, data: { ...transfer, item_id: item.id, to_location_id: randomUUID() }
+  });
+  expect(missingLocation.status()).toBe(404);
+
+  await page.goto('/materials');
+  await page.getByRole('textbox', { name: 'Search inventory' }).fill(mark);
+  const form = page.getByRole('form', { name: 'Record stock movement' });
+  const type = form.getByRole('combobox', { name: 'Movement type' });
+  const selected = form.getByRole('combobox', { name: 'Movement item' });
+  const from = form.getByRole('combobox', { name: 'From', exact: true });
+  const to = form.getByRole('combobox', { name: 'To', exact: true });
+  const quantity = form.getByPlaceholder('Quantity');
+  const record = form.getByRole('button', { name: 'Record movement', exact: true });
+  const submit = async (status: number) => {
+    const result = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/inventory/movements') && response.request().method() === 'POST'
+    );
+    await record.click();
+    const response = await result;
+    expect(response.status()).toBe(status);
+    return response.json();
+  };
+  await expect(selected.getByRole('option', { name: item.name, exact: true })).toHaveCount(1);
+  await selected.selectOption(item.id);
+  await form.getByRole('combobox', { name: 'Movement asset tag' }).selectOption(asset.id);
+  await from.selectOption(source.id);
+  await to.selectOption(destination.id);
+  await quantity.fill('1');
+  await create('/movements', {
+    item_id: item.id, movement_type: 'reserve', quantity: '1', from_location_id: source.id
+  });
+  expect((await submit(409)).error_code).toBe('INSUFFICIENT_STOCK');
+  await expect(form.getByRole('alert')).toContainText('Insufficient stock');
+
+  const spare = await create('/assets', {
+    item_id: item.id, asset_tag: `SPARE-${mark}`, current_location_id: source.id
+  });
+  const moved = await submit(201);
+  expect(moved).toMatchObject({ asset_id: asset.id, to_location_id: destination.id });
+  const stale = await page.request.post('/api/v1/inventory/movements', {
+    headers, data: { ...transfer, item_id: item.id }
+  });
+  expect(stale.status()).toBe(409);
+  expect((await stale.json()).error_code).toBe('ASSET_NOT_AVAILABLE');
+  await page.reload();
+  const tool = (assetTag: string) => page.locator('span').getByText(assetTag, { exact: true }).locator('..');
+  await expect(tool(tag)).toContainText(destination.name);
+  await expect(tool(spare.asset_tag)).toContainText(source.name);
+
+  const consumable = await create('/items', {
+    name: `Cable ${mark}`, item_code: `CABLE-${mark}`, item_type: 'consumable',
+    category: 'Electrical', unit: 'Nos', supplier_id: supplierId
+  });
+  await page.reload();
+  await page.getByRole('textbox', { name: 'Search inventory' }).fill(consumable.name);
+  await expect(selected.getByRole('option', { name: consumable.name, exact: true })).toHaveCount(1);
+  for (const [movement, amount] of [['return', '2.125'], ['adjustment', '-0.125']]) {
+    await type.selectOption(movement);
+    await selected.selectOption(consumable.id);
+    await to.selectOption(destination.id);
+    await quantity.fill(amount);
+    await submit(201);
+    await expect(quantity).toHaveValue('');
+  }
+  const stock = async (id: string) => {
+    const response = await page.request.get(`/api/v1/inventory/items/${id}/stock`, { headers });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  expect(await stock(item.id)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ location_id: source.id, on_hand_qty: '1.000', reserved_qty: '1.000', available_qty: '0.000' }),
+    expect.objectContaining({ location_id: destination.id, on_hand_qty: '1.000', reserved_qty: '0.000', available_qty: '1.000' })
+  ]));
+  expect(await stock(other.id)).toEqual([
+    expect.objectContaining({ location_id: source.id, on_hand_qty: '1.000' })
+  ]);
+  expect(await stock(consumable.id)).toEqual([
+    expect.objectContaining({ location_id: destination.id, on_hand_qty: '2.000' })
+  ]);
+  const history = await page.request.get('/api/v1/inventory/movements', {
+    headers, params: { item_id: item.id }
+  });
+  expect(history.ok()).toBe(true);
+  expect((await history.json()).filter((row: { movement_type: string }) => row.movement_type === 'transfer'))
+    .toEqual([expect.objectContaining({ id: moved.id })]);
+});
+
 test('analytics preserves labelled results and filters through a failed refresh', async ({
   page
 }) => {

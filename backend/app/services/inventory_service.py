@@ -769,7 +769,27 @@ class InventoryService:
         elif payload.movement_type == "transfer":
             if not payload.from_location_id or not payload.to_location_id:
                 raise AppException("Transfer requires source and destination.", status_code=422)
-
+            if payload.from_location_id == payload.to_location_id:
+                raise AppException(
+                    "Choose different source and destination locations.",
+                    status_code=422,
+                    error_code="TRANSFER_SAME_LOCATION",
+                )
+            active_locations = set(
+                await self.session.scalars(
+                    select(StorageLocation.id)
+                    .where(
+                        StorageLocation.id.in_([payload.from_location_id, payload.to_location_id]),
+                        StorageLocation.deleted_at.is_(None),
+                        StorageLocation.is_active.is_(True),
+                    )
+                    .order_by(StorageLocation.id)
+                    .with_for_update(read=True)
+                )
+            )
+            if len(active_locations) != 2:
+                raise NotFoundException("Eligible transfer location")
+            asset = await self._lock_transfer_asset(payload) if payload.asset_id else None
             first_loc = sorted([str(payload.from_location_id), str(payload.to_location_id)])[0]
 
             if first_loc == str(payload.from_location_id):
@@ -788,7 +808,8 @@ class InventoryService:
                 await self._decrease_available(
                     payload.item_id, payload.from_location_id, payload.quantity
                 )
-            await self._move_asset(payload)
+            if asset:
+                asset.current_location_id = payload.to_location_id
         elif payload.movement_type == "return":
             if not payload.to_location_id:
                 raise AppException("Return requires destination.", status_code=422)
@@ -824,17 +845,33 @@ class InventoryService:
         await self.session.flush()
         return movement
 
-    async def _move_asset(self, payload: MovementCreateRequest) -> None:
-        if not payload.asset_id or not payload.to_location_id:
-            return
+    async def _lock_transfer_asset(self, payload: MovementCreateRequest) -> InventoryAsset:
         asset = await self.session.scalar(
-            select(InventoryAsset).where(
+            select(InventoryAsset)
+            .where(
                 InventoryAsset.id == payload.asset_id,
                 InventoryAsset.deleted_at.is_(None),
             )
+            .with_for_update()
         )
-        if asset:
-            asset.current_location_id = payload.to_location_id
+        if asset is None:
+            raise NotFoundException("Inventory asset")
+        if asset.item_id != payload.item_id or payload.quantity != Decimal(1):
+            raise AppException(
+                "A tagged transfer must move one unit of the item assigned to the asset tag.",
+                status_code=422,
+                error_code="INVALID_ASSET_TRANSFER",
+            )
+        if asset.current_location_id != payload.from_location_id or asset.status not in {
+            "active",
+            "available",
+        }:
+            raise AppException(
+                "The asset is no longer available at the selected source.",
+                status_code=409,
+                error_code="ASSET_NOT_AVAILABLE",
+            )
+        return asset
 
     async def _decrease_available(
         self, item_id: UUID, location_id: UUID, quantity: Decimal
