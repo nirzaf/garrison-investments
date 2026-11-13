@@ -78,6 +78,8 @@ Services emit structured JSON to container stdout. [Alloy](../observability/allo
 
 Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostname. Staging Grafana uses its [staging subpath](../STAGING_DEPLOYMENT.md#target-and-isolation). Grafana disables anonymous access and public sign-up. Loki and Alloy use internal ports.
 
+Set `DOCKER_SOCKET_GID` in the deployment environment to the numeric group returned by `stat -Lc '%g' /var/run/docker.sock` on the Docker host. Recreate Alloy when this value changes so its supplementary group matches the socket. Alloy's container health check verifies socket access. To verify ingestion after recreation, use the existing private Loki connection and query a recent request ID from a permitted API read. Confirm that it appears under the expected environment and service labels.
+
 Use **Garrison Production Logs** for error counts, HTTP status distribution, and log search. Use **Garrison Incident Explorer** for latency and request or task correlation. The dashboard definitions live in [observability/grafana/dashboards](../observability/grafana/dashboards/).
 
 The dashboard IDs are `garrison-production-logs` and `garrison-incident-explorer`. Record the dashboard ID and the relevant time range when escalating an incident.

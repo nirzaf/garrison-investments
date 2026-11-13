@@ -50,6 +50,17 @@ def test_grafana_security_database_and_public_urls_are_provisioned() -> None:
     assert staging["GF_SERVER_SERVE_FROM_SUB_PATH"] == "true"
 
 
+def test_alloy_checks_socket_access_as_the_collector_user() -> None:
+    alloy = _compose("docker-compose.prod.yml")["services"]["alloy"]
+    assert alloy["user"] == "473:473"
+    assert alloy["group_add"] == ["${DOCKER_SOCKET_GID:-999}"]
+    assert "/var/run/docker.sock:/var/run/docker.sock:ro" in alloy["volumes"]
+    assert alloy["healthcheck"]["test"] == [
+        "CMD-SHELL",
+        "test -S /var/run/docker.sock && test -w /var/run/docker.sock",
+    ]
+
+
 def test_grafana_contact_point_transports_preserve_the_operations_route() -> None:
     grafana = ROOT / "observability/grafana"
     alerting = grafana / "provisioning/alerting"
