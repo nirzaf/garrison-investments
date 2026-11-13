@@ -138,19 +138,69 @@ test('project teams and task dates persist through reload at narrow and desktop 
   await expect(boq.getByRole('row').filter({ hasText: 'Work item 5' })).toContainText('Finishes');
   await expect(boq.getByRole('row').filter({ hasText: 'Work item 5' })).toContainText('5.08');
 
-  await detail.getByRole('button', { name: 'Edit project', exact: true }).click();
-  await detail.getByLabel('Location', { exact: true }).fill('Site office');
-  const concurrentEdit = await request.patch(`/api/v1/projects/${project.id}`, {
-    headers,
-    data: { expected_revision: project.revision, description: 'Updated by another editor.' }
-  });
-  expect(concurrentEdit.status()).toBe(200);
-  await detail.getByRole('button', { name: 'Save project', exact: true }).click();
-  await expect(detail.getByRole('alert')).toContainText('This record changed.');
-  await expect(detail.getByLabel('Location', { exact: true })).toHaveValue('Site office');
-  await detail.getByRole('button', { name: 'Compare saved details' }).click();
-  await expect(detail.getByText('Updated by another editor.', { exact: true })).toBeVisible();
-  await detail.getByRole('button', { name: 'Discard edits', exact: true }).click();
+  const projectUrl = `/api/v1/projects/${project.id}`;
+  const secondEditor = await browser.newPage({ baseURL });
+  try {
+    await signIn(secondEditor, seedAdministrator());
+    await secondEditor.goto('/projects');
+    await secondEditor.getByRole('button', { name, exact: true }).click();
+    const editors = [page, secondEditor].map((editorPage, index) => ({
+      page: editorPage,
+      detail: editorPage.getByRole('region', { name: 'Project details', exact: true }),
+      location: `Site office ${index + 1}`
+    }));
+    let releaseSaves!: () => void;
+    const bothSavesReady = new Promise<void>((resolve) => {
+      releaseSaves = resolve;
+    });
+    const revisions: number[] = [];
+    for (const editor of editors) {
+      await editor.detail.getByRole('button', { name: 'Edit project', exact: true }).click();
+      await editor.detail.getByLabel('Location', { exact: true }).fill(editor.location);
+      await editor.page.route(`**${projectUrl}`, async (route) => {
+        if (route.request().method() !== 'PATCH') return route.continue();
+        revisions.push(route.request().postDataJSON().expected_revision);
+        if (revisions.length === editors.length) releaseSaves();
+        await bothSavesReady;
+        await route.continue();
+      });
+    }
+    const saves = await Promise.all(
+      editors.map(async (editor) => {
+        const [response] = await Promise.all([
+          editor.page.waitForResponse(
+            (reply) =>
+              reply.request().method() === 'PATCH' && new URL(reply.url()).pathname === projectUrl
+          ),
+          editor.detail.getByRole('button', { name: 'Save project', exact: true }).click()
+        ]);
+        await editor.page.unroute(`**${projectUrl}`);
+        return { ...editor, response };
+      })
+    );
+    expect(revisions).toEqual([project.revision, project.revision]);
+    expect(saves.map(({ response }) => response.status()).sort()).toEqual([200, 409]);
+    const winner = saves.find(({ response }) => response.status() === 200)!;
+    const loser = saves.find(({ response }) => response.status() === 409)!;
+    expect(await loser.response.json()).toMatchObject({ error_code: 'PROJECT_REVISION_CONFLICT' });
+    await expect(loser.detail.getByRole('alert')).toContainText('This record changed.');
+    await expect(loser.detail.getByLabel('Location', { exact: true })).toHaveValue(loser.location);
+    await loser.detail.getByRole('button', { name: 'Compare saved details' }).click();
+    await expect(loser.detail.getByText(winner.location, { exact: true })).toBeVisible();
+    await expect(
+      loser.detail.getByRole('button', { name: 'Save project', exact: true })
+    ).toBeDisabled();
+    const saved = await request.get(projectUrl, { headers });
+    expect(saved.ok()).toBe(true);
+    expect(await saved.json()).toMatchObject({
+      location: winner.location,
+      revision: project.revision + 1
+    });
+  } finally {
+    await secondEditor.close();
+  }
+  await page.reload();
+  await page.getByRole('button', { name, exact: true }).click();
   await detail.getByRole('button', { name: 'Edit project', exact: true }).click();
   await detail.getByLabel('Location', { exact: true }).fill('Site office');
   await detail.getByRole('button', { name: 'Save project', exact: true }).click();
@@ -239,6 +289,36 @@ test('project teams and task dates persist through reload at narrow and desktop 
     planned_end_date: '2027-02-13',
     actual_end_date: '2027-02-15',
     revision: 2
+  });
+  await detail.getByRole('button', { name: 'Overview', exact: true }).click();
+  await detail.getByRole('button', { name: 'Edit project', exact: true }).click();
+  await detail.getByLabel('Location', { exact: true }).fill('');
+  await detail.getByLabel('Status', { exact: true }).selectOption('completed');
+  const completed = page.waitForResponse(
+    (reply) => reply.request().method() === 'PATCH' && new URL(reply.url()).pathname === projectUrl
+  );
+  await detail.getByRole('button', { name: 'Save project', exact: true }).click();
+  const completion = await completed;
+  expect(completion.status()).toBe(200);
+  const closed = await completion.json();
+  expect(closed).toMatchObject({ location: null, status: 'completed' });
+  await page.reload();
+  await page.getByRole('button', { name, exact: true }).click();
+  await expect(detail.getByText('Completed and cancelled projects are read-only.')).toBeVisible();
+  await expect(detail.getByRole('button', { name: 'Edit project', exact: true })).toHaveCount(0);
+  const denied = await request.patch(projectUrl, {
+    headers,
+    data: { expected_revision: closed.revision, location: 'Unauthorized change to closed project' }
+  });
+  expect(denied.status()).toBe(409);
+  expect(await denied.json()).toMatchObject({ error_code: 'PROJECT_READ_ONLY' });
+  const reloaded = await request.get(projectUrl, { headers });
+  expect(reloaded.ok()).toBe(true);
+  expect(await reloaded.json()).toMatchObject({
+    location: null,
+    status: 'completed',
+    is_read_only: true,
+    revision: closed.revision
   });
   expect(errors).toEqual([]);
 });
