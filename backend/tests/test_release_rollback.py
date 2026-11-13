@@ -11,6 +11,81 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "hostinger-release.sh"
 
 
+@pytest.mark.parametrize("job_attempt", [2, 3])
+def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
+    tmp_path: Path, job_attempt: int
+) -> None:
+    source = SCRIPT.read_text()
+    start = source.index("\nverify_ci() {\n")
+    end = source.index('\ngithub "actions/runs/$deploy_run_id', start)
+    receipt_start = source.index("\nprintf 'Status: Deployed")
+    receipt_end = source.index("\nln -sfn", receipt_start)
+    sha = "a" * 40
+    repository = "nirzaf/garrison-investments"
+    run = json.dumps({
+        "id": 123, "path": ".github/workflows/ci.yml", "event": "push",
+        "status": "completed", "conclusion": "success", "head_branch": "main",
+        "head_repository": {"full_name": repository}, "head_sha": sha, "run_attempt": 2,
+    })
+    names = (
+        "Backend lint and types", "Frontend lint, types, tests and build",
+        "Compose files are valid",
+        "Backend tests (1/2)", "Backend tests (2/2)",
+        "Browser regressions (1/2)", "Browser regressions (2/2)",
+    )
+    jobs = json.dumps({
+        "total_count": len(names),
+        "jobs": [
+            {"name": name, "run_id": 123, "head_sha": sha, "run_attempt": job_attempt,
+             "status": "completed", "conclusion": "success"}
+            for name in names
+        ],
+    })
+    result = subprocess.run(
+        ["bash", "-c", f"""
+set -euo pipefail
+run_id=123
+sha={sha}
+repository={repository}
+candidate={shlex.quote(str(tmp_path))}
+deploy_run_id=456
+deploy_attempt=1
+asset=/assets/index.js
+expected_asset=asset-digest
+expected_worker=worker-digest
+backend_id=backend-image
+frontend_id=frontend-image
+current=schema-head
+github() {{
+  case "$1" in
+    actions/runs/123) printf '%s\n' {shlex.quote(run)} ;;
+    'actions/runs/123/attempts/2/jobs?per_page=100') printf '%s\n' {shlex.quote(jobs)} ;;
+    *) return 2 ;;
+  esac
+}}
+{source[start:end]}
+{source[receipt_start:receipt_end]}
+"""],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    receipt = tmp_path / "DEPLOYED"
+    if job_attempt == 2:
+        assert result.returncode == 0, result.stderr
+        assert receipt.read_text().splitlines()[1:6] == [
+            f"Commit: {sha}",
+            "CI run: 123",
+            "CI attempt: 2",
+            "Deploy run: 456",
+            "Deploy attempt: 1",
+        ]
+    else:
+        assert result.returncode != 0
+        assert not receipt.exists()
+        assert "missing a passed required job" in result.stderr
+
+
 @pytest.mark.parametrize(
     ("path", "operation", "expected_runtime_changed"),
     [
@@ -175,6 +250,7 @@ previous_generation={shlex.quote(previous_generation)}
 current=current-head
 sha=synthetic-commit
 run_id=123
+ci_attempt=2
 image_heads() {{ printf '%s\n' {shlex.quote(old_heads)}; }}
 docker() {{ {"true" if frontend_available else "false"}; }}
 apply_runtime() {{ printf 'runtime %s\n' "${{1##*/}}"; }}
@@ -197,6 +273,7 @@ exit 23
     if expected_actions[0].startswith("stop "):
         assert "recover forward" in result.stderr
         assert "Exit: 23" in receipt.read_text()
+        assert "CI attempt: 2" in receipt.read_text()
     else:
         assert "Restoring the previous compatible application release" in result.stderr
         assert not receipt.exists()

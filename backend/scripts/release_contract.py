@@ -2524,12 +2524,15 @@ class Validation:
             )
         elif kind == "deployment":
             deployed = fields(
-                result, "run_id run_url run_attempt ci_run_id deployed_at readback",
+                result,
+                "run_id run_url run_attempt ci_run_id ci_run_attempt deployed_at readback",
                 label="deployment result",
             )
             run_id = count(deployed["run_id"], "deployment run ID", minimum=1)
             require(deployed["run_url"] == run_url(run_id), "Invalid deployment run URL.")
             attempt = count(deployed["run_attempt"], "deployment run attempt", minimum=1)
+            count(deployed["ci_run_id"], "deployment CI run ID", minimum=1)
+            count(deployed["ci_run_attempt"], "deployment CI attempt", minimum=1)
             run = checked_run(run_id, self.sha, self.token, ci=False, attempt=attempt)
             self.activation_operator = workflow_operator(run)
             require(
@@ -2604,6 +2607,11 @@ class Validation:
             require(
                 deployment["ci_run_id"] == ci["run_id"],
                 "Deployment did not use the accepted CI run.",
+                3,
+            )
+            require(
+                deployment["ci_run_attempt"] == ci["run_attempt"],
+                "Deployment did not use the accepted CI attempt.",
                 3,
             )
             if self.deployed_at is None or self.observed_window is None:

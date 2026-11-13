@@ -916,7 +916,9 @@ def reconciliation_inventory(
     return ref
 
 
-def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
+def manifest(
+    bundle: Bundle, phase: str = "predeploy", *, deployment_ci_attempt: int = 1
+) -> dict[str, Any]:
     decisions = decision_values(bundle)
     decision_refs = {}
     for key, value in decisions.items():
@@ -1058,6 +1060,7 @@ def manifest(bundle: Bundle, phase: str = "predeploy") -> dict[str, Any]:
                 "run_url": contract.run_url(22),
                 "run_attempt": 1,
                 "ci_run_id": 11,
+                "ci_run_attempt": deployment_ci_attempt,
                 "deployed_at": DEPLOYED.isoformat(),
                 "readback": readback,
             },
@@ -1115,6 +1118,19 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
     assert verdict["status"] == "validated_test_evidence"
     assert verdict["accepted_scope_complete"] is False
     assert verdict["ready_for_authorized_deployment"] is False
+
+
+def test_final_requires_the_ci_attempt_used_by_deployment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    bundle.write("release_manifest.json", manifest(bundle, "final", deployment_ci_attempt=2))
+
+    with pytest.raises(
+        contract.ContractError, match="Deployment did not use the accepted CI attempt"
+    ):
+        bundle.validator("final").run(bundle.root / "release_manifest.json")
 
 
 @pytest.mark.parametrize(

@@ -29,7 +29,7 @@ Each disposition includes its ID, status, reason, evidence reference and indepen
 
 Observe the approved full backup and monitoring cycle after deployment. Attach the scheduler's `last-attempt.json` and signed publication record under `scheduled_backup.attempt_ref` and `scheduled_backup.publication_ref`. Attach the matching monitor output as `scheduled_monitoring`. Its approved backup freshness check must report the observed publication's manifest digest and snapshot. The observation approval still binds the duration and release subject before execution.
 
-Use the `Deploy run` and `Deploy attempt` values recorded in the host's `DEPLOYED` receipt for the final deployment result. The validator looks up that exact GitHub attempt to check its activation time and operator before accepting the final sign-offs.
+Use `Deploy run`, `Deploy attempt`, `CI run` and `CI attempt` from the host's `DEPLOYED` receipt in the final deployment result. Set `results.ci_run_attempt` to the recorded CI attempt. The validator checks the exact deployment attempt and requires the CI result to identify the same run and attempt. For older host receipts, obtain independently verified evidence of the CI attempt used at activation before filling this field.
 
 For production `scheduled_expiry`, add a separately verified `purge` approval under `approvals.operations`. Its subject binds `source_sha`, `environment`, `configuration_sha256` and `policy_sha256`. Record the named release authorizer, authorization reference and validity window covering activation. Build the support matrix from the required platforms and role groups in `control_registry.json`, with one of the allowed roles from each group on every applicable platform.
 

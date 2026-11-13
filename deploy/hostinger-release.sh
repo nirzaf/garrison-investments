@@ -111,10 +111,11 @@ if (
     )
 ):
     sys.exit("The successful CI attempt is missing a passed required job.")
-' "$run_id" "$sha" "$attempt"
+' "$run_id" "$sha" "$attempt" || return
+  printf '%s\n' "$attempt"
 }
 
-verify_ci
+ci_attempt=$(verify_ci)
 github "actions/runs/$deploy_run_id/attempts/$deploy_attempt" | python3 -c '
 import json, sys
 
@@ -365,8 +366,9 @@ rollback() {
       fi
     else
       printf 'Activation failed without a compatible rollback. Keep the maintenance write block in place and recover forward.\n' >&2
-      printf 'Commit: %s\nCI run: %s\nUTC: %s\nExit: %s\n' \
-        "$sha" "$run_id" "$(date -u +%FT%TZ)" "$result" > "$candidate/ACTIVATION_FAILED"
+      printf 'Commit: %s\nCI run: %s\nCI attempt: %s\nUTC: %s\nExit: %s\n' \
+        "$sha" "$run_id" "$ci_attempt" "$(date -u +%FT%TZ)" "$result" \
+        > "$candidate/ACTIVATION_FAILED"
       compose "$candidate" stop nginx celery_beat celery_worker backend ||
         printf 'Automatic containment failed. Stop portal ingress and writers from the host.\n' >&2
     fi
@@ -409,8 +411,8 @@ check_readiness < "$candidate/READINESS.json"
 report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
 
-printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
-  "$sha" "$run_id" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
+printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+  "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
 ln -sfn "$candidate" "$state/.current-next"
