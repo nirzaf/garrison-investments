@@ -1265,13 +1265,13 @@
     "semantic_hash": "47d728c2f7c0725b62be2c4a24873782"
   },
   "README.md": {
-    "mtime": 1794551286.6560247,
-    "ast_hash": "5082135e55d294316e26d2fc5254888c",
+    "mtime": 1794602114.5526586,
+    "ast_hash": "c84923037bfd54fe43839553283ef847",
     "semantic_hash": ""
   },
   "STAGING_DEPLOYMENT.md": {
-    "mtime": 1794551384.0398393,
-    "ast_hash": "0ce8e2cb0a1d3a682cf046d5380901a3",
+    "mtime": 1794602114.5523705,
+    "ast_hash": "a368cf57fa9f8fb52fedcfa717482777",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1325,8 +1325,8 @@
     "semantic_hash": "002762f3526fe5299d089c451b8505ab"
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1794555889.6021986,
-    "ast_hash": "727a95a3beecf990eaba32e31a00ce9c",
+    "mtime": 1794602114.553198,
+    "ast_hash": "939f484841431621df248a3008bda969",
     "semantic_hash": ""
   },
   "docs/ROLES_AND_PERMISSIONS.md": {
@@ -1335,18 +1335,18 @@
     "semantic_hash": "764c8b57246e346e929fdeb89ab856f7"
   },
   "docs/README.md": {
-    "mtime": 1794548309.8095548,
-    "ast_hash": "2143456578a5770362a8ab904cf953c7",
+    "mtime": 1794602085.1769207,
+    "ast_hash": "d3591fcb6bfe8541cf7f7326c7f78d3f",
     "semantic_hash": ""
   },
   "docs/LOGGING_AND_REMOTE_CLI.md": {
-    "mtime": 1794567159.5523286,
-    "ast_hash": "8498ec2c1318c06a9d27d45f7cee7827",
+    "mtime": 1794602114.5536172,
+    "ast_hash": "fd9405cfe8c22436e89e474db68cb766",
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794574304.915538,
-    "ast_hash": "f696c2cfd250d2c2f85284edb4e07a58",
+    "mtime": 1794602114.5528507,
+    "ast_hash": "c534e9e588b700cb95542a82f57aba98",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -2030,8 +2030,8 @@
     "semantic_hash": "445a8d7b5d4f281d15223f58382c5da6"
   },
   "backend/tests/test_release_contract.py": {
-    "mtime": 1794601809.9768562,
-    "ast_hash": "46befb898387b9f2319a52da70d85b4a",
+    "mtime": 1794601963.483178,
+    "ast_hash": "f6c835978d075768bc44d30a1b7e4a45",
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {
@@ -2300,8 +2300,8 @@
     "semantic_hash": "9f224e0147c603f8c422a0ddcaaba5ac"
   },
   "docs/templates/release-closure/README.md": {
-    "mtime": 1794601809.9784217,
-    "ast_hash": "57710a95a2486aaf6d945f82a975be2c",
+    "mtime": 1794602085.1775138,
+    "ast_hash": "dfbe8d6e86e41ea82f63cb0700c437b4",
     "semantic_hash": ""
   },
   "frontend/e2e/import-workflow.e2e.ts": {

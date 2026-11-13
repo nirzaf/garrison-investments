@@ -40,9 +40,9 @@
     "semantic_hash": "6474212aa93c775acebc8f00962649e2"
   },
   "frontend/vite.config.ts": {
-    "mtime": 1794408269.433113,
-    "ast_hash": "0b240b0c72484270f9a88fcac179caf0",
-    "semantic_hash": "0b240b0c72484270f9a88fcac179caf0"
+    "mtime": 1794602634.6812592,
+    "ast_hash": "18657eb162b7bc9944bfb413a79867f6",
+    "semantic_hash": ""
   },
   "frontend/public/manifest.json": {
     "mtime": 1794403366.857547,
@@ -1665,8 +1665,8 @@
     "semantic_hash": "b4d3b5f493da348112c793ad65cb9d86"
   },
   "backend/tests/test_observability_config.py": {
-    "mtime": 1794552247.6829746,
-    "ast_hash": "857d35eb03948050d3fe5ea35b094036",
+    "mtime": 1794602634.6818023,
+    "ast_hash": "a07064478001a7d129e161e8df4b6fe6",
     "semantic_hash": ""
   },
   "backend/tests/test_password_hashing.py": {

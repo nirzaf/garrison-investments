@@ -23722,7 +23722,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_exception_reporting",
-      "community": 208,
+      "community": 39,
       "norm_label": "test_exception_reporting.py"
     },
     {
@@ -23732,7 +23732,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_fakeexceptionsettings",
-      "community": 208,
+      "community": 39,
       "norm_label": "fakeexceptionsettings"
     },
     {
@@ -23742,7 +23742,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_unhandled_exception_sends_configured_email_with_debug_context",
-      "community": 208,
+      "community": 39,
       "norm_label": "test_unhandled_exception_sends_configured_email_with_debug_context()"
     },
     {
@@ -23752,7 +23752,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_unhandled_exception_email_respects_disabled_config",
-      "community": 208,
+      "community": 39,
       "norm_label": "test_unhandled_exception_email_respects_disabled_config()"
     },
     {
@@ -23762,7 +23762,7 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_celery_task_failure_sends_configured_email",
-      "community": 208,
+      "community": 39,
       "norm_label": "test_celery_task_failure_sends_configured_email()"
     },
     {
@@ -25996,14 +25996,14 @@
       "norm_label": "test_grafana_database_initializer_is_idempotent_and_fails_fast()"
     },
     {
-      "label": "test_staging_domain_is_allowed_and_documented()",
+      "label": "test_retired_staging_target_is_not_allowed_or_documented_as_active()",
       "file_type": "code",
       "source_file": "backend/tests/test_observability_config.py",
       "source_location": "L211",
       "_origin": "ast",
-      "id": "tests_test_observability_config_test_staging_domain_is_allowed_and_documented",
+      "id": "tests_test_observability_config_test_retired_staging_target_is_not_allowed_or_documented_as_active",
       "community": 87,
-      "norm_label": "test_staging_domain_is_allowed_and_documented()"
+      "norm_label": "test_retired_staging_target_is_not_allowed_or_documented_as_active()"
     },
     {
       "label": "test_openapi_contract.py",
@@ -38348,7 +38348,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_production_deployments_from_github_actions",
-      "community": 103,
+      "community": 192,
       "norm_label": "production deployments from github actions"
     },
     {
@@ -38358,7 +38358,7 @@
       "source_location": "L39",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_review_pipeline_time_on_every_release",
-      "community": 103,
+      "community": 192,
       "norm_label": "review pipeline time on every release"
     },
     {
@@ -38368,7 +38368,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_host_bootstrap_and_runner_maintenance",
-      "community": 103,
+      "community": 192,
       "norm_label": "host bootstrap and runner maintenance"
     },
     {
@@ -38378,7 +38378,7 @@
       "source_location": "L80",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_production_maintenance",
-      "community": 103,
+      "community": 192,
       "norm_label": "production maintenance"
     },
     {
@@ -38388,7 +38388,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_upgrade_an_existing_postgresql_16_database",
-      "community": 103,
+      "community": 192,
       "norm_label": "upgrade an existing postgresql 16 database"
     },
     {
@@ -38398,7 +38398,7 @@
       "source_location": "L100",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_post_deploy_verification",
-      "community": 103,
+      "community": 192,
       "norm_label": "post-deploy verification"
     },
     {
@@ -38408,7 +38408,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_local_production_compose_rehearsal",
-      "community": 103,
+      "community": 192,
       "norm_label": "local production compose rehearsal"
     },
     {
@@ -176834,11 +176834,11 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "backend/tests/test_observability_config.py",
-      "source_location": "L193",
+      "source_location": "L211",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "tests_test_observability_config",
-      "target": "tests_test_observability_config_test_staging_domain_is_allowed_and_documented"
+      "target": "tests_test_observability_config_test_retired_staging_target_is_not_allowed_or_documented_as_active",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -203200,9 +203200,9 @@
       "source_file": "STAGING_DEPLOYMENT.md",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "staging_deployment",
-      "target": "staging_deployment_staging_deployment_retired",
-      "confidence_score": 1.0
+      "target": "staging_deployment_staging_deployment_retired"
     },
     {
       "relation": "contains",
@@ -207945,5 +207945,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "5e5d68dc35332b2f8407a7784d0ef7652fe070c0"
+  "built_at_commit": "9abb70812582dce29269b9fea4afd26cb64f3cff"
 }

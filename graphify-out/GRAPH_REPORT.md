@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-13)
 
 ## Corpus Check
-- 434 files · ~370,394 words
+- 434 files · ~370,395 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4118 nodes · 15975 edges · 222 communities (205 shown, 17 thin omitted)
+- 4118 nodes · 15975 edges · 221 communities (204 shown, 17 thin omitted)
 - Extraction: 59% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS · INFERRED: 6570 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5e5d68dc`
+- Built from commit: `9abb7081`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -178,7 +178,6 @@
 - [[_COMMUNITY_Community 203|Community 203]]
 - [[_COMMUNITY_Community 204|Community 204]]
 - [[_COMMUNITY_Community 207|Community 207]]
-- [[_COMMUNITY_Community 208|Community 208]]
 - [[_COMMUNITY_Community 209|Community 209]]
 - [[_COMMUNITY_Community 210|Community 210]]
 - [[_COMMUNITY_Community 211|Community 211]]
@@ -244,7 +243,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (222 total, 17 thin omitted)
+## Communities (221 total, 17 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.12
@@ -403,8 +402,8 @@ Cohesion: 0.14
 Nodes (14): MANUALS, Tab, accountsManual, adminManual, civilEngineerManual, civilSupervisorManual, COMMON_SECTIONS, Manual (+6 more)
 
 ### Community 39 - "Supervisor Updates"
-Cohesion: 0.09
-Nodes (19): components, $defs, operations, paths, webhooks, Backend architecture, Cross-cutting entry points, Trace an API request (+11 more)
+Cohesion: 0.08
+Nodes (23): components, $defs, operations, paths, webhooks, Backend architecture, Cross-cutting entry points, Trace an API request (+15 more)
 
 ### Community 40 - "test_finance.py cluster"
 Cohesion: 0.18
@@ -655,8 +654,8 @@ Cohesion: 0.29
 Nodes (12): Skip the calling test when PostgreSQL is unreachable., require_database(), _count_reports(), _png_bytes(), Idempotency-key regression tests for the offline sync replay path (C1).  The off, test_concurrent_same_key_creates_one_report(), test_distinct_keys_create_distinct_reports(), test_key_is_scoped_to_the_user() (+4 more)
 
 ### Community 103 - "celery_app.py cluster"
-Cohesion: 0.05
-Nodes (47): graphify, Repository documentation, 5. Launch Evidence Capture & Sign-Off, .kilo/agents/architect.md, .kilo/agents/test-engineer.md, Deployment and verification, Garrisons Portal architecture, 5. Formal Acceptance Evidence (+39 more)
+Cohesion: 0.06
+Nodes (40): graphify, Repository documentation, 5. Launch Evidence Capture & Sign-Off, .kilo/agents/architect.md, .kilo/agents/test-engineer.md, Deployment and verification, Garrisons Portal architecture, 5. Formal Acceptance Evidence (+32 more)
 
 ### Community 104 - "package.json cluster"
 Cohesion: 0.29
@@ -799,8 +798,8 @@ Cohesion: 0.40
 Nodes (4): Deferred Governance Records, Post-Release Governance and Formal Acceptance Backlog, Preserved Defaults and Exclusions, Related Documents
 
 ### Community 192 - "Community 192"
-Cohesion: 0.29
-Nodes (6): Config, Item, Parser, pytest_addoption(), pytest_collection_modifyitems(), Keep CI shards isolated without changing ordinary local pytest runs.
+Cohesion: 0.14
+Nodes (13): Config, Host bootstrap and runner maintenance, Local production Compose rehearsal, Post-Deploy Verification, Production deployments from GitHub Actions, Production maintenance, Review pipeline time on every release, Upgrade an existing PostgreSQL 16 database (+5 more)
 
 ### Community 193 - "Community 193"
 Cohesion: 0.12
@@ -845,10 +844,6 @@ Nodes (3): main(), List unresolved historical supervisor verification bindings f
 ### Community 207 - "Community 207"
 Cohesion: 0.09
 Nodes (20): Columns, daily_reports, Foreign keys, Indexes, Keys and constraints, Columns, Foreign keys, Indexes (+12 more)
-
-### Community 208 - "Community 208"
-Cohesion: 0.60
-Nodes (4): FakeExceptionSettings, test_celery_task_failure_sends_configured_email(), test_unhandled_exception_email_respects_disabled_config(), test_unhandled_exception_sends_configured_email_with_debug_context()
 
 ### Community 209 - "Community 209"
 Cohesion: 0.40

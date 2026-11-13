@@ -208,9 +208,10 @@ def test_grafana_database_initializer_is_idempotent_and_fails_fast() -> None:
     assert "ALTER ROLE grafana" in initializer
 
 
-def test_staging_domain_is_allowed_and_documented() -> None:
+def test_retired_staging_target_is_not_allowed_or_documented_as_active() -> None:
     vite_config = (ROOT / "frontend/vite.config.ts").read_text()
-    staging_guide = (ROOT / "STAGING_DEPLOYMENT.md").read_text()
-    assert vite_config.count("'erp.garrisons.lk'") == 2
-    assert "https://erp.garrisons.lk" in staging_guide
-    assert "https://erp.garrisons.lk/grafana/" in staging_guide
+    retirement_notice = (ROOT / "STAGING_DEPLOYMENT.md").read_text()
+    assert "erp.garrisons.lk" not in vite_config
+    assert "garrisonstg.seasonenterprise.com" not in vite_config
+    assert "not an active deployment or release-acceptance target" in retirement_notice
+    assert "https://erp.garrisons.lk" not in retirement_notice

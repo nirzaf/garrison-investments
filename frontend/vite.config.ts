@@ -6,20 +6,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0',
-    port: 3000,
-    allowedHosts: [
-      'erp.garrisons.lk',
-      'garrisonstg.seasonenterprise.com',
-      'www.garrisonstg.seasonenterprise.com'
-    ]
+    port: 3000
   },
   preview: {
     host: '0.0.0.0',
-    port: 3000,
-    allowedHosts: [
-      'erp.garrisons.lk',
-      'garrisonstg.seasonenterprise.com',
-      'www.garrisonstg.seasonenterprise.com'
-    ]
+    port: 3000
   }
 });
