@@ -186,6 +186,8 @@ The scheduler signs and publishes `last-scheduled-attempt.json` to the approved 
 
 When rotating the authentication key or changing the policy revision, use a new approved destination prefix. Keep the previous prefix and escrow the exact policy bytes, key ID, authentication key and decryption material until the retained sets expire. Verify a complete set under the new policy before changing the monitor. Preview expired sets with the separate retention command; apply only the reviewed plan using authorized retention credentials.
 
+Retention removes the completion marker first and checks that each deleted object is absent from the current S3 view. If the receipt names an `incomplete_set_id`, retain the plan and receipt and have the authorized operator reconcile that prefix before further cleanup. A set without its marker will be absent from later retention previews. The identity reservation remains so the set ID cannot be reassigned. On a versioned destination, historical object versions remain subject to the approved storage lifecycle policy.
+
 ```bash
 python -m scripts.backup_set restore /private/independent-storage/backup-set
 ```

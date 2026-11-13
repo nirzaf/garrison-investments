@@ -179,6 +179,15 @@ class RecoveryStore:
     def remove(self, key: str) -> None:
         self.client.remove_object(self.destination.bucket, key)
 
+    def exists(self, key: str) -> bool:
+        try:
+            self.client.stat_object(self.destination.bucket, key)
+        except S3Error as error:
+            if error.code in MISSING:
+                return False
+            raise
+        return True
+
 
 def complete_receipt(
     store: RecoveryStore,

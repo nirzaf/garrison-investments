@@ -901,17 +901,27 @@ def retention_apply(
         prepared.append((candidate, [item.file for item in encrypted_artifacts(manifest)]))
 
     removed: list[str] = []
-    write_receipt(
-        output,
-        json.dumps(
-            {
-                "operation": "backup_set_retention",
-                "outcome": "started",
-                "plan_sha256": plan_sha256,
-            },
-            sort_keys=True,
-        ).encode(),
-    )
+    incomplete_set_id: str | None = None
+
+    def save_progress(outcome: str) -> None:
+        write_receipt(
+            output,
+            json.dumps(
+                {
+                    "operation": "backup_set_retention",
+                    "outcome": outcome,
+                    "plan_sha256": plan_sha256,
+                    "completed_at_utc": (
+                        datetime.now(UTC).isoformat() if outcome != "started" else None
+                    ),
+                    "removed_set_ids": removed,
+                    "incomplete_set_id": incomplete_set_id,
+                },
+                sort_keys=True,
+            ).encode(),
+        )
+
+    save_progress("started")
     try:
         for candidate, names in prepared:
             if datetime.now(UTC) >= approval.authorized_until_utc:
@@ -925,26 +935,21 @@ def retention_apply(
                 raise BackupSetError("Retention receipt changed during execution.")
             # Invalidate visibility first, so interruption cannot leave a partial
             # set advertised as a verified recovery point.
+            incomplete_set_id = set_id
+            save_progress("started")
             store.remove(marker)
-            if store.read(marker, CHUNK) is not None:
+            if store.exists(marker):
                 raise BackupSetError("Retention could not remove the complete marker.")
             for name in [*names, MANIFEST, SIGNATURE]:
-                store.remove(store.key(set_id, name))
+                artifact_key = store.key(set_id, name)
+                store.remove(artifact_key)
+                if store.exists(artifact_key):
+                    raise BackupSetError("A backup artifact remains present after deletion.")
             removed.append(set_id)
+            incomplete_set_id = None
+            save_progress("started")
     finally:
-        write_receipt(
-            output,
-            json.dumps(
-                {
-                    "operation": "backup_set_retention",
-                    "outcome": "pass" if len(removed) == len(prepared) else "fail",
-                    "plan_sha256": plan_sha256,
-                    "completed_at_utc": datetime.now(UTC).isoformat(),
-                    "removed_set_ids": removed,
-                },
-                sort_keys=True,
-            ).encode(),
-        )
+        save_progress("pass" if len(removed) == len(prepared) else "fail")
     print(f"Removed {len(removed)} sets from the approved retention plan.")
 
 

@@ -19,6 +19,8 @@ from scripts.backup_set_contract import (
     DestinationIdentity,
     FailureDomains,
     RecoveryPolicy,
+    RetentionAuthorization,
+    RetentionPlan,
     RetentionRules,
     ScheduledAttemptReceipt,
     canonical_bytes,
@@ -166,6 +168,12 @@ class FixtureStore:
 
     def complete_keys(self):
         return (key for key in self.objects if key.endswith("/complete.json"))
+
+    def remove(self, key: str) -> None:
+        self.objects.pop(key, None)
+
+    def exists(self, key: str) -> bool:
+        return key in self.objects
 
 
 @pytest.fixture
@@ -583,6 +591,94 @@ def test_retention_protects_held_daily_monthly_and_last_good(
     ] == ["d" * 32, "e" * 32]
     policy.retention_rules.keep_last_good = 2
     assert not backup_set_storage.retention_candidates(receipts[-2:], policy, now)
+
+
+@pytest.mark.parametrize("leave_artifact", [False, True])
+def test_retention_verifies_artifact_removal_and_preserves_held_and_latest(
+    recovery, remote: FixtureStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, leave_artifact
+) -> None:
+    directory, manifest, policy_data, _, _ = recovery
+    policy, _ = policy_data
+    policy.retention_rules.held_set_ids.add("c" * 32)
+    now = datetime.now(UTC)
+
+    class FixtureClock(datetime):
+        at: datetime
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.at.astimezone(tz) if tz else cls.at.replace(tzinfo=None)
+
+    monkeypatch.setattr(backup_set, "datetime", FixtureClock)
+    for set_id, age_days in (("a" * 32, 0), ("b" * 32, 100), ("c" * 32, 101)):
+        snapshot = now - timedelta(days=age_days)
+        FixtureClock.at = snapshot
+        backup_set.write_authenticated_manifest(
+            directory,
+            manifest.model_copy(
+                update={
+                    "backup_set_id": set_id,
+                    "captured_from": snapshot,
+                    "captured_to": snapshot,
+                    "snapshot_at_utc": snapshot,
+                }
+            ),
+            TEST_KEY,
+            KEY_ID,
+        )
+        backup_set.publish(directory, policy_data, tmp_path / f"publication-{set_id}.json")
+
+    FixtureClock.at = now
+    before = remote.objects.copy()
+    plan_path = tmp_path / "plan.json"
+    backup_set.retention_preview(policy_data, plan_path)
+    assert remote.objects == before
+    plan = RetentionPlan.model_validate_json(plan_path.read_bytes())
+    expired = "b" * 32
+    assert [candidate.backup_set_id for candidate in plan.candidates] == [expired]
+    approval_path = tmp_path / "approval.json"
+    approval_path.write_bytes(
+        canonical_bytes(
+            RetentionAuthorization(
+                purpose="backup_set_retention",
+                plan_sha256=hashlib.sha256(plan_path.read_bytes()).hexdigest(),
+                approval_ref="disposable fixture",
+                approver="Fixture Owner",
+                authorized_from_utc=now,
+                authorized_until_utc=now + timedelta(minutes=5),
+            )
+        )
+    )
+    approval_path.chmod(0o600)
+
+    artifact_key = remote.key(expired, manifest.application_dump.file)
+    delete = remote.remove
+    receipt = tmp_path / "retention-result.json"
+
+    def remove(key: str) -> None:
+        progress = json.loads(receipt.read_bytes())
+        assert progress["outcome"] == "started"
+        assert progress["incomplete_set_id"] == expired
+        if not (leave_artifact and key == artifact_key):
+            delete(key)
+
+    monkeypatch.setattr(remote, "remove", remove)
+    if leave_artifact:
+        with pytest.raises(BackupSetError, match="artifact remains present"):
+            backup_set.retention_apply(policy_data, plan_path, approval_path, receipt)
+    else:
+        backup_set.retention_apply(policy_data, plan_path, approval_path, receipt)
+
+    result = json.loads(receipt.read_bytes())
+    assert result["outcome"] == ("fail" if leave_artifact else "pass")
+    assert result["removed_set_ids"] == ([] if leave_artifact else [expired])
+    assert result.get("incomplete_set_id") == (expired if leave_artifact else None)
+    assert (artifact_key in remote.objects) is leave_artifact
+    assert remote.key(expired, backup_set_storage.COMPLETE) not in remote.objects
+    assert remote.key(expired, backup_set.IDENTITY) in remote.objects
+    assert all(
+        remote.objects[key] == data for key, data in before.items() if f"/{expired}/" not in key
+    )
 
 
 def test_schedule_uses_policy_intervals(recovery) -> None:
