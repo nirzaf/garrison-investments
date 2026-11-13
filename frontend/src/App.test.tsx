@@ -185,8 +185,10 @@ describe('App route smoke tests', () => {
     expect(html).toContain('Launch readiness');
     expect(html).toContain('operations guide');
     expect(html).toContain('Use isolated test environments for acceptance checks');
-    expect(html).toContain('Scheduled database backups are configured');
-    expect(html).toContain('Independent recovery also needs the referenced files');
+    expect(html).toContain('Daily and monthly database backup schedules are configured.');
+    expect(html).toContain(
+      'This does not prove a successful run or recovery of referenced files; both require operational evidence and an executed restore drill.'
+    );
     expect(html).toContain('Desktop Chrome and Edge, including degraded-network checks.');
   });
 

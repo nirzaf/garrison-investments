@@ -9,6 +9,7 @@ repository=nirzaf/garrison-investments
 portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
+trusted_validator=/usr/local/libexec/garrison-release-contract.py
 
 die() {
   printf '%s\n' "$*" >&2
@@ -33,7 +34,7 @@ IFS= read -r deploy_attempt || die 'A deployment workflow attempt is required on
 
 # Keep the privileged entrypoint's inputs under host operator control.
 [[ $EUID == 0 ]] || die 'Production deployment must run as root.'
-for directory in /opt "$base" "$state" "$base/releases"; do
+for directory in /opt "$base" "$state" "$base/releases" /usr/local /usr/local/libexec; do
   [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
     die 'Production deployment directories must be root-owned and free of symlinks.'
   mode=$(stat -c '%a' "$directory")
@@ -152,13 +153,90 @@ if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
   exit 0
 fi
 
+[[ -f "$trusted_validator" && ! -L "$trusted_validator" ]] ||
+  die 'The trusted release validator is not installed; production activation is blocked.'
+python3 - "$trusted_validator" <<'PY'
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+try:
+    file_stat = os.stat(path, follow_symlinks=False)
+    parent_stat = os.stat(os.path.dirname(path), follow_symlinks=False)
+except OSError:
+    sys.exit("The trusted release validator path is unavailable.")
+if (
+    not stat.S_ISREG(file_stat.st_mode)
+    or not stat.S_ISDIR(parent_stat.st_mode)
+    or file_stat.st_uid != os.geteuid()
+    or parent_stat.st_uid != os.geteuid()
+    or file_stat.st_mode & 0o022
+    or parent_stat.st_mode & 0o022
+):
+    sys.exit("The trusted release validator must be owner-controlled and not group/world writable.")
+PY
+
+if ! predeploy_verdict=$(printf '%s\n' "$token" | python3 "$trusted_validator" \
+  --host-state "$state" --commit "$sha" --ci-run "$run_id" \
+  --deploy-run "$deploy_run_id" --deploy-attempt "$deploy_attempt"); then
+  die 'The exact-release predeployment authorization failed; production activation is blocked.'
+fi
+predeploy_manifest_path="$state/authorizations/$sha/release_manifest.json"
+predeploy_manifest_digest=$(sha256sum "$predeploy_manifest_path" | cut -d' ' -f1)
+python3 -c '
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+verdict = json.load(sys.stdin)
+sha = sys.argv[1]
+manifest_path = Path(sys.argv[2])
+if manifest_path.is_symlink() or not manifest_path.is_file():
+    sys.exit("The authorized predeployment manifest is unavailable or unsafe.")
+manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+hash_fields = (
+    "manifest_sha256",
+    "subject_sha256",
+    "configuration_sha256",
+    "validator_sha256",
+    "control_registry_sha256",
+    "trust_registry_sha256",
+)
+if (
+    verdict.get("phase") != "predeploy"
+    or verdict.get("status") != "ready_for_authorized_deployment"
+    or verdict.get("accepted_scope_complete") is not False
+    or verdict.get("ready_for_authorized_deployment") is not True
+    or verdict.get("source_sha") != sha
+    or verdict.get("target_environment") != "production"
+    or verdict.get("manifest_sha256") != manifest_digest
+    or not isinstance(verdict.get("release_id"), str)
+    or not verdict["release_id"].strip()
+    or verdict.get("blockers") != []
+    or any(
+        not isinstance(verdict.get(field), str)
+        or re.fullmatch(r"[a-f0-9]{64}", verdict[field]) is None
+        for field in hash_fields
+    )
+):
+    sys.exit("The trusted validator returned a mismatched or incomplete predeployment verdict.")
+' "$sha" "$predeploy_manifest_path" <<< "$predeploy_verdict"
+
 phase_started=$SECONDS
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEPLOY.json READINESS.json; do
+for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEPLOY.json PREDEPLOY_MANIFEST.json READINESS.json; do
   [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
     die 'The source archive contains a reserved release file.'
 done
+install -m 0600 "$predeploy_manifest_path" "$candidate/PREDEPLOY_MANIFEST.json"
+[[ "$(sha256sum "$candidate/PREDEPLOY_MANIFEST.json" | cut -d' ' -f1)" == "$predeploy_manifest_digest" ]] ||
+  die 'The captured predeployment manifest differs from the authorized bytes.'
+printf '%s\n' "$predeploy_verdict" > "$candidate/PREDEPLOY.json"
+predeploy_digest=$(sha256sum "$candidate/PREDEPLOY.json" | cut -d' ' -f1)
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
 report_duration 'CI verification and source preparation' "$phase_started"
@@ -411,8 +489,8 @@ check_readiness < "$candidate/READINESS.json"
 report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
 
-printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
-  "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
+printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nPredeploy verdict SHA-256: %s\nPredeploy manifest SHA-256: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+  "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$predeploy_digest" "$predeploy_manifest_digest" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
 ln -sfn "$candidate" "$state/.current-next"

@@ -2002,12 +2002,185 @@ def deployment_receipt_fields(raw: bytes) -> dict[str, str]:
     return result
 
 
+def verify_predeploy_verdict(
+    payload: Any,
+    sha: str,
+    release_id: str,
+    target_environment: str,
+    subject_sha256: str,
+    configuration_sha256: str,
+    manifest_sha256: str,
+    expected_runtime: dict[str, Any],
+    control_registry_sha256: str,
+    expected_receipt_ids: list[str],
+    validator_sha256: str,
+    deployed_at: datetime,
+) -> None:
+    verdict = fields(
+        payload,
+        "generated_at phase status accepted_scope_complete ready_for_authorized_deployment "
+        "source_sha target_environment release_id manifest_sha256 subject_sha256 "
+        "configuration_sha256 runtime_identity validator_version validator_sha256 "
+        "control_registry_sha256 trust_registry_sha256 verified_receipt_ids blockers",
+        label="predeployment verdict",
+    )
+    for key in (
+        "manifest_sha256",
+        "subject_sha256",
+        "configuration_sha256",
+        "validator_sha256",
+        "control_registry_sha256",
+        "trust_registry_sha256",
+    ):
+        digest(verdict[key], f"predeployment verdict {key}")
+    require(
+        verdict["phase"] == "predeploy"
+        and verdict["status"] == "ready_for_authorized_deployment"
+        and verdict["accepted_scope_complete"] is False
+        and verdict["ready_for_authorized_deployment"] is True
+        and verdict["source_sha"] == sha
+        and verdict["target_environment"] == target_environment
+        and verdict["release_id"] == release_id
+        and verdict["subject_sha256"] == subject_sha256
+        and verdict["configuration_sha256"] == configuration_sha256
+        and verdict["manifest_sha256"] == manifest_sha256
+        and runtime_identity(verdict["runtime_identity"]) == expected_runtime
+        and verdict["validator_version"] == VERSION
+        and verdict["validator_sha256"] == validator_sha256
+        and verdict["control_registry_sha256"] == control_registry_sha256
+        and verdict["blockers"] == []
+        and isinstance(verdict["verified_receipt_ids"], list)
+        and verdict["verified_receipt_ids"] == expected_receipt_ids
+        and utc(verdict["generated_at"], "predeployment verdict") <= deployed_at,
+        "Host deployment is not bound to a matching successful predeployment verdict.",
+        3,
+    )
+
+
+def verify_predeploy_manifest(
+    payload: Any,
+    evidence: Evidence,
+    *,
+    release_id: str,
+    source_sha: str,
+    target_environment: str,
+    subject_sha256: str,
+    configuration_sha256: str,
+    inventory_sha256: str,
+    control_registry_sha256: str,
+    decision_sha256: dict[str, str],
+    validator_sha256: str,
+) -> dict[str, str]:
+    manifest = fields(
+        payload,
+        "format_version release_id repository source_sha target_environment release_subject "
+        "scope decisions ledger receipts approvals defects validation_profile",
+        optional="acceptance_bundle",
+        label="host-authorized predeployment manifest",
+    )
+    require(
+        type(manifest["format_version"]) is int
+        and manifest["format_version"] == VERSION
+        and "acceptance_bundle" not in manifest
+        and manifest["release_id"] == release_id
+        and manifest["repository"] == REPOSITORY
+        and manifest["source_sha"] == source_sha
+        and manifest["target_environment"] == target_environment,
+        "Predeployment manifest identity differs from the deployed release.",
+        3,
+    )
+    subject_ref = fields(
+        manifest["release_subject"], "path sha256 size_bytes", label="predeployment subject"
+    )
+    require(
+        subject_ref["sha256"] == subject_sha256,
+        "Predeployment manifest does not reference the frozen release subject.",
+        3,
+    )
+    subject = fields(
+        evidence.load(manifest["release_subject"], parse=True),
+        "release_id repository source_sha environment configuration_sha256 inventory_sha256 "
+        "control_registry_sha256 decision_sha256 support_matrix_sha256 "
+        + RUNTIME_FIELDS,
+        label="predeployment release subject",
+    )
+    require(
+        subject["release_id"] == release_id
+        and subject["repository"] == REPOSITORY
+        and subject["source_sha"] == source_sha
+        and subject["environment"] == target_environment
+        and subject["configuration_sha256"] == configuration_sha256
+        and subject["inventory_sha256"] == inventory_sha256
+        and subject["control_registry_sha256"] == control_registry_sha256
+        and subject["decision_sha256"] == decision_sha256,
+        "Predeployment subject differs from the frozen release identity.",
+        3,
+    )
+    scope = fields(
+        manifest["scope"],
+        "accepted_inventory control_registry excluded_requirement_ids delivery_scope",
+        label="predeployment scope",
+    )
+    require(
+        scope["accepted_inventory"]["sha256"] == inventory_sha256
+        and scope["control_registry"]["sha256"] == control_registry_sha256
+        and scope["excluded_requirement_ids"] == ["G-01"]
+        and scope["delivery_scope"] == "launch_readiness_only",
+        "Predeployment manifest scope differs from the frozen release.",
+        3,
+    )
+    decisions = [
+        fields(ref, "path sha256 size_bytes", label="predeployment decision")["sha256"]
+        for ref in items(manifest["decisions"], "predeployment decisions")
+    ]
+    require(
+        len(set(decisions)) == len(decision_sha256)
+        and set(decisions) == set(decision_sha256.values()),
+        "Predeployment manifest decisions differ from the frozen release.",
+        3,
+    )
+    profile = fields(
+        manifest["validation_profile"],
+        "validator_version validator_sha256 control_registry_sha256",
+        label="predeployment validation profile",
+    )
+    require(
+        profile["validator_version"] == VERSION
+        and profile["validator_sha256"] == validator_sha256
+        and profile["control_registry_sha256"] == control_registry_sha256,
+        "Predeployment manifest was not validated by the trusted release contract.",
+        3,
+    )
+    receipt_hashes: dict[str, str] = {}
+    for ref in items(manifest["receipts"], "predeployment receipts"):
+        reference = fields(ref, "path sha256 size_bytes", label="predeployment receipt")
+        receipt = fields(
+            evidence.load(ref, parse=True),
+            "receipt_id kind phase source_sha environment configuration_sha256 synthetic "
+            "started_at completed_at executed_by tool outcome results artifacts review",
+            label="predeployment receipt",
+        )
+        name = meaningful(receipt["receipt_id"], "predeployment receipt ID")
+        require(
+            receipt["phase"] == "predeploy"
+            and receipt["kind"] in PREDEPLOY_KINDS
+            and name not in receipt_hashes,
+            "Predeployment manifest contains an invalid or duplicate receipt.",
+            3,
+        )
+        receipt_hashes[name] = reference["sha256"]
+    require(bool(receipt_hashes), "Predeployment manifest has no verified receipts.", 3)
+    return receipt_hashes
+
+
 def verify_host_deployment_receipt(
     host: dict[str, str],
     deployed: dict[str, Any],
     sha: str,
     identity: dict[str, Any],
     deployed_at: datetime,
+    predeploy_verdict_sha256: str,
+    predeploy_manifest_sha256: str,
 ) -> None:
     expected = {
         "Status": "Deployed — Formal Acceptance Pending",
@@ -2016,6 +2189,8 @@ def verify_host_deployment_receipt(
         "CI attempt": str(deployed["ci_run_attempt"]),
         "Deploy run": str(deployed["run_id"]),
         "Deploy attempt": str(deployed["run_attempt"]),
+        "Predeploy verdict SHA-256": predeploy_verdict_sha256,
+        "Predeploy manifest SHA-256": predeploy_manifest_sha256,
         "Asset SHA-256": identity["frontend_sha256"],
         "Service worker SHA-256": identity["service_worker_sha256"],
         "Backend image": identity["image_digests"]["backend"],
@@ -2413,6 +2588,9 @@ class Validation:
         self.verifier_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         self.configuration = ""
         self.identity: dict[str, Any] = {}
+        self.inventory_sha256 = ""
+        self.control_registry_sha256 = ""
+        self.release_id = ""
         self.subject_hash = ""
         self.decision_hashes: dict[str, str] = {}
         self.decision_owners: dict[str, str] = {}
@@ -2424,6 +2602,7 @@ class Validation:
         self.observed_window: tuple[datetime, datetime] | None = None
         self.uat_defects: set[str] = set()
         self.receipts: dict[str, dict[str, Any]] = {}
+        self.predeploy_receipt_hashes: dict[str, str] | None = None
 
     def validate_decisions(self, refs: Any, inventory: str) -> None:
         for ref in items(refs, "owner decisions"):
@@ -2482,6 +2661,7 @@ class Validation:
             3,
         )
         inventory = self.evidence.load(scope["accepted_inventory"])
+        self.inventory_sha256 = inventory
         registry = scope["control_registry"]
         require(
             self.evidence.load(registry, parse=True) == control_registry(),
@@ -2495,8 +2675,10 @@ class Validation:
             label="frozen release subject",
         )
         self.subject_hash = manifest["release_subject"]["sha256"]
+        self.control_registry_sha256 = registry["sha256"]
+        self.release_id = meaningful(subject["release_id"], "release ID")
         require(
-            subject["release_id"] == manifest["release_id"]
+            self.release_id == manifest["release_id"]
             and subject["repository"] == REPOSITORY
             and subject["source_sha"] == self.sha
             and subject["environment"] == self.target
@@ -2693,7 +2875,7 @@ class Validation:
             deployed = fields(
                 result,
                 "run_id run_url run_attempt ci_run_id ci_run_attempt deployed_at readback "
-                "host_receipt",
+                "predeploy_manifest predeploy_verdict host_receipt",
                 label="deployment result",
             )
             run_id = count(deployed["run_id"], "deployment run ID", minimum=1)
@@ -2719,6 +2901,51 @@ class Validation:
                 3,
             )
             readback(deployed["readback"], self.identity)
+            predeploy_ref = fields(
+                deployed["predeploy_verdict"],
+                "path sha256 size_bytes",
+                label="predeployment verdict artifact",
+            )
+            predeploy_manifest_ref = fields(
+                deployed["predeploy_manifest"],
+                "path sha256 size_bytes",
+                label="host-authorized predeployment manifest artifact",
+            )
+            require(
+                predeploy_ref["sha256"] in artifact_hashes
+                and predeploy_manifest_ref["sha256"] in artifact_hashes,
+                "The predeployment verdict and manifest must be classified deployment artifacts.",
+                3,
+            )
+            predeploy = self.evidence.load(predeploy_ref, parse=True)
+            predeploy_manifest = self.evidence.load(predeploy_manifest_ref, parse=True)
+            self.predeploy_receipt_hashes = verify_predeploy_manifest(
+                predeploy_manifest,
+                self.evidence,
+                release_id=self.release_id,
+                source_sha=self.sha,
+                target_environment=self.target,
+                subject_sha256=self.subject_hash,
+                configuration_sha256=self.configuration,
+                inventory_sha256=self.inventory_sha256,
+                control_registry_sha256=self.control_registry_sha256,
+                decision_sha256=self.decision_hashes,
+                validator_sha256=self.verifier_hash,
+            )
+            verify_predeploy_verdict(
+                predeploy,
+                self.sha,
+                self.release_id,
+                self.target,
+                self.subject_hash,
+                self.configuration,
+                predeploy_manifest_ref["sha256"],
+                self.identity,
+                self.control_registry_sha256,
+                sorted(self.predeploy_receipt_hashes),
+                self.verifier_hash,
+                self.deployed_at,
+            )
             host_ref = deployed["host_receipt"]
             host = self.evidence.load_deployment_receipt(host_ref)
             require(
@@ -2727,7 +2954,13 @@ class Validation:
                 3,
             )
             verify_host_deployment_receipt(
-                host, deployed, self.sha, self.identity, self.deployed_at
+                host,
+                deployed,
+                self.sha,
+                self.identity,
+                self.deployed_at,
+                predeploy_ref["sha256"],
+                predeploy_manifest_ref["sha256"],
             )
         elif kind == "runtime_readback":
             readback(result, self.identity)
@@ -2772,6 +3005,18 @@ class Validation:
             self.validate_receipt(ref)
             name = next(reversed(self.receipts))
             artifact_refs[name] = ref
+        if self.phase == "final" and self.predeploy_receipt_hashes is not None:
+            actual_predeploy = {
+                name: ref["sha256"]
+                for name, ref in artifact_refs.items()
+                if self.receipts[name]["phase"] == "predeploy"
+            }
+            require(
+                self.predeploy_receipt_hashes is not None
+                and actual_predeploy == self.predeploy_receipt_hashes,
+                "Final evidence does not contain the exact receipts authorized before deployment.",
+                3,
+            )
         observed = {(row["phase"], row["kind"]) for row in self.receipts.values()}
         expected = {("predeploy", kind) for kind in PREDEPLOY_KINDS}
         if self.phase == "final":
@@ -3076,7 +3321,14 @@ def host_configuration(state: Path) -> str:
                 "A protected deployment setting differs from the approved host configuration.",
                 3,
             )
-    return digest(profile["configuration_sha256"], "approved host configuration")
+    approved = digest(profile["configuration_sha256"], "approved host configuration")
+    actual = canonical_digest(checksums)
+    require(
+        approved == actual,
+        "Approved host configuration digest does not match its protected file hashes.",
+        3,
+    )
+    return actual
 
 
 def host_main() -> None:

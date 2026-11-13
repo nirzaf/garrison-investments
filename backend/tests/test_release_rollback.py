@@ -58,6 +58,8 @@ expected_worker=worker-digest
 backend_id=backend-image
 frontend_id=frontend-image
 current=schema-head
+predeploy_digest=fixture-predeploy-digest
+predeploy_manifest_digest=fixture-predeploy-manifest-digest
 github() {{
   case "$1" in
     actions/runs/123) printf '%s\n' {shlex.quote(run)} ;;
@@ -339,6 +341,10 @@ apply_runtime previous || exit "$?"
         ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
+        ("authorization-fails", "exact-release predeployment authorization failed"),
+        ("authorization-mismatch", "mismatched or incomplete predeployment verdict"),
+        ("manifest-mismatch", "mismatched or incomplete predeployment verdict"),
+        ("validator-missing", "trusted release validator is not installed"),
     ],
 )
 def test_release_entrypoint_uses_technical_checks(
@@ -353,6 +359,9 @@ def test_release_entrypoint_uses_technical_checks(
     (state / "current").symlink_to(previous)
     (state / "production.env").write_text("LOG_PURGE_ENABLED=false\n")
     (state / "compose.vps.yml").write_text("services: {}\n")
+    authorization_dir = state / "authorizations" / sha
+    authorization_dir.mkdir(parents=True)
+    (authorization_dir / "release_manifest.json").write_text('{"fixture":true}\n')
     (previous / ".env").write_text("LOG_PURGE_ENABLED=false\n")
     (previous / ".images.env").write_text(
         "GARRISON_BACKEND_IMAGE=old-backend\nGARRISON_FRONTEND_IMAGE=old-frontend\n"
@@ -368,6 +377,52 @@ def test_release_entrypoint_uses_technical_checks(
         target = previous / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("fixture")
+
+    trusted_dir = tmp_path / "trusted" / "libexec"
+    trusted_dir.mkdir(parents=True)
+    trusted_validator = trusted_dir / "garrison-release-contract.py"
+    if scenario != "validator-missing":
+        trusted_validator.write_text(
+            """#!/usr/bin/env python3
+import hashlib
+import json
+import os
+import pathlib
+import sys
+
+args = sys.argv
+state = pathlib.Path(args[args.index('--host-state') + 1])
+commit = args[args.index('--commit') + 1]
+manifest = state / 'authorizations' / commit / 'release_manifest.json'
+manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+with (state.parent / 'events').open('a') as stream:
+    stream.write('authorize\\n')
+if os.environ.get('scenario') == 'authorization-fails':
+    raise SystemExit(3)
+if os.environ.get('scenario') == 'authorization-mismatch':
+    commit = 'f' * 40
+print(json.dumps({
+    'phase': 'predeploy',
+    'status': 'ready_for_authorized_deployment',
+    'accepted_scope_complete': False,
+    'ready_for_authorized_deployment': True,
+    'source_sha': commit,
+    'target_environment': 'production',
+    'release_id': 'fixture-release',
+    'manifest_sha256': (
+        'a' * 64
+        if os.environ.get('scenario') == 'manifest-mismatch'
+        else manifest_digest
+    ),
+    'subject_sha256': 'b' * 64,
+    'configuration_sha256': 'c' * 64,
+    'validator_sha256': 'd' * 64,
+    'control_registry_sha256': 'e' * 64,
+    'trust_registry_sha256': 'f' * 64,
+    'blockers': [],
+}))
+"""
+        )
 
     ci = {
         "id": 12,
@@ -445,6 +500,10 @@ def test_release_entrypoint_uses_technical_checks(
     # entrypoint's CI, Compose, schema, backup, activation, and receipt logic.
     source = SCRIPT.read_text().replace(
         "base=/opt/garrison-portal", f"base={shlex.quote(str(tmp_path))}"
+    )
+    source = source.replace(
+        "trusted_validator=/usr/local/libexec/garrison-release-contract.py",
+        f"trusted_validator={shlex.quote(str(trusted_validator))}",
     )
     start = source.index("# Keep the privileged entrypoint")
     end = source.index('exec 9>"$state/deploy.lock"', start)
@@ -573,41 +632,60 @@ curl() {
                 "schema_heads": ["fixture-head"],
             },
             utc(receipt["UTC"], "fixture activation"),
+            sha256((current / "PREDEPLOY.json").read_bytes()).hexdigest(),
+            sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest(),
         )
-        assert events[:2] == ["download", "backup"]
-        assert events[2].startswith("activate ")
-        assert events[3].startswith("publish ")
+        assert events[:3] == ["authorize", "download", "backup"]
+        assert events[3].startswith("activate ")
+        assert events[4].startswith("publish ")
+        assert (current / "PREDEPLOY.json").is_file()
+        assert (current / "PREDEPLOY_MANIFEST.json").is_file()
+        assert sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest() == (
+            sha256((authorization_dir / "release_manifest.json").read_bytes()).hexdigest()
+        )
+        predeploy_digest = sha256((current / "PREDEPLOY.json").read_bytes()).hexdigest()
+        assert f"Predeploy verdict SHA-256: {predeploy_digest}" in (
+            current / "DEPLOYED"
+        ).read_text()
+        assert "Predeploy manifest SHA-256" in (current / "DEPLOYED").read_text()
     else:
         assert result.returncode != 0, result.stdout
         assert error in result.stderr
         assert current == previous
         assert not list((tmp_path / "releases").glob("*/DEPLOYED"))
-        if scenario in {"readiness-fails", "asset-mismatch"}:
+        if scenario in {"authorization-fails", "authorization-mismatch", "manifest-mismatch"}:
+            assert events == ["authorize"]
+        elif scenario == "validator-missing":
+            assert not events
+        elif scenario in {"readiness-fails", "asset-mismatch"}:
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
         elif scenario == "backup-fails":
-            assert events == ["download", "backup"]
+            assert events == ["authorize", "download", "backup"]
         elif scenario in {"generation-change", "purge-enabled", "stateful-change", "schema-change"}:
-            assert events == ["download"]
+            assert events == ["authorize", "download"]
         else:
             assert not events
 
 
-def test_host_release_does_not_reference_verifier_or_governance_contract() -> None:
+def test_host_release_requires_trusted_predeployment_verdict() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
     release_source = SCRIPT.read_text()
-    for forbidden in (
-        "release-contract-v1",
-        "/usr/local/libexec/garrison-release-contract.py",
-        "approval-trust",
-        "release_manifest",
-        "authorized-configuration",
-    ):
-        assert forbidden not in deploy_source
-        assert forbidden not in release_source
-    assert "verify_authorization" not in release_source
-    assert "PREDEPLOY.json >" not in release_source
+    assert "/usr/local/libexec/garrison-release-contract.py" not in deploy_source
+    assert "trusted_validator=/usr/local/libexec/garrison-release-contract.py" in release_source
+    assert "--host-state \"$state\" --commit \"$sha\"" in release_source
+    assert "PREDEPLOY.json" in release_source
+    assert "PREDEPLOY_MANIFEST.json" in release_source
+    assert "Predeploy verdict SHA-256" in release_source
+    assert "Predeploy manifest SHA-256" in release_source
+
+
+def test_production_workflow_requires_verified_host_gate_readiness() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
+    assert "vars.GARRISON_PREDEPLOY_GATE_READY == 'true'" in deploy_source
+    assert "runs-on: [self-hosted, linux, x64, garrison-production]" in deploy_source
 
 
 def test_audit_purge_defaults_disabled_and_env_example_documents_it(

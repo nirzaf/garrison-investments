@@ -70,6 +70,21 @@ The [Celery Beat schedule](../backend/app/tasks/celery_app.py) runs the retentio
 
 The scheduled job reports a bounded preview count by default. Expiry requires the approved `scheduled_expiry` policy at `AUDIT_RETENTION_POLICY_PATH` with the exact `AUDIT_RETENTION_POLICY_SHA256`, plus `LOG_PURGE_ENABLED=true`. The application retains unknown records, missing deadlines, future deadlines and records protected by a longer configured policy window. Leave expiry disabled until the named records owner approves the policy, legacy plan and recovery evidence. Policies requiring holds need the separately reviewed hold schema.
 
+### Audit writer inventory
+
+Application code writes `activity_log` through `AuditService.record`; it selects the event type from an explicit value, action prefix, and state-change data before applying the configured policy. The current producers are:
+
+| Writer | Event/action classification input |
+| --- | --- |
+| HTTP audit middleware | `http.*` actions become `api_request`; optional health-check rows use the same writer. |
+| Authentication services | `auth.*` actions become `security_event`. |
+| Log search/export API | `logs.*` actions become `log_access`. |
+| Application startup/shutdown and Celery maintenance | `system.*`, `celery.*`, and `maintenance.*` actions become `system_event`; explicitly reported failures retain their `error` event type. |
+| Domain services: users, imports, reports, approvals, report exports, finance, suppliers, inventory, projects, documents and photos | Explicit event types are preserved; otherwise old/new values classify as `state_change`, and other actions as `user_action`. The policy must match the actual action and event type. |
+| `scripts/seed.py::seed_activity_logs` | Six demo actions are explicitly recorded as `audit` through `AuditService.record`; the parent seed command refuses production and is limited to development, local, test or staging. |
+
+Tests may construct `ActivityLog` directly to model legacy rows and edge cases; they are fixtures, not production writers. No other application-side `ActivityLog(...)` constructor is currently present. This inventory describes code paths, not owner-approved retention classes or durations. Until D-28 approves an exact mapping, unmatched rows keep a null deadline, are protected from purge and appear in the read-only reconciliation preview. Do not treat the hot/archive age settings as an approved business-audit retention policy.
+
 Run `python scripts/preview_audit_retention.py --help` for the supported categories and paging inputs. The preview runs read-only and omits event payloads. For each continuation, pass the first page's `cutoff_utc` as `--cutoff` and the last page's `next_after` as `--after`. Use the same cutoff across all categories for one reconciliation inventory. For an approved policy, use `--extension-plan "$PRIVATE_PLAN"` to record the exact proposed deadline extensions. Review the plan with `python scripts/apply_audit_retention.py "$PRIVATE_PLAN"` in its default preview mode. Only a separately authorized apply with the exact plan hash and approval reference can write extensions. Each bounded batch reports its disposition and preserves existing longer deadlines.
 
 ## Grafana, Loki, and Alloy

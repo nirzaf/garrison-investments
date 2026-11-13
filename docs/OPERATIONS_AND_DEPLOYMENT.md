@@ -2,7 +2,7 @@
 
 [Documentation index](README.md) · [Architecture](ARCHITECTURE.md) · [Logging and alerts](LOGGING_AND_REMOTE_CLI.md)
 
-Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore), [post-release actions](POST_RELEASE_ACTIONS.md), and [formal acceptance evidence](#5-launch-evidence-capture--sign-off) cover recovery, deferred governance, and sign-off.
+Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore), [release closure](POST_RELEASE_ACTIONS.md), and [formal acceptance evidence](#5-launch-evidence-capture--sign-off) cover recovery and the evidence required for final acceptance.
 
 ## Environment and configuration
 
@@ -14,6 +14,34 @@ Use [production CD](#production-deployments-from-github-actions) for routine rel
 The former staging deployment is retired and is not a deployment target or part of production acceptance. Its checked-in Compose and application compatibility settings are legacy references; CI retains a focused compatibility test for some of them.
 
 Use Docker with Compose v2. Keep production configuration and secrets on the host with restricted permissions. See [backend settings](../backend/app/config.py) and the matching Compose file for variable names, defaults, and service overrides.
+
+For formal acceptance, bind production configuration to exact bytes without copying secrets into the evidence bundle. The host profile at `/opt/garrison-portal/deploy/authorized-configuration.json` lists each protected relative filename and its SHA-256. Its `configuration_sha256` is the SHA-256 of the canonical JSON filename-to-hash map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). The trusted validator recomputes this aggregate and checks every listed file. Include at least `production.env` and `compose.vps.yml`, plus every additional file that affects effective runtime behavior. Keep the environment file itself private.
+
+On the production host, run this from a trusted shell after adding all effective configuration files to `names`. It prints hashes only, never file contents. Compare the output against the approved files, save it in the restricted evidence store, and put the same values in `authorized-configuration.json` before freezing and signing `release_subject.json`:
+
+```bash
+python3 - <<'PY'
+import hashlib
+import json
+from pathlib import Path
+
+root = Path("/opt/garrison-portal/deploy")
+names = ["production.env", "compose.vps.yml"]
+protected_files = {
+    name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+    for name in names
+}
+canonical_map = json.dumps(
+    protected_files, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+).encode("utf-8")
+print(json.dumps({
+    "configuration_sha256": hashlib.sha256(canonical_map).hexdigest(),
+    "protected_files": protected_files,
+}, sort_keys=True, indent=2))
+PY
+```
+
+Do not paste environment-file contents into chat, Git, or a public ticket. The production approver must sign the release subject containing this exact aggregate digest; a digest by itself is not an approval.
 
 | Concern | Configuration to check |
 | --- | --- |
@@ -30,11 +58,11 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency and a host lock serialize releases.
+[CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production` only when the repository-level Actions variable `GARRISON_PREDEPLOY_GATE_READY` is exactly `true`. The job condition is evaluated before the runner enters the `Production` environment, so an environment-scoped variable is not sufficient. Leave the repository variable unset/false until the reviewed trusted validator and root-controlled approval store are installed and verified on Hostinger. This readiness switch is a fail-closed deployment interlock, not a release approval; the host still checks the exact SHA and authenticated predeployment evidence. GitHub concurrency and a host lock serialize releases.
 
 The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, required jobs and current `main` before fetching the tested archive.
 
-The installed [host release script](../deploy/hostinger-release.sh) checks protected configuration, audit deletion settings, stateful Compose resources and Alembic heads. It builds from the tested source and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [post-release backlog](#deferred--post-release).
+The installed [host release script](../deploy/hostinger-release.sh) checks protected configuration, audit deletion settings, stateful Compose resources and Alembic heads. It builds from the tested source and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [release closure guide](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
 ### Review pipeline time on every release
 
@@ -45,6 +73,8 @@ The backend suite and Chromium browser suite each run in two shards with separat
 Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
 
 For browser rebalancing, sum case times by file across both reports from comparable runs. After editing the workflow filter, use Playwright's `--list` with each filter and verify that the combined list matches the unfiltered suite exactly.
+
+The measured pre-rebalance baseline is CI run `43504480104` on `c50de62e4fbb2c57426d208e38e787421ac96f90`: 209 seconds wall time; browser shard 1 took 148 seconds and shard 2 took 204 seconds. Their browser-test steps took 74 and 104 seconds. JUnit case-time sums were 127.23 and 180.53 seconds; `project-setup.e2e.ts` contributed 24.89 seconds on shard 2. The workflow now assigns that file to shard 1, yielding measured case-time sums of approximately 152 and 155 seconds without changing the two-shard count or test coverage. This is a balance-based estimate; record actual wall/job times from the next exact-candidate CI run before claiming a speed improvement.
 
 For deployment, measure runner queue time separately from the host phase timings. The host builds the tested archive using Docker's layer cache and reuses the running backend image when only tests, backend documentation or frontend files change. The release script reads the frontend hashes in one container and checks the served bytes after activation.
 
@@ -60,6 +90,15 @@ Provision the existing stack and an initial active release before registering th
 | `deploy.lock` | Host-side serialization across release attempts. |
 
 Before using the new workflow, the host operator installs the reviewed `deploy/hostinger-release.sh` as root-owned `/usr/local/sbin/garrison-deploy` with mode `0755`. The runner needs noninteractive `sudo` for this entrypoint. The workflow and host must both support the `rollback-v2 technical-checks-v1` arguments. Set `LOG_PURGE_ENABLED=false` in the protected environment and keep the encryption password and application secrets there. The entrypoint checks effective Compose settings and stops if audit deletion is enabled.
+
+The current entrypoint also requires the standalone trusted validator at `/usr/local/libexec/garrison-release-contract.py`. This file is a separately reviewed, root-owned copy of `backend/scripts/release_contract.py`; it must not be copied from an unreviewed candidate archive by the deployment runner. Before a release whose host entrypoint invokes this gate, the authorized host operator must:
+
+1. Confirm no production deployment is queued or running, acquire `/opt/garrison-portal/deploy/deploy.lock`, preserve the existing entrypoint and validator with their recorded hashes, and compare the reviewed candidate source with the proposed installs.
+2. Install the validator from the separately transferred reviewed source to a temporary file inside `/usr/local/libexec`. Verify its SHA-256 against the independently reviewed install record, then atomically rename it to `/usr/local/libexec/garrison-release-contract.py`. Set owner `root:root`, mode `0644`, and keep `/usr/local/libexec` root-owned and not group/world writable. Verify `python3 /usr/local/libexec/garrison-release-contract.py --help` succeeds and record the installed digest.
+3. Install `deploy/hostinger-release.sh` as `/usr/local/sbin/garrison-deploy`, owner `root:root`, mode `0755`, using the same lock and an atomic replacement. Verify the installed digest, Bash syntax and existing runner `sudo` rule. Preserve both prior executables until the new release is accepted.
+4. Keep `/opt/garrison-portal/deploy/authorized-configuration.json`, `approval-trust.json`, and `authorizations/<full-source-sha>/` root-owned and protected from group/other writes; the release runner must not be able to modify them. Store only the exact approved release files under each authorization directory. Release the lock only after verifying both installed digests and the protected authorization paths.
+
+The validator is a release authorization boundary, not a convenience check. Do not bypass it or temporarily copy a candidate-controlled validator into the trusted path. If the trusted validator is absent, mismatched, or cannot read valid root-controlled evidence, deployment must stop before source activation. A subsequent change to the validator requires its own review, digest verification and controlled installation before the matching candidate is allowed to trigger production CD.
 
 For a release that changes the entrypoint, compare the exact candidate script with the installed copy and record both SHA-256 digests. After release authorization and before the main update can trigger automatic CD, confirm no deployment job is queued or running. Take the production deployment lock, preserve the previous executable in the root-controlled deployment directory, and verify the candidate's digest and Bash syntax. Install it with owner `root:root` and mode `0755` using an atomic rename from the same directory. Confirm the installed digest and runner's existing sudo permission. Release the lock before triggering CD. Keep the deployment protocol and generation compatible with the active release during this step.
 
@@ -242,17 +281,17 @@ For an authorized rollback after a successful release, apply the same generation
 
 Use sample data only in an approved non-production environment. Follow the [seed setup](../README.md#getting-started) and the [roles and permissions reference](ROLES_AND_PERMISSIONS.md). Run browser acceptance in desktop Chrome and Edge, including offline retries, file selection and downloads, and degraded-network checks. For UAT-21, use representative JPEG, PNG and HEIC files to verify format and size boundaries and original-only HEIC behavior. Record the browser version, role, scenario, result, and any accepted issue.
 
-## Deferred — Post-release
+## Formal acceptance still pending
 
-The current portal scope limits Delivery to Launch readiness and excludes G-01. Audit deletion stays disabled. Each item below remains open for formal acceptance (see [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md) for full details).
+The current portal scope limits Delivery to Launch readiness and excludes G-01. The selected audit mode for this release is retain-only, and destructive audit deletion stays disabled. The user's approved browser scope is desktop Chrome and Edge with no physical mobile targets. Each item below remains open for formal acceptance (see [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md) for full details).
 
 | Decision | Responsible role | Work and evidence | Risk until verified |
 | --- | --- | --- | --- |
 | D-27-SCOPE | Business sponsor | Approve the scope inventory digest and exclusion in a signed decision. | The deployed scope still needs formal business acknowledgement. |
-| D-28-POLICY | Records owner | Approve retain-only classes, deadlines and holds. Review the complete preview, archived access and storage capacity. | Audit records accumulate and capacity still needs review. |
+| D-28-POLICY | Records owner | Sign the retain-only policy, classes/deadlines, unknown-record handling, and hold decision. Review the complete preview, archived access and storage capacity. | Purge remains disabled; records continue to accumulate and capacity still needs review. |
 | D-29-RECOVERY | System owner | Approve independent storage, key custody, RPO/RTO and operator access. Restore an authenticated database and object backup and record measured results. | Recovery after loss of the primary and recovery of file objects remain unproven. |
 | D-30-OPERATIONS | Operations owner | Approve and exercise the independent monitor, recipients and responders. Record alert delivery, acknowledgement and recovery. | An outage affecting the primary host may delay detection. |
-| D-32-SUPPORT | QA lead | Approve Chrome and Edge versions, testers, roles and performance budgets. Execute the desktop scenarios and degraded-network checks with retained results. | Desktop workflow and performance acceptance remains pending. |
+| D-32-SUPPORT | QA lead | Approve Chrome and Edge versions, testers, roles and performance budgets. Execute the desktop scenarios and degraded-network checks with retained results; physical mobile targets are excluded by the user's scope instruction. | Desktop workflow and performance acceptance remains pending. |
 | D-33-BUSINESS | Finance/data owner | Approve assignments, sample outputs, financial conventions and import controls. Reconcile the data and obtain final sign-off after observation. | Business inputs and acceptance remain pending. |
 
 <a id="5-launch-evidence-capture--sign-off"></a>
@@ -261,7 +300,7 @@ The current portal scope limits Delivery to Launch readiness and excludes G-01. 
 
 Freeze the source SHA and approved configuration. Collect the signed scope, retention, recovery, operations, device/support and business decisions together with executed control receipts. Use the [unsigned release templates](templates/release-closure/README.md) and keep sensitive evidence private. Record the operator and approvers as separate roles and have the trusted reviewer verify the actual approvals before populating the approval registry.
 
-For formal acceptance, use the standalone validator to check the predeployment evidence bundle when available:
+For formal acceptance, use the standalone validator to check the predeployment evidence bundle. A predeployment pass establishes deployment readiness only; it is not final acceptance.
 
 ```bash
 cd backend

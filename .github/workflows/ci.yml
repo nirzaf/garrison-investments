@@ -219,7 +219,9 @@ jobs:
           BROWSER_TEST_PREBUILT: "true"
         run: |
           # Balance by measured test time. The complement also picks up new test files.
-          group='/(finance-workflows|media-documents|offline-isolation|role-navigation)\.e2e\.ts$'
+          # Move the measured project-setup suite (24.9s across 11 browser cases)
+          # onto shard 1 to balance the two exact complementary selections.
+          group='/(finance-workflows|media-documents|offline-isolation|role-navigation|project-setup)\.e2e\.ts$'
           case "$BROWSER_SHARD" in
             1) filter="$group" ;;
             2) filter="^(?!.*$group)" ;;

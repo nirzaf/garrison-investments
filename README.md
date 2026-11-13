@@ -78,7 +78,7 @@ flowchart TB
 
 - **Client and edge.** The React and TypeScript PWA uses the API for authenticated workflows. Nginx serves the compiled frontend, forwards API and health requests over the backend network, and proxies signed object requests.
 - **Application and data.** FastAPI applies permission and scope checks before domain services access records or authorize files. PostgreSQL stores project, workflow, inventory, finance, audit, idempotency, and task outbox records. Redis supports Celery and authentication rate limits. The Compose service named `minio` exposes an S3-compatible API. The default image is Silo, with host overrides supported.
-- **Background work.** Workers handle queued exports, imports, notifications, and maintenance. Celery Beat schedules outbox dispatch, approval reminders, late-report checks, low-stock and supplier alerts, retention jobs, and daily and monthly backups. Scheduler times use UTC. Business dates use the configured timezone, which defaults to `Asia/Qatar`.
+- **Background work.** Workers handle queued exports, imports, notifications, and maintenance. Celery Beat schedules outbox dispatch, approval reminders, late-report checks, low-stock and supplier alerts, retention jobs, and daily and monthly database backups. These database backups do not prove recovery of referenced file objects; the full recovery set and restore drill remain separate acceptance gates. Scheduler times use UTC. Business dates use the configured timezone, which defaults to `Asia/Qatar`.
 
 ### Observability and audit
 

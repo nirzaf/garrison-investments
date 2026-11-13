@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -1155,6 +1156,41 @@ def manifest(
             "control_registry_sha256": registry["sha256"],
         },
     }
+    predeploy_payload = dict(result)
+    if phase == "final":
+        predeploy_payload["ledger"] = bundle.write(
+            "ledger-predeploy.json", ledger("predeploy")
+        )
+    predeploy_manifest = bundle.write("manifests/predeploy.json", predeploy_payload)
+    predeploy_verdict = bundle.write(
+        "artifacts/PREDEPLOY.json",
+        {
+            "generated_at": STAGE_END.isoformat(),
+            "phase": "predeploy",
+            "status": "ready_for_authorized_deployment",
+            "accepted_scope_complete": False,
+            "ready_for_authorized_deployment": True,
+            "source_sha": SHA,
+            "target_environment": "test",
+            "release_id": "fixture-release",
+            "manifest_sha256": predeploy_manifest["sha256"],
+            "subject_sha256": subject["sha256"],
+            "configuration_sha256": CONFIG,
+            "runtime_identity": runtime(),
+            "validator_version": 1,
+            "validator_sha256": hashlib.sha256(Path(contract.__file__).read_bytes()).hexdigest(),
+            "control_registry_sha256": registry["sha256"],
+            "trust_registry_sha256": "d" * 64,
+            "verified_receipt_ids": sorted(f"predeploy-{kind}" for kind in results),
+            "blockers": [],
+        },
+    )
+    bundle.deployment_artifacts.extend(
+        [
+            {**predeploy_manifest, "sensitivity": "sanitized"},
+            {**predeploy_verdict, "sensitivity": "sanitized"},
+        ]
+    )
     if phase == "final":
         readback = {
             **runtime(),
@@ -1168,6 +1204,8 @@ def manifest(
             "CI attempt": str(deployment_ci_attempt),
             "Deploy run": "22",
             "Deploy attempt": "1",
+            "Predeploy verdict SHA-256": predeploy_verdict["sha256"],
+            "Predeploy manifest SHA-256": predeploy_manifest["sha256"],
             "UTC": DEPLOYED.isoformat(),
             "Frontend asset": "/assets/index-fixture.js",
             "Asset SHA-256": readback["frontend_sha256"],
@@ -1191,6 +1229,8 @@ def manifest(
                 "ci_run_attempt": deployment_ci_attempt,
                 "deployed_at": DEPLOYED.isoformat(),
                 "readback": readback,
+                "predeploy_manifest": predeploy_manifest,
+                "predeploy_verdict": predeploy_verdict,
                 "host_receipt": host_ref,
             },
             runtime_readback=readback,
@@ -1247,6 +1287,64 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
     assert verdict["status"] == "validated_test_evidence"
     assert verdict["accepted_scope_complete"] is False
     assert verdict["ready_for_authorized_deployment"] is False
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["manifest_sha256", "runtime_identity", "control_registry_sha256", "verified_receipt_ids"],
+)
+def test_predeploy_verdict_rejects_unbound_identity_fields(
+    tmp_path: Path, field: str
+) -> None:
+    bundle = Bundle(tmp_path)
+    data = manifest(bundle, "final")
+    deployment_ref = next(
+        ref
+        for ref in data["receipts"]
+        if json.loads((bundle.root / ref["path"]).read_text())["kind"] == "deployment"
+    )
+    deployment_receipt = json.loads((bundle.root / deployment_ref["path"]).read_text())
+    result = deployment_receipt["results"]
+    subject = json.loads((bundle.root / data["release_subject"]["path"]).read_text())
+    predeploy_ref = result["predeploy_verdict"]
+    verdict = json.loads((bundle.root / predeploy_ref["path"]).read_text())
+    manifest_ref = result["predeploy_manifest"]
+    predeploy_manifest = json.loads((bundle.root / manifest_ref["path"]).read_text())
+    receipt_hashes = contract.verify_predeploy_manifest(
+        predeploy_manifest,
+        bundle.validator("final").evidence,
+        release_id="fixture-release",
+        source_sha=SHA,
+        target_environment="test",
+        subject_sha256=data["release_subject"]["sha256"],
+        configuration_sha256=CONFIG,
+        inventory_sha256=data["scope"]["accepted_inventory"]["sha256"],
+        control_registry_sha256=data["scope"]["control_registry"]["sha256"],
+        decision_sha256=subject["decision_sha256"],
+        validator_sha256=hashlib.sha256(Path(contract.__file__).read_bytes()).hexdigest(),
+    )
+    verdict[field] = {
+        "manifest_sha256": "f" * 64,
+        "runtime_identity": {**runtime(), "schema_heads": ["other-head"]},
+        "control_registry_sha256": "e" * 64,
+        "verified_receipt_ids": ["unapproved-receipt"],
+    }[field]
+
+    with pytest.raises(contract.ContractError, match="matching successful predeployment verdict"):
+        contract.verify_predeploy_verdict(
+            verdict,
+            SHA,
+            "fixture-release",
+            "test",
+            data["release_subject"]["sha256"],
+            CONFIG,
+            manifest_ref["sha256"],
+            runtime(),
+            data["scope"]["control_registry"]["sha256"],
+            sorted(receipt_hashes),
+            hashlib.sha256(Path(contract.__file__).read_bytes()).hexdigest(),
+            DEPLOYED,
+        )
 
 
 @pytest.mark.parametrize(
@@ -1978,3 +2076,37 @@ def test_strict_cli_disallows_explicit_environment_sha_conflict() -> None:
     verdict, code = strict_verdict(args, {"GITHUB_SHA": "b" * 40})
     assert code == 3
     assert verdict["accepted_scope_complete"] is False
+
+
+def test_host_configuration_digest_binds_exact_protected_file_hashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {
+        "production.env": b"LOG_PURGE_ENABLED=false\n",
+        "compose.vps.yml": b"services: {}\n",
+    }
+    protected_files = {
+        name: hashlib.sha256(content).hexdigest() for name, content in files.items()
+    }
+    expected = contract.canonical_digest(protected_files)
+    profile = {
+        "configuration_sha256": expected,
+        "protected_files": protected_files,
+    }
+    monkeypatch.setattr(contract, "json_file", lambda path, protected: (profile, "fixture"))
+
+    @contextmanager
+    def open_fixture(path: Path, *, protected: bool = False):
+        yield BytesIO(files[path.name])
+
+    monkeypatch.setattr(contract, "open_evidence", open_fixture)
+    assert contract.host_configuration(tmp_path) == expected
+
+    profile["configuration_sha256"] = "f" * 64
+    with pytest.raises(contract.ContractError, match="does not match its protected file hashes"):
+        contract.host_configuration(tmp_path)
+
+    profile["configuration_sha256"] = expected
+    files["production.env"] = b"LOG_PURGE_ENABLED=true\n"
+    with pytest.raises(contract.ContractError, match="deployment setting differs"):
+        contract.host_configuration(tmp_path)

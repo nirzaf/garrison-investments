@@ -414,7 +414,7 @@ function RolesDocumentation() {
             ['audit:view', 'Access audit and security-oriented monitoring screens'],
             [
               'dashboard:company',
-              'Company-wide management features — analytics and delivery planning'
+              'Company-wide management features — analytics and launch readiness'
             ],
             ['dashboard:scoped', 'Scoped dashboard access for non-company-wide roles'],
             ['reports:view', 'View reporting content such as photos and report visibility flows'],

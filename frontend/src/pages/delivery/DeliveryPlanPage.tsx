@@ -24,7 +24,7 @@ const deliveryItems = [
   },
   {
     label: 'Backups',
-    detail: 'Scheduled database backups are configured. Independent recovery also needs the referenced files and an executed restore drill.',
+    detail: 'Daily and monthly database backup schedules are configured. This does not prove a successful run or recovery of referenced files; both require operational evidence and an executed restore drill.',
     icon: Database,
     status: 'configured'
   },

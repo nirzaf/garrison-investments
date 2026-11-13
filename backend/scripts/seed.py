@@ -46,6 +46,7 @@ from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import AuditService
 from app.services.storage_service import minio_client
 from app.utils.security import hash_password, validate_password_policy
 
@@ -2139,67 +2140,63 @@ async def seed_activity_logs(
     store = user_by_email.get("storekeeper.test@garrisons.lk")
     if not admin:
         return
-    now = datetime.now(UTC)
     logs = [
-        ActivityLog(
-            user_id=admin.id,
-            action="user_login",
-            entity_type="user",
-            ip_address="10.0.0.1",
-            comments="Admin login from office IP",
-            created_at=now - timedelta(hours=6),
-        ),
-        ActivityLog(
-            user_id=engineer.id if engineer else admin.id,
-            action="report_create",
-            entity_type="daily_report",
-            comments="Created daily report DR-GIP-001-SEED",
-            created_at=now - timedelta(hours=5),
-        ),
-        ActivityLog(
-            user_id=engineer.id if engineer else admin.id,
-            action="report_submit",
-            entity_type="daily_report",
-            comments="Submitted daily report for approval",
-            created_at=now - timedelta(hours=4),
-        ),
-        ActivityLog(
-            user_id=pm.id if pm else admin.id,
-            action="approval_decision",
-            entity_type="approval",
-            comments="Approved daily report DR-GIP-001-SEED-002",
-            old_values={"status": "pending"},
-            new_values={"status": "approved"},
-            created_at=now - timedelta(hours=20),
-        ),
-        ActivityLog(
-            user_id=store.id if store else admin.id,
-            action="inventory_movement",
-            entity_type="inventory",
-            comments="Transferred 200 bags cement from warehouse to GIP-001 site store",
-            created_at=now - timedelta(days=7),
-        ),
-        ActivityLog(
-            user_id=admin.id,
-            action="seed_data",
-            entity_type="system",
-            comments="Seed data loaded for UAT environment",
-            created_at=now - timedelta(seconds=10),
-        ),
+        {
+            "user_id": admin.id,
+            "action": "user_login",
+            "entity_type": "user",
+            "ip_address": "10.0.0.1",
+            "comments": "Admin login from office IP",
+        },
+        {
+            "user_id": engineer.id if engineer else admin.id,
+            "action": "report_create",
+            "entity_type": "daily_report",
+            "comments": "Created daily report DR-GIP-001-SEED",
+        },
+        {
+            "user_id": engineer.id if engineer else admin.id,
+            "action": "report_submit",
+            "entity_type": "daily_report",
+            "comments": "Submitted daily report for approval",
+        },
+        {
+            "user_id": pm.id if pm else admin.id,
+            "action": "approval_decision",
+            "entity_type": "approval",
+            "comments": "Approved daily report DR-GIP-001-SEED-002",
+            "old_values": {"status": "pending"},
+            "new_values": {"status": "approved"},
+        },
+        {
+            "user_id": store.id if store else admin.id,
+            "action": "inventory_movement",
+            "entity_type": "inventory",
+            "comments": "Transferred 200 bags cement from warehouse to GIP-001 site store",
+        },
+        {
+            "user_id": admin.id,
+            "action": "seed_data",
+            "entity_type": "system",
+            "comments": "Seed data loaded for UAT environment",
+        },
     ]
     created = 0
+    audit = AuditService(session)
     for log in logs:
         existing = await session.scalar(
             select(ActivityLog).where(
-                ActivityLog.action == log.action,
-                ActivityLog.entity_type == log.entity_type,
-                ActivityLog.comments == log.comments,
+                ActivityLog.action == log["action"],
+                ActivityLog.entity_type == log["entity_type"],
+                ActivityLog.comments == log["comments"],
                 ActivityLog.deleted_at.is_(None),
             )
         )
         if existing:
             continue
-        session.add(log)
+        # Keep the legacy fixture event type while applying the configured
+        # retention policy through the single supported audit writer.
+        await audit.record(event_type="audit", **log)
         created += 1
     print(f"Seeded activity logs: {created} created, {len(logs) - created} existing")
 

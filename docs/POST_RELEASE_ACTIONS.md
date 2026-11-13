@@ -1,30 +1,44 @@
-# Post-Release Governance and Formal Acceptance Backlog
+# Release Closure and Formal Acceptance
 
-Production deployments operate under technical CI, source, schema, backup, and live readiness controls while formal governance closure is completed post-release. Until all records below are completed and independently verified, the release status remains **Deployed — Formal Acceptance Pending**.
+Production deployment and formal acceptance are separate states. This repository has a deployed production baseline, but deployment, a passing CI run, and a healthy readiness endpoint do not by themselves satisfy the attached completion specification. Until the records and evidence below are present, independently reviewed, and accepted by the strict validator, report status as **Deployed — Formal Acceptance Pending**.
 
-## Preserved Defaults and Exclusions
+## Confirmed scope and operating boundaries
 
-- **Delivery scope (`D-27` default):** Preserved as **Launch readiness only** (`launch_readiness_only`). Logistics, fleet management, dispatching, and delivery scheduling are not implemented.
-- **Excluded scope (`G-01`):** `G-01` remains excluded from this release.
-- **Audit retention safety (`D-28` default):** `LOG_PURGE_ENABLED=false` remains enforced. Automated audit log deletion stays disabled until an approved `D-28-POLICY` retention policy is recorded and verified.
-- **Observability and backups (`D-29` / `D-30` defaults):** On-host Grafana/Loki/Alloy containers and existing encrypted database backup tooling (`scripts/backup.py`) remain intact. External restore hosts and off-host alert monitors are optional at initial launch.
-- **Optional formal acceptance tooling:** [release_contract.py](../backend/scripts/release_contract.py), [launch_evidence.py](../backend/scripts/launch_evidence.py), and the [release-closure templates](templates/release-closure/README.md) remain available for optional post-release formal acceptance and are not executed automatically by CD.
+- **Product scope:** `launch_readiness_only`; logistics scheduling, dispatch, fleet management, and delivery stock posting are not included.
+- **Excluded requirement:** `G-01` remains excluded.
+- **Audit retention:** Owner direction selects `retain_only` for this release. Keep destructive audit deletion disabled. The signed policy, class definitions, legacy inventory, and runtime proof still need to be recorded; no purge is authorized by this direction.
+- **UAT platform scope:** Desktop Chrome and Edge only, per the user's later scope instruction. Physical iOS/Android targets are omitted. This does not waive the required desktop scenarios, role coverage, degraded-network checks, or QA sign-off.
+- **Environment:** Production is the acceptance target. Staging has been abandoned and is not part of the acceptance evidence.
+- **Data and personal evidence:** Keep real approvals, assignment exports, business samples, production receipts, and customer evidence in the approved restricted evidence store. Commit only blank templates and sanitized documentation.
 
-## Deferred Governance Records
+## Six owner decisions
 
-All six governance records are currently **Deferred — Post-release**:
+| ID | Required owner | Required decision and evidence | Current closure state |
+| --- | --- | --- | --- |
+| **D-27-SCOPE** | Business sponsor | Sign the frozen accepted-scope inventory digest, `launch_readiness_only`, and explicit `G-01` exclusion. | Scope direction is known; authenticated approval bound to the final inventory digest is outstanding. |
+| **D-28-POLICY** | Records owner | Approve the retain-only policy ID/revision, event classes and predicates, deadlines, unknown-record disposition, and hold behavior. Attach the exact policy and its digest. Keep purge disabled. | Retain-only is the selected operating mode; signed policy and complete legacy classification evidence are outstanding. |
+| **D-29-RECOVERY** | System owner | Approve positive RPO/RTO, capture/publication limits, backup cadence and retention, independent destination/failure domains, key custodians, operators, coverage, and exercise interval. | Owner values, independent authenticated backup publication, and an isolated full database/object restore drill are outstanding. |
+| **D-30-OPERATIONS** | Operations owner | Approve the production monitor profile, health targets, transport/sender, recipient groups, responders, thresholds, maintenance windows, and escalation/acknowledgement limits. | A deployed off-host monitor, recipient-confirmed firing/resolution delivery, and backup-freshness/failure-path evidence are outstanding. |
+| **D-32-SUPPORT** | QA lead | Approve exact desktop OS/Chrome/Edge versions, role/scenario matrix, network profiles, numeric performance/data budgets, and named testers. | Mobile is excluded by the later user scope instruction; actual Chrome and Edge UAT and QA sign-off remain outstanding. |
+| **D-33-BUSINESS** | Finance/data owner | Approve the role/project assignment export, five business samples, timezone, currency/precision/tax/rounding, thresholds, numbering, imports/control totals, four final signatories, and release authorizer. | Assignment reconciliation, independently checked samples/import totals, and final acceptance signatures are outstanding. |
 
-| ID | Status | Responsible role | What remains to be done | Why it matters | Eventual required evidence | Accepted operational risk while incomplete |
-|---|---|---|---|---|---|---|
-| **D-27-SCOPE** | Deferred — Post-release | Business sponsor | Confirm and formally sign off the included feature inventory, preserving Delivery as launch readiness only and `G-01` excluded. | Establishes an authoritative baseline of delivered capabilities and boundary exclusions. | Signed scope inventory record and digest captured in the release closure package. | Scope relies on documented codebase defaults ([ACCEPTED_SCOPE.md](ACCEPTED_SCOPE.md)); formal sponsor sign-off is not yet recorded. |
-| **D-28-POLICY** | Deferred — Post-release | Records owner | Define retention policy ID, audit classes, retention durations, leap-day rules, and legal hold policy, then record formal approval. | Governs lawful retention and prevents unauthorized or premature audit disposal. | Approved retain-only or retention policy file and SHA-256 verification matching `AUDIT_RETENTION_POLICY_*`. | Audit database growth is unbounded until retention is approved because `LOG_PURGE_ENABLED=false` disables all automated deletion. |
-| **D-29-RECOVERY** | Deferred — Post-release | System owner | Provision an independent off-host backup destination and isolated restore host, name key custodians/operators, set RPO/RTO and pause/retention limits, and run a restore drill. | Proves encrypted backups can rebuild production independently if the primary host fails. | Signed recovery policy plus timed restore-drill receipt from an isolated restore host. | Backups run locally via `scripts/backup.py` and existing timers, but full-host failure recovery has not been validated against an off-host target. |
-| **D-30-OPERATIONS** | Deferred — Post-release | Operations owner | Configure an independent off-host monitor, name primary and backup responders, wire external alert transport/recipients, and validate thresholds, backup freshness checks, and maintenance rules. | Ensures outages, certificate/backup drift, or silent host failures notify responders externally. | Completed monitor profile and verified external alert-delivery receipt (synthetic + recovery). | On-host Grafana/Loki observability and portal `/health/readiness` checks run, but external alerting on full host loss is unverified. |
-| **D-32-SUPPORT** | Deferred — Post-release | QA lead | Confirm desktop Chrome and Edge versions, assign named testers and scenario roles, set measurable acceptance limits, execute formal UAT, and sign off results. | Provides independent acceptance evidence across user roles. | Signed QA matrix and executed UAT results. | Automated regressions cover application changes. Formal desktop UAT sign-off remains open. |
-| **D-33-BUSINESS** | Deferred — Post-release | Finance/data owner | Confirm user/project assignments, five worked financial samples, currency/timezone/precision/tax/numbering rules, material approval thresholds, import control totals, and final business signatories. | Verifies production business calculations, role assignments, and historical data accuracy against financial controls. | Signed business rules schedule, reconciled data import control receipts, and final release acceptance record. | Technical authentication, role isolation, and transactional integrity are enforced in code, while formal business/data reconciliation sign-off is pending. |
+Every decision record needs an authenticated approval artifact bound to the canonical digest of its decision JSON (excluding `approval_ref`). An independent reviewer must verify the approval provenance. A chat message, name in a JSON field, or GitHub actor does not replace the signed artifact or independent verification.
 
-## Related Documents
+## Operational and final acceptance gates
 
-- [Operations and Deployment Runbook](OPERATIONS_AND_DEPLOYMENT.md)
-- [Accepted Release Scope](ACCEPTED_SCOPE.md)
-- [Release Closure Templates](templates/release-closure/README.md)
+The decision signatures do not substitute for execution evidence. The closure bundle still needs, at minimum:
+
+- Exact-candidate CI reports, deployment/readback, schema heads, image IDs, frontend/service-worker hashes, and the complete host `DEPLOYED` receipt.
+- Production retention preview, complete legacy classifications/dispositions, retain-only setting, and scheduled-equivalent operational evidence. Do not manufacture a purge demonstration.
+- Authenticated, independent database-and-object backup sets and a timed restore on an isolated host, with object/control-total verification and measured RPO/RTO.
+- Off-host monitoring evidence for request/task signals, alert firing and resolution, human acknowledgement, backup freshness, redaction, and primary-host-loss detection.
+- Desktop Chrome and Edge execution of the frozen role/scenario matrix, including degraded network, persisted results, failure/retry and business-chain checks.
+- Reviewed legacy exception dispositions, business data reconciliation, zero unresolved in-scope defects, an approved observation cycle, and substitute-operator handover.
+
+Only after those receipts are validated should the four D-33 final signatory roles (`business_sponsor`, `finance_data_owner`, `qa_lead`, `operations_owner`) approve the exact acceptance-bundle digest. Do not infer approval for repair, purge, production data changes, or deployment from a different-purpose decision.
+
+## Evidence templates and runbook
+
+- [Release-closure templates and canonical digest rules](templates/release-closure/README.md)
+- [Operations and deployment runbook](OPERATIONS_AND_DEPLOYMENT.md)
+- [Accepted release scope](ACCEPTED_SCOPE.md)
