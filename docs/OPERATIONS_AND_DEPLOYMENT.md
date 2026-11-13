@@ -194,6 +194,8 @@ Set `TMPDIR` to a private recovery volume with room for all decrypted artifacts.
 
 The restore checks decrypted bytes before writing and checks the resulting schema, database references, and restored object checksums. Start the isolated application and open the required protected files under authorized and forbidden accounts. Include the backup set identity, source SHA, schema head, UTC timings, missing or corrupt artifact tests, key access, and actual recovery results in the release evidence. Local fixtures establish tool behavior. The release still requires a drill with the approved destination, retained data scope, operator, and measured targets.
 
+If a restore is interrupted, record the phase and keep the targets isolated. PostgreSQL rolls back the interrupted database transaction. A database restored in an earlier phase or objects copied before a later failure can still remain. Treat the attempt as incomplete and retry the same verified backup set into new empty databases, a new bucket, and a new configuration directory. Record the interrupted attempt and the retry separately. Keep the last verified recovery point available throughout the drill.
+
 ### Data checks and repairs
 
 | Case | Operator action |
