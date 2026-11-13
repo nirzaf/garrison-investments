@@ -70,13 +70,6 @@ sha=$(cat "$release/SOURCE_COMMIT")
 backend="$project-backend-1"
 image=$(docker inspect --format '{{.Image}}' "$backend")
 [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]] || die 'Active backend image identity is unavailable.'
-read -r pause_seconds publish_minutes < <(
-  docker run --rm --network none -v "$policy:/policy.json:ro" "$image" \
-    python -m scripts.backup_set policy-check --policy /policy.json
-)
-[[ "$pause_seconds" =~ ^[1-9][0-9]*$ && "$publish_minutes" =~ ^[1-9][0-9]*$ ]] ||
-  die 'Approved recovery time limits could not be read.'
-
 protected_directory "$base" 022 || die 'Recovery requires a protected root-owned portal directory.'
 recovery_parent=${recovery%/*}
 if [[ ! -e "$recovery_parent" && ! -L "$recovery_parent" ]]; then mkdir -m 0700 -- "$recovery_parent"; fi
@@ -87,7 +80,9 @@ protected_directory "$recovery" 077 || die 'Scheduled recovery requires an owner
 # Use one owned slot. A publication failure must not allocate another full set.
 run="$recovery/.scheduled-capture"
 started_at=$(date -u +%FT%TZ)
-phase=spool
+phase=preflight
+# Bound status reporting even when the policy limits are unavailable.
+status_timeout=60
 created=0
 paused=0
 writers=()
@@ -159,7 +154,7 @@ with NamedTemporaryFile(mode="w", dir=root, prefix=".attempt-", delete=False) as
     json.dump(record, output, sort_keys=True)
 Path(output.name).replace(Path(root) / "last-attempt.json")
 PY
-  if ! timeout "$((publish_minutes * 60))" docker run --rm --env-file "$publisher_env" \
+  if ! timeout "$status_timeout" docker run --rm --env-file "$publisher_env" \
     "${common[@]}" -v "$recovery/last-attempt.json:/receipts/last-attempt.json:ro" \
     -v "$template:/capture-inventory.json:ro" "$image" \
     python -m scripts.backup_set publish-attempt /receipts/last-attempt.json \
@@ -171,6 +166,15 @@ PY
 }
 trap finish EXIT
 trap 'exit 1' INT TERM
+
+limits=$(timeout 30 docker run --rm --network none -v "$policy:/policy.json:ro" "$image" \
+  python -m scripts.backup_set policy-check --policy /policy.json) &&
+  [[ "$limits" =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] ||
+  die 'Approved recovery time limits could not be read.'
+pause_seconds=${BASH_REMATCH[1]}
+publish_minutes=${BASH_REMATCH[2]}
+status_timeout=$((publish_minutes * 60))
+phase=spool
 
 publish_capture() {
   protected_directory "$run/set" 077 || die 'Pending recovery set is not a private directory.'

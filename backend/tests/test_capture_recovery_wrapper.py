@@ -46,7 +46,14 @@ elif args[0] == 'start':
         state[name] = True
     path.write_text(json.dumps(state))
 elif 'policy-check' in args:
+    if os.environ.get('FIXTURE_FAILURE') in {'preflight', 'preflight-and-status'}:
+        sys.exit(1)
+    if os.environ.get('FIXTURE_FAILURE') == 'invalid-limits':
+        print('30 1 unexpected')
+        sys.exit(0)
     print('30 1')
+    if os.environ.get('FIXTURE_FAILURE') == 'failed-after-limits':
+        sys.exit(1)
 elif 'capture' in args:
     assert not any(state.values())
     volume = next(arg for arg in args if arg.endswith(':/capture'))
@@ -92,7 +99,7 @@ elif 'publish-attempt' in args:
     assert state['garrison-portal-backend-1'] and state['garrison-portal-nginx-1']
     if attempt['phase'] == 'resume':
         assert not state['garrison-portal-grafana-1']
-    if os.environ.get('FIXTURE_FAILURE') == 'status':
+    if os.environ.get('FIXTURE_FAILURE') in {'status', 'preflight-and-status'}:
         sys.exit(1)
     remote = pathlib.Path(os.environ['FIXTURE_REMOTE'])
     with (remote / 'attempts.jsonl').open('ab') as output:
@@ -386,6 +393,38 @@ def test_lock_failure_leaves_previous_attempt_and_backup_unchanged(
 
     assert scheduled_capture.run("lock").returncode != 0
     assert [path.read_bytes() for path in paths] == before
+
+
+@pytest.mark.parametrize(
+    "failure", ["preflight", "invalid-limits", "failed-after-limits", "preflight-and-status"]
+)
+def test_policy_preflight_failure_records_status_without_touching_writers_or_last_good(
+    scheduled_capture: ScheduledCapture, failure: str
+) -> None:
+    assert scheduled_capture.run().returncode == 0
+    evidence = scheduled_capture.evidence
+    remote = scheduled_capture.remote
+    paths = (
+        evidence / "latest-success.json",
+        remote / "complete-1",
+        scheduled_capture.events,
+        scheduled_capture.writer_state,
+    )
+    before = [path.read_bytes() for path in paths]
+    result = scheduled_capture.run(failure, now="2026-11-12T18:00:00Z")
+
+    assert result.returncode != 0
+    local = json.loads((evidence / "last-attempt.json").read_bytes())
+    assert (local["phase"], local["outcome"]) == ("preflight", "fail")
+    assert local["started_at_utc"] == "2026-11-12T18:00:00Z"
+    remote_attempts = (remote / "attempts.jsonl").read_text().splitlines()
+    if failure == "preflight-and-status":
+        assert len(remote_attempts) == 1
+        assert "status publication failed" in result.stderr
+    else:
+        assert len(remote_attempts) == 2 and json.loads(remote_attempts[-1]) == local
+    assert [path.read_bytes() for path in paths] == before
+    assert not (evidence / ".scheduled-capture").exists()
 
 
 @pytest.mark.parametrize("symlink", [False, True])
