@@ -54,6 +54,8 @@ def restore_backup(backup_path: Path, database_url: str, *, quiet: bool = False)
         parts = parts._replace(netloc=f"{credentials.split(':', 1)[0]}@{host}")
     command = [
         "psql",
+        "--no-psqlrc",
+        "--no-password",
         "--set",
         "ON_ERROR_STOP=on",
         "--single-transaction",

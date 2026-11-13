@@ -1,11 +1,12 @@
 import argparse
 import gzip
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from scripts.launch_evidence import collect_evidence, render_markdown
-from scripts.restore_dry_run import inspect_backup
+from scripts.restore_dry_run import inspect_backup, restore_backup
 from scripts.validate_import_sources import default_template_sources, validate_source
 
 
@@ -69,6 +70,31 @@ def test_restore_dry_run_inspects_gzipped_plain_sql_dump(tmp_path: Path) -> None
 
     assert result["size_bytes"] > 0
     assert "CREATE TABLE" in result["markers"]
+
+
+@pytest.mark.parametrize("suffix", [".sql", ".sql.gz"])
+def test_restore_uses_noninteractive_psql_without_startup_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    backup = tmp_path / f"fixture{suffix}"
+    opener = gzip.open if suffix.endswith(".gz") else open
+    with opener(backup, "wt", encoding="utf-8") as dump:
+        dump.write("CREATE TABLE sample (id int);\n")
+    run = Mock()
+    monkeypatch.setattr("scripts.restore_dry_run.subprocess.run", run)
+
+    restore_backup(backup, "postgresql://fixture:fixture_only@127.0.0.1/garrison_restore_test_sample")
+
+    run.assert_called_once()
+    command = run.call_args.args[0]
+    assert command[:6] == [
+        "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=on", "--single-transaction"
+    ]
+    assert command[6:9] == [
+        "--dbname", "postgresql://fixture@127.0.0.1/garrison_restore_test_sample", "--file"
+    ]
+    assert run.call_args.kwargs["env"]["PGPASSWORD"] == "fixture_only"
+    assert run.call_args.kwargs["check"] is True
 
 
 def test_validate_default_import_templates_are_usable() -> None:
