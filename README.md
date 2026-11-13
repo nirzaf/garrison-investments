@@ -236,4 +236,4 @@ npm run api:types
 | [`nginx/`](nginx/) and [Compose files](docker-compose.prod.yml) | Reverse proxy, service definitions, networks, and persistent volumes. |
 | [`observability/`](observability/) | Alloy and Loki configuration, Grafana dashboards, provisioning, and alert contact points. |
 | [`deploy/`](deploy/) and [`.github/workflows/`](.github/workflows/) | Host release script, CI, and production deployment workflow. |
-| [`docs/`](docs/) | Architecture, access rules, operations, API contract, schema reference, and import templates. |
+| [`docs/`](docs/) | Architecture, access rules, operations, post-release governance backlog, API contract, schema reference, and import templates. |

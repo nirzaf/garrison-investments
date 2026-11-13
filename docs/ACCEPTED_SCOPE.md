@@ -1,6 +1,6 @@
 # Garrisons portal release scope
 
-This inventory is the proposed scope for the Garrisons Construction Internal Portal. A dated D-27-SCOPE decision from the Garrisons business sponsor must bind the digest of this file to the release manifest before it can serve as accepted scope. The [operations runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) describes how to attach that decision and its evidence.
+This inventory defines the release scope for the Garrisons Construction Internal Portal (`launch_readiness_only`, `G-01` excluded). Formal `D-27-SCOPE` business sponsor sign-off is **Deferred — Post-release** in [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md) and no longer blocks production deployment; the [operations runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) describes optional post-release formal certification.
 
 | Area | Release scope | Source |
 | --- | --- | --- |

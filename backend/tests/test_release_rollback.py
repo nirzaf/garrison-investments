@@ -498,3 +498,32 @@ curl() {
             assert events == ["download"]
         else:
             assert not events
+
+
+def test_host_release_does_not_reference_verifier_or_governance_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
+    release_source = SCRIPT.read_text()
+    for forbidden in (
+        "release-contract-v1",
+        "/usr/local/libexec/garrison-release-contract.py",
+        "approval-trust",
+        "release_manifest",
+        "authorized-configuration",
+    ):
+        assert forbidden not in deploy_source
+        assert forbidden not in release_source
+    assert "verify_authorization" not in release_source
+    assert "PREDEPLOY.json >" not in release_source
+
+
+def test_audit_purge_defaults_disabled_and_env_example_documents_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config import Settings
+
+    repo_root = Path(__file__).resolve().parents[2]
+    monkeypatch.delenv("LOG_PURGE_ENABLED", raising=False)
+    assert Settings.model_fields["log_purge_enabled"].default is False
+    assert Settings().log_purge_enabled is False
+    assert "LOG_PURGE_ENABLED=false" in (repo_root / ".env.example").read_text().splitlines()

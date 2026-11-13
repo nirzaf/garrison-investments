@@ -225,7 +225,7 @@ Use sample data only in an approved non-production environment. Follow the [seed
 
 ## Deferred — Post-release
 
-The current portal scope limits Delivery to Launch readiness and excludes G-01. Audit deletion stays disabled. Each item below remains open for formal acceptance.
+The current portal scope limits Delivery to Launch readiness and excludes G-01. Audit deletion stays disabled. Each item below remains open for formal acceptance (see [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md) for full details).
 
 | Decision | Responsible role | Work and evidence | Risk until verified |
 | --- | --- | --- | --- |
