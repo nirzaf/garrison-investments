@@ -1,20 +1,31 @@
 import gzip
 
+import pytest
+
 from app.tasks.backup import backup_command
 from app.tasks.celery_app import celery_app
 from scripts.backup import create_dump, database_targets
 
 
-def test_backup_dump_is_valid_gzip(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("portable", [False, True], ids=["ordinary", "portable"])
+def test_backup_dump_is_valid_gzip(tmp_path, monkeypatch, portable: bool) -> None:
     pg_dump = tmp_path / "pg_dump"
-    pg_dump.write_text("#!/bin/sh\nprintf 'SELECT 1;\\n'\n")
+    pg_dump.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$DUMP_ARGUMENTS\"\nprintf 'SELECT 1;\\n'\n"
+    )
     pg_dump.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path), prepend=":")
+    arguments = tmp_path / "arguments"
+    monkeypatch.setenv("DUMP_ARGUMENTS", str(arguments))
 
     output = tmp_path / "backup.sql.gz"
-    create_dump("postgresql://localhost/test", output)
+    if portable:
+        create_dump("postgresql://localhost/test", output, include_acl=False)
+    else:
+        create_dump("postgresql://localhost/test", output)
 
     assert gzip.decompress(output.read_bytes()) == b"SELECT 1;\n"
+    assert ("--no-acl" in arguments.read_text().splitlines()) == portable
 
 
 def test_backup_command_uses_current_python_and_monthly_flag() -> None:

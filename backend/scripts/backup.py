@@ -22,7 +22,13 @@ def normalize_pg_url(database_url: str) -> str:
     return database_url
 
 
-def create_dump(database_url: str, output_path: Path, *, snapshot: str | None = None) -> None:
+def create_dump(
+    database_url: str,
+    output_path: Path,
+    *,
+    snapshot: str | None = None,
+    include_acl: bool = True,
+) -> None:
     parts = urlsplit(normalize_pg_url(database_url))
     environment = os.environ.copy()
     if parts.password is not None:
@@ -30,6 +36,8 @@ def create_dump(database_url: str, output_path: Path, *, snapshot: str | None = 
         credentials, host = parts.netloc.rsplit("@", 1)
         parts = parts._replace(netloc=f"{credentials.split(':', 1)[0]}@{host}")
     command = ["pg_dump", "--format=plain", "--no-owner"]
+    if not include_acl:
+        command.append("--no-acl")
     if snapshot is not None:
         command.extend(("--snapshot", snapshot))
     command.append(parts.geturl())

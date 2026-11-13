@@ -250,7 +250,9 @@ async def dump_application(database_url: str, dump: Path) -> tuple[list[str], se
             snapshot_at: datetime = row[1].astimezone(UTC)
             heads = await schema_heads(connection)
             keys = await references(connection, snapshot_at)
-            await asyncio.to_thread(create_dump, database_url, dump, snapshot=snapshot)
+            await asyncio.to_thread(
+                create_dump, database_url, dump, snapshot=snapshot, include_acl=False
+            )
             return heads, keys, snapshot_at
     finally:
         await engine.dispose()
@@ -434,7 +436,7 @@ async def capture(args: argparse.Namespace, password: str) -> None:
             grafana_plain = None
             if grafana_url:
                 grafana_dump = temporary / "grafana.sql.gz"
-                create_dump(grafana_url, grafana_dump)
+                create_dump(grafana_url, grafana_dump, include_acl=False)
                 grafana_plain = checksum(grafana_dump)
                 encrypted_grafana = write_encrypted(grafana_dump, destination, password)
             if args.extra_objects:
