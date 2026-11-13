@@ -986,9 +986,21 @@ def manifest(
             }
             payload["policy_ref"] = bundle.write("artifacts/recovery-policy.json", policy)
         if key == "D-30-OPERATIONS":
+            transport = {
+                "mode": "smtp_tls",
+                "sender": "sender@example.test",
+                "endpoint": "smtp.example.test:465",
+            }
+            recipients = {
+                "recipients": ["operator@example.test"],
+                "escalation_recipients": ["substitute@example.test"],
+            }
+            payload["transport_ref"] = bundle.write("artifacts/monitor-transport.json", transport)
+            payload["recipient_ref"] = bundle.write("artifacts/monitor-recipients.json", recipients)
             profile = {
                 **payload,
                 "targets": [{"url": url, "check_id": "portal"} for url in payload["targets"]],
+                "transport": {**transport, **recipients},
                 "backup": {"check_id": "backup"},
             }
             payload["profile_ref"] = bundle.write("artifacts/monitor-profile.json", profile)
@@ -1197,6 +1209,7 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
         ("reused-id", "must have distinct delivery evidence"),
         ("reused-receipt", "must have distinct delivery evidence"),
         ("wrong-destination", "for the same destination"),
+        ("unapproved-destination", "use an unapproved monitor destination"),
         ("ack-before-receipt", "acknowledgement exceeded the approved bound"),
     ],
 )
@@ -1213,6 +1226,18 @@ def test_observability_requires_matching_firing_and_resolution_evidence(
                 return result
             if problem == "unclassified":
                 self.alert_artifacts[phase].pop()
+                return result
+            if problem == "unapproved-destination":
+                for key in ("firing_delivery", "resolution_delivery"):
+                    original = result[key]
+                    path = original["path"]
+                    record = json.loads((self.root / path).read_text())
+                    record["destination"] = "unapproved@example.test"
+                    ref = self.write(path, record)
+                    artifacts = self.alert_artifacts[phase]
+                    artifacts[:] = [a for a in artifacts if a["sha256"] != original["sha256"]]
+                    artifacts.append({**ref, "sensitivity": "sanitized"})
+                    result[key] = ref
                 return result
             key = "firing_delivery" if problem == "ack-before-receipt" else "resolution_delivery"
             original = result[key]
@@ -1245,6 +1270,41 @@ def test_observability_requires_matching_firing_and_resolution_evidence(
 
     with pytest.raises(contract.ContractError, match=reason):
         bundle.validator("final").run(bundle.root / "release_manifest.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("sender", "other-sender@example.test"),
+        ("endpoint", "other.example.test:465"),
+        ("recipients", ["unapproved@example.test"]),
+        ("escalation_recipients", ["unapproved@example.test"]),
+    ],
+)
+def test_operations_rejects_profile_drift_from_the_approved_contact_route(
+    tmp_path: Path, field: str, replacement: str | list[str]
+) -> None:
+    bundle = Bundle(tmp_path)
+    decisions = manifest(bundle)["decisions"]
+    operation_ref = next(ref for ref in decisions if ref["path"].endswith("D-30-OPERATIONS.json"))
+    operation = json.loads((bundle.root / operation_ref["path"]).read_text())
+    profile = json.loads((bundle.root / operation["profile_ref"]["path"]).read_text())
+    delivery = {
+        "mode": "smtp_tls",
+        "sender": "sender@example.test",
+        "endpoint": "smtp.example.test:465",
+    }
+    recipients = {
+        "recipients": ["operator@example.test"],
+        "escalation_recipients": ["substitute@example.test"],
+    }
+    operation["transport_ref"] = bundle.write("transport.json", delivery)
+    operation["recipient_ref"] = bundle.write("recipients.json", recipients)
+    profile["transport"] = {**delivery, **recipients, field: replacement}
+    operation["profile_ref"] = bundle.write("effective-profile.json", profile)
+
+    with pytest.raises(contract.ContractError, match="differs from the approved contact route"):
+        contract.decision_operations(operation, "test", bundle.validator("predeploy").evidence)
 
 
 def test_final_requires_the_ci_attempt_used_by_deployment(
@@ -1591,8 +1651,9 @@ def test_scheduled_expiry_requires_separate_bound_authorization(
 
 
 @pytest.mark.parametrize("change_threshold", [False, True])
+@pytest.mark.parametrize("review_route_change", [False, True])
 def test_reviewed_staging_policy_keeps_production_recovery_objectives(
-    tmp_path: Path, change_threshold: bool
+    tmp_path: Path, change_threshold: bool, review_route_change: bool
 ) -> None:
     bundle = Bundle(tmp_path)
     data = manifest(bundle)
@@ -1612,14 +1673,19 @@ def test_reviewed_staging_policy_keeps_production_recovery_objectives(
     operations = decisions["D-30-OPERATIONS"]
     profile = json.loads((bundle.root / operations["profile_ref"]["path"]).read_text())
     profile["environment"] = "staging"
+    profile["transport"]["recipients"] = ["isolated@example.test"]
     profile_ref = bundle.write("stage-monitor.json", profile)
-    equivalence = {
+    equivalence: dict[str, Any] = {
         "production_configuration_sha256": CONFIG,
         "staging_configuration_sha256": "a" * 64,
         "staging_operations_profile": profile_ref,
         "staging_recovery_policy": recovery_ref,
         "differences": [{"setting": "recovery_isolation", "reason": "Independent fixture prefix"}],
     }
+    if review_route_change:
+        equivalence["differences"].append(
+            {"setting": "mail_recipients", "reason": "Use the isolated fixture mailbox"}
+        )
     equivalence["review"] = bundle.approval(
         "staging_equivalence",
         contract.canonical_digest(equivalence),
@@ -1631,7 +1697,10 @@ def test_reviewed_staging_policy_keeps_production_recovery_objectives(
     validator.target = "production"
     validator.configuration = CONFIG
     validator.decisions = decisions
-    if change_threshold:
+    if not review_route_change:
+        with pytest.raises(contract.ContractError, match="Unreviewed isolated monitor recipient"):
+            validator.validate_equivalence(ref)
+    elif change_threshold:
         with pytest.raises(contract.ContractError, match="differs from its approved decision"):
             validator.validate_equivalence(ref)
     else:

@@ -706,6 +706,24 @@ def decision_recovery(record: dict[str, Any], target: str, evidence: Evidence) -
     )
 
 
+MONITOR_TRANSPORT_FIELDS = "mode sender endpoint"
+MONITOR_RECIPIENT_FIELDS = "recipients escalation_recipients"
+
+
+def monitor_contact_route(profile: dict[str, Any]) -> tuple[dict[str, str], dict[str, set[str]]]:
+    route = fields(
+        profile.get("transport"),
+        MONITOR_TRANSPORT_FIELDS + " " + MONITOR_RECIPIENT_FIELDS,
+        label="monitor contact route",
+    )
+    transport = {key: meaningful(route[key], key) for key in MONITOR_TRANSPORT_FIELDS.split()}
+    exact(transport["mode"], {"smtp_tls", "smtp_starttls", "usesend"}, "monitor transport mode")
+    recipients = {
+        key: strings(route[key], f"monitor {key}") for key in MONITOR_RECIPIENT_FIELDS.split()
+    }
+    return transport, recipients
+
+
 def decision_operations(record: dict[str, Any], target: str, evidence: Evidence) -> None:
     require(record["environment"] == target, "Operations decision targets another environment.", 3)
     strings(record["targets"], "monitor targets")
@@ -723,8 +741,17 @@ def decision_operations(record: dict[str, Any], target: str, evidence: Evidence)
         "Operations requires a separate substitute responder.",
         3,
     )
-    for field in ("recipient_ref", "transport_ref", "maintenance_rules_ref", "profile_ref"):
-        evidence.load(record[field])
+    evidence.load(record["maintenance_rules_ref"])
+    approved_transport = fields(
+        evidence.load(record["transport_ref"], parse=True),
+        MONITOR_TRANSPORT_FIELDS,
+        label="approved monitor transport",
+    )
+    approved_recipients = fields(
+        evidence.load(record["recipient_ref"], parse=True),
+        MONITOR_RECIPIENT_FIELDS,
+        label="approved monitor recipients",
+    )
     profile = evidence.load(record["profile_ref"], parse=True)
     require(isinstance(profile, dict), "Invalid installed monitor profile.")
     targets = items(profile.get("targets"), "installed monitor targets")
@@ -747,6 +774,16 @@ def decision_operations(record: dict[str, Any], target: str, evidence: Evidence)
             )
         ),
         "Installed monitor profile differs from the approved operations decision.",
+        3,
+    )
+    transport, recipients = monitor_contact_route(profile)
+    require(
+        transport == approved_transport
+        and all(
+            addresses == strings(approved_recipients[key], key)
+            for key, addresses in recipients.items()
+        ),
+        "Installed monitor profile differs from the approved contact route.",
         3,
     )
     monitor_check_ids(profile)
@@ -1340,6 +1377,7 @@ def receipt_observability(
     end: datetime,
     *,
     artifact_hashes: set[str],
+    primary_destinations: set[str],
 ) -> None:
     data = fields(
         payload, "profile_sha256 trace_ids alert_events assertions", label="observability result"
@@ -1415,6 +1453,12 @@ def receipt_observability(
             3,
         )
         recipient = meaningful(row["recipient"], "alert recipient identity")
+        if row["independent_path"]:
+            require(
+                firing_destination in primary_destinations,
+                "Independent firing and resolution use an unapproved monitor destination.",
+                3,
+            )
         ack = utc(row["acknowledged_at"], "alert acknowledgement")
         require(
             firing_received <= ack <= end
@@ -2292,7 +2336,7 @@ class Validation:
         self.decision_owners: dict[str, str] = {}
         self.decisions: dict[str, Any] = {}
         self.stage_config: str | None = None
-        self.stage_profile: str | None = None
+        self.stage_profile_ref: dict[str, Any] | None = None
         self.stage_recovery: dict[str, Any] | None = None
         self.deploy_window: tuple[datetime, datetime] | None = None
         self.deployment_authorizer = ""
@@ -2413,7 +2457,19 @@ class Validation:
             3,
         )
         monitor_check_ids(stage)
-        self.stage_profile = profile_ref["sha256"]
+        stage_transport, stage_recipients = monitor_contact_route(stage)
+        production_transport, production_recipients = monitor_contact_route(production)
+        require(
+            stage_transport == production_transport or "mail_transport" in seen,
+            "Unreviewed isolated monitor transport difference.",
+            3,
+        )
+        require(
+            stage_recipients == production_recipients or "mail_recipients" in seen,
+            "Unreviewed isolated monitor recipient difference.",
+            3,
+        )
+        self.stage_profile_ref = profile_ref
         recovery = self.decisions["D-29-RECOVERY"]
         stage_policy_ref = value["staging_recovery_policy"]
         stage_policy = self.evidence.load(stage_policy_ref, parse=True)
@@ -2626,21 +2682,24 @@ class Validation:
             verify_recovery_artifacts(result, raw, self.evidence, self.identity, recovery)
         elif kind == "observability":
             operations = self.decisions["D-30-OPERATIONS"]
-            profile = (
-                operations["profile_ref"]["sha256"]
+            profile_ref = (
+                operations["profile_ref"]
                 if environment == self.target
-                else self.stage_profile
+                else self.stage_profile_ref
             )
-            assert profile is not None
+            assert profile_ref is not None
+            profile = self.evidence.load(profile_ref, parse=True)
+            _, recipients = monitor_contact_route(profile)
             receipt_observability(
                 result,
-                profile,
+                profile_ref["sha256"],
                 operations,
                 self.approvals,
                 environment,
                 start,
                 end,
                 artifact_hashes=artifact_hashes,
+                primary_destinations=recipients["recipients"],
             )
         elif kind == "uat":
             self.uat_defects.update(
