@@ -2093,6 +2093,8 @@ def observation(
     count(published["object_count"], "scheduled backup object count")
     snapshot = utc(published["snapshot_at_utc"], "scheduled backup snapshot")
     verified = utc(published["remote_verified_at_utc"], "scheduled backup publication")
+    attempt_start = utc(attempt["started_at_utc"], "scheduled backup start")
+    attempt_end = utc(attempt["completed_at_utc"], "scheduled backup completion")
     require(
         attempt["source_sha"] == published["source_sha"] == identity["source_sha"]
         and attempt["phase"] == "complete"
@@ -2103,9 +2105,9 @@ def observation(
         and published["policy_sha256"] == recovery["policy_ref"]["sha256"]
         and published["policy_revision"] == recovery["revision"]
         and published["destination_identity"] == recovery["destination_identity"]
-        and start <= utc(attempt["started_at_utc"], "scheduled backup start")
-        <= snapshot <= verified <= utc(attempt["completed_at_utc"], "scheduled backup completion")
-        <= end,
+        and start <= attempt_start <= snapshot <= verified <= attempt_end <= end
+        and (verified - snapshot).total_seconds()
+        <= recovery["maximum_publication_delay_minutes"] * 60,
         "Scheduled backup failed or differs from the approved release and observation window.",
         4,
     )
@@ -2117,7 +2119,7 @@ def observation(
         label="scheduled monitor receipt",
     )
     require(
-        monitor.get("transport_ready", True) is True,
+        monitor.get("transport_ready") is True,
         "Scheduled monitor notification transport was unavailable.",
         4,
     )
@@ -2131,7 +2133,7 @@ def observation(
         and monitor["profile_id"] == operations["profile_id"]
         and monitor["profile_revision"] == operations["revision"]
         and start <= check_start <= check_end <= end
-        and verified <= check_end,
+        and attempt_end <= check_end,
         "Scheduled monitor receipt differs from the approved release, profile or window.",
         4,
     )
@@ -2144,7 +2146,10 @@ def observation(
         )
         check_id = meaningful(row["check_id"], "scheduled monitor check ID")
         result = fields(
-            row["result"], "ok category status digest snapshot_at", label="scheduled check result"
+            row["result"],
+            "ok category status digest snapshot_at",
+            optional="attempt_started_at attempt_completed_at",
+            label="scheduled check result",
         )
         require(
             check_id in checks and result["ok"] is True
@@ -2154,11 +2159,23 @@ def observation(
         )
         if check_id == backup_check:
             require(
-                result["digest"] == manifest_hash
-                and utc(result["snapshot_at"], "monitored backup snapshot") == snapshot,
+                result["category"] == "backup_current"
+                and result["digest"] == manifest_hash
+                and utc(result["snapshot_at"], "monitored backup snapshot") == snapshot
+                and {"attempt_started_at", "attempt_completed_at"} <= result.keys()
+                and utc(result["attempt_started_at"], "monitored attempt start") == attempt_start
+                and utc(result["attempt_completed_at"], "monitored attempt completion")
+                == attempt_end,
                 "Backup freshness did not verify the observed scheduled backup.",
                 4,
             )
+        else:
+            require(
+                result["category"] == "ready" and result["status"] == 200,
+                "Scheduled readiness was not verified.",
+                4,
+            )
+            digest(result["digest"], "scheduled readiness response")
         checks.remove(check_id)
     require(not checks, "An approved scheduled check was not observed.", 3)
     for event in items(data["incidents"], "observation incident record", minimum=0):

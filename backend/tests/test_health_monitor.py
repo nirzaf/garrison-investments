@@ -639,6 +639,8 @@ def test_failed_scheduled_backup_alerts_with_a_fresh_publication_and_recovers(
     recovered = check(100)
     assert recovered.event == "resolved" and recovered.delivery == "accepted"
     assert recovered.result.category == "backup_current"
+    assert recovered.result.attempt_started_at == attempt.started_at_utc
+    assert recovered.result.attempt_completed_at == attempt.completed_at_utc
     saved = monitor.load_state(state_file, "test").checks[policy.check_id]
     assert saved.last_verified_snapshot == publication.snapshot_at_utc
     assert saved.last_verified_digest == "d" * 64

@@ -891,10 +891,14 @@ def scheduled_observation(
                 "check_id": check_id,
                 "result": {
                     "ok": True,
-                    "category": "ready",
-                    "status": None,
-                    "digest": backup_digest,
+                    "category": "backup_current" if backup_digest else "ready",
+                    "status": None if backup_digest else 200,
+                    "digest": backup_digest or "a" * 64,
                     "snapshot_at": FINAL_START.isoformat() if backup_digest else None,
+                    "attempt_started_at": FINAL_START.isoformat() if backup_digest else None,
+                    "attempt_completed_at": (
+                        (FINAL_START + timedelta(seconds=2)).isoformat() if backup_digest else None
+                    ),
                 },
                 "event": None,
                 "suppressed": False,
@@ -916,6 +920,7 @@ def scheduled_observation(
             "completed_at": (FINAL_START + timedelta(seconds=4)).isoformat(),
             "executed_by": "Fixture Monitor",
             "observations": checks,
+            "transport_ready": True,
         },
     )
     bundle.observation_artifacts = [
@@ -1510,6 +1515,10 @@ def test_final_rejects_activation_before_the_verified_attempt(
         ("missing evidence", "Scheduled activity must be attached"),
         ("different backup", "Backup freshness did not verify the observed scheduled backup"),
         ("transport unavailable", "Scheduled monitor notification transport was unavailable"),
+        ("transport omitted", "Scheduled monitor notification transport was unavailable"),
+        ("unverified readiness", "Scheduled readiness was not verified"),
+        ("missing attempt identity", "Backup freshness did not verify"),
+        ("different attempt", "Backup freshness did not verify the observed scheduled backup"),
     ],
 )
 def test_final_requires_scheduled_activity_evidence(
@@ -1533,6 +1542,16 @@ def test_final_requires_scheduled_activity_evidence(
         monitor = json.loads((bundle.root / monitor_ref["path"]).read_text())
         if change == "transport unavailable":
             monitor["transport_ready"] = False
+        elif change == "transport omitted":
+            monitor.pop("transport_ready", None)
+        elif change == "unverified readiness":
+            monitor["observations"][0]["result"]["status"] = 503
+        elif change == "missing attempt identity":
+            del monitor["observations"][1]["result"]["attempt_completed_at"]
+        elif change == "different attempt":
+            monitor["observations"][1]["result"]["attempt_completed_at"] = (
+                FINAL_START + timedelta(seconds=3)
+            ).isoformat()
         else:
             monitor["observations"][1]["result"]["digest"] = "0" * 64
         result["scheduled_monitoring"] = bundle.write(monitor_ref["path"], monitor)

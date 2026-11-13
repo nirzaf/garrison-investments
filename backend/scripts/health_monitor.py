@@ -213,6 +213,8 @@ class Result(StrictModel):
     status: int | None = None
     digest: str | None = None
     snapshot_at: AwareDatetime | None = None
+    attempt_started_at: AwareDatetime | None = None
+    attempt_completed_at: AwareDatetime | None = None
 
 
 def check_url(client: httpx.Client, url: str) -> Result:
@@ -706,6 +708,8 @@ def check_backup(
         category="backup_current" if ok else "backup_stale",
         digest=receipt.manifest_sha256,
         snapshot_at=receipt.snapshot_at_utc,
+        attempt_started_at=attempt.started_at_utc,
+        attempt_completed_at=attempt.completed_at_utc,
     )
 
 
