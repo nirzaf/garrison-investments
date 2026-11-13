@@ -1145,9 +1145,9 @@
     "semantic_hash": ""
   },
   "backend/scripts/launch_evidence.py": {
-    "mtime": 1794489286.3432405,
-    "ast_hash": "de99e8f8463edcae74f62404827bb84b",
-    "semantic_hash": "de99e8f8463edcae74f62404827bb84b"
+    "mtime": 1794601786.6863465,
+    "ast_hash": "3876ce5628afb498b079adde477eb710",
+    "semantic_hash": ""
   },
   "backend/alembic/env.py": {
     "mtime": 1794403366.8382564,
@@ -1265,13 +1265,13 @@
     "semantic_hash": "47d728c2f7c0725b62be2c4a24873782"
   },
   "README.md": {
-    "mtime": 1794551286.6560247,
-    "ast_hash": "5082135e55d294316e26d2fc5254888c",
+    "mtime": 1794602114.5526586,
+    "ast_hash": "c84923037bfd54fe43839553283ef847",
     "semantic_hash": ""
   },
   "STAGING_DEPLOYMENT.md": {
-    "mtime": 1794551384.0398393,
-    "ast_hash": "0ce8e2cb0a1d3a682cf046d5380901a3",
+    "mtime": 1794602114.5523705,
+    "ast_hash": "a368cf57fa9f8fb52fedcfa717482777",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -1325,8 +1325,8 @@
     "semantic_hash": "002762f3526fe5299d089c451b8505ab"
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1794555889.6021986,
-    "ast_hash": "727a95a3beecf990eaba32e31a00ce9c",
+    "mtime": 1794602114.553198,
+    "ast_hash": "939f484841431621df248a3008bda969",
     "semantic_hash": ""
   },
   "docs/ROLES_AND_PERMISSIONS.md": {
@@ -1335,18 +1335,18 @@
     "semantic_hash": "764c8b57246e346e929fdeb89ab856f7"
   },
   "docs/README.md": {
-    "mtime": 1794548309.8095548,
-    "ast_hash": "2143456578a5770362a8ab904cf953c7",
+    "mtime": 1794602085.1769207,
+    "ast_hash": "d3591fcb6bfe8541cf7f7326c7f78d3f",
     "semantic_hash": ""
   },
   "docs/LOGGING_AND_REMOTE_CLI.md": {
-    "mtime": 1794567159.5523286,
-    "ast_hash": "8498ec2c1318c06a9d27d45f7cee7827",
+    "mtime": 1794602114.5536172,
+    "ast_hash": "fd9405cfe8c22436e89e474db68cb766",
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794567551.4152868,
-    "ast_hash": "60de5157eb260bbcf1d21388c135ca3b",
+    "mtime": 1794602114.5528507,
+    "ast_hash": "c534e9e588b700cb95542a82f57aba98",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -1980,8 +1980,8 @@
     "semantic_hash": ""
   },
   "backend/scripts/release_contract.py": {
-    "mtime": 1794573463.383369,
-    "ast_hash": "9b93f4aec91b1b048a8cdd2206b7caec",
+    "mtime": 1794601786.6859026,
+    "ast_hash": "a6534c340a04ef9a88d6d14bc61e2093",
     "semantic_hash": ""
   },
   "backend/scripts/report_media_quota_drift.py": {
@@ -2030,13 +2030,13 @@
     "semantic_hash": "445a8d7b5d4f281d15223f58382c5da6"
   },
   "backend/tests/test_release_contract.py": {
-    "mtime": 1794573498.74799,
-    "ast_hash": "496cd0b7ff6508f54a5d02899e5bee05",
+    "mtime": 1794601963.483178,
+    "ast_hash": "f6c835978d075768bc44d30a1b7e4a45",
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {
-    "mtime": 1794570371.992566,
-    "ast_hash": "cd89b03ad64199042d688ae68f8edfee",
+    "mtime": 1794574304.9160397,
+    "ast_hash": "a195101e0b77f8c72bc68c001a75b0c5",
     "semantic_hash": ""
   },
   "deploy/capture-recovery-set.sh": {
@@ -2100,19 +2100,14 @@
     "semantic_hash": "bacc4ea3c6bd482e636634752335c828"
   },
   "docs/templates/release-closure/release_manifest.json": {
-    "mtime": 1794488893.852614,
-    "ast_hash": "22a13eb53db42e6fe07a154a3705ed10",
-    "semantic_hash": "22a13eb53db42e6fe07a154a3705ed10"
+    "mtime": 1794601809.97801,
+    "ast_hash": "d8eb95879e7308e6d67f8e8336d71b1f",
+    "semantic_hash": ""
   },
   "docs/templates/release-closure/release_subject.json": {
-    "mtime": 1794488893.8526871,
-    "ast_hash": "3162098c2aebec009b484812de852fec",
-    "semantic_hash": "3162098c2aebec009b484812de852fec"
-  },
-  "docs/templates/release-closure/staging_equivalence.json": {
-    "mtime": 1794489256.6381607,
-    "ast_hash": "107ccfd8d2115250adc7bc308a81d8ae",
-    "semantic_hash": "107ccfd8d2115250adc7bc308a81d8ae"
+    "mtime": 1794601809.9776337,
+    "ast_hash": "5ffb7aaa6d76fdf0f788aea9948b1366",
+    "semantic_hash": ""
   },
   "frontend/e2e/approval-delegation.e2e.ts": {
     "mtime": 1794477884.3961072,
@@ -2305,8 +2300,8 @@
     "semantic_hash": "9f224e0147c603f8c422a0ddcaaba5ac"
   },
   "docs/templates/release-closure/README.md": {
-    "mtime": 1794573478.6636312,
-    "ast_hash": "1a46b4d50ac3b4b475d6cd23001d036d",
+    "mtime": 1794602085.1775138,
+    "ast_hash": "dfbe8d6e86e41ea82f63cb0700c437b4",
     "semantic_hash": ""
   },
   "frontend/e2e/import-workflow.e2e.ts": {

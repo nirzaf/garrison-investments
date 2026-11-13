@@ -47,11 +47,6 @@
   "validation_profile": {
     "validator_version": 1,
     "validator_sha256": null,
-    "control_registry_sha256": null,
-    "staging_equivalence": {
-      "path": null,
-      "sha256": null,
-      "size_bytes": null
-    }
+    "control_registry_sha256": null
   }
 }

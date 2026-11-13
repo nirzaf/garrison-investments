@@ -114,7 +114,7 @@ flowchart TB
 
 [CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run, required CI jobs, current `main` commit, protected host configuration, and disabled audit deletion, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
 
-Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers optional post-release release approval, backup and restore evidence, and desktop Chrome and Edge acceptance. The [staging guide](STAGING_DEPLOYMENT.md) covers the separate staging target.
+Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers post-release approval, backup and restore evidence, and desktop Chrome and Edge acceptance. Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
 
 ## Getting started
 
@@ -143,7 +143,7 @@ To load sample projects and accounts for a local walkthrough, set `SEED_DEFAULT_
 docker compose exec backend python scripts/seed.py
 ```
 
-The seed command prints the local administrator email. The development configuration can display the OTP in the sign-in form. Production uses the [first-administrator bootstrap](docs/OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification), private signing keys, and a configured mail provider. Use sample data only in development, test, or an approved staging environment.
+The seed command prints the local administrator email. The development configuration can display the OTP in the sign-in form. Production uses the [first-administrator bootstrap](docs/OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification), private signing keys, and a configured mail provider. Use sample data only in isolated development or test environments.
 
 For native frontend and backend development, run PostgreSQL, Redis, and object storage in Compose. Keep ports 3000 and 8000 free for the native app processes. From the repository root:
 
@@ -209,12 +209,13 @@ docker compose exec postgres createdb -U garrison garrison_browser_test
 )
 ```
 
-Validate both deployment Compose files with the example configuration:
+Validate production Compose with the example configuration:
 
 ```bash
 docker compose --env-file .env.example -f docker-compose.prod.yml config --no-env-resolution --quiet
-docker compose --env-file .env.example -f docker-compose.staging.yml config --no-env-resolution --quiet
 ```
+
+The legacy staging Compose file is not a deployment or acceptance target. CI retains a focused compatibility test for remaining legacy configuration.
 
 ### API contract changes
 

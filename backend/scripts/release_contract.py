@@ -2400,7 +2400,7 @@ class Validation:
         self.evidence = Evidence(root, protected=protected)
         self.phase = exact(phase, {"predeploy", "final"}, "validation phase")
         self.sha = digest(sha, "candidate source", 40)
-        self.target = exact(target, {"production", "staging", "test"}, "target environment")
+        self.target = exact(target, {"production", "test"}, "target environment")
         self.token = token
         self.expected_ci_run = expected_ci_run
         self.expected_config = expected_config
@@ -2417,9 +2417,6 @@ class Validation:
         self.decision_hashes: dict[str, str] = {}
         self.decision_owners: dict[str, str] = {}
         self.decisions: dict[str, Any] = {}
-        self.stage_config: str | None = None
-        self.stage_profile_ref: dict[str, Any] | None = None
-        self.stage_recovery: dict[str, Any] | None = None
         self.deploy_window: tuple[datetime, datetime] | None = None
         self.deployment_authorizer = ""
         self.activation_operator: str | None = None
@@ -2472,98 +2469,6 @@ class Validation:
             set(self.decisions) == set(DECISION_ROLES), "Missing a mandatory owner decision.", 3
         )
 
-    def validate_equivalence(self, ref: Any) -> str | None:
-        if self.target != "production":
-            require(ref is None, "Only production releases have staging equivalence.")
-            return None
-        value = fields(
-            self.evidence.load(ref, parse=True),
-            "production_configuration_sha256 staging_configuration_sha256 "
-            "staging_operations_profile staging_recovery_policy differences review",
-            label="staging equivalence",
-        )
-        require(
-            value["production_configuration_sha256"] == self.configuration,
-            "Staging equivalence targets a different configuration.",
-            3,
-        )
-        self.stage_config = digest(value["staging_configuration_sha256"], "staging configuration")
-        allowed = {
-            "mail_transport",
-            "mail_recipients",
-            "database_endpoint",
-            "object_storage_endpoint",
-            "public_host",
-            "credentials_scope",
-            "test_fault_injection",
-            "recovery_isolation",
-        }
-        seen = set()
-        for difference in items(
-            value["differences"], "reviewed environment differences", minimum=0
-        ):
-            row = fields(difference, "setting reason", label="configuration difference")
-            setting = exact(row["setting"], allowed, "equivalent environment setting")
-            require(setting not in seen, "Duplicate environment difference.")
-            seen.add(setting)
-            meaningful(row["reason"], "configuration equivalence reason")
-        reviewed = {key: item for key, item in value.items() if key != "review"}
-        self.approvals.check(
-            value["review"],
-            "staging_equivalence",
-            canonical_digest(reviewed),
-            role="operations_owner",
-        )
-        operations = self.decisions["D-30-OPERATIONS"]
-        production = self.evidence.load(operations["profile_ref"], parse=True)
-        profile_ref = value["staging_operations_profile"]
-        stage = self.evidence.load(profile_ref, parse=True)
-        require(
-            isinstance(stage, dict)
-            and stage.get("environment") == "staging"
-            and all(
-                stage.get(key) == production.get(key)
-                for key in (
-                    "probe_interval_seconds",
-                    "timeout_seconds",
-                    "failure_threshold",
-                    "recovery_threshold",
-                    "repeat_interval_seconds",
-                    "acknowledgement_limit_seconds",
-                    "heartbeat_window_seconds",
-                    "primary_responder",
-                    "substitute_responder",
-                )
-            ),
-            "Staging monitoring changed approved operation or escalation thresholds.",
-            3,
-        )
-        monitor_check_ids(stage)
-        stage_transport, stage_recipients = monitor_contact_route(stage)
-        production_transport, production_recipients = monitor_contact_route(production)
-        require(
-            stage_transport == production_transport or "mail_transport" in seen,
-            "Unreviewed isolated monitor transport difference.",
-            3,
-        )
-        require(
-            stage_recipients == production_recipients or "mail_recipients" in seen,
-            "Unreviewed isolated monitor recipient difference.",
-            3,
-        )
-        self.stage_profile_ref = profile_ref
-        recovery = self.decisions["D-29-RECOVERY"]
-        stage_policy_ref = value["staging_recovery_policy"]
-        stage_policy = self.evidence.load(stage_policy_ref, parse=True)
-        require(isinstance(stage_policy, dict), "Invalid staging recovery policy.")
-        self.stage_recovery = dict(recovery, policy_ref=stage_policy_ref)
-        for key in ("destination_identity", "failure_domains"):
-            if stage_policy.get(key) != recovery[key]:
-                require("recovery_isolation" in seen, "Unreviewed staging recovery isolation.", 3)
-                self.stage_recovery[key] = stage_policy.get(key)
-        decision_recovery(self.stage_recovery, "staging", self.evidence)
-        return ref["sha256"]
-
     def validate_subject(self, manifest: dict[str, Any]) -> None:
         scope = fields(
             manifest["scope"],
@@ -2586,8 +2491,7 @@ class Validation:
         subject = fields(
             self.evidence.load(manifest["release_subject"], parse=True),
             "release_id repository source_sha environment configuration_sha256 inventory_sha256 "
-            "control_registry_sha256 decision_sha256 support_matrix_sha256 "
-            "staging_equivalence_sha256 " + RUNTIME_FIELDS,
+            "control_registry_sha256 decision_sha256 support_matrix_sha256 " + RUNTIME_FIELDS,
             label="frozen release subject",
         )
         self.subject_hash = manifest["release_subject"]["sha256"]
@@ -2623,7 +2527,7 @@ class Validation:
         )
         profile = fields(
             manifest["validation_profile"],
-            "validator_version validator_sha256 control_registry_sha256 staging_equivalence",
+            "validator_version validator_sha256 control_registry_sha256",
             label="validation profile",
         )
         require(
@@ -2632,12 +2536,6 @@ class Validation:
             and profile["validator_sha256"] == self.verifier_hash
             and profile["control_registry_sha256"] == registry["sha256"],
             "Validation profile differs from the running validator or control registry.",
-            3,
-        )
-        require(
-            subject["staging_equivalence_sha256"]
-            == self.validate_equivalence(profile["staging_equivalence"]),
-            "Configuration equivalence differs from the release subject.",
             3,
         )
 
@@ -2689,17 +2587,8 @@ class Validation:
             self.phase == "final" or phase == "predeploy",
             "A predeploy verdict may not use final receipts.",
         )
-        environment = (
-            "staging"
-            if (
-                self.target == "production"
-                and phase == "predeploy"
-                and kind not in {"ci", "data_reconciliation"}
-            )
-            else self.target
-        )
-        configuration = self.stage_config if environment != self.target else self.configuration
-        assert configuration is not None
+        environment = self.target
+        configuration = self.configuration
         require(
             raw["source_sha"] == self.sha
             and raw["environment"] == environment
@@ -2747,12 +2636,7 @@ class Validation:
                 self.decisions["D-28-POLICY"]["policy_ref"]["sha256"],
             )
         elif kind == "recovery":
-            recovery = (
-                self.stage_recovery
-                if environment != self.target
-                else self.decisions["D-29-RECOVERY"]
-            )
-            assert recovery is not None
+            recovery = self.decisions["D-29-RECOVERY"]
             receipt_recovery(
                 result,
                 recovery,
@@ -2764,12 +2648,7 @@ class Validation:
             verify_recovery_artifacts(result, raw, self.evidence, self.identity, recovery)
         elif kind == "observability":
             operations = self.decisions["D-30-OPERATIONS"]
-            profile_ref = (
-                operations["profile_ref"]
-                if environment == self.target
-                else self.stage_profile_ref
-            )
-            assert profile_ref is not None
+            profile_ref = operations["profile_ref"]
             profile = self.evidence.load(profile_ref, parse=True)
             _, recipients = monitor_contact_route(profile)
             receipt_observability(
@@ -2951,7 +2830,7 @@ class Validation:
             require(
                 retest["defect_id"] == name
                 and retest["source_sha"] == self.sha
-                and retest["configuration_sha256"] in {self.configuration, self.stage_config}
+                and retest["configuration_sha256"] == self.configuration
                 and retest["outcome"] == "pass",
                 "Defect retest failed or is stale.",
                 4,
@@ -3158,8 +3037,6 @@ class Validation:
                 if accepted
                 else "ready_for_authorized_deployment"
                 if ready
-                else "validated_staging_evidence"
-                if self.target == "staging"
                 else "validated_test_evidence"
             ),
             "accepted_scope_complete": accepted,

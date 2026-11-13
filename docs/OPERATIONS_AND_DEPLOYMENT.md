@@ -1,6 +1,6 @@
 # Operations and Deployment Guide
 
-[Documentation index](README.md) · [Architecture](ARCHITECTURE.md) · [Staging](../STAGING_DEPLOYMENT.md) · [Logging and alerts](LOGGING_AND_REMOTE_CLI.md)
+[Documentation index](README.md) · [Architecture](ARCHITECTURE.md) · [Logging and alerts](LOGGING_AND_REMOTE_CLI.md)
 
 Use [production CD](#production-deployments-from-github-actions) for routine releases, the [maintenance procedure](#production-maintenance) for database or stateful changes, and [post-deploy verification](#post-deploy-verification) for live checks and first-administrator setup. [Backup and restore](#3-operations-backup--restore), [post-release actions](POST_RELEASE_ACTIONS.md), and [formal acceptance evidence](#5-launch-evidence-capture--sign-off) cover recovery, deferred governance, and sign-off.
 
@@ -9,8 +9,9 @@ Use [production CD](#production-deployments-from-github-actions) for routine rel
 | Environment | Source of truth | Entry point |
 | --- | --- | --- |
 | Development | [Local Compose](../docker-compose.yml) and [.env.example](../.env.example) | [Getting started](../README.md#getting-started) |
-| Staging | [Staging Compose](../docker-compose.staging.yml) and private `.env.staging` | [Staging runbook](../STAGING_DEPLOYMENT.md) |
 | Production | [Production Compose](../docker-compose.prod.yml), host override, and private environment file | [portal.garrisons.lk](https://portal.garrisons.lk) |
+
+The former staging deployment is retired and is not a deployment target or part of production acceptance. Its checked-in Compose and application compatibility settings are legacy references; CI retains a focused compatibility test for some of them.
 
 Use Docker with Compose v2. Keep production configuration and secrets on the host with restricted permissions. See [backend settings](../backend/app/config.py) and the matching Compose file for variable names, defaults, and service overrides.
 

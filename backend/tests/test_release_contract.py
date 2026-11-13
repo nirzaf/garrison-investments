@@ -85,8 +85,9 @@ class Bundle:
         self.trust.write_text(
             json.dumps({"format_version": 1, "verified_approvals": self.approvals})
         )
+        target = extra.pop("target", "test")
         return contract.Validation(
-            self.root, self.trust, phase=phase, sha=SHA, target="test", token=None, **extra
+            self.root, self.trust, phase=phase, sha=SHA, target=target, token=None, **extra
         )
 
     def receipt(
@@ -1078,7 +1079,6 @@ def manifest(
             "support_matrix_sha256": contract.canonical_digest(
                 decisions["D-32-SUPPORT"]["scenario_platform_map"]
             ),
-            "staging_equivalence_sha256": None,
             **runtime(),
         },
     )
@@ -1153,7 +1153,6 @@ def manifest(
             "validator_version": 1,
             "validator_sha256": hashlib.sha256(Path(contract.__file__).read_bytes()).hexdigest(),
             "control_registry_sha256": registry["sha256"],
-            "staging_equivalence": None,
         },
     }
     if phase == "final":
@@ -1774,64 +1773,81 @@ def test_scheduled_expiry_requires_separate_bound_authorization(
         verifier.validate_operations(refs)
 
 
-@pytest.mark.parametrize("change_threshold", [False, True])
-@pytest.mark.parametrize("review_route_change", [False, True])
-def test_reviewed_staging_policy_keeps_production_recovery_objectives(
-    tmp_path: Path, change_threshold: bool, review_route_change: bool
+def test_staging_is_not_a_release_acceptance_target(tmp_path: Path) -> None:
+    bundle = Bundle(tmp_path)
+    with pytest.raises(contract.ContractError, match="target environment"):
+        bundle.validator("predeploy", target="staging")
+
+
+@pytest.mark.parametrize("kind", ["recovery", "observability"])
+def test_production_predeploy_receipts_use_production_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
     bundle = Bundle(tmp_path)
-    data = manifest(bundle)
-    decisions = {}
-    for ref in data["decisions"]:
-        value = json.loads((bundle.root / ref["path"]).read_text())
-        decisions[value["decision_id"]] = value
-
-    recovery = decisions["D-29-RECOVERY"]
-    stage = json.loads((bundle.root / recovery["policy_ref"]["path"]).read_text())
-    stage["source_environment"] = "staging"
-    stage["destination_identity"]["prefix"] = "fixture/staging"
-    if change_threshold:
-        stage["rto_minutes"] += 1
-    recovery_ref = bundle.write("stage-recovery.json", stage)
-
-    operations = decisions["D-30-OPERATIONS"]
-    profile = json.loads((bundle.root / operations["profile_ref"]["path"]).read_text())
-    profile["environment"] = "staging"
-    profile["transport"]["recipients"] = ["isolated@example.test"]
-    profile_ref = bundle.write("stage-monitor.json", profile)
-    equivalence: dict[str, Any] = {
-        "production_configuration_sha256": CONFIG,
-        "staging_configuration_sha256": "a" * 64,
-        "staging_operations_profile": profile_ref,
-        "staging_recovery_policy": recovery_ref,
-        "differences": [{"setting": "recovery_isolation", "reason": "Independent fixture prefix"}],
-    }
-    if review_route_change:
-        equivalence["differences"].append(
-            {"setting": "mail_recipients", "reason": "Use the isolated fixture mailbox"}
-        )
-    equivalence["review"] = bundle.approval(
-        "staging_equivalence",
-        contract.canonical_digest(equivalence),
-        "operations_owner",
-        "Fixture Operations",
-    )
-    ref = bundle.write("stage-equivalence.json", equivalence)
     validator = bundle.validator("predeploy")
     validator.target = "production"
     validator.configuration = CONFIG
-    validator.decisions = decisions
-    if not review_route_change:
-        with pytest.raises(contract.ContractError, match="Unreviewed isolated monitor recipient"):
-            validator.validate_equivalence(ref)
-    elif change_threshold:
-        with pytest.raises(contract.ContractError, match="differs from its approved decision"):
-            validator.validate_equivalence(ref)
-    else:
-        assert validator.validate_equivalence(ref) == ref["sha256"]
-        assert validator.stage_recovery is not None
-        assert validator.stage_recovery["policy_ref"] == recovery_ref
-        assert validator.stage_recovery["destination_identity"]["prefix"] == "fixture/staging"
+    validator.identity = {"schema_heads": ["fixture-head"]}
+    validator.decisions = {
+        "D-29-RECOVERY": {"policy_ref": {"sha256": "c" * 64}},
+        "D-30-OPERATIONS": {"profile_ref": bundle.artifact},
+    }
+    start, end = STAGE_START, STAGE_END
+    production_receipt_id = f"production-{kind}"
+    raw = {
+        "receipt_id": production_receipt_id,
+        "kind": kind,
+        "phase": "predeploy",
+        "source_sha": SHA,
+        "environment": "production",
+        "configuration_sha256": CONFIG,
+        "synthetic": False,
+        "started_at": start.isoformat(),
+        "completed_at": end.isoformat(),
+        "executed_by": "Fixture Executor",
+        "tool": "fixture check",
+        "outcome": "pass",
+        "results": {},
+        "artifacts": [],
+        "review": bundle.artifact,
+    }
+
+    def load_receipt(ref: Any, *, parse: bool = False) -> dict[str, Any]:
+        return raw
+
+    def artifact_hashes(refs: Any, label: str) -> set[str]:
+        return set()
+
+    def verify_approval(
+        ref: Any, purpose: str, subject: str, *, role: str | None = None
+    ) -> dict[str, Any]:
+        return {
+            "approver_identity": "Fixture Reviewer",
+            "approved_at": NOW.isoformat(),
+        }
+
+    monkeypatch.setattr(validator.evidence, "load", load_receipt)
+    monkeypatch.setattr(validator.evidence, "artifacts", artifact_hashes)
+    monkeypatch.setattr(validator.approvals, "check", verify_approval)
+    monkeypatch.setattr(contract, "check_execution", lambda *args, **kwargs: (start, end))
+    monkeypatch.setattr(contract, "receipt_recovery", lambda *args, **kwargs: None)
+    monkeypatch.setattr(contract, "verify_recovery_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr(contract, "receipt_observability", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        contract,
+        "monitor_contact_route",
+        lambda profile: (None, {"recipients": []}),
+    )
+
+    validator.validate_receipt(bundle.artifact)
+    assert validator.receipts[production_receipt_id]["environment"] == "production"
+
+    validator.receipts.clear()
+    raw["receipt_id"] = f"staging-{kind}"
+    raw["environment"] = "staging"
+    raw["configuration_sha256"] = "a" * 64
+    with pytest.raises(contract.ContractError, match="Receipt source, environment"):
+        validator.validate_receipt(bundle.artifact)
 
 
 @pytest.mark.parametrize(

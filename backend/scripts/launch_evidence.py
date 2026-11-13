@@ -187,7 +187,7 @@ def render_markdown(evidence: dict[str, Any]) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Capture deployment and launch evidence.")
-    parser.add_argument("--target", choices=["staging", "production", "test"], required=True)
+    parser.add_argument("--target", choices=["production", "test"], required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--json-output", type=Path)
     parser.add_argument("--health-url")

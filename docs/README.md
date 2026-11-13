@@ -16,7 +16,7 @@ Start with the [project README](../README.md) for implemented features, roles, r
 | How do I import existing records? | [Import templates and validation](import_templates/README.md) | [Import routes](../backend/app/api/v1/imports.py) and [import service](../backend/app/services/import_service.py) |
 | How do I validate a change locally or in CI? | [Verification commands](../README.md#verification) | [CI workflow](../.github/workflows/ci.yml), [Pytest suite](../backend/tests/), and [Chromium regressions](../frontend/e2e/) |
 | How does production deploy, and how do I recover it? | [Operations and deployment runbook](OPERATIONS_AND_DEPLOYMENT.md) | [Deployment workflow](../.github/workflows/deploy.yml), [host release script](../deploy/hostinger-release.sh), and [production Compose](../docker-compose.prod.yml) |
-| How is staging configured? | [Staging deployment guide](../STAGING_DEPLOYMENT.md) | [Staging Compose](../docker-compose.staging.yml) |
+| Is staging part of the release process? | [Staging retirement notice](../STAGING_DEPLOYMENT.md) | [Production deployment workflow](../.github/workflows/deploy.yml) |
 | Where do I find audit events, service logs, or alerts? | [Logging and remote CLI](LOGGING_AND_REMOTE_CLI.md) | [Log routes](../backend/app/api/v1/logs.py), [CLI](../backend/scripts/log_cli.py), and [observability configuration](../observability/) |
 | What was known during the July 2026 review? | [Historical production readiness review](PRODUCTION_READINESS_REVIEW.md) | Use the [current operations runbook](OPERATIONS_AND_DEPLOYMENT.md) for present-day release evidence and acceptance. |
 

@@ -38,7 +38,7 @@ garrison_logs search --severity ERROR --limit 20
 
 The file must contain only the access token. Set permissions to `0600` and delete it after use. The CLI reads an explicit `--token` or `GARRISON_LOG_TOKEN` before `--token-file`. Unset an expired environment token when using the file. `--base-url` overrides `GARRISON_API_BASE_URL`. Use the origin without an `/api/v1` suffix.
 
-The CLI's `login` subcommand starts a new OTP challenge on every invocation and prints the access token. In development it can use the returned development OTP. The staging login OTP works only when configured for staging. Production login uses a fresh delivered OTP for each challenge, so complete the authorized sign-in flow and supply its access token to the CLI. Keep tokens out of terminal captures and evidence files.
+The CLI's `login` subcommand starts a new OTP challenge on every invocation and prints the access token. In development it can use the returned development OTP. The application retains a staging-only OTP compatibility path, but staging is not an active deployment target. Production login uses a fresh delivered OTP for each challenge, so complete the authorized sign-in flow and supply its access token to the CLI. Keep tokens out of terminal captures and evidence files.
 
 ## Search and tail
 
@@ -76,7 +76,7 @@ Run `python scripts/preview_audit_retention.py --help` for the supported categor
 
 Services emit structured JSON to container stdout. [Alloy](../observability/alloy-config.alloy) discovers the environment's Compose containers, applies redaction, and ships logs to [Loki](../observability/loki-config.yml). Grafana uses Loki for operational queries. Loki's configured retention is 14 days. The PostgreSQL audit store has its own retention and backup policy.
 
-Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostname. Staging Grafana uses its [staging subpath](../STAGING_DEPLOYMENT.md#target-and-isolation). Grafana disables anonymous access and public sign-up. Loki and Alloy use internal ports.
+Production Grafana is routed through the configured `GRAFANA_DOMAIN` HTTPS hostname. The legacy staging Compose file retains a subpath configuration, but it is not an active monitoring target. Grafana disables anonymous access and public sign-up. Loki and Alloy use internal ports.
 
 Set `DOCKER_SOCKET_GID` in the deployment environment to the numeric group returned by `stat -Lc '%g' /var/run/docker.sock` on the Docker host. Recreate Alloy when this value changes so its supplementary group matches the socket. Alloy's container health check verifies socket access. To verify ingestion after recreation, use the existing private Loki connection and query a recent request ID from a permitted API read. Confirm that it appears under the expected environment and service labels.
 

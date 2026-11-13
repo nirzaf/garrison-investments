@@ -68,14 +68,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare example service environment files
-        run: |
-          cp .env.example .env
-          cp .env.example .env.staging
+      - name: Prepare example production environment file
+        run: cp .env.example .env
       - name: Validate production compose file
         run: docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
-      - name: Validate staging compose file
-        run: docker compose --env-file .env.example -f docker-compose.staging.yml config --quiet
       - name: Start object storage and initialize the Loki bucket
         run: docker compose --env-file .env.example -f docker-compose.prod.yml run --rm loki_minio_init
 
