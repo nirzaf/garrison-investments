@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import BinaryIO
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -199,6 +202,106 @@ def test_signed_manifest_requires_policy_configuration_inventory(recovery) -> No
     backup_set.write_authenticated_manifest(directory, signed, TEST_KEY, KEY_ID)
     with pytest.raises(BackupSetError, match="approved scope"):
         backup_set.load_verified_manifest(directory, policy=(stricter, digest))
+
+
+@pytest.mark.parametrize("extra_bytes", [-1, 0])
+@pytest.mark.parametrize("largest_artifact", ["sql", "object"])
+async def test_restore_checks_working_space_after_decrypting_all_artifacts(
+    recovery, monkeypatch: pytest.MonkeyPatch, extra_bytes: int, largest_artifact: str
+) -> None:
+    directory, manifest, (policy, _), _, _ = recovery
+    sql = (
+        b"CREATE TABLE public.alembic_version (version_num varchar(64));\n"
+        b"COPY public.alembic_version (version_num) FROM stdin;\n"
+        b"202605310005\n\\.\n" + b"-- padding\n" * 2000
+    )
+    paths = {}
+
+    def stage(name: str, data: bytes) -> backup_set.Artifact:
+        path = directory / name
+        path.write_bytes(data)
+        paths[f"{path.name}.enc"] = path
+        return checksum(path)
+
+    app = stage(manifest.application_dump_plaintext.file, gzip.compress(sql))
+    assert manifest.grafana_dump_plaintext is not None
+    grafana = stage(
+        manifest.grafana_dump_plaintext.file, gzip.compress(b"CREATE TABLE rehearsal (id int);\n")
+    )
+    configuration = manifest.configuration_artifacts[0]
+    config = stage(configuration.plaintext.file, b"# backup configuration\n" * 100)
+    receipt = manifest.capture_receipt
+    receipt_plaintext = stage(receipt.plaintext.file, b"{}\n")
+    objects = []
+    if largest_artifact == "object":
+        name = f"object-{'a' * 64}"
+        ciphertext = directory / f"{name}.enc"
+        data = b"x" * (len(sql) + 1000)
+        ciphertext.write_bytes(b"fixture ciphertext" + data)
+        plain = stage(name, data)
+        objects.append(
+            backup_set.StoredObject(
+                key="fixture/document",
+                content_type="application/octet-stream",
+                size_bytes=plain.size_bytes,
+                sha256=plain.sha256,
+                encrypted=checksum(ciphertext),
+            )
+        )
+    manifest = manifest.model_copy(
+        update={
+            "application_dump_plaintext": app,
+            "grafana_dump_plaintext": grafana,
+            "configuration_artifacts": [configuration.model_copy(update={"plaintext": config})],
+            "capture_receipt": receipt.model_copy(update={"plaintext": receipt_plaintext}),
+            "objects": objects,
+        }
+    )
+    working_space = max(len(sql), max((item.size_bytes for item in objects), default=0))
+    capacity = sum(path.stat().st_size for path in paths.values()) + working_space + extra_bytes
+
+    def disk_usage(path: Path) -> SimpleNamespace:
+        used = sum(file.stat().st_size for file in path.iterdir())
+        return SimpleNamespace(free=capacity - used)
+
+    def decrypt(source: Path, artifact: backup_set.Artifact, target: Path, password: str) -> Path:
+        plain = paths[artifact.file]
+        output = target / plain.name
+        output.write_bytes(plain.read_bytes())
+        return output
+
+    def readback(client, bucket, key, target, version_id):
+        target.write_bytes(paths[objects[0].encrypted.file].read_bytes())
+
+    monkeypatch.setenv("RESTORE_DATABASE_URL", "postgresql://127.0.0.1/garrison_restore_test_app")
+    monkeypatch.setenv(
+        "RESTORE_GRAFANA_DATABASE_URL", "postgresql://127.0.0.1/garrison_restore_test_grafana"
+    )
+    monkeypatch.setenv("RESTORE_OBJECT_ENDPOINT", "127.0.0.1:9000")
+    monkeypatch.setenv("RESTORE_OBJECT_BUCKET", "garrison-restore-test-app")
+    monkeypatch.setenv("RESTORE_OBJECT_ACCESS_KEY", "fixture")
+    monkeypatch.setenv("RESTORE_OBJECT_SECRET_KEY", "fixture")
+    monkeypatch.setattr(backup_set, "check_empty_database", AsyncMock())
+    monkeypatch.setattr(backup_set, "verify_database", AsyncMock())
+    storage = Mock()
+    storage.bucket_exists.return_value = False
+    monkeypatch.setattr(backup_set, "Minio", Mock(return_value=storage))
+    monkeypatch.setattr(backup_set, "decrypt", decrypt)
+    monkeypatch.setattr(backup_set, "download_object", readback)
+    monkeypatch.setattr(backup_set.shutil, "disk_usage", disk_usage)
+    restore_database = Mock()
+    monkeypatch.setattr(backup_set, "restore_backup", restore_database)
+
+    if extra_bytes < 0:
+        with pytest.raises(BackupSetError, match="spool capacity"):
+            await backup_set.restore(directory, manifest, "fixture", policy=policy)
+        restore_database.assert_not_called()
+        storage.make_bucket.assert_not_called()
+    else:
+        result = await backup_set.restore(directory, manifest, "fixture", policy=policy)
+        assert result["outcome"] == "pass"
+        assert restore_database.call_count == 2
+        storage.make_bucket.assert_called_once_with("garrison-restore-test-app")
 
 
 def test_reader_rejects_policy_drift_before_opening_destination(recovery, monkeypatch) -> None:

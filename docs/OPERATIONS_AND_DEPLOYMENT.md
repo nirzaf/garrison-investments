@@ -190,6 +190,8 @@ When rotating the authentication key or changing the policy revision, use a new 
 python -m scripts.backup_set restore /private/independent-storage/backup-set
 ```
 
+Set `TMPDIR` to a private recovery volume with room for all decrypted artifacts. Allow additional space for the largest uncompressed SQL dump or largest object readback, whichever is larger. The tool checks available space before decryption and rechecks it after staging the artifacts, before writing to the target databases or bucket. Size the volume against a representative maximum backup and include a low-space rejection in the recovery drill.
+
 The restore checks decrypted bytes before writing and checks the resulting schema, database references, and restored object checksums. Start the isolated application and open the required protected files under authorized and forbidden accounts. Include the backup set identity, source SHA, schema head, UTC timings, missing or corrupt artifact tests, key access, and actual recovery results in the release evidence. Local fixtures establish tool behavior. The release still requires a drill with the approved destination, retained data scope, operator, and measured targets.
 
 ### Data checks and repairs

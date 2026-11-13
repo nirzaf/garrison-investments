@@ -377,7 +377,7 @@ def read_capture_evidence(path: Path, source_sha: str, policy: RecoveryPolicy) -
 
 def ensure_spool(path: Path, minimum_free: int) -> None:
     if shutil.disk_usage(path).free < minimum_free:
-        raise BackupSetError("Recovery spool capacity is below the approved minimum.")
+        raise BackupSetError("Recovery spool capacity is below the required minimum.")
 
 
 async def capture(args: argparse.Namespace, password: str) -> None:
@@ -1039,6 +1039,11 @@ def dump_size_and_heads(path: Path) -> tuple[int, list[str]]:
     return total, sorted(heads)
 
 
+def expanded_dump_size(path: Path) -> int:
+    with gzip.open(path, "rb") as stream:
+        return sum(len(chunk) for chunk in iter(lambda: stream.read(CHUNK), b""))
+
+
 async def restore(
     source: Path,
     manifest: BackupManifest,
@@ -1090,14 +1095,13 @@ async def restore(
         raise BackupSetError("The restore bucket must be new.")
     with TemporaryDirectory(prefix="garrison-restore-") as temp:
         temporary = Path(temp)
-        if policy:
-            ensure_spool(
-                temporary,
-                max(
-                    policy.minimum_spool_free_bytes,
-                    sum(item.size_bytes for item in encrypted_artifacts(manifest)),
-                ),
-            )
+        ensure_spool(
+            temporary,
+            max(
+                policy.minimum_spool_free_bytes if policy else 0,
+                sum(item.size_bytes for item in encrypted_artifacts(manifest)),
+            ),
+        )
         app_dump = decrypt(source, manifest.application_dump, temporary, password)
         inspect_backup(app_dump)
         grafana_dump = None
@@ -1113,15 +1117,15 @@ async def restore(
                 revisions.get_revision(head) is None for head in heads
             ):
                 raise BackupSetError("The application dump has incompatible migration heads.")
-            grafana_size = 0
             if grafana_dump and manifest.grafana_dump_plaintext:
                 verify_plaintext(grafana_dump, manifest.grafana_dump_plaintext)
-                grafana_size, _ = dump_size_and_heads(grafana_dump)
-            ensure_spool(temporary, max(app_size, grafana_size))
             for config in [*manifest.configuration_artifacts, manifest.capture_receipt]:
                 path = decrypt(source, config.encrypted, temporary, password)
                 verify_plaintext(path, config.plaintext)
                 configuration_files.append((config, path))
+        else:
+            app_size = expanded_dump_size(app_dump)
+        grafana_size = expanded_dump_size(grafana_dump) if grafana_dump else 0
         files = []
         for item in manifest.objects:
             path = decrypt(source, item.encrypted, temporary, password)
@@ -1129,6 +1133,12 @@ async def restore(
                 raise BackupSetError("Decrypted bytes differ from the object manifest.")
             files.append((item, path))
 
+        # Decrypted artifacts stay in the spool until restore and readback complete.
+        # SQL expansion and object readback each use one extra file at a time.
+        ensure_spool(
+            temporary,
+            max(app_size, grafana_size, max((item.size_bytes for item, _ in files), default=0)),
+        )
         restore_backup(app_dump, database_url, quiet=True)
         if grafana_url and grafana_dump:
             restore_backup(grafana_dump, grafana_url, quiet=True)
