@@ -688,6 +688,10 @@ def phase_results(
     bundle: Bundle,
     phase: str,
     decisions: dict[str, Any],
+    *,
+    include_restore_receipt: bool = True,
+    restore_override: dict[str, Any] | None = None,
+    classify_restore_receipt: bool = True,
 ) -> dict[str, Any]:
     start = STAGE_START if phase == "predeploy" else FINAL_START
     backup_policy = decisions["D-29-RECOVERY"]
@@ -757,9 +761,37 @@ def phase_results(
             "signature": "f" * 64,
         },
     )
+    restore_receipt: dict[str, Any] = {}
+    if include_restore_receipt:
+        original = bundle.write(
+            f"artifacts/{phase}-restore.json",
+            {
+                "operation": "disposable_artifact_restore",
+                "outcome": "pass",
+                "assurance": "authenticated format 2",
+                "source_sha": SHA,
+                "backup_set_id": BACKUP_SET_ID,
+                "manifest_sha256": manifest_ref["sha256"],
+                "configuration_sha256": CONFIG,
+                "snapshot_at_utc": start.isoformat(),
+                "restore_started_at_utc": (start + timedelta(seconds=4)).isoformat(),
+                "database_restored_at_utc": (start + timedelta(seconds=5)).isoformat(),
+                "objects_verified_at_utc": (start + timedelta(seconds=6)).isoformat(),
+                "expected_migration_heads": heads(),
+                "observed_migration_heads": heads(),
+                "required_object_count": 1,
+                "restored_object_count": 1,
+                **(restore_override or {}),
+            },
+        )
+        restore_receipt["restore_receipt"] = original
     bundle.recovery_artifacts[phase] = [
         {**ref, "sensitivity": "sanitized"} for ref in (manifest_ref, auth_ref, publication_ref)
     ]
+    if restore_receipt and classify_restore_receipt:
+        bundle.recovery_artifacts[phase].append(
+            {**restore_receipt["restore_receipt"], "sensitivity": "sanitized"}
+        )
     return {
         "retention": {
             "policy_sha256": decisions["D-28-POLICY"]["policy_ref"]["sha256"],
@@ -771,6 +803,7 @@ def phase_results(
             ),
         },
         "recovery": {
+            **restore_receipt,
             "backup_set_id": BACKUP_SET_ID,
             "manifest_sha256": manifest_ref["sha256"],
             "manifest_auth_sha256": auth_ref["sha256"],
@@ -827,7 +860,7 @@ def phase_results(
 def scheduled_observation(
     bundle: Bundle, subject: dict[str, Any], decisions: dict[str, Any]
 ) -> dict[str, Any]:
-    manifest_ref, _, publication_ref = bundle.recovery_artifacts["final"]
+    manifest_ref, _, publication_ref, *_ = bundle.recovery_artifacts["final"]
     attempt_ref = bundle.write(
         "artifacts/scheduled-backup-attempt.json",
         {
@@ -1305,6 +1338,49 @@ def test_operations_rejects_profile_drift_from_the_approved_contact_route(
 
     with pytest.raises(contract.ContractError, match="differs from the approved contact route"):
         contract.decision_operations(operation, "test", bundle.validator("predeploy").evidence)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"include_restore_receipt": False}, "Missing restore command receipt"),
+        ({"classify_restore_receipt": False}, "Restore command receipt must be classified"),
+        (
+            {"restore_override": {"assurance": "legacy checksum-only format 1"}},
+            "authenticated restore",
+        ),
+        ({"restore_override": {"manifest_sha256": "f" * 64}}, "different backup or release"),
+        ({"restore_override": {"configuration_sha256": "f" * 64}}, "different backup or release"),
+        (
+            {"restore_override": {"observed_migration_heads": ["other"]}},
+            "reviewed recovery summary",
+        ),
+        ({"restore_override": {"restored_object_count": 0}}, "reviewed recovery summary"),
+        (
+            {"restore_override": {"objects_verified_at_utc": NOW.isoformat()}},
+            "reviewed recovery summary",
+        ),
+    ],
+)
+def test_recovery_requires_matching_restore_command_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, overrides: dict[str, Any], reason: str
+) -> None:
+    monkeypatch.setattr(contract, "github_record", github_stub)
+    bundle = Bundle(tmp_path)
+    data = manifest(bundle)
+    decisions = {}
+    for ref in data["decisions"]:
+        row = json.loads((bundle.root / ref["path"]).read_text())
+        decisions[row["decision_id"]] = row
+    result = phase_results(bundle, "predeploy", decisions, **overrides)["recovery"]
+    ref = bundle.receipt("recovery", result, executor="Fixture Restore Operator")
+    data["receipts"] = [
+        ref if item["path"] == ref["path"] else item for item in data["receipts"]
+    ]
+    bundle.write("release_manifest.json", data)
+
+    with pytest.raises(contract.ContractError, match=reason):
+        bundle.validator("predeploy").run(bundle.root / "release_manifest.json")
 
 
 def test_final_requires_the_ci_attempt_used_by_deployment(
@@ -1792,7 +1868,11 @@ def test_strict_gate_fails_closed(
         ] = ["predeploy-uat"]
         data["ledger"] = bundle.write("ledger.json", rows)
     elif mutation == "unsigned publication":
-        bundle.recovery_artifacts["predeploy"].pop()
+        bundle.recovery_artifacts["predeploy"] = [
+            ref
+            for ref in bundle.recovery_artifacts["predeploy"]
+            if not ref["path"].endswith("-publication.json")
+        ]
         for index, ref in enumerate(data["receipts"]):
             if ref["path"].endswith("predeploy-recovery.json"):
                 receipt = json.loads((bundle.root / ref["path"]).read_text())

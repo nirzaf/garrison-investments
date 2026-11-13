@@ -1233,8 +1233,10 @@ def receipt_recovery(
         "restored_category_counts "
         "expected_schema_heads observed_schema_heads control_totals assertions second_operator "
         "rpo_minutes rto_minutes capture_pause_seconds " + " ".join(times),
+        optional="restore_receipt",
         label="recovery result",
     )
+    require("restore_receipt" in data, "Missing restore command receipt.", 3)
     digest(data["backup_set_id"], "backup set ID", 32)
     digest(data["manifest_sha256"], "authenticated backup manifest")
     digest(data["manifest_auth_sha256"], "backup authentication record")
@@ -2297,6 +2299,51 @@ def verify_recovery_artifacts(
         3,
     )
     digest(publication["signature"], "publication authentication tag")
+
+    restore_ref = result["restore_receipt"]
+    restored = fields(
+        evidence.load(restore_ref, parse=True),
+        "operation outcome assurance source_sha backup_set_id manifest_sha256 "
+        "configuration_sha256 snapshot_at_utc restore_started_at_utc "
+        "database_restored_at_utc objects_verified_at_utc expected_migration_heads "
+        "observed_migration_heads required_object_count restored_object_count",
+        label="restore command receipt",
+    )
+    require(restore_ref["sha256"] in refs, "Restore command receipt must be classified.", 3)
+    require(
+        restored["operation"] == "disposable_artifact_restore"
+        and restored["outcome"] == "pass"
+        and restored["assurance"] == "authenticated format 2",
+        "Restore command did not complete an authenticated restore.",
+        4,
+    )
+    require(
+        restored["source_sha"] == receipt["source_sha"]
+        and restored["configuration_sha256"] == receipt["configuration_sha256"]
+        and restored["backup_set_id"] == result["backup_set_id"]
+        and restored["manifest_sha256"] == manifest_hash,
+        "Restore command receipt identifies a different backup or release.",
+        3,
+    )
+    require(
+        all(
+            utc(restored[key], "restore command time") == utc(result[key], "recovery summary time")
+            for key in (
+                "snapshot_at_utc",
+                "restore_started_at_utc",
+                "database_restored_at_utc",
+                "objects_verified_at_utc",
+            )
+        )
+        and restored["expected_migration_heads"] == result["expected_schema_heads"]
+        and restored["observed_migration_heads"] == result["observed_schema_heads"]
+        and all(
+            count(restored[key], f"restore command {key}") == result[key]
+            for key in ("required_object_count", "restored_object_count")
+        ),
+        "Restore command results differ from the reviewed recovery summary.",
+        4,
+    )
 
 
 class Validation:
