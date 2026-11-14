@@ -114,7 +114,7 @@ flowchart TB
 
 [CI](.github/workflows/ci.yml) runs on dedicated self-hosted Linux x64 runners labeled `garrison-ci` for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs automatically after successful CI for the current `main` commit (or via manual `workflow_dispatch` with an explicit successful `ci_run_id`) on the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run and attempt, all seven required CI jobs, current `main` commit, host file ownership/permissions, effective runtime configuration (including mounted TLS/JWT key files, stateful Compose baseline, and `LOG_PURGE_ENABLED=false`), and compatible Alembic heads, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
 
-Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers post-release approval, backup and restore evidence, and desktop Chrome and Edge acceptance. Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
+Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers post-release approval, backup and restore evidence, and desktop Chrome acceptance. Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
 
 ## Getting started
 
@@ -206,7 +206,7 @@ docker compose exec postgres createdb -U garrison garrison_browser_test
 (
   cd frontend
   npm ci
-  npx playwright install chromium
+  npx playwright install chrome
   BROWSER_TEST_PYTHON="$PWD/../backend/.venv/bin/python" npm run test:browser
 )
 ```

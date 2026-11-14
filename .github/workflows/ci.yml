@@ -199,15 +199,13 @@ jobs:
             (
               cd ../frontend
               npm ci
-              # Chrome dependencies, browser install, and frontend build are independent.
-              npx playwright install-deps chromium &
-              system_deps_pid=$!
+              # Browser shards share the self-hosted host's apt database. Serialize
+              # the one-time stable Chrome install to prevent apt lock races.
               # Build the bundle while Google Chrome is installed.
               VITE_API_BASE_URL=/api/v1 npm exec --offline -- vite build &
               browser_build_pid=$!
               browser_failed=0
-              npx playwright install chrome || browser_failed=1
-              wait "$system_deps_pid" || browser_failed=1
+              flock /tmp/garrison-playwright-chrome-install.lock npx playwright install chrome || browser_failed=1
               wait "$browser_build_pid" || browser_failed=1
               exit "$browser_failed"
             ) &
