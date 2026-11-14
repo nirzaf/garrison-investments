@@ -21,6 +21,7 @@ def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
         readiness_url=None,
         timeout=1,
         approver="Operation Manager",
+        operator="Release Operator",
         run_url="https://github.example/run/1",
         commit="abc123",
         backup_object="backups/daily/garrison.sql.gz",
@@ -30,16 +31,33 @@ def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
         migration_source=[],
     )
 
-    evidence = collect_evidence(args, {})
+    evidence = collect_evidence(args, {"GITHUB_SHA": "f" * 40, "GITHUB_ACTOR": "workflow-actor"})
     markdown = render_markdown(evidence)
 
     assert evidence["target"] == "production"
     assert evidence["approver"] == "Operation Manager"
+    assert evidence["operator"] == "Release Operator"
+    assert evidence["commit"] == "abc123"
     assert evidence["files"][0]["label"] == "uat_signoff"
     assert "backups/daily/garrison.sql.gz" in markdown
 
 
-def test_production_launch_evidence_requires_operator(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("approver", "operator", "environment"),
+    [
+        (None, None, {}),
+        ("Operation Manager", None, {}),
+        (
+            None,
+            None,
+            {"GITHUB_ACTOR": "workflow-actor", "GITHUB_TRIGGERING_ACTOR": "triggering-actor"},
+        ),
+        (None, "   ", {}),
+    ],
+)
+def test_production_launch_evidence_requires_explicit_operator(
+    tmp_path: Path, approver: str | None, operator: str | None, environment: dict[str, str]
+) -> None:
     args = argparse.Namespace(
         target="production",
         output=tmp_path / "evidence.md",
@@ -47,7 +65,8 @@ def test_production_launch_evidence_requires_operator(tmp_path: Path) -> None:
         health_url=None,
         readiness_url=None,
         timeout=1,
-        approver=None,
+        approver=approver,
+        operator=operator,
         run_url=None,
         commit=None,
         backup_object=None,
@@ -58,7 +77,7 @@ def test_production_launch_evidence_requires_operator(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError):
-        collect_evidence(args, {})
+        collect_evidence(args, environment)
 
 
 def test_restore_dry_run_inspects_gzipped_plain_sql_dump(tmp_path: Path) -> None:

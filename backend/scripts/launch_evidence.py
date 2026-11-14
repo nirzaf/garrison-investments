@@ -83,13 +83,13 @@ def collect_evidence(args: argparse.Namespace, env: dict[str, str]) -> dict[str,
     generated_at = datetime.now(UTC).isoformat()
     target = args.target
     approver = args.approver
-    operator = (
-        getattr(args, "operator", None)
-        or env.get("GITHUB_TRIGGERING_ACTOR")
-        or env.get("GITHUB_ACTOR")
-    )
-    if target == "production" and not (approver or operator):
-        raise ValueError("Production evidence collection requires an identified operator.")
+    # A workflow actor may have triggered collection without performing the
+    # production operation. Keep the operator independent from the approver
+    # and require the caller to identify the person who actually executed it.
+    raw_operator = getattr(args, "operator", None)
+    operator = raw_operator.strip() if isinstance(raw_operator, str) else None
+    if target == "production" and not operator:
+        raise ValueError("Production evidence collection requires an explicit operator identity.")
 
     checks = []
     for label, url in (("health", args.health_url), ("readiness", args.readiness_url)):

@@ -80,6 +80,8 @@ Run `43532349807` on `3a14193c417759f2dfba82ada81c07be6e4c1daa` passed all CI jo
 
 The next exact-main run, `43535437953` on `8d23dbe949696e7cd4e9ad0ad925f9d99c8ce256`, passed in 186 seconds wall time. Browser jobs took 129 and 182 seconds; their test steps took 60 and 95 seconds. JUnit sums were 106.16 and 162.54 seconds across 21 and 13 tests, with zero failures or skips. Moving `finance-workflows.e2e.ts` (23.41 seconds) and `import-workflow.e2e.ts` (9.29 seconds) to shard 1 projected 138.86 and 129.84 seconds. Run `43536923181` on `fc6b204d1b87d225d08a762c815e1c42d175f7e3` passed in 213 seconds wall time with browser jobs at 209 and 166 seconds. Its JUnit sums were 208.76 and 128.11 seconds across 24 and 10 tests, zero failures and zero skips. Applying that run's per-file times to the prior assignment projects 173.26 and 163.60 seconds; this reverses the apparent balance. The prior assignment was restored and run `43537489987` on `d63d24e029fb16c3b24e7eb9ce688807d51870e9` passed in 202 seconds wall time. Its browser jobs took 190 and 200 seconds, with JUnit sums of 178.43 and 196.69 seconds across 21 and 13 tests, zero failures and zero skips. The closer job durations support keeping this split for now, but test-time variation across runs means there is still no proven repeatable wall-time saving.
 
+Exact-main run `43542078874` on `af456c4e5ea618a197768fc2b0c3a9829ea7f794` passed in 171 seconds wall time (about 2 seconds queued); summed job elapsed time was 699 seconds. Browser jobs were longest at 168 and 141 seconds, including 75/72-second browser-test steps and 47/44-second dependency-and-service setup. Backend test jobs took 152/140 seconds, including 95/84-second pytest steps and 34 seconds of setup each. Backend lint/types took 45 seconds, frontend checks 25 seconds, and Compose validation 28 seconds. The run logs confirm pip/npm cache hits. Independent jobs and shards are already parallelized and measured splits are close; this run does not support reducing parallelism or removing a required check for a wall-time gain. The associated production workflow `43542354832` was skipped because the trusted predeployment gate was not ready.
+
 For deployment, measure runner queue time separately from the host phase timings. The host builds the tested archive using Docker's layer cache and reuses the running backend image when only tests, backend documentation or frontend files change. The release script reads the frontend hashes in one container and checks the served bytes after activation.
 
 ### Host bootstrap and runner maintenance
@@ -316,7 +318,7 @@ The current portal scope limits Delivery to Launch readiness and excludes G-01. 
 | D-28-POLICY | Records owner | Sign the retain-only policy, classes/deadlines, unknown-record handling, and hold decision. Review the complete preview, archived access and storage capacity. | Purge remains disabled; records continue to accumulate and capacity still needs review. |
 | D-29-RECOVERY | System owner | Approve independent storage, key custody, RPO/RTO and operator access. Restore an authenticated database and object backup and record measured results. | Recovery after loss of the primary and recovery of file objects remain unproven. |
 | D-30-OPERATIONS | Operations owner | Approve and exercise the independent monitor, recipients and responders. Record alert delivery, acknowledgement and recovery. | An outage affecting the primary host may delay detection. |
-| D-32-SUPPORT | QA lead | Approve Chrome and Edge versions, testers, roles and performance budgets. Execute the desktop scenarios and degraded-network checks with retained results; physical mobile targets are excluded by the user's scope instruction. | Desktop workflow and performance acceptance remains pending. |
+| D-32-SUPPORT | QA lead | Automated local runs on source `af456c4e5ea618a197768fc2b0c3a9829ea7f794` passed 34 Chrome and 34 Edge tests. Approve versions, testers, roles and performance budgets, then execute business and degraded-network scenarios with retained results; physical mobile targets are excluded by the user's scope instruction. | Automated regressions do not establish role-by-role UAT or production behavior; desktop business-workflow and performance acceptance remains pending. |
 | D-33-BUSINESS | Finance/data owner | Approve assignments, sample outputs, financial conventions and import controls. Reconcile the data and obtain final sign-off after observation. | Business inputs and acceptance remain pending. |
 
 <a id="5-launch-evidence-capture--sign-off"></a>
@@ -345,7 +347,8 @@ python scripts/launch_evidence.py --target production \
   --output /path/to/private/production-launch.md \
   --health-url https://portal.garrisons.lk/health \
   --readiness-url https://portal.garrisons.lk/health/readiness \
-  --commit "$RELEASE_SHA" --run-url "$DEPLOY_RUN_URL" --approver "$APPROVER" \
+  --commit "$RELEASE_SHA" --run-url "$DEPLOY_RUN_URL" \
+  --operator "$PRODUCTION_OPERATOR" --approver "$APPROVER" \
   --backup-object "$APPLICATION_BACKUP_OBJECT" \
   --restore-log /path/to/private/restore-evidence.md \
   --uat-signoff /path/to/private/uat.md
