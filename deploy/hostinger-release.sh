@@ -305,17 +305,12 @@ compose() {
 }
 
 phase_started=$SECONDS
-# Inspect effective service settings, including any host Compose override.
-compose "$candidate" config --format json | python3 -c '
-import json, sys
-
-services = json.load(sys.stdin)["services"]
-for name in ("backend", "celery_worker", "celery_beat"):
-    environment = services[name].get("environment", {})
-    if any(key.upper() == "LOG_PURGE_ENABLED" and str(value).lower() not in {"false", "0", "no", "off"}
-           for key, value in environment.items()):
-        sys.exit("Production audit deletion must be disabled for this release.")
-'
+# Bind the approved digest to source config files, external mounts and effective Compose settings.
+if ! compose "$candidate" config --format json |
+  python3 "$trusted_validator" --host-state "$state" \
+    --verify-runtime-config-root "$candidate"; then
+  die 'The candidate runtime configuration differs from the approved production profile.'
+fi
 # Build from the tested archive. Docker can reuse its layer cache.
 compose "$candidate" build frontend_dist
 image_heads() {

@@ -15,33 +15,27 @@ The former staging deployment is retired and is not a deployment target or part 
 
 Use Docker with Compose v2. Keep production configuration and secrets on the host with restricted permissions. See [backend settings](../backend/app/config.py) and the matching Compose file for variable names, defaults, and service overrides.
 
-For formal acceptance, bind production configuration to exact bytes without copying secrets into the evidence bundle. The host profile at `/opt/garrison-portal/deploy/authorized-configuration.json` lists each protected relative filename and its SHA-256. Its `configuration_sha256` is the SHA-256 of the canonical JSON filename-to-hash map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). The trusted validator recomputes this aggregate and checks every listed file. Include at least `production.env` and `compose.vps.yml`, plus every additional file that affects effective runtime behavior. Keep the environment file itself private.
+For formal acceptance, bind the production configuration to exact bytes without copying secrets into the evidence bundle. The profile at `/opt/garrison-portal/deploy/authorized-configuration.json` has a `files` map keyed by namespace: `host/` files resolve beneath the deployment state directory, `release/` files resolve beneath the exact candidate archive, and `external/` files resolve beneath `/opt/garrison-portal`. `configuration_sha256` is the SHA-256 of the canonical `files` map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). The trusted validator checks host and external bytes before predeployment authorization, checks the exact candidate config bytes after archive extraction, and compares every effective Compose bind mount before building or activating anything. It also rejects audit deletion being enabled. This release's required versioned runtime file set is shown in the [authorization profile template](templates/release-closure/authorized-configuration.json).
 
-On the production host, run this from a trusted shell after adding all effective configuration files to `names`. It prints hashes only, never file contents. Compare the output against the approved files, save it in the restricted evidence store, and put the same values in `authorized-configuration.json` before freezing and signing `release_subject.json`:
+Generate a proposed profile from a restricted candidate directory on the production host. Extract the exact CI-tested source archive to a private temporary directory; do not use the active release as the candidate. The command below emits file names and hashes only. `docker compose config` output, which can contain resolved environment values, is piped directly to the validator and is not saved or printed:
 
 ```bash
-python3 - <<'PY'
-import hashlib
-import json
-from pathlib import Path
-
-root = Path("/opt/garrison-portal/deploy")
-names = ["production.env", "compose.vps.yml"]
-protected_files = {
-    name: hashlib.sha256((root / name).read_bytes()).hexdigest()
-    for name in names
-}
-canonical_map = json.dumps(
-    protected_files, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-).encode("utf-8")
-print(json.dumps({
-    "configuration_sha256": hashlib.sha256(canonical_map).hexdigest(),
-    "protected_files": protected_files,
-}, sort_keys=True, indent=2))
-PY
+state=/opt/garrison-portal/deploy
+candidate=/opt/garrison-portal/recovery/config-review/<full-source-sha>
+source_sha=<full-source-sha>
+install -m 0600 "$state/production.env" "$candidate/.env"
+printf 'GARRISON_FRONTEND_IMAGE=garrison-portal-release-frontend:%s\nGARRISON_BACKEND_IMAGE=garrison-portal-release-backend:%s\n' \
+  "$source_sha" "$source_sha" > "$candidate/.images.env"
+chmod 0600 "$candidate/.images.env"
+docker compose --project-name garrison-portal --project-directory "$candidate" \
+  --env-file "$candidate/.env" --env-file "$candidate/.images.env" \
+  -f "$candidate/docker-compose.prod.yml" -f "$state/compose.vps.yml" \
+  config --format json |
+  python3 /usr/local/libexec/garrison-release-contract.py \
+    --host-state "$state" --configuration-profile-root "$candidate"
 ```
 
-Do not paste environment-file contents into chat, Git, or a public ticket. The production approver must sign the release subject containing this exact aggregate digest; a digest by itself is not an approval.
+Use a generated profile only after independently reviewing its paths against the actual service mounts. Put it in the root-owned protected host state after the separately reviewed trusted validator is installed; do not store secret values or their raw bytes in the evidence bundle. The validator requires the host environment and Compose override, the complete versioned runtime file set, JWT key files, and every file mounted from the pinned TLS directory. It rejects missing files, symlink substitution, extra/unapproved bind-mounted configuration, or any file whose bytes differ. Recompute and reapprove the digest whenever one of those files changes. Do not sign the older two-file digest: it does not cover effective runtime configuration.
 
 | Concern | Configuration to check |
 | --- | --- |
@@ -83,6 +77,8 @@ The next exact-main run, `43535437953` on `8d23dbe949696e7cd4e9ad0ad925f9d99c8ce
 Exact-main run `43542078874` on `af456c4e5ea618a197768fc2b0c3a9829ea7f794` passed in 171 seconds wall time (about 2 seconds queued); summed job elapsed time was 699 seconds. Browser jobs were longest at 168 and 141 seconds, including 75/72-second browser-test steps and 47/44-second dependency-and-service setup. Backend test jobs took 152/140 seconds, including 95/84-second pytest steps and 34 seconds of setup each. Backend lint/types took 45 seconds, frontend checks 25 seconds, and Compose validation 28 seconds. The run logs confirm pip/npm cache hits. Independent jobs and shards are already parallelized and measured splits are close; this run does not support reducing parallelism or removing a required check for a wall-time gain. The associated production workflow `43542354832` was skipped because the trusted predeployment gate was not ready.
 
 The next exact-main run, `43547184830` on `5e28db89665bcbc7575ce118a9abf5d96224640d`, passed in 174 seconds wall time; summed job elapsed time was 740 seconds. Browser jobs took 161/171 seconds, with 79/89-second test steps and 53/55-second setup. Backend test jobs took 158/137 seconds, with 105/75-second pytest steps and 32/35-second setup. Backend lint/types took 45 seconds, frontend checks 49 seconds, and Compose validation 19 seconds. This is 3 seconds slower than the preceding run, while the browser and backend job ordering changed; the single-run variation does not show a pipeline regression or justify a speculative shard change. Preserve the current checks and parallel layout, then compare more runs before claiming a repeatable saving. The corresponding production workflow `43547450409` was skipped by the same trusted predeployment gate.
+
+The latest exact-main CI timing sample, run `43547650068` on `3a1c168516052a8adcdcde348f90e730ad0faa11`, passed all required CI jobs in 183 seconds wall time; summed job elapsed time was 728 seconds. Browser jobs took 155/180 seconds, with browser test steps at 67/91 seconds and dependency/storage preparation at 48/56 seconds. Backend test jobs took 167/139 seconds, with pytest at 105/79 seconds and preparation at 37/36 seconds. Backend lint/types took 44 seconds, frontend checks took 26 seconds, and Compose validation took 17 seconds. Compared with the prior sample, wall time was 9 seconds slower while summed job time was 12 seconds lower; the frontend job was 23 seconds shorter, but this single run does not establish why or prove a repeatable saving. Keep the current shard assignment, caches and parallel checks until comparable runs show a stable opportunity. The production workflow remained gated and did not deploy.
 
 For deployment, measure runner queue time separately from the host phase timings. The host builds the tested archive using Docker's layer cache and reuses the running backend image when only tests, backend documentation or frontend files change. The release script reads the frontend hashes in one container and checks the served bytes after activation.
 

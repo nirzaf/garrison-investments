@@ -338,6 +338,10 @@ apply_runtime previous || exit "$?"
         ("purge-enabled", "audit deletion must be disabled"),
         ("stateful-change", "Production volumes changed"),
         ("schema-change", "Pending database migrations"),
+        (
+            "runtime-config-fails",
+            "runtime configuration differs from the approved production profile",
+        ),
         ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
@@ -392,6 +396,16 @@ import sys
 
 args = sys.argv
 state = pathlib.Path(args[args.index('--host-state') + 1])
+if '--verify-runtime-config-root' in args:
+    with (state.parent / 'events').open('a') as stream:
+        stream.write('runtime-config\\n')
+    scenario = os.environ.get('scenario')
+    if scenario == 'purge-enabled':
+        sys.exit('Production audit deletion must be disabled for this release.')
+    if scenario == 'runtime-config-fails':
+        sys.exit('Candidate runtime configuration differs from the approved host configuration.')
+    print('{"status":"runtime_configuration_verified"}')
+    raise SystemExit(0)
 commit = args[args.index('--commit') + 1]
 manifest = state / 'authorizations' / commit / 'release_manifest.json'
 manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -635,9 +649,9 @@ curl() {
             sha256((current / "PREDEPLOY.json").read_bytes()).hexdigest(),
             sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest(),
         )
-        assert events[:3] == ["authorize", "download", "backup"]
-        assert events[3].startswith("activate ")
-        assert events[4].startswith("publish ")
+        assert events[:4] == ["authorize", "download", "runtime-config", "backup"]
+        assert events[4].startswith("activate ")
+        assert events[5].startswith("publish ")
         assert (current / "PREDEPLOY.json").is_file()
         assert (current / "PREDEPLOY_MANIFEST.json").is_file()
         assert sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest() == (
@@ -661,9 +675,13 @@ curl() {
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
         elif scenario == "backup-fails":
-            assert events == ["authorize", "download", "backup"]
-        elif scenario in {"generation-change", "purge-enabled", "stateful-change", "schema-change"}:
+            assert events == ["authorize", "download", "runtime-config", "backup"]
+        elif scenario in {"purge-enabled", "runtime-config-fails"}:
+            assert events == ["authorize", "download", "runtime-config"]
+        elif scenario == "generation-change":
             assert events == ["authorize", "download"]
+        elif scenario in {"stateful-change", "schema-change"}:
+            assert events == ["authorize", "download", "runtime-config"]
         else:
             assert not events
 
@@ -677,6 +695,7 @@ def test_host_release_requires_trusted_predeployment_verdict() -> None:
     assert "--host-state \"$state\" --commit \"$sha\"" in release_source
     assert "PREDEPLOY.json" in release_source
     assert "PREDEPLOY_MANIFEST.json" in release_source
+    assert "--verify-runtime-config-root \"$candidate\"" in release_source
     assert "Predeploy verdict SHA-256" in release_source
     assert "Predeploy manifest SHA-256" in release_source
 

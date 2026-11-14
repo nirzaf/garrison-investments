@@ -2078,35 +2078,211 @@ def test_strict_cli_disallows_explicit_environment_sha_conflict() -> None:
     assert verdict["accepted_scope_complete"] is False
 
 
-def test_host_configuration_digest_binds_exact_protected_file_hashes(
+def test_host_configuration_digest_binds_host_release_and_external_file_hashes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    state = tmp_path / "deploy"
+    state.mkdir()
+    external_contents = {
+        "secrets/jwt_private_key": b"private-key-fixture",
+        "secrets/jwt_public_key": b"public-key-fixture",
+        "releases/cert/nginx/ssl/fullchain.pem": b"certificate-fixture",
+        "releases/cert/nginx/ssl/privkey.pem": b"private-key-fixture-2",
+    }
     files = {
-        "production.env": b"LOG_PURGE_ENABLED=false\n",
-        "compose.vps.yml": b"services: {}\n",
+        "host/production.env": hashlib.sha256(b"LOG_PURGE_ENABLED=false\n").hexdigest(),
+        "host/compose.vps.yml": hashlib.sha256(b"services: {}\n").hexdigest(),
+        **{
+            f"release/{name}": hashlib.sha256(name.encode()).hexdigest()
+            for name in contract.RELEASE_CONFIGURATION_FILES
+        },
+        **{
+            f"external/{name}": hashlib.sha256(content).hexdigest()
+            for name, content in external_contents.items()
+        },
     }
-    protected_files = {
-        name: hashlib.sha256(content).hexdigest() for name, content in files.items()
-    }
-    expected = contract.canonical_digest(protected_files)
-    profile = {
-        "configuration_sha256": expected,
-        "protected_files": protected_files,
-    }
+    expected = contract.canonical_digest(files)
+    profile = {"configuration_sha256": expected, "files": files}
     monkeypatch.setattr(contract, "json_file", lambda path, protected: (profile, "fixture"))
 
     @contextmanager
     def open_fixture(path: Path, *, protected: bool = False):
-        yield BytesIO(files[path.name])
+        try:
+            relative = path.relative_to(state).as_posix()
+            content = {
+                "production.env": b"LOG_PURGE_ENABLED=false\n",
+                "compose.vps.yml": b"services: {}\n",
+            }[relative]
+        except (KeyError, ValueError):
+            relative = path.relative_to(tmp_path).as_posix()
+            content = external_contents[relative]
+        yield BytesIO(content)
 
     monkeypatch.setattr(contract, "open_evidence", open_fixture)
-    assert contract.host_configuration(tmp_path) == expected
+    assert contract.host_configuration(state) == expected
 
     profile["configuration_sha256"] = "f" * 64
     with pytest.raises(contract.ContractError, match="does not match its protected file hashes"):
-        contract.host_configuration(tmp_path)
+        contract.host_configuration(state)
 
     profile["configuration_sha256"] = expected
-    files["production.env"] = b"LOG_PURGE_ENABLED=true\n"
+    files["host/production.env"] = hashlib.sha256(b"LOG_PURGE_ENABLED=true\n").hexdigest()
     with pytest.raises(contract.ContractError, match="deployment setting differs"):
-        contract.host_configuration(tmp_path)
+        contract.host_configuration(state)
+
+
+def test_host_configuration_rejects_missing_runtime_or_external_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = {
+        "host/production.env": hashlib.sha256(b"LOG_PURGE_ENABLED=false\n").hexdigest(),
+        "host/compose.vps.yml": hashlib.sha256(b"services: {}\n").hexdigest(),
+    }
+    profile = {"configuration_sha256": contract.canonical_digest(files), "files": files}
+    monkeypatch.setattr(contract, "json_file", lambda path, protected: (profile, "fixture"))
+
+    @contextmanager
+    def open_fixture(path: Path, *, protected: bool = False):
+        yield BytesIO(
+            b"LOG_PURGE_ENABLED=false\n"
+            if path.name == "production.env"
+            else b"services: {}\n"
+        )
+
+    monkeypatch.setattr(contract, "open_evidence", open_fixture)
+    with pytest.raises(contract.ContractError, match="complete release configuration set"):
+        contract.host_configuration(tmp_path / "deploy")
+
+
+def test_candidate_configuration_verification_matches_compose_mounts_without_emitting_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    portal = tmp_path / "portal"
+    state = portal / "deploy"
+    candidate = portal / "releases" / "candidate"
+    state.mkdir(parents=True)
+    candidate.mkdir(parents=True)
+    host_contents = {
+        "production.env": b"LOG_PURGE_ENABLED=false\nSECRET_VALUE=not-for-output\n",
+        "compose.vps.yml": b"services: {}\n",
+    }
+    for name, content in host_contents.items():
+        (state / name).write_bytes(content)
+    (candidate / ".env").write_bytes(host_contents["production.env"])
+    release_contents: dict[str, bytes] = {}
+    mounts: list[dict[str, str]] = []
+    for name in sorted(contract.RELEASE_CONFIGURATION_FILES):
+        content = f"config fixture: {name}\n".encode()
+        target = candidate / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        release_contents[name] = content
+        if name not in {
+            "docker-compose.prod.yml",
+            "observability/grafana/contact-points/usesend.yml",
+        }:
+            mounts.append({
+                "type": "bind",
+                "source": str(target),
+                "target": f"/mounted/{len(mounts)}",
+            })
+
+    external_contents = {
+        "secrets/jwt_private_key": b"private-key-fixture",
+        "secrets/jwt_public_key": b"public-key-fixture",
+        "releases/cert/nginx/ssl/fullchain.pem": b"certificate-fixture",
+        "releases/cert/nginx/ssl/privkey.pem": b"private-key-fixture-2",
+    }
+    for name, content in external_contents.items():
+        target = portal / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        mounts.append({"type": "bind", "source": str(target), "target": f"/external/{name}"})
+
+    file_map = {
+        **{
+            f"host/{name}": hashlib.sha256(content).hexdigest()
+            for name, content in host_contents.items()
+        },
+        **{
+            f"release/{name}": hashlib.sha256(content).hexdigest()
+            for name, content in release_contents.items()
+        },
+        **{
+            f"external/{name}": hashlib.sha256(content).hexdigest()
+            for name, content in external_contents.items()
+        },
+    }
+    profile = {"configuration_sha256": contract.canonical_digest(file_map), "files": file_map}
+    monkeypatch.setattr(contract, "json_file", lambda path, protected: (profile, "fixture"))
+    real_open = contract.open_evidence
+
+    @contextmanager
+    def open_fixture(path: Path, *, protected: bool = False):
+        with real_open(path, protected=False) as stream:
+            yield stream
+
+    monkeypatch.setattr(contract, "open_evidence", open_fixture)
+    compose = {"services": {
+        name: {
+            "env_file": [str(candidate / ".env")],
+            "environment": {"LOG_PURGE_ENABLED": "false"},
+            "volumes": [],
+        }
+        for name in ("backend", "celery_worker", "celery_beat")
+    }}
+    compose["services"]["grafana"] = {"volumes": mounts}
+    generated = contract.configuration_files_from_runtime(state, candidate, compose)
+    assert generated == file_map
+    profile_json = json.dumps(
+        {"configuration_sha256": contract.canonical_digest(generated), "files": generated}
+    )
+    assert "not-for-output" not in profile_json
+    assert contract.verify_release_configuration(state, candidate, compose) is None
+
+    usesend_mount = {
+        "type": "bind",
+        "source": str(candidate / "observability/grafana/contact-points/usesend.yml"),
+        "target": "/etc/grafana/provisioning/alerting/contact-point.yml",
+    }
+    compose["services"]["grafana"]["volumes"].append(usesend_mount)
+    assert contract.configuration_files_from_runtime(state, candidate, compose) == file_map
+    compose["services"]["grafana"]["volumes"].remove(usesend_mount)
+
+    (candidate / ".env").write_text("LOG_PURGE_ENABLED=true\n")
+    with pytest.raises(
+        contract.ContractError,
+        match="differs from the pinned production environment",
+    ):
+        contract.configuration_files_from_runtime(state, candidate, compose)
+    (candidate / ".env").write_bytes(host_contents["production.env"])
+
+    (candidate / "nginx/nginx.prod.conf").write_bytes(b"changed after approval")
+    with pytest.raises(
+        contract.ContractError, match="differs from the approved host configuration"
+    ):
+        contract.verify_release_configuration(state, candidate, compose)
+
+    (candidate / "nginx/nginx.prod.conf").write_bytes(release_contents["nginx/nginx.prod.conf"])
+    (portal / "releases/cert/nginx/ssl/privkey.pem").write_bytes(b"rotated-key")
+    with pytest.raises(contract.ContractError, match="deployment setting differs"):
+        contract.verify_release_configuration(state, candidate, compose)
+    (portal / "releases/cert/nginx/ssl/privkey.pem").write_bytes(
+        external_contents["releases/cert/nginx/ssl/privkey.pem"]
+    )
+    compose["services"]["backend"]["environment"]["LOG_PURGE_ENABLED"] = "true"
+    with pytest.raises(contract.ContractError, match="audit deletion must be disabled"):
+        contract.verify_release_configuration(state, candidate, compose)
+    compose["services"]["backend"]["environment"]["LOG_PURGE_ENABLED"] = "false"
+    extra_mount = candidate / "unexpected.conf"
+    extra_mount.write_text("unapproved runtime input")
+    compose["services"]["backend"]["volumes"].append({
+        "type": "bind",
+        "source": str(extra_mount),
+        "target": "/etc/unexpected.conf",
+    })
+    with pytest.raises(
+        contract.ContractError,
+        match="do not cover the approved release configuration set",
+    ):
+        contract.verify_release_configuration(state, candidate, compose)

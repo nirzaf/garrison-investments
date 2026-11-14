@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794619551.024505,
-    "ast_hash": "b964a9380cc8465895114e118dc6ae70",
+    "mtime": 1794627499.4683719,
+    "ast_hash": "c3ec6a85d40807cac7a00cbe10f6ad2a",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -1920,8 +1920,8 @@
     "semantic_hash": "4e27e31e049f876c5f27fb3bfa2468fc"
   },
   "deploy/hostinger-release.sh": {
-    "mtime": 1794607885.6741395,
-    "ast_hash": "3c5fc330042c5b037d89d038a0629a02",
+    "mtime": 1794625713.644497,
+    "ast_hash": "552270cda6b899a9cfafd05d99c829dc",
     "semantic_hash": ""
   },
   "backend/alembic/versions/202605310001_bind_supervisor_verification.py": {
@@ -1980,8 +1980,8 @@
     "semantic_hash": ""
   },
   "backend/scripts/release_contract.py": {
-    "mtime": 1794608227.0782435,
-    "ast_hash": "178b257eeed248b4cfe6253e0e91c4e9",
+    "mtime": 1794626862.2515743,
+    "ast_hash": "2161f806a34494a5fc20053c13fdd35e",
     "semantic_hash": ""
   },
   "backend/scripts/report_media_quota_drift.py": {
@@ -2030,13 +2030,13 @@
     "semantic_hash": "445a8d7b5d4f281d15223f58382c5da6"
   },
   "backend/tests/test_release_contract.py": {
-    "mtime": 1794608204.536594,
-    "ast_hash": "f6efd306246d31532fda06fd6cae5f9b",
+    "mtime": 1794626717.7895098,
+    "ast_hash": "d09add65afd3289403515280ff2321a3",
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {
-    "mtime": 1794612375.7223322,
-    "ast_hash": "c14d034f67b97b6514d77fe2410fe717",
+    "mtime": 1794626187.985478,
+    "ast_hash": "401e717c52eaa5082b51e8e535c4e9bf",
     "semantic_hash": ""
   },
   "deploy/capture-recovery-set.sh": {
@@ -2065,9 +2065,9 @@
     "semantic_hash": "e16fff57c84ff6ab0e2a77fff47b0c7e"
   },
   "docs/templates/release-closure/authorized-configuration.json": {
-    "mtime": 1794488893.8530095,
-    "ast_hash": "d6b7ace8943990675460447bc7355f3e",
-    "semantic_hash": "d6b7ace8943990675460447bc7355f3e"
+    "mtime": 1794626102.75134,
+    "ast_hash": "385a49b5a6915749f0451461389734b2",
+    "semantic_hash": ""
   },
   "docs/templates/release-closure/control_registry.json": {
     "mtime": 1794550892.7497509,
@@ -2300,8 +2300,8 @@
     "semantic_hash": "9f224e0147c603f8c422a0ddcaaba5ac"
   },
   "docs/templates/release-closure/README.md": {
-    "mtime": 1794608037.0984697,
-    "ast_hash": "79c7b6ee361274953951be379b608d2d",
+    "mtime": 1794626558.7037575,
+    "ast_hash": "4b2e63abb8550cc98fcc7c0639af954a",
     "semantic_hash": ""
   },
   "frontend/e2e/import-workflow.e2e.ts": {
@@ -2315,8 +2315,8 @@
     "semantic_hash": ""
   },
   "docs/POST_RELEASE_ACTIONS.md": {
-    "mtime": 1794604651.6369126,
-    "ast_hash": "472c4e047e42ba8a21533904ab7eefd2",
+    "mtime": 1794623700.5762973,
+    "ast_hash": "1ef3c6f54e02ff6ece44b1d11794bca4",
     "semantic_hash": ""
   },
   "frontend/src/pages/analytics/AnalyticsCharts.tsx": {

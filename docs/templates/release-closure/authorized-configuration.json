@@ -1,7 +1,25 @@
 {
   "configuration_sha256": null,
-  "protected_files": {
-    "production.env": null,
-    "compose.vps.yml": null
+  "files": {
+    "host/production.env": null,
+    "host/compose.vps.yml": null,
+    "release/docker-compose.prod.yml": null,
+    "release/nginx/nginx.prod.conf": null,
+    "release/nginx/grafana.prod.conf.template": null,
+    "release/observability/postgres/init-grafana-db.sh": null,
+    "release/observability/minio/loki-policy.json": null,
+    "release/observability/loki-config.yml": null,
+    "release/observability/alloy-config.alloy": null,
+    "release/observability/grafana/contact-points/usesend.yml": null,
+    "release/observability/grafana/dashboards/incidents.json": null,
+    "release/observability/grafana/dashboards/operations.json": null,
+    "release/observability/grafana/provisioning/alerting/alerts.yml": null,
+    "release/observability/grafana/provisioning/alerting/contact-point.yml": null,
+    "release/observability/grafana/provisioning/dashboards/dashboards.yml": null,
+    "release/observability/grafana/provisioning/datasources/loki.yml": null,
+    "external/secrets/jwt_private_key": null,
+    "external/secrets/jwt_public_key": null,
+    "external/releases/REPLACE-ME/nginx/ssl/fullchain.pem": null,
+    "external/releases/REPLACE-ME/nginx/ssl/privkey.pem": null
   }
 }

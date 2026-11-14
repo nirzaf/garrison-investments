@@ -27,6 +27,22 @@ REPOSITORY = "nirzaf/garrison-investments"
 VERSION = 1
 WORKSTREAMS = {f"G-{number:02}" for number in range(2, 34)}
 CONTROL_COUNTS = {27: 4, 28: 11, 29: 13, 30: 11, 32: 10, 33: 12}
+RELEASE_CONFIGURATION_FILES = {
+    "docker-compose.prod.yml",
+    "nginx/nginx.prod.conf",
+    "nginx/grafana.prod.conf.template",
+    "observability/postgres/init-grafana-db.sh",
+    "observability/minio/loki-policy.json",
+    "observability/loki-config.yml",
+    "observability/alloy-config.alloy",
+    "observability/grafana/contact-points/usesend.yml",
+    "observability/grafana/dashboards/incidents.json",
+    "observability/grafana/dashboards/operations.json",
+    "observability/grafana/provisioning/alerting/alerts.yml",
+    "observability/grafana/provisioning/alerting/contact-point.yml",
+    "observability/grafana/provisioning/dashboards/dashboards.yml",
+    "observability/grafana/provisioning/datasources/loki.yml",
+}
 DECISION_ROLES = {
     "D-27-SCOPE": "business_sponsor",
     "D-28-POLICY": "records_owner",
@@ -3302,25 +3318,83 @@ class Validation:
         }
 
 
+def approved_external_configuration_path(relative: str) -> bool:
+    parts = safe_parts(relative)
+    if parts in (["secrets", "jwt_private_key"], ["secrets", "jwt_public_key"]):
+        return True
+    return (
+        len(parts) == 5
+        and parts[0] == "releases"
+        and parts[2:4] == ["nginx", "ssl"]
+        and parts[4] in {"fullchain.pem", "privkey.pem"}
+    )
+
+
 def host_configuration(state: Path) -> str:
     value, _ = json_file(state / "authorized-configuration.json", protected=True)
-    profile = fields(
-        value, "configuration_sha256 protected_files", label="approved host configuration"
-    )
-    checksums = profile["protected_files"]
-    require(
-        isinstance(checksums, dict) and {"production.env", "compose.vps.yml"} <= checksums.keys(),
-        "Approved host configuration omits deployment inputs.",
-        3,
-    )
+    profile = fields(value, "configuration_sha256 files", label="approved host configuration")
+    checksums = profile["files"]
+    require(isinstance(checksums, dict), "Invalid approved configuration file map.", 3)
+
+    host_files: set[str] = set()
+    release_files: set[str] = set()
+    external_files: set[str] = set()
     for name, expected_hash in checksums.items():
-        expected = digest(expected_hash, "protected host file")
-        with open_evidence(state.joinpath(*safe_parts(name)), protected=True) as file:
+        digest(expected_hash, "approved configuration file")
+        parts = safe_parts(name)
+        require(len(parts) >= 2, "Invalid approved configuration file identity.", 3)
+        namespace, relative = parts[0], "/".join(parts[1:])
+        if namespace == "host":
+            host_files.add(relative)
+            root = state
+        elif namespace == "release":
+            release_files.add(relative)
+            continue
+        elif namespace == "external":
+            external_files.add(relative)
+            root = state.parent
             require(
-                hashlib.file_digest(file, "sha256").hexdigest() == expected,
+                approved_external_configuration_path(relative),
+                "Unapproved external file path in host configuration.",
+                3,
+            )
+        else:
+            raise ContractError(3, "Unknown approved configuration file namespace.")
+
+        with open_evidence(root.joinpath(*parts[1:]), protected=True) as file:
+            require(
+                hashlib.file_digest(file, "sha256").hexdigest() == expected_hash,
                 "A protected deployment setting differs from the approved host configuration.",
                 3,
             )
+
+    require(
+        host_files == {"production.env", "compose.vps.yml"},
+        "Approved host configuration must contain exactly the deployment input set.",
+        3,
+    )
+    require(
+        release_files == RELEASE_CONFIGURATION_FILES,
+        "Approved host configuration does not cover the complete release configuration set.",
+        3,
+    )
+    fullchain_paths = {
+        path for path in external_files if path.endswith("/nginx/ssl/fullchain.pem")
+    }
+    private_key_paths = {
+        path for path in external_files if path.endswith("/nginx/ssl/privkey.pem")
+    }
+    require(
+        {"secrets/jwt_private_key", "secrets/jwt_public_key"} <= external_files
+        and len(fullchain_paths) == 1
+        and len(private_key_paths) == 1
+        and next(iter(fullchain_paths)).removesuffix("fullchain.pem")
+        == next(iter(private_key_paths)).removesuffix("privkey.pem")
+        and len(external_files) == 4,
+        "Approved host configuration omits a mounted key or TLS file.",
+        3,
+    )
+
     approved = digest(profile["configuration_sha256"], "approved host configuration")
     actual = canonical_digest(checksums)
     require(
@@ -3331,13 +3405,228 @@ def host_configuration(state: Path) -> str:
     return actual
 
 
+def _mounted_tree_hashes(path: Path, *, protected: bool) -> dict[str, str]:
+    require(not path.is_symlink(), "A mounted configuration path must not be a symlink.", 3)
+    if path.is_file():
+        candidates = [path]
+    else:
+        require(path.is_dir(), "A mounted configuration path is missing or not a file.", 3)
+        candidates = sorted(path.rglob("*"))
+    result: dict[str, str] = {}
+    for candidate in candidates:
+        require(not candidate.is_symlink(), "A mounted configuration tree contains a symlink.", 3)
+        if candidate.is_dir():
+            continue
+        if candidate.name == ".gitkeep":
+            continue
+        require(candidate.is_file(), "A mounted configuration tree contains a special file.", 3)
+        with open_evidence(candidate, protected=protected) as file:
+            result[candidate.as_posix()] = hashlib.file_digest(file, "sha256").hexdigest()
+    return result
+
+
+def _dotenv_value(path: Path, name: str) -> str:
+    with open_evidence(path) as file:
+        try:
+            lines = file.read().decode("utf-8").splitlines()
+        except UnicodeDecodeError:
+            raise ContractError(3, "The protected production environment is invalid.") from None
+    values: list[str] = []
+    for line in lines:
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        if value.startswith("export "):
+            value = value[7:].lstrip()
+        key, separator, item = value.partition("=")
+        if separator and key.strip() == name:
+            values.append(item.strip())
+    require(
+        len(values) == 1,
+        f"The protected production environment must set {name} exactly once.",
+        3,
+    )
+    return values[0]
+
+
+def _effective_environment_files(service: dict[str, Any], candidate_root: Path) -> list[Path]:
+    entries = service.get("env_file", [])
+    if isinstance(entries, str):
+        entries = [entries]
+    require(isinstance(entries, list), "Invalid effective application environment files.", 3)
+    paths: list[Path] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            value = entry
+        else:
+            require(
+                isinstance(entry, dict),
+                "Invalid effective application environment file.",
+                3,
+            )
+            value = entry.get("path")
+        require(
+            isinstance(value, str) and value,
+            "Invalid effective application environment file.",
+            3,
+        )
+        path = Path(value)
+        paths.append(path if path.is_absolute() else candidate_root / path)
+    return [Path(os.path.normpath(path)) for path in paths]
+
+
+def configuration_files_from_runtime(
+    state: Path, release_root: Path, compose_config: Any
+) -> dict[str, str]:
+    """Build the nonsecret digest map from host files and effective candidate Compose mounts."""
+    candidate_root = release_root.absolute()
+    portal_root = state.parent.absolute()
+    checksums: dict[str, str] = {}
+
+    for name in ("production.env", "compose.vps.yml"):
+        with open_evidence(state / name, protected=True) as file:
+            checksums[f"host/{name}"] = hashlib.file_digest(file, "sha256").hexdigest()
+
+    with open_evidence(candidate_root / ".env", protected=True) as file:
+        candidate_environment_hash = hashlib.file_digest(file, "sha256").hexdigest()
+    require(
+        candidate_environment_hash == checksums["host/production.env"],
+        "The candidate environment file differs from the pinned production environment.",
+        3,
+    )
+    dotenv_purge_setting = _dotenv_value(candidate_root / ".env", "LOG_PURGE_ENABLED")
+    dotenv_purge_setting = dotenv_purge_setting.split(" #", 1)[0].strip()
+    require(
+        dotenv_purge_setting.strip("\"'").lower() in {"false", "0", "no", "off"},
+        "Production audit deletion must be disabled for this release.",
+        3,
+    )
+
+    for name in RELEASE_CONFIGURATION_FILES:
+        with open_evidence(candidate_root.joinpath(*safe_parts(name)), protected=True) as file:
+            checksums[f"release/{name}"] = hashlib.file_digest(file, "sha256").hexdigest()
+
+    compose = fields(
+        compose_config,
+        "services",
+        optional="configs name networks secrets version volumes",
+        label="effective Compose configuration",
+    )
+    services = compose["services"]
+    require(isinstance(services, dict), "Invalid effective Compose services.", 3)
+    for service_name in ("backend", "celery_worker", "celery_beat"):
+        service = services.get(service_name)
+        require(isinstance(service, dict), "A required application service is absent.", 3)
+        environment_files = _effective_environment_files(service, candidate_root)
+        require(
+            environment_files == [candidate_root / ".env"],
+            "An application service does not use the pinned production environment file.",
+            3,
+        )
+        environment = service.get("environment", {})
+        require(isinstance(environment, dict), "Invalid effective application environment.", 3)
+        if "LOG_PURGE_ENABLED" in environment:
+            purge_setting = environment["LOG_PURGE_ENABLED"]
+            require(
+                isinstance(purge_setting, str | int | bool)
+                and str(purge_setting).lower() in {"false", "0", "no", "off"},
+                "Production audit deletion must be disabled for this release.",
+                3,
+            )
+
+    release_mounts: set[str] = set()
+    external_mounts: dict[str, str] = {}
+    for service in services.values():
+        require(isinstance(service, dict), "Invalid effective Compose service.", 3)
+        mounts = service.get("volumes", [])
+        require(isinstance(mounts, list), "Invalid effective Compose mounts.", 3)
+        for mount in mounts:
+            require(isinstance(mount, dict), "Invalid effective Compose mount.", 3)
+            if mount.get("type") != "bind":
+                continue
+            source = mount.get("source")
+            require(
+                isinstance(source, str) and Path(source).is_absolute(),
+                "Invalid bind mount source.",
+                3,
+            )
+            normalized = Path(os.path.normpath(source))
+            if normalized == Path("/var/run/docker.sock"):
+                continue
+            try:
+                normalized.relative_to(candidate_root)
+            except ValueError:
+                try:
+                    normalized.relative_to(portal_root)
+                except ValueError:
+                    raise ContractError(
+                        3, "A bind mount is outside the approved host or release root."
+                    ) from None
+                for path, file_hash in _mounted_tree_hashes(normalized, protected=True).items():
+                    rel_file = Path(path).relative_to(portal_root).as_posix()
+                    require(
+                        approved_external_configuration_path(rel_file),
+                        "An effective external mount path is not approved for "
+                        "configuration hashing.",
+                        3,
+                    )
+                    external_mounts[f"external/{rel_file}"] = file_hash
+            else:
+                for path in _mounted_tree_hashes(normalized, protected=True):
+                    rel_file = Path(path).relative_to(candidate_root).as_posix()
+                    release_mounts.add(rel_file)
+
+    expected_release_mounts = RELEASE_CONFIGURATION_FILES - {"docker-compose.prod.yml"}
+    required_release_mounts = expected_release_mounts - {
+        "observability/grafana/contact-points/usesend.yml"
+    }
+    require(
+        required_release_mounts <= release_mounts <= expected_release_mounts,
+        "Effective Compose bind mounts do not cover the approved release configuration set.",
+        3,
+    )
+    fullchain_mounts = {
+        name for name in external_mounts if name.endswith("/nginx/ssl/fullchain.pem")
+    }
+    private_key_mounts = {
+        name for name in external_mounts if name.endswith("/nginx/ssl/privkey.pem")
+    }
+    require(
+        {"external/secrets/jwt_private_key", "external/secrets/jwt_public_key"}
+        <= external_mounts.keys()
+        and len(fullchain_mounts) == 1
+        and len(private_key_mounts) == 1
+        and next(iter(fullchain_mounts)).removesuffix("fullchain.pem")
+        == next(iter(private_key_mounts)).removesuffix("privkey.pem")
+        and len(external_mounts) == 4,
+        "Effective Compose configuration omits a mounted key or TLS file.",
+        3,
+    )
+    checksums.update(external_mounts)
+    return checksums
+
+
+def verify_release_configuration(state: Path, release_root: Path, compose_config: Any) -> None:
+    """Verify candidate config bytes and every effective bind-mounted config before activation."""
+    approved = host_configuration(state)
+    profile, _ = json_file(state / "authorized-configuration.json", protected=True)
+    actual_files = configuration_files_from_runtime(state, release_root, compose_config)
+    require(
+        actual_files == profile["files"] and canonical_digest(actual_files) == approved,
+        "Candidate runtime configuration differs from the approved host configuration.",
+        3,
+    )
+
+
 def host_main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host-state", type=Path, required=True)
-    parser.add_argument("--commit", required=True)
-    parser.add_argument("--ci-run", type=int, required=True)
-    parser.add_argument("--deploy-run", type=int, required=True)
-    parser.add_argument("--deploy-attempt", type=int, required=True)
+    parser.add_argument("--commit")
+    parser.add_argument("--ci-run", type=int)
+    parser.add_argument("--deploy-run", type=int)
+    parser.add_argument("--deploy-attempt", type=int)
+    parser.add_argument("--verify-runtime-config-root", type=Path)
+    parser.add_argument("--configuration-profile-root", type=Path)
     parser.add_argument("--schema-head", action="append")
     parser.add_argument("--backend-image")
     parser.add_argument("--frontend-image")
@@ -3348,6 +3637,44 @@ def host_main() -> None:
         require(
             os.geteuid() == 0 and args.host_state.is_absolute(),
             "Host validation requires the trusted operator context.",
+        )
+        require(
+            not (args.verify_runtime_config_root and args.configuration_profile_root),
+            "Select only one runtime-configuration operation.",
+        )
+        if args.configuration_profile_root is not None:
+            require(
+                args.configuration_profile_root.is_absolute(),
+                "Candidate release path must be absolute.",
+            )
+            compose_config = strict_json(sys.stdin.buffer.read())
+            file_map = configuration_files_from_runtime(
+                args.host_state, args.configuration_profile_root, compose_config
+            )
+            print(json.dumps({
+                "configuration_sha256": canonical_digest(file_map),
+                "files": file_map,
+            }, sort_keys=True, indent=2))
+            return
+
+        if args.verify_runtime_config_root is not None:
+            require(
+                args.verify_runtime_config_root.is_absolute(),
+                "Candidate release path must be absolute.",
+            )
+            compose_config = strict_json(sys.stdin.buffer.read())
+            verify_release_configuration(
+                args.host_state, args.verify_runtime_config_root, compose_config
+            )
+            print(json.dumps({"status": "runtime_configuration_verified"}, sort_keys=True))
+            return
+
+        require(
+            args.commit is not None
+            and args.ci_run is not None
+            and args.deploy_run is not None
+            and args.deploy_attempt is not None,
+            "Predeployment validation requires complete run identities.",
         )
         source = digest(args.commit, "candidate source", 40)
         observed = (
