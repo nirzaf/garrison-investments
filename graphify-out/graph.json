@@ -5642,7 +5642,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_auth",
-      "community": 101,
+      "community": 124,
       "norm_label": "auth.py"
     },
     {
@@ -5752,7 +5752,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_daily_report",
-      "community": 124,
+      "community": 125,
       "norm_label": "daily_report.py"
     },
     {
@@ -5872,7 +5872,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_idempotency_record",
-      "community": 124,
+      "community": 67,
       "norm_label": "idempotency_record.py"
     },
     {
@@ -8842,7 +8842,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "schemas_inventory_materialrequestcreaterequest",
-      "community": 75,
+      "community": 94,
       "norm_label": "materialrequestcreaterequest"
     },
     {
@@ -31370,7 +31370,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_analytics",
-      "community": 50,
+      "community": 6,
       "norm_label": "analytics.ts"
     },
     {
@@ -31380,7 +31380,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_analytics_analyticssummary",
-      "community": 50,
+      "community": 6,
       "norm_label": "analyticssummary"
     },
     {
@@ -31390,7 +31390,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_analytics_analyticsfilters",
-      "community": 50,
+      "community": 6,
       "norm_label": "analyticsfilters"
     },
     {
@@ -31400,7 +31400,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "api_analytics_analyticsexport",
-      "community": 50,
+      "community": 6,
       "norm_label": "analyticsexport"
     },
     {
@@ -31410,7 +31410,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "api_analytics_getanalyticssummary",
-      "community": 50,
+      "community": 6,
       "norm_label": "getanalyticssummary()"
     },
     {
@@ -31420,7 +31420,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_analytics_downloadexport",
-      "community": 50,
+      "community": 6,
       "norm_label": "downloadexport()"
     },
     {
@@ -31790,7 +31790,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "api_browsersession_getbrowsersession",
-      "community": 20,
+      "community": 2,
       "norm_label": "getbrowsersession()"
     },
     {
@@ -31950,7 +31950,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_client_sessionrequestconfig",
-      "community": 8,
+      "community": 20,
       "norm_label": "sessionrequestconfig()"
     },
     {
@@ -32030,7 +32030,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_documents",
-      "community": 7,
+      "community": 193,
       "norm_label": "documents.ts"
     },
     {
@@ -32040,7 +32040,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "api_documents_documentversionrecord",
-      "community": 7,
+      "community": 193,
       "norm_label": "documentversionrecord"
     },
     {
@@ -32050,7 +32050,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "api_documents_documentrecord",
-      "community": 7,
+      "community": 193,
       "norm_label": "documentrecord"
     },
     {
@@ -32060,7 +32060,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "api_documents_documentlistresponse",
-      "community": 7,
+      "community": 193,
       "norm_label": "documentlistresponse"
     },
     {
@@ -32070,7 +32070,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "api_documents_documentdownloadurl",
-      "community": 7,
+      "community": 193,
       "norm_label": "documentdownloadurl"
     },
     {
@@ -32080,7 +32080,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "api_documents_listdocuments",
-      "community": 7,
+      "community": 193,
       "norm_label": "listdocuments()"
     },
     {
@@ -32090,7 +32090,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_documents_getdocument",
-      "community": 7,
+      "community": 193,
       "norm_label": "getdocument()"
     },
     {
@@ -32100,7 +32100,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "api_documents_uploaddocument",
-      "community": 7,
+      "community": 193,
       "norm_label": "uploaddocument()"
     },
     {
@@ -32110,7 +32110,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "api_documents_approvedocumentversion",
-      "community": 7,
+      "community": 193,
       "norm_label": "approvedocumentversion()"
     },
     {
@@ -32120,7 +32120,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "api_documents_uploaddocumentversion",
-      "community": 7,
+      "community": 193,
       "norm_label": "uploaddocumentversion()"
     },
     {
@@ -32130,7 +32130,7 @@
       "source_location": "L68",
       "_origin": "ast",
       "id": "api_documents_getdocumentdownloadurl",
-      "community": 7,
+      "community": 193,
       "norm_label": "getdocumentdownloadurl()"
     },
     {
@@ -32480,7 +32480,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_imports",
-      "community": 196,
+      "community": 194,
       "norm_label": "imports.ts"
     },
     {
@@ -32490,7 +32490,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_imports_importpreview",
-      "community": 196,
+      "community": 194,
       "norm_label": "importpreview"
     },
     {
@@ -32500,7 +32500,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "api_imports_importrunresult",
-      "community": 196,
+      "community": 194,
       "norm_label": "importrunresult"
     },
     {
@@ -32510,7 +32510,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "api_imports_asyncimportresult",
-      "community": 196,
+      "community": 194,
       "norm_label": "asyncimportresult"
     },
     {
@@ -32520,7 +32520,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "api_imports_importtemplates",
-      "community": 196,
+      "community": 194,
       "norm_label": "importtemplates"
     },
     {
@@ -32530,7 +32530,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "api_imports_downloadtemplate",
-      "community": 196,
+      "community": 194,
       "norm_label": "downloadtemplate()"
     },
     {
@@ -32540,7 +32540,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "api_imports_previewimport",
-      "community": 196,
+      "community": 194,
       "norm_label": "previewimport()"
     },
     {
@@ -32550,7 +32550,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "api_imports_runimport",
-      "community": 196,
+      "community": 194,
       "norm_label": "runimport()"
     },
     {
@@ -32560,7 +32560,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "api_imports_runimportasync",
-      "community": 196,
+      "community": 194,
       "norm_label": "runimportasync()"
     },
     {
@@ -32570,7 +32570,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "api_imports_getimportbatchstatus",
-      "community": 196,
+      "community": 194,
       "norm_label": "getimportbatchstatus()"
     },
     {
@@ -32580,7 +32580,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "api_imports_listimportbatches",
-      "community": 196,
+      "community": 194,
       "norm_label": "listimportbatches()"
     },
     {
@@ -33010,7 +33010,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_notifications",
-      "community": 193,
+      "community": 50,
       "norm_label": "notifications.ts"
     },
     {
@@ -33020,7 +33020,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_notifications_notificationrecord",
-      "community": 193,
+      "community": 50,
       "norm_label": "notificationrecord"
     },
     {
@@ -33030,7 +33030,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "api_notifications_notificationlistresponse",
-      "community": 193,
+      "community": 50,
       "norm_label": "notificationlistresponse"
     },
     {
@@ -33040,7 +33040,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_notifications_unreadcountresponse",
-      "community": 193,
+      "community": 50,
       "norm_label": "unreadcountresponse"
     },
     {
@@ -33050,7 +33050,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "api_notifications_listnotifications",
-      "community": 193,
+      "community": 50,
       "norm_label": "listnotifications()"
     },
     {
@@ -33060,7 +33060,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "api_notifications_getunreadcount",
-      "community": 194,
+      "community": 50,
       "norm_label": "getunreadcount()"
     },
     {
@@ -33070,7 +33070,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "api_notifications_marknotificationread",
-      "community": 193,
+      "community": 50,
       "norm_label": "marknotificationread()"
     },
     {
@@ -33080,7 +33080,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_notifications_markallnotificationsread",
-      "community": 193,
+      "community": 50,
       "norm_label": "markallnotificationsread()"
     },
     {
@@ -33090,7 +33090,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "api_notifications_mutenotification",
-      "community": 193,
+      "community": 50,
       "norm_label": "mutenotification()"
     },
     {
@@ -33100,7 +33100,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "api_notifications_unmutenotification",
-      "community": 193,
+      "community": 50,
       "norm_label": "unmutenotification()"
     },
     {
@@ -33140,7 +33140,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "api_offlinedb_offlinestorageupgradeblockederror",
-      "community": 19,
+      "community": 194,
       "norm_label": "offlinestorageupgradeblockederror"
     },
     {
@@ -33150,7 +33150,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "api_offlinedb_offlinestorageupgradeblockederror_constructor",
-      "community": 19,
+      "community": 194,
       "norm_label": ".constructor()"
     },
     {
@@ -33960,7 +33960,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "api_projects_projectrecord",
-      "community": 7,
+      "community": 193,
       "norm_label": "projectrecord"
     },
     {
@@ -34060,7 +34060,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "api_projects_listprojects",
-      "community": 50,
+      "community": 6,
       "norm_label": "listprojects()"
     },
     {
@@ -34300,7 +34300,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "api_reports_createdailyreport",
-      "community": 8,
+      "community": 2,
       "norm_label": "createdailyreport()"
     },
     {
@@ -34310,7 +34310,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "api_reports_getdailyreport",
-      "community": 8,
+      "community": 20,
       "norm_label": "getdailyreport()"
     },
     {
@@ -34320,7 +34320,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "api_reports_updatedailyreport",
-      "community": 8,
+      "community": 2,
       "norm_label": "updatedailyreport()"
     },
     {
@@ -34330,7 +34330,7 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "api_reports_submitdailyreport",
-      "community": 8,
+      "community": 20,
       "norm_label": "submitdailyreport()"
     },
     {
@@ -34530,7 +34530,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "api_supervisorupdates_submitsupervisorupdate",
-      "community": 8,
+      "community": 20,
       "norm_label": "submitsupervisorupdate()"
     },
     {
@@ -34590,7 +34590,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_users",
-      "community": 98,
+      "community": 193,
       "norm_label": "users.ts"
     },
     {
@@ -34600,7 +34600,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_users_userrecord",
-      "community": 98,
+      "community": 193,
       "norm_label": "userrecord"
     },
     {
@@ -34610,7 +34610,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_users_userlistresponse",
-      "community": 98,
+      "community": 193,
       "norm_label": "userlistresponse"
     },
     {
@@ -34620,7 +34620,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "api_users_createuserpayload",
-      "community": 98,
+      "community": 193,
       "norm_label": "createuserpayload"
     },
     {
@@ -34630,7 +34630,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "api_users_listusers",
-      "community": 98,
+      "community": 193,
       "norm_label": "listusers()"
     },
     {
@@ -34640,7 +34640,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "api_users_createuser",
-      "community": 98,
+      "community": 193,
       "norm_label": "createuser()"
     },
     {
@@ -34650,7 +34650,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "api_users_updateuserrole",
-      "community": 98,
+      "community": 193,
       "norm_label": "updateuserrole()"
     },
     {
@@ -34660,7 +34660,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "api_users_deactivateuser",
-      "community": 98,
+      "community": 193,
       "norm_label": "deactivateuser()"
     },
     {
@@ -34670,7 +34670,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "api_users_adminresetpassword",
-      "community": 98,
+      "community": 193,
       "norm_label": "adminresetpassword()"
     },
     {
@@ -34700,7 +34700,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "layout_applayout",
-      "community": 194,
+      "community": 50,
       "norm_label": "applayout.tsx"
     },
     {
@@ -34710,7 +34710,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "layout_applayout_navitem",
-      "community": 194,
+      "community": 50,
       "norm_label": "navitem"
     },
     {
@@ -34720,7 +34720,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "layout_applayout_navitems",
-      "community": 194,
+      "community": 50,
       "norm_label": "navitems"
     },
     {
@@ -34730,7 +34730,7 @@
       "source_location": "L85",
       "_origin": "ast",
       "id": "layout_applayout_canaccess",
-      "community": 194,
+      "community": 50,
       "norm_label": "canaccess()"
     },
     {
@@ -34740,7 +34740,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "layout_applayout_labelfrompath",
-      "community": 194,
+      "community": 50,
       "norm_label": "labelfrompath()"
     },
     {
@@ -34750,7 +34750,7 @@
       "source_location": "L102",
       "_origin": "ast",
       "id": "layout_applayout_applayout",
-      "community": 194,
+      "community": 50,
       "norm_label": "applayout()"
     },
     {
@@ -34760,7 +34760,7 @@
       "source_location": "L318",
       "_origin": "ast",
       "id": "layout_applayout_shellbrand",
-      "community": 194,
+      "community": 50,
       "norm_label": "shellbrand()"
     },
     {
@@ -34770,7 +34770,7 @@
       "source_location": "L339",
       "_origin": "ast",
       "id": "layout_applayout_sidebarnav",
-      "community": 194,
+      "community": 50,
       "norm_label": "sidebarnav()"
     },
     {
@@ -34780,7 +34780,7 @@
       "source_location": "L366",
       "_origin": "ast",
       "id": "layout_applayout_mobilenavlink",
-      "community": 194,
+      "community": 50,
       "norm_label": "mobilenavlink()"
     },
     {
@@ -35180,7 +35180,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "admin_importpage",
-      "community": 196,
+      "community": 194,
       "norm_label": "importpage.tsx"
     },
     {
@@ -35190,7 +35190,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "admin_importpage_importpage",
-      "community": 196,
+      "community": 194,
       "norm_label": "importpage()"
     },
     {
@@ -35200,7 +35200,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "admin_usermanagementpage",
-      "community": 98,
+      "community": 193,
       "norm_label": "usermanagementpage.tsx"
     },
     {
@@ -35210,7 +35210,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "admin_usermanagementpage_roles",
-      "community": 98,
+      "community": 193,
       "norm_label": "roles"
     },
     {
@@ -35220,7 +35220,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "admin_usermanagementpage_initialform",
-      "community": 98,
+      "community": 193,
       "norm_label": "initialform"
     },
     {
@@ -35230,7 +35230,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "admin_usermanagementpage_rolelabel",
-      "community": 98,
+      "community": 193,
       "norm_label": "rolelabel()"
     },
     {
@@ -35280,7 +35280,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "analytics_analyticspage",
-      "community": 50,
+      "community": 6,
       "norm_label": "analyticspage.tsx"
     },
     {
@@ -35290,7 +35290,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "analytics_analyticspage_projectprogresschart",
-      "community": 50,
+      "community": 6,
       "norm_label": "projectprogresschart"
     },
     {
@@ -35300,7 +35300,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "analytics_analyticspage_materialusagechart",
-      "community": 50,
+      "community": 6,
       "norm_label": "materialusagechart"
     },
     {
@@ -35310,7 +35310,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "analytics_analyticspage_exportoptions",
-      "community": 50,
+      "community": 6,
       "norm_label": "exportoptions"
     },
     {
@@ -35320,7 +35320,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "analytics_analyticspage_filterfields",
-      "community": 50,
+      "community": 6,
       "norm_label": "filterfields"
     },
     {
@@ -35527,7 +35527,7 @@
       "label": "acceptanceScenarios",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L45",
+      "source_location": "L46",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_acceptancescenarios",
       "community": 194,
@@ -35537,7 +35537,7 @@
       "label": "remainingInputs",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L58",
+      "source_location": "L59",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_remaininginputs",
       "community": 194,
@@ -35547,7 +35547,7 @@
       "label": "DeliveryPlanPage()",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L66",
+      "source_location": "L67",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_deliveryplanpage",
       "community": 194,
@@ -35557,7 +35557,7 @@
       "label": "Checklist()",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L127",
+      "source_location": "L128",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_checklist",
       "community": 194,
@@ -35570,7 +35570,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "documents_documentspage",
-      "community": 7,
+      "community": 193,
       "norm_label": "documentspage.tsx"
     },
     {
@@ -35580,7 +35580,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "documents_documentspage_documenttypes",
-      "community": 7,
+      "community": 193,
       "norm_label": "documenttypes"
     },
     {
@@ -35600,7 +35600,7 @@
       "source_location": "L625",
       "_origin": "ast",
       "id": "documents_documentspage_alert",
-      "community": 7,
+      "community": 193,
       "norm_label": "alert()"
     },
     {
@@ -36150,7 +36150,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notifications_notificationspage",
-      "community": 193,
+      "community": 50,
       "norm_label": "notificationspage.tsx"
     },
     {
@@ -36160,7 +36160,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "notifications_notificationspage_workflowpaths",
-      "community": 193,
+      "community": 50,
       "norm_label": "workflowpaths"
     },
     {
@@ -36170,7 +36170,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "notifications_notificationspage_workflowlink",
-      "community": 193,
+      "community": 50,
       "norm_label": "workflowlink()"
     },
     {
@@ -36180,7 +36180,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "notifications_notificationspage_notificationspage",
-      "community": 193,
+      "community": 50,
       "norm_label": "notificationspage()"
     },
     {
@@ -38555,7 +38555,7 @@
       "label": "Data checks and repairs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L257",
+      "source_location": "L278",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_data_checks_and_repairs",
       "community": 78,
@@ -38565,7 +38565,7 @@
       "label": "Offline storage upgrade",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L268",
+      "source_location": "L289",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_offline_storage_upgrade",
       "community": 78,
@@ -38575,7 +38575,7 @@
       "label": "Rollback",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L276",
+      "source_location": "L297",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_rollback",
       "community": 78,
@@ -38585,7 +38585,7 @@
       "label": "User acceptance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L284",
+      "source_location": "L305",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_user_acceptance",
       "community": 39,
@@ -38595,7 +38595,7 @@
       "label": "Formal acceptance still pending",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L288",
+      "source_location": "L309",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_formal_acceptance_still_pending",
       "community": 103,
@@ -38605,7 +38605,7 @@
       "label": "5. Formal Acceptance Evidence",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L303",
+      "source_location": "L324",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_5_formal_acceptance_evidence",
       "community": 103,
@@ -39078,7 +39078,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_auth_otp_challenges",
-      "community": 101,
+      "community": 124,
       "norm_label": "auth_otp_challenges.md"
     },
     {
@@ -39198,7 +39198,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_daily_report_approval_history",
-      "community": 124,
+      "community": 125,
       "norm_label": "daily_report_approval_history.md"
     },
     {
@@ -39258,7 +39258,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_daily_reports",
-      "community": 124,
+      "community": 125,
       "norm_label": "daily_reports.md"
     },
     {
@@ -39438,7 +39438,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_idempotency_records",
-      "community": 124,
+      "community": 67,
       "norm_label": "idempotency_records.md"
     },
     {
@@ -39448,7 +39448,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_idempotency_records_idempotency_records",
-      "community": 214,
+      "community": 67,
       "norm_label": "idempotency_records"
     },
     {
@@ -39458,7 +39458,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "schema_idempotency_records_columns",
-      "community": 214,
+      "community": 67,
       "norm_label": "columns"
     },
     {
@@ -39468,7 +39468,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "schema_idempotency_records_keys_and_constraints",
-      "community": 214,
+      "community": 67,
       "norm_label": "keys and constraints"
     },
     {
@@ -39478,7 +39478,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "schema_idempotency_records_foreign_keys",
-      "community": 214,
+      "community": 67,
       "norm_label": "foreign keys"
     },
     {
@@ -39488,7 +39488,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "schema_idempotency_records_indexes",
-      "community": 214,
+      "community": 67,
       "norm_label": "indexes"
     },
     {
@@ -40388,7 +40388,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_equipment",
-      "community": 124,
+      "community": 125,
       "norm_label": "report_equipment.md"
     },
     {
@@ -40508,7 +40508,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_manpower",
-      "community": 124,
+      "community": 125,
       "norm_label": "report_manpower.md"
     },
     {
@@ -40518,7 +40518,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_manpower_report_manpower",
-      "community": 51,
+      "community": 125,
       "norm_label": "report_manpower"
     },
     {
@@ -40528,7 +40528,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "schema_report_manpower_columns",
-      "community": 51,
+      "community": 125,
       "norm_label": "columns"
     },
     {
@@ -40538,7 +40538,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "schema_report_manpower_keys_and_constraints",
-      "community": 51,
+      "community": 125,
       "norm_label": "keys and constraints"
     },
     {
@@ -40548,7 +40548,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "schema_report_manpower_foreign_keys",
-      "community": 51,
+      "community": 125,
       "norm_label": "foreign keys"
     },
     {
@@ -40558,7 +40558,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "schema_report_manpower_indexes",
-      "community": 51,
+      "community": 125,
       "norm_label": "indexes"
     },
     {
@@ -40568,7 +40568,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_material_consumption",
-      "community": 124,
+      "community": 125,
       "norm_label": "report_material_consumption.md"
     },
     {
@@ -40578,7 +40578,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_material_consumption_report_material_consumption",
-      "community": 221,
+      "community": 125,
       "norm_label": "report_material_consumption"
     },
     {
@@ -40588,7 +40588,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "schema_report_material_consumption_columns",
-      "community": 221,
+      "community": 125,
       "norm_label": "columns"
     },
     {
@@ -40598,7 +40598,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "schema_report_material_consumption_keys_and_constraints",
-      "community": 221,
+      "community": 125,
       "norm_label": "keys and constraints"
     },
     {
@@ -40608,7 +40608,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "schema_report_material_consumption_foreign_keys",
-      "community": 221,
+      "community": 125,
       "norm_label": "foreign keys"
     },
     {
@@ -40618,7 +40618,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "schema_report_material_consumption_indexes",
-      "community": 221,
+      "community": 125,
       "norm_label": "indexes"
     },
     {
@@ -40922,7 +40922,7 @@
       "contributor": null,
       "kind": "schema_page",
       "purpose": "Hashed refresh tokens with expiry and revocation timestamps.",
-      "community": 101,
+      "community": 124,
       "norm_label": "auth_refresh_tokens",
       "id": "schema_auth_refresh_tokens"
     },
@@ -208513,5 +208513,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "6bd8dfbd17bd516525d327ac61cb8e3820cbf682"
+  "built_at_commit": "f2e77f578e6e5d1869cf114e009695e58bb9c20d"
 }

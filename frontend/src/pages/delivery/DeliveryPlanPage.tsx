@@ -11,7 +11,8 @@ const deliveryItems = [
   },
   {
     label: 'Environments',
-    detail: 'Use isolated test environments for acceptance checks that need test data or fault injection.',
+    detail:
+      'Use disposable test services for synthetic data and fault-injection checks. There is no staging deployment.',
     icon: Route,
     status: 'external proof'
   },

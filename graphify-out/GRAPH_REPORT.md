@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-14)
 
 ## Corpus Check
-- 435 files · ~374,065 words
+- 435 files · ~374,197 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4129 nodes · 16018 edges · 226 communities (211 shown, 15 thin omitted)
+- 4129 nodes · 16018 edges · 220 communities (205 shown, 15 thin omitted)
 - Extraction: 59% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS · INFERRED: 6576 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6bd8dfbd`
+- Built from commit: `f2e77f57`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -22,7 +22,6 @@
 - [[_COMMUNITY_Approvals Inbox Workflow|Approvals Inbox Workflow]]
 - [[_COMMUNITY_Seed Data and Release Contract Tests|Seed Data and Release Contract Tests]]
 - [[_COMMUNITY_Frontend Projects API Client|Frontend Projects API Client]]
-- [[_COMMUNITY_Admin and Role Management UI|Admin and Role Management UI]]
 - [[_COMMUNITY_Offline Queue and IndexedDB Sync|Offline Queue and IndexedDB Sync]]
 - [[_COMMUNITY_Inventory API Client|Inventory API Client]]
 - [[_COMMUNITY_Inventory Accounting Tests and Errors|Inventory Accounting Tests and Errors]]
@@ -66,7 +65,6 @@
 - [[_COMMUNITY_audit_retention_policy.py cluster|audit_retention_policy.py cluster]]
 - [[_COMMUNITY_test_request_ip_resolution.py cluster|test_request_ip_resolution.py cluster]]
 - [[_COMMUNITY_config.py cluster|config.py cluster]]
-- [[_COMMUNITY_document_repository.py cluster|document_repository.py cluster]]
 - [[_COMMUNITY_docker-compose.prod.yml cluster|docker-compose.prod.yml cluster]]
 - [[_COMMUNITY_security.py cluster|security.py cluster]]
 - [[_COMMUNITY_test_structured_logging.py cluster|test_structured_logging.py cluster]]
@@ -113,7 +111,6 @@
 - [[_COMMUNITY_Community 95|Community 95]]
 - [[_COMMUNITY_finance-workflows.e2e.ts cluster|finance-workflows.e2e.ts cluster]]
 - [[_COMMUNITY_tsconfig.node.json cluster|tsconfig.node.json cluster]]
-- [[_COMMUNITY_Community 98|Community 98]]
 - [[_COMMUNITY_Community 99|Community 99]]
 - [[_COMMUNITY_daily-report.e2e.ts cluster|daily-report.e2e.ts cluster]]
 - [[_COMMUNITY_suppliers.py cluster|suppliers.py cluster]]
@@ -168,7 +165,6 @@
 - [[_COMMUNITY_Community 193|Community 193]]
 - [[_COMMUNITY_Community 194|Community 194]]
 - [[_COMMUNITY_Community 195|Community 195]]
-- [[_COMMUNITY_Community 196|Community 196]]
 - [[_COMMUNITY_Community 197|Community 197]]
 - [[_COMMUNITY_Community 198|Community 198]]
 - [[_COMMUNITY_Community 199|Community 199]]
@@ -183,14 +179,12 @@
 - [[_COMMUNITY_Community 210|Community 210]]
 - [[_COMMUNITY_Community 211|Community 211]]
 - [[_COMMUNITY_Community 212|Community 212]]
-- [[_COMMUNITY_Community 214|Community 214]]
 - [[_COMMUNITY_Community 215|Community 215]]
 - [[_COMMUNITY_Community 216|Community 216]]
 - [[_COMMUNITY_Community 217|Community 217]]
 - [[_COMMUNITY_Community 218|Community 218]]
 - [[_COMMUNITY_Community 219|Community 219]]
 - [[_COMMUNITY_Community 220|Community 220]]
-- [[_COMMUNITY_Community 221|Community 221]]
 - [[_COMMUNITY_Community 222|Community 222]]
 - [[_COMMUNITY_Community 223|Community 223]]
 - [[_COMMUNITY_Community 224|Community 224]]
@@ -249,7 +243,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (226 total, 15 thin omitted)
+## Communities (220 total, 15 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.06
@@ -261,7 +255,7 @@ Nodes (31): AuthUserResponse, alias, CurrentUser, DbSession, Response, User, Coo
 
 ### Community 2 - "Projects Service and Membership"
 Cohesion: 0.06
-Nodes (57): getMe(), isActiveOfflineScope(), ownerKey(), sameScope(), withOwnedOfflineData(), acknowledgeReportEvidenceRevision(), canSync(), claimQueuedPhoto() (+49 more)
+Nodes (60): getMe(), getBrowserSession(), isActiveOfflineScope(), ownerKey(), sameScope(), withOwnedOfflineData(), acknowledgeReportEvidenceRevision(), canSync() (+52 more)
 
 ### Community 3 - "Release Contract Evidence CLI"
 Cohesion: 0.10
@@ -276,16 +270,12 @@ Cohesion: 0.17
 Nodes (7): Decimal, InventoryLocationStock, MovementCreateRequest, User, UUID, InventoryMovement, MaterialRequest
 
 ### Community 6 - "Frontend Projects API Client"
-Cohesion: 0.06
-Nodes (54): AnalyticsPage(), formatApiError(), assignProjectMember(), createProject(), createProjectTask(), getProject(), getProjectTimeline(), listProjectMembers() (+46 more)
-
-### Community 7 - "Admin and Role Management UI"
-Cohesion: 0.21
-Nodes (12): approveDocumentVersion(), DocumentDownloadUrl, DocumentListResponse, DocumentRecord, DocumentVersionRecord, getDocument(), getDocumentDownloadUrl(), listDocuments() (+4 more)
+Cohesion: 0.05
+Nodes (64): AnalyticsPage(), exportOptions, filterFields, MaterialUsageChart, ProjectProgressChart, AnalyticsExport, AnalyticsFilters, AnalyticsSummary (+56 more)
 
 ### Community 8 - "Offline Queue and IndexedDB Sync"
-Cohesion: 0.08
-Nodes (34): ApprovalDelegate, ApprovalDelegateListResponse, ApprovalListResponse, ApprovalRecord, approveGenericApproval(), delegateGenericApproval(), getGenericApproval(), listApprovals() (+26 more)
+Cohesion: 0.09
+Nodes (28): ApprovalDelegate, ApprovalDelegateListResponse, ApprovalListResponse, ApprovalRecord, approveGenericApproval(), delegateGenericApproval(), getGenericApproval(), listApprovals() (+20 more)
 
 ### Community 9 - "Inventory API Client"
 Cohesion: 0.05
@@ -328,12 +318,12 @@ Cohesion: 0.11
 Nodes (60): InventoryLocationStock, UUID, SessionOperation, AsyncClient, Decimal, InventoryLocationStock, MaterialRequestLine, MonkeyPatch (+52 more)
 
 ### Community 19 - "Frontend Auth Session"
-Cohesion: 0.05
-Nodes (51): AuthUser, changePassword(), confirmPasswordReset(), login(), LoginChallenge, logout(), PasswordResetChallenge, refreshSession() (+43 more)
+Cohesion: 0.06
+Nodes (50): AuthUser, changePassword(), confirmPasswordReset(), login(), LoginChallenge, logout(), PasswordResetChallenge, refreshSession() (+42 more)
 
 ### Community 20 - "File Magic Validation"
 Cohesion: 0.07
-Nodes (42): getBrowserSession(), classifyReportFile(), detectFileFormat(), ReportFileKind, heicHeader, pngHeader, validateDocumentFile(), OfflineScope (+34 more)
+Nodes (45): sessionRequestConfig(), classifyReportFile(), detectFileFormat(), ReportFileKind, heicHeader, pngHeader, validateDocumentFile(), OfflineScope (+37 more)
 
 ### Community 21 - "Inventory Service and Idempotency"
 Cohesion: 0.10
@@ -448,12 +438,8 @@ Cohesion: 0.16
 Nodes (27): get_request_meta(), Request, UUID, MonkeyPatch, Request, audit_authenticated_request(), _authenticated_user_id(), _client_ip() (+19 more)
 
 ### Community 50 - "config.py cluster"
-Cohesion: 0.15
-Nodes (12): exportOptions, filterFields, MaterialUsageChart, ProjectProgressChart, AnalyticsExport, AnalyticsFilters, AnalyticsSummary, downloadExport() (+4 more)
-
-### Community 51 - "document_repository.py cluster"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_manpower
+Cohesion: 0.09
+Nodes (17): getUnreadCount(), listNotifications(), markAllNotificationsRead(), markNotificationRead(), muteNotification(), NotificationListResponse, NotificationRecord, unmuteNotification() (+9 more)
 
 ### Community 52 - "docker-compose.prod.yml cluster"
 Cohesion: 0.29
@@ -516,8 +502,8 @@ Cohesion: 0.50
 Nodes (14): create_test_client(), create_user(), login_for_token(), project_payload(), skip_if_database_unavailable(), test_assigned_engineer_can_read_assigned_project_only(), test_closed_project_is_read_only(), test_concurrent_reverse_dependencies_cannot_create_cycle() (+6 more)
 
 ### Community 67 - "dashboard_service.py cluster"
-Cohesion: 0.33
-Nodes (5): Columns, Foreign keys, import_batches, Indexes, Keys and constraints
+Cohesion: 0.15
+Nodes (10): Columns, Foreign keys, idempotency_records, Indexes, Keys and constraints, Columns, Foreign keys, import_batches (+2 more)
 
 ### Community 68 - "photo_repository.py cluster"
 Cohesion: 0.40
@@ -620,8 +606,8 @@ Cohesion: 0.20
 Nodes (9): background_color, display, icons, name, orientation, scope, short_name, start_url (+1 more)
 
 ### Community 94 - "context.py cluster"
-Cohesion: 0.18
-Nodes (19): BaseModel, DailyReportApprovalHistoryResponse, ReportFileRef, AssetCreateRequest, AssetResponse, InventoryItemCreateRequest, InventoryItemResponse, LocationCreateRequest (+11 more)
+Cohesion: 0.17
+Nodes (20): BaseModel, DailyReportApprovalHistoryResponse, ReportFileRef, AssetCreateRequest, AssetResponse, InventoryItemCreateRequest, InventoryItemResponse, LocationCreateRequest (+12 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.18
@@ -635,10 +621,6 @@ Nodes (3): Account, backendDirectory, SeedAccount
 Cohesion: 0.22
 Nodes (8): compilerOptions, allowSyntheticDefaultImports, composite, module, moduleResolution, skipLibCheck, strict, include
 
-### Community 98 - "Community 98"
-Cohesion: 0.24
-Nodes (10): initialForm, roles, adminResetPassword(), createUser(), CreateUserPayload, deactivateUser(), listUsers(), updateUserRole() (+2 more)
-
 ### Community 99 - "Community 99"
 Cohesion: 0.53
 Nodes (5): main(), _random_equipment(), _random_manpower(), _random_materials(), Generate demo daily reports for all active projects in a development database.
@@ -648,8 +630,8 @@ Cohesion: 0.22
 Nodes (5): backendDirectory, photo, Photos, Reports, TestAccount
 
 ### Community 101 - "suppliers.py cluster"
-Cohesion: 0.25
-Nodes (6): auth_otp_challenges, Columns, Foreign keys, Indexes, Keys and constraints, auth_refresh_tokens
+Cohesion: 0.40
+Nodes (5): auth_otp_challenges, Columns, Foreign keys, Indexes, Keys and constraints
 
 ### Community 102 - "Community 102"
 Cohesion: 0.33
@@ -733,11 +715,11 @@ Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_milesto
 
 ### Community 124 - "Community 124"
 Cohesion: 0.11
-Nodes (8): Database schema, Documents and media, Finance and suppliers, Identity, Inventory, Projects and planning, Site reporting, Workflow and operations
+Nodes (9): auth_refresh_tokens, Database schema, Documents and media, Finance and suppliers, Identity, Inventory, Projects and planning, Site reporting (+1 more)
 
 ### Community 125 - "Community 125"
-Cohesion: 0.11
-Nodes (15): Columns, daily_report_approval_history, Foreign keys, Indexes, Keys and constraints, Columns, daily_reports, Foreign keys (+7 more)
+Cohesion: 0.07
+Nodes (25): Columns, daily_report_approval_history, Foreign keys, Indexes, Keys and constraints, Columns, daily_reports, Foreign keys (+17 more)
 
 ### Community 126 - "Community 126"
 Cohesion: 0.25
@@ -808,20 +790,16 @@ Cohesion: 0.29
 Nodes (6): Config, Item, Parser, pytest_addoption(), pytest_collection_modifyitems(), Keep CI shards isolated without changing ordinary local pytest runs.
 
 ### Community 193 - "Community 193"
-Cohesion: 0.09
-Nodes (22): actionOptions, AuditLogPage(), entityOptions, AuditLogFilters, AuditLogListResponse, AuditLogRecord, getAuditLogs(), apiClient (+14 more)
+Cohesion: 0.06
+Nodes (34): actionOptions, AuditLogPage(), entityOptions, initialForm, roles, AuditLogFilters, AuditLogListResponse, AuditLogRecord (+26 more)
 
 ### Community 194 - "Community 194"
 Cohesion: 0.06
-Nodes (33): UserManagementPage(), getUnreadCount(), ApprovalInboxPage(), ChangePasswordPage(), LoginPage(), useAuth(), acceptanceScenarios, deliveryItems (+25 more)
+Nodes (40): ImportPage(), UserManagementPage(), AsyncImportResult, downloadTemplate(), getImportBatchStatus(), ImportPreview, ImportRunResult, importTemplates (+32 more)
 
 ### Community 195 - "Community 195"
 Cohesion: 0.33
 Nodes (5): AttachmentRef, SupervisorUpdateCreateRequest, SupervisorUpdateListResponse, SupervisorUpdateResponse, SupervisorUpdateSubmitRequest
-
-### Community 196 - "Community 196"
-Cohesion: 0.27
-Nodes (11): ImportPage(), AsyncImportResult, downloadTemplate(), getImportBatchStatus(), ImportPreview, ImportRunResult, importTemplates, listImportBatches() (+3 more)
 
 ### Community 197 - "Community 197"
 Cohesion: 0.40
@@ -871,10 +849,6 @@ Nodes (9): CaptureFixture, UUID, main(), Report inventory balances that need rec
 Cohesion: 0.22
 Nodes (10): UUID, create_first_admin(), main(), Create the first administrator in an empty portal database., run(), test_existing_passlib_bcrypt_hashes_can_be_verified(), test_new_password_hashes_can_be_verified(), hash_password() (+2 more)
 
-### Community 214 - "Community 214"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, idempotency_records, Indexes, Keys and constraints
-
 ### Community 215 - "Community 215"
 Cohesion: 0.40
 Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, photos
@@ -894,10 +868,6 @@ Nodes (5): Columns, Foreign keys, Indexes, invoices, Keys and constraints
 ### Community 219 - "Community 219"
 Cohesion: 0.40
 Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, payments
-
-### Community 221 - "Community 221"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_material_consumption
 
 ### Community 222 - "Community 222"
 Cohesion: 0.40
@@ -919,7 +889,7 @@ Nodes (3): AppErrorResponse, ValidationErrorResponse, ValidationIssue
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `BaseModel` connect `context.py cluster` to `Authenticated Backup Set`, `Audit Retention Enforcement`, `Daily Report Endpoints`, `Docs Map and Generated Types`, `Health Monitor Daemon`, `Community 160`, `inventory.py cluster`, `Community 188`, `projects.py cluster`, `Community 195`, `photo_repository.py cluster`, `imports.ts cluster`, `test_permissions.py cluster`, `Community 83`, `repair_offline_duplicates.py cluster`, `Community 217`, `Community 220`, `Community 95`, `Community 224`, `Community 225`, `Community 121`, `Community 126`?**
+- **Why does `BaseModel` connect `context.py cluster` to `Authenticated Backup Set`, `Audit Retention Enforcement`, `Daily Report Endpoints`, `Docs Map and Generated Types`, `Health Monitor Daemon`, `Community 160`, `inventory.py cluster`, `Community 188`, `projects.py cluster`, `Community 195`, `photo_repository.py cluster`, `imports.ts cluster`, `Community 83`, `repair_offline_duplicates.py cluster`, `Community 217`, `Community 220`, `Community 95`, `Community 224`, `Community 225`, `Community 121`, `Community 126`?**
   _High betweenness centrality (0.094) - this node is a cross-community bridge._
 - **Why does `Runtime and data flow` connect `test_structured_logging.py cluster` to `Community 194`, `celery_app.py cluster`, `test_inventory_accounting.py cluster`, `validate_import_sources.py cluster`, `documents.py cluster`, `Community 80`, `Frontend Auth Session`, `security.py cluster`, `Community 124`?**
   _High betweenness centrality (0.085) - this node is a cross-community bridge._

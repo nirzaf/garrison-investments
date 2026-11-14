@@ -184,7 +184,8 @@ describe('App route smoke tests', () => {
 
     expect(html).toContain('Launch readiness');
     expect(html).toContain('operations guide');
-    expect(html).toContain('Use isolated test environments for acceptance checks');
+    expect(html).toContain('Use disposable test services for synthetic data');
+    expect(html).toContain('There is no staging deployment.');
     expect(html).toContain('Daily and monthly database backup schedules are configured.');
     expect(html).toContain(
       'This does not prove a successful run or recovery of referenced files; both require operational evidence and an executed restore drill.'

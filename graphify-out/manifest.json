@@ -70,8 +70,8 @@
     "semantic_hash": "648f9e2465637f94dcf96b03284509cd"
   },
   "frontend/src/App.test.tsx": {
-    "mtime": 1794607297.1229436,
-    "ast_hash": "75fd57c19173ade26aa0dfd1a10380fd",
+    "mtime": 1794619673.8644233,
+    "ast_hash": "b185e168769dafade402b4ade645702b",
     "semantic_hash": ""
   },
   "frontend/src/vite-env.d.ts": {
@@ -350,8 +350,8 @@
     "semantic_hash": "adaf0b892d677d51859eaa3526d8e36b"
   },
   "frontend/src/pages/delivery/DeliveryPlanPage.tsx": {
-    "mtime": 1794607268.5296316,
-    "ast_hash": "c22f703bdb3e53a9553b1eb486eaa6c9",
+    "mtime": 1794619673.8636768,
+    "ast_hash": "71aa9c31de3a4706087c3b285d8e9b91",
     "semantic_hash": ""
   },
   "frontend/src/pages/finance/FinancePage.tsx": {
@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794618137.3159258,
-    "ast_hash": "608371b451a767bed7dbbb35a391a311",
+    "mtime": 1794619551.024505,
+    "ast_hash": "b964a9380cc8465895114e118dc6ae70",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
