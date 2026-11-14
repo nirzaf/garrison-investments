@@ -58,8 +58,6 @@ expected_worker=worker-digest
 backend_id=backend-image
 frontend_id=frontend-image
 current=schema-head
-predeploy_digest=fixture-predeploy-digest
-predeploy_manifest_digest=fixture-predeploy-manifest-digest
 github() {{
   case "$1" in
     actions/runs/123) printf '%s\n' {shlex.quote(run)} ;;
@@ -77,13 +75,16 @@ github() {{
     receipt = tmp_path / "DEPLOYED"
     if job_attempt == 2:
         assert result.returncode == 0, result.stderr
-        assert receipt.read_text().splitlines()[1:6] == [
+        receipt_text = receipt.read_text()
+        assert receipt_text.splitlines()[1:6] == [
             f"Commit: {sha}",
             "CI run: 123",
             "CI attempt: 2",
             "Deploy run: 456",
             "Deploy attempt: 1",
         ]
+        assert "Predeploy verdict SHA-256" not in receipt_text
+        assert "Predeploy manifest SHA-256" not in receipt_text
     else:
         assert result.returncode != 0
         assert not receipt.exists()
@@ -339,16 +340,20 @@ apply_runtime previous || exit "$?"
         ("stateful-change", "Production volumes changed"),
         ("schema-change", "Pending database migrations"),
         (
-            "runtime-config-fails",
-            "runtime configuration differs from the approved production profile",
+            "missing-config",
+            "technical configuration, secret/TLS/key, or log-retention safety validation",
+        ),
+        (
+            "missing-tls-or-key",
+            "technical configuration, secret/TLS/key, or log-retention safety validation",
+        ),
+        (
+            "unsafe-bind-mount",
+            "technical configuration, secret/TLS/key, or log-retention safety validation",
         ),
         ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
-        ("authorization-fails", "exact-release predeployment authorization failed"),
-        ("authorization-mismatch", "mismatched or incomplete predeployment verdict"),
-        ("manifest-mismatch", "mismatched or incomplete predeployment verdict"),
-        ("validator-missing", "trusted release validator is not installed"),
     ],
 )
 def test_release_entrypoint_uses_technical_checks(
@@ -361,12 +366,34 @@ def test_release_entrypoint_uses_technical_checks(
     state.mkdir()
     previous.mkdir(parents=True)
     (state / "current").symlink_to(previous)
-    (state / "production.env").write_text("LOG_PURGE_ENABLED=false\n")
+    (state / "production.env").write_text(
+        "LOG_PURGE_ENABLED=false\n"
+        "JWT_PRIVATE_KEY_PATH=/run/secrets/jwt_private_key\n"
+        "JWT_PUBLIC_KEY_PATH=/run/secrets/jwt_public_key\n"
+    )
+    (state / "production.env").chmod(0o600)
     (state / "compose.vps.yml").write_text("services: {}\n")
-    authorization_dir = state / "authorizations" / sha
-    authorization_dir.mkdir(parents=True)
-    (authorization_dir / "release_manifest.json").write_text('{"fixture":true}\n')
-    (previous / ".env").write_text("LOG_PURGE_ENABLED=false\n")
+    (state / "compose.vps.yml").chmod(0o644)
+
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir(mode=0o755)
+    jwt_priv = secrets_dir / "jwt_private_key"
+    jwt_pub = secrets_dir / "jwt_public_key"
+    if scenario != "missing-tls-or-key":
+        jwt_priv.write_text("private-key-fixture\n")
+        jwt_priv.chmod(0o664 if scenario == "unsafe-bind-mount" else 0o600)
+    jwt_pub.write_text("public-key-fixture\n")
+    jwt_pub.chmod(0o644)
+
+    ssl_dir = tmp_path / "deploy" / "ssl"
+    ssl_dir.mkdir(mode=0o755)
+    for cert_name in ("fullchain.pem", "privkey.pem"):
+        cert_file = ssl_dir / cert_name
+        cert_file.write_text(f"{cert_name}-fixture\n")
+        cert_file.chmod(0o644)
+
+    (previous / ".env").write_bytes((state / "production.env").read_bytes())
+    (previous / ".env").chmod(0o600)
     (previous / ".images.env").write_text(
         "GARRISON_BACKEND_IMAGE=old-backend\nGARRISON_FRONTEND_IMAGE=old-frontend\n"
     )
@@ -381,65 +408,7 @@ def test_release_entrypoint_uses_technical_checks(
         target = previous / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("fixture")
-
-    trusted_dir = tmp_path / "trusted" / "libexec"
-    trusted_dir.mkdir(parents=True)
-    trusted_validator = trusted_dir / "garrison-release-contract.py"
-    if scenario != "validator-missing":
-        trusted_validator.write_text(
-            """#!/usr/bin/env python3
-import hashlib
-import json
-import os
-import pathlib
-import sys
-
-args = sys.argv
-state = pathlib.Path(args[args.index('--host-state') + 1])
-if '--verify-runtime-config-root' in args:
-    # The real validator parses this Compose JSON; drain it before returning so
-    # the upstream compose command cannot race with a closed pipe.
-    sys.stdin.buffer.read()
-    with (state.parent / 'events').open('a') as stream:
-        stream.write('runtime-config\\n')
-    scenario = os.environ.get('scenario')
-    if scenario == 'purge-enabled':
-        sys.exit('Production audit deletion must be disabled for this release.')
-    if scenario == 'runtime-config-fails':
-        sys.exit('Candidate runtime configuration differs from the approved host configuration.')
-    print('{"status":"runtime_configuration_verified"}')
-    raise SystemExit(0)
-commit = args[args.index('--commit') + 1]
-manifest = state / 'authorizations' / commit / 'release_manifest.json'
-manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
-with (state.parent / 'events').open('a') as stream:
-    stream.write('authorize\\n')
-if os.environ.get('scenario') == 'authorization-fails':
-    raise SystemExit(3)
-if os.environ.get('scenario') == 'authorization-mismatch':
-    commit = 'f' * 40
-print(json.dumps({
-    'phase': 'predeploy',
-    'status': 'ready_for_authorized_deployment',
-    'accepted_scope_complete': False,
-    'ready_for_authorized_deployment': True,
-    'source_sha': commit,
-    'target_environment': 'production',
-    'release_id': 'fixture-release',
-    'manifest_sha256': (
-        'a' * 64
-        if os.environ.get('scenario') == 'manifest-mismatch'
-        else manifest_digest
-    ),
-    'subject_sha256': 'b' * 64,
-    'configuration_sha256': 'c' * 64,
-    'validator_sha256': 'd' * 64,
-    'control_registry_sha256': 'e' * 64,
-    'trust_registry_sha256': 'f' * 64,
-    'blockers': [],
-}))
-"""
-        )
+        target.chmod(0o644)
 
     ci = {
         "id": 12,
@@ -501,26 +470,27 @@ print(json.dumps({
     }.items():
         (tmp_path / name).write_text(json.dumps(payload))
 
+    archive_files = {
+        "deploy/rollback-generation": "2\n" if "generation-change" in scenario else "1\n",
+        "docker-compose.prod.yml": "new",
+        "observability/postgres/init-grafana-db.sh": "fixture",
+        "observability/minio/loki-policy.json": "fixture",
+    }
+    if scenario == "missing-config":
+        del archive_files["observability/minio/loki-policy.json"]
+
     with tarfile.open(tmp_path / "archive.tgz", "w:gz") as archive:
-        for name, payload in {
-            "deploy/rollback-generation": "2\n" if "generation-change" in scenario else "1\n",
-            "docker-compose.prod.yml": "new",
-            "observability/postgres/init-grafana-db.sh": "fixture",
-            "observability/minio/loki-policy.json": "fixture",
-        }.items():
+        for name, payload in archive_files.items():
             body = payload.encode()
             info = tarfile.TarInfo(f"source/{name}")
             info.size = len(body)
+            info.mode = 0o644
             archive.addfile(info, io.BytesIO(body))
 
     # Substitute the privileged host boundary and external commands. Keep the
     # entrypoint's CI, Compose, schema, backup, activation, and receipt logic.
     source = SCRIPT.read_text().replace(
         "base=/opt/garrison-portal", f"base={shlex.quote(str(tmp_path))}"
-    )
-    source = source.replace(
-        "trusted_validator=/usr/local/libexec/garrison-release-contract.py",
-        f"trusted_validator={shlex.quote(str(trusted_validator))}",
     )
     start = source.index("# Keep the privileged entrypoint")
     end = source.index('exec 9>"$state/deploy.lock"', start)
@@ -564,16 +534,46 @@ docker() {
       shift 13
       case "$1" in
         config)
-          python3 - "$scenario" "$location" <<'PYTHON'
+          python3 - "$scenario" "$location" "$base" <<'PYTHON'
 import json, sys
 from pathlib import Path
-scenario, location = sys.argv[1:]
+scenario, location, base = sys.argv[1:]
 candidate = Path(location).name != "previous"
+if candidate and not (Path(base) / ".config_checked").exists():
+    (Path(base) / ".config_checked").write_text("1")
+    with (Path(base) / "events").open("a") as stream:
+        stream.write("runtime-config\n")
 stateful = ("postgres", "redis", "minio", "grafana_db_init", "loki_minio_init")
 services = dict.fromkeys(stateful, {})
-services.update({name: {"environment": {
-    "LOG_PURGE_ENABLED": "true" if scenario == "purge-enabled" and candidate else "false"
-}} for name in ("backend", "celery_worker", "celery_beat")})
+backend_volumes = [
+    {
+        "type": "bind",
+        "source": f"{base}/secrets/jwt_public_key",
+        "target": "/run/secrets/jwt_public_key",
+    },
+]
+if scenario != "missing-tls-or-key":
+    backend_volumes.insert(
+        0,
+        {
+            "type": "bind",
+            "source": f"{base}/secrets/jwt_private_key",
+            "target": "/run/secrets/jwt_private_key",
+        },
+    )
+for name in ("backend", "celery_worker", "celery_beat"):
+    services[name] = {
+        "env_file": [{"path": f"{location}/.env", "required": True}],
+        "environment": {
+            "LOG_PURGE_ENABLED": "true" if scenario == "purge-enabled" and candidate else "false"
+        },
+        "volumes": backend_volumes if name == "backend" else [],
+    }
+services["nginx"] = {
+    "volumes": [
+        {"type": "bind", "source": f"{base}/deploy/ssl", "target": "/etc/nginx/ssl"},
+    ]
+}
 print(json.dumps({"volumes": {"other": {}} if candidate and scenario == "stateful-change" else {},
                   "networks": {}, "services": services}))
 PYTHON
@@ -635,7 +635,11 @@ curl() {
     if scenario in {"success", "manual", "quiesced-generation-change"}:
         assert result.returncode == 0, result.stderr
         assert current != previous
-        receipt = deployment_receipt_fields((current / "DEPLOYED").read_bytes())
+        assert not (current / "PREDEPLOY.json").exists()
+        assert not (current / "PREDEPLOY_MANIFEST.json").exists()
+        deployed_text = (current / "DEPLOYED").read_text()
+        assert "Predeploy" not in deployed_text
+        receipt = deployment_receipt_fields(deployed_text.encode())
         asset_digest = sha256(b"fixture asset").hexdigest()
         image = f"sha256:{asset_digest}"
         verify_host_deployment_receipt(
@@ -649,65 +653,158 @@ curl() {
                 "schema_heads": ["fixture-head"],
             },
             utc(receipt["UTC"], "fixture activation"),
-            sha256((current / "PREDEPLOY.json").read_bytes()).hexdigest(),
-            sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest(),
         )
-        assert events[:4] == ["authorize", "download", "runtime-config", "backup"]
-        assert events[4].startswith("activate ")
-        assert events[5].startswith("publish ")
-        assert (current / "PREDEPLOY.json").is_file()
-        assert (current / "PREDEPLOY_MANIFEST.json").is_file()
-        assert sha256((current / "PREDEPLOY_MANIFEST.json").read_bytes()).hexdigest() == (
-            sha256((authorization_dir / "release_manifest.json").read_bytes()).hexdigest()
-        )
-        predeploy_digest = sha256((current / "PREDEPLOY.json").read_bytes()).hexdigest()
-        assert f"Predeploy verdict SHA-256: {predeploy_digest}" in (
-            current / "DEPLOYED"
-        ).read_text()
-        assert "Predeploy manifest SHA-256" in (current / "DEPLOYED").read_text()
+        assert events[:3] == ["download", "runtime-config", "backup"]
+        assert events[3].startswith("activate ")
+        assert events[4].startswith("publish ")
     else:
         assert result.returncode != 0, result.stdout
         assert error in result.stderr
         assert current == previous
         assert not list((tmp_path / "releases").glob("*/DEPLOYED"))
-        if scenario in {"authorization-fails", "authorization-mismatch", "manifest-mismatch"}:
-            assert events == ["authorize"]
-        elif scenario == "validator-missing":
-            assert not events
-        elif scenario in {"readiness-fails", "asset-mismatch"}:
+        if scenario in {"readiness-fails", "asset-mismatch"}:
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
         elif scenario == "backup-fails":
-            assert events == ["authorize", "download", "runtime-config", "backup"]
-        elif scenario in {"purge-enabled", "runtime-config-fails"}:
-            assert events == ["authorize", "download", "runtime-config"]
+            assert events == ["download", "runtime-config", "backup"]
+        elif scenario in {
+            "purge-enabled",
+            "missing-config",
+            "missing-tls-or-key",
+            "unsafe-bind-mount",
+            "stateful-change",
+            "schema-change",
+        }:
+            assert events == ["download", "runtime-config"]
         elif scenario == "generation-change":
-            assert events == ["authorize", "download"]
-        elif scenario in {"stateful-change", "schema-change"}:
-            assert events == ["authorize", "download", "runtime-config"]
+            assert events == ["download"]
         else:
             assert not events
 
 
-def test_host_release_requires_trusted_predeployment_verdict() -> None:
+def test_host_release_does_not_depend_on_formal_approval_validator() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
     release_source = SCRIPT.read_text()
-    assert "/usr/local/libexec/garrison-release-contract.py" not in deploy_source
-    assert "trusted_validator=/usr/local/libexec/garrison-release-contract.py" in release_source
-    assert "--host-state \"$state\" --commit \"$sha\"" in release_source
-    assert "PREDEPLOY.json" in release_source
-    assert "PREDEPLOY_MANIFEST.json" in release_source
-    assert "--verify-runtime-config-root \"$candidate\"" in release_source
-    assert "Predeploy verdict SHA-256" in release_source
-    assert "Predeploy manifest SHA-256" in release_source
+    for forbidden in (
+        "garrison-release-contract.py",
+        "PREDEPLOY.json",
+        "PREDEPLOY_MANIFEST.json",
+        "Predeploy verdict SHA-256",
+        "Predeploy manifest SHA-256",
+        "authorized-configuration.json",
+        "approval-trust.json",
+    ):
+        assert forbidden not in release_source
+        assert forbidden not in deploy_source
+    assert "LOG_PURGE_ENABLED" in release_source
+    assert "Deployed — Formal Acceptance Pending" in release_source
+    assert "/etc/nginx/ssl" in release_source
+    assert "/run/secrets/jwt_private_key" in release_source
 
 
-def test_production_workflow_requires_verified_host_gate_readiness() -> None:
+def test_production_workflow_triggers_without_predeploy_gate_variable() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
-    assert "vars.GARRISON_PREDEPLOY_GATE_READY == 'true'" in deploy_source
+    assert "GARRISON_PREDEPLOY_GATE_READY" not in deploy_source
+    assert "workflow_run:" in deploy_source
+    assert "workflow_dispatch:" in deploy_source
+    assert "ci_run_id:" in deploy_source
+    assert "github.ref == 'refs/heads/main'" in deploy_source
+    assert "github.event.workflow_run.conclusion == 'success'" in deploy_source
+    assert "github.event.workflow_run.head_branch == 'main'" in deploy_source
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        in deploy_source
+    )
+    assert "group: garrison-portal-production" in deploy_source
     assert "runs-on: [self-hosted, linux, x64, garrison-production]" in deploy_source
+    assert "sudo -n /usr/local/sbin/garrison-deploy" in deploy_source
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("valid", ""),
+        ("world-readable-env", "Production secrets must be readable only by root."),
+        (
+            "group-writable-compose",
+            "Production configuration must be protected from runner writes.",
+        ),
+        (
+            "group-writable-state-dir",
+            "Production deployment directories must be protected from runner writes.",
+        ),
+        (
+            "symlink-state-dir",
+            "Production deployment directories must be root-owned and free of symlinks.",
+        ),
+    ],
+)
+def test_host_configuration_permissions_are_enforced_before_lock(
+    tmp_path: Path, mutation: str, expected_error: str
+) -> None:
+    opt_dir = tmp_path / "opt"
+    base = opt_dir / "garrison-portal"
+    state = base / "deploy"
+    releases = base / "releases"
+    for d in (opt_dir, base, state, releases):
+        d.mkdir(parents=True, mode=0o755)
+        d.chmod(0o755)
+    prod_env = state / "production.env"
+    compose_vps = state / "compose.vps.yml"
+    prod_env.write_text("LOG_PURGE_ENABLED=false\n")
+    prod_env.chmod(0o600)
+    compose_vps.write_text("services: {}\n")
+    compose_vps.chmod(0o644)
+
+    if mutation == "world-readable-env":
+        prod_env.chmod(0o644)
+    elif mutation == "group-writable-compose":
+        compose_vps.chmod(0o664)
+    elif mutation == "group-writable-state-dir":
+        state.chmod(0o775)
+    elif mutation == "symlink-state-dir":
+        real_state = tmp_path / "real-deploy"
+        state.rename(real_state)
+        state.symlink_to(real_state)
+
+    source = SCRIPT.read_text()
+    start = source.index('for directory in /opt "$base" "$state" "$base/releases"; do')
+    end = source.index('exec 9>"$state/deploy.lock"', start)
+    snippet = source[start:end].replace(
+        "for directory in /opt ", f"for directory in {shlex.quote(str(opt_dir))} "
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+base={shlex.quote(str(base))}
+state={shlex.quote(str(state))}
+die() {{ printf '%s\\n' "$*" >&2; exit 1; }}
+stat() {{
+  if [[ "$1" == "-c" && "$2" == "%a" ]]; then
+    python3 -c \\
+      'import os, stat, sys; print(oct(stat.S_IMODE(os.lstat(sys.argv[1]).st_mode))[2:])' "$3"
+  else
+    command stat "$@"
+  fi
+}}
+{snippet}
+""",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if mutation == "valid":
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode != 0
+        assert expected_error in result.stderr
 
 
 def test_audit_purge_defaults_disabled_and_env_example_documents_it(

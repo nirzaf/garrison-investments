@@ -2195,8 +2195,8 @@ def verify_host_deployment_receipt(
     sha: str,
     identity: dict[str, Any],
     deployed_at: datetime,
-    predeploy_verdict_sha256: str,
-    predeploy_manifest_sha256: str,
+    predeploy_verdict_sha256: str | None = None,
+    predeploy_manifest_sha256: str | None = None,
 ) -> None:
     expected = {
         "Status": "Deployed — Formal Acceptance Pending",
@@ -2205,13 +2205,15 @@ def verify_host_deployment_receipt(
         "CI attempt": str(deployed["ci_run_attempt"]),
         "Deploy run": str(deployed["run_id"]),
         "Deploy attempt": str(deployed["run_attempt"]),
-        "Predeploy verdict SHA-256": predeploy_verdict_sha256,
-        "Predeploy manifest SHA-256": predeploy_manifest_sha256,
         "Asset SHA-256": identity["frontend_sha256"],
         "Service worker SHA-256": identity["service_worker_sha256"],
         "Backend image": identity["image_digests"]["backend"],
         "Frontend image": identity["image_digests"]["frontend"],
     }
+    if predeploy_verdict_sha256 is not None:
+        expected["Predeploy verdict SHA-256"] = predeploy_verdict_sha256
+    if predeploy_manifest_sha256 is not None:
+        expected["Predeploy manifest SHA-256"] = predeploy_manifest_sha256
     require(
         host.keys() == expected.keys() | {"UTC", "Schema heads", "Frontend asset"},
         "Invalid host deployment receipt fields.",

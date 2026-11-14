@@ -1,6 +1,6 @@
 # Release Closure and Formal Acceptance
 
-Production deployment and formal acceptance are separate states. This repository has a deployed production baseline, but deployment, a passing CI run, and a healthy readiness endpoint do not by themselves satisfy the attached completion specification. Until the records and evidence below are present, independently reviewed, and accepted by the strict validator, report status as **Deployed — Formal Acceptance Pending**.
+Production deployment and formal acceptance are separate states. Technical production deployments run automatically from `main` after passing CI and host safety checks and record `Status: Deployed — Formal Acceptance Pending`. This repository has a deployed production baseline, but deployment, a passing CI run, and a healthy readiness endpoint do not by themselves satisfy the attached formal acceptance specification. Until the records and evidence below are present, independently reviewed, and accepted by the optional strict validator ([release_contract.py](../backend/scripts/release_contract.py) / [launch_evidence.py](../backend/scripts/launch_evidence.py)), report status as **Deployed — Formal Acceptance Pending**.
 
 ## Confirmed scope and operating boundaries
 

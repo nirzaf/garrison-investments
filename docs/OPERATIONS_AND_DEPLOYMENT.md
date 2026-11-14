@@ -15,9 +15,11 @@ The former staging deployment is retired and is not a deployment target or part 
 
 Use Docker with Compose v2. Keep production configuration and secrets on the host with restricted permissions. See [backend settings](../backend/app/config.py) and the matching Compose file for variable names, defaults, and service overrides.
 
-For formal acceptance, bind the production configuration to exact bytes without copying secrets into the evidence bundle. The profile at `/opt/garrison-portal/deploy/authorized-configuration.json` has a `files` map keyed by namespace: `host/` files resolve beneath the deployment state directory, `release/` files resolve beneath the exact candidate archive, and `external/` files resolve beneath `/opt/garrison-portal`. `configuration_sha256` is the SHA-256 of the canonical `files` map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). The trusted validator checks host and external bytes before predeployment authorization, checks the exact candidate config bytes after archive extraction, and compares every effective Compose bind mount before building or activating anything. It also rejects audit deletion being enabled. This release's required versioned runtime file set is shown in the [authorization profile template](templates/release-closure/authorized-configuration.json).
+During routine deployments, [hostinger-release.sh](../deploy/hostinger-release.sh) checks `production.env` (`0600`), `compose.vps.yml`, required candidate configuration files, non-symlink bind mounts, TLS certificates (`/etc/nginx/ssl/fullchain.pem` and `privkey.pem`), JWT signing key mounts, and `LOG_PURGE_ENABLED=false` directly from the effective Compose configuration without requiring a predeployment approval store.
 
-Generate a proposed profile from a restricted candidate directory on the production host. Extract the exact CI-tested source archive to a private temporary directory; do not use the active release as the candidate. The command below emits file names and hashes only. `docker compose config` output, which can contain resolved environment values, is piped directly to the validator and is not saved or printed:
+For optional post-release formal acceptance, you may bind the production configuration to exact bytes without copying secrets into the evidence bundle using `/opt/garrison-portal/deploy/authorized-configuration.json`. That profile has a `files` map keyed by namespace: `host/` files resolve beneath the deployment state directory, `release/` files resolve beneath the exact candidate archive, and `external/` files resolve beneath `/opt/garrison-portal`. `configuration_sha256` is the SHA-256 of the canonical `files` map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). This release's required versioned runtime file set is shown in the [authorization profile template](templates/release-closure/authorized-configuration.json).
+
+If running optional formal acceptance, generate a proposed profile from a restricted candidate directory on the production host using `backend/scripts/release_contract.py` (do not use the active release as the candidate). The command below emits file names and hashes only, and `docker compose config` output is piped directly to stdin without saving secrets:
 
 ```bash
 state=/opt/garrison-portal/deploy
@@ -31,11 +33,11 @@ docker compose --project-name garrison-portal --project-directory "$candidate" \
   --env-file "$candidate/.env" --env-file "$candidate/.images.env" \
   -f "$candidate/docker-compose.prod.yml" -f "$state/compose.vps.yml" \
   config --format json |
-  python3 /usr/local/libexec/garrison-release-contract.py \
+  python3 backend/scripts/release_contract.py \
     --host-state "$state" --configuration-profile-root "$candidate"
 ```
 
-Use a generated profile only after independently reviewing its paths against the actual service mounts. Put it in the root-owned protected host state after the separately reviewed trusted validator is installed; do not store secret values or their raw bytes in the evidence bundle. The validator requires the host environment and Compose override, the complete versioned runtime file set, JWT key files, and every file mounted from the pinned TLS directory. It rejects missing files, symlink substitution, extra/unapproved bind-mounted configuration, or any file whose bytes differ. Recompute and reapprove the digest whenever one of those files changes. Do not sign the older two-file digest: it does not cover effective runtime configuration.
+When using that optional formal profile, verify the paths against actual service mounts and recompute the digest whenever any configuration, TLS, or signing-key file changes.
 
 | Concern | Configuration to check |
 | --- | --- |
@@ -52,11 +54,11 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It accepts a successful same-repository `main` push from CI and runs on the dedicated self-hosted runner labeled `garrison-production` only when the repository-level Actions variable `GARRISON_PREDEPLOY_GATE_READY` is exactly `true`. The job condition is evaluated before the runner enters the `Production` environment, so an environment-scoped variable is not sufficient. Leave the repository variable unset/false until the reviewed trusted validator and root-controlled approval store are installed and verified on Hostinger. This readiness switch is a fail-closed deployment interlock, not a release approval; the host still checks the exact SHA and authenticated predeployment evidence. GitHub concurrency and a host lock serialize releases.
+[CI](../.github/workflows/ci.yml) uses GitHub-hosted runners for pull requests and pushes to `main`. [Deploy production](../.github/workflows/deploy.yml) is a separate workflow in the `Production` environment. It triggers automatically after a successful same-repository `main` push CI run (or via manual `workflow_dispatch` from `main` with `ci_run_id`) and runs on the dedicated self-hosted runner labeled `garrison-production`. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
 
-The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, required jobs and current `main` before fetching the tested archive.
+The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, all seven required CI jobs, and the current `main` branch tip before fetching the tested archive.
 
-The installed [host release script](../deploy/hostinger-release.sh) verifies the CI run and attempt, checks the exact-release predeployment authorization and effective runtime configuration (including disabled audit deletion) through `/usr/local/libexec/garrison-release-contract.py`, and checks stateful Compose resources and Alembic heads. It records `PREDEPLOY_MANIFEST.json` and `PREDEPLOY.json`, builds from the tested source, and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [release closure guide](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
+The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, valid `backend`/`celery_worker`/`celery_beat` `env_file` and environment settings, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It then checks stateful Compose resources and Alembic heads, builds from the tested source, and takes encrypted application and Grafana database backups before activation. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
 ### Review pipeline time on every release
 
@@ -100,28 +102,47 @@ Provision the existing stack and an initial active release before registering th
 
 | Host item | Purpose |
 | --- | --- |
-| `production.env` | Private configuration copied into each candidate release. |
-| `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
-| `authorized-configuration.json` | Approved `files` digest map and `configuration_sha256` checked against host, release, and external mounts. |
-| `approval-trust.json` | Root-controlled registry of independently verified approval artifacts. |
-| `authorizations/<full-source-sha>/` | Root-controlled predeployment manifest and evidence for each authorized candidate SHA. |
-| `current` | Link to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
-| `deploy.lock` | Host-side serialization across release attempts. |
+| `production.env` | Private configuration (`0600`, root-owned) copied into each candidate release; must set `LOG_PURGE_ENABLED=false`. |
+| `compose.vps.yml` | Existing stateful resource names, TLS and JWT key mounts, and host-specific Compose overrides. |
+| `current` | Symlink to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, `READINESS.json`, and `DEPLOYED`. |
+| `deploy.lock` | Host-side serialization lock across release attempts and operator entrypoint updates. |
 
-Before using the new workflow, the host operator installs the reviewed `deploy/hostinger-release.sh` as root-owned `/usr/local/sbin/garrison-deploy` with mode `0755`. The runner needs noninteractive `sudo` for this entrypoint. The workflow and host must both support the `rollback-v2 technical-checks-v1` arguments. Set `LOG_PURGE_ENABLED=false` in the protected environment and keep the encryption password and application secrets there. The entrypoint checks effective Compose settings and stops if audit deletion is enabled.
+Ensure TLS certificates (`fullchain.pem` and `privkey.pem`) and JWT signing keys (`jwt_private_key` and `jwt_public_key`) are stored in root-controlled paths under `/opt/garrison-portal` (without symlinks or group/world write permissions) and mounted by `compose.vps.yml`. Optional formal-acceptance files (`authorized-configuration.json`, `approval-trust.json`, or private closure bundles) are not read or required by `/usr/local/sbin/garrison-deploy`.
 
-The current entrypoint also requires the standalone trusted validator at `/usr/local/libexec/garrison-release-contract.py`. This file is a separately reviewed, root-owned copy of `backend/scripts/release_contract.py`; it must not be copied from an unreviewed candidate archive by the deployment runner. Before a release whose host entrypoint invokes this gate, the authorized host operator must:
+The host operator installs the reviewed [host release script](../deploy/hostinger-release.sh) as root-owned `/usr/local/sbin/garrison-deploy` with mode `0755`. The runner needs noninteractive `sudo` only for `/usr/local/sbin/garrison-deploy`. Both workflow and host must use the `rollback-v2 technical-checks-v1` protocol arguments. Because `/usr/local/sbin/garrison-deploy` runs as `root`, never copy an unreviewed script directly into place during a workflow run; use the explicit operator procedure below whenever updating the host entrypoint:
 
-1. Confirm no production deployment is queued or running, acquire `/opt/garrison-portal/deploy/deploy.lock`, preserve the existing entrypoint and validator with their recorded hashes, and compare the reviewed candidate source with the proposed installs.
-2. Install the validator from the separately transferred reviewed source to a temporary file inside `/usr/local/libexec`. Verify its SHA-256 against the independently reviewed install record, then atomically rename it to `/usr/local/libexec/garrison-release-contract.py`. Set owner `root:root`, mode `0644`, and keep `/usr/local/libexec` root-owned and not group/world writable. Verify `python3 /usr/local/libexec/garrison-release-contract.py --help` succeeds and record the installed digest.
-3. Install `deploy/hostinger-release.sh` as `/usr/local/sbin/garrison-deploy`, owner `root:root`, mode `0755`, using the same lock and an atomic replacement. Verify the installed digest, Bash syntax and existing runner `sudo` rule. Preserve both prior executables until the new release is accepted.
-4. Keep `/opt/garrison-portal/deploy/authorized-configuration.json`, `approval-trust.json`, and `authorizations/<full-source-sha>/` root-owned and protected from group/other writes; the release runner must not be able to modify them. Store only the exact approved release files under each authorization directory. Release the lock only after verifying both installed digests and the protected authorization paths.
+1. **Quiesce and lock:** Confirm no GitHub Actions deployment job is queued or running, verify your checked-out commit SHA (`git rev-parse HEAD`), and acquire `/opt/garrison-portal/deploy/deploy.lock` (`exec 9>/opt/garrison-portal/deploy/deploy.lock && flock -w 60 9`).
+2. **Validate the reviewed candidate script:** Confirm `bash -n deploy/hostinger-release.sh` succeeds and record its exact source digest (`sha256sum deploy/hostinger-release.sh`). Compare `sha256sum /usr/local/sbin/garrison-deploy` with the existing installed copy.
+3. **Preserve a rollback backup:** Copy the existing host binary to a timestamped backup inside a root-owned recovery directory with its recorded SHA-256 digest before replacing it:
 
-The validator is a release authorization boundary, not a convenience check. Do not bypass it or temporarily copy a candidate-controlled validator into the trusted path. If the trusted validator is absent, mismatched, or cannot read valid root-controlled evidence, deployment must stop before source activation. A subsequent change to the validator requires its own review, digest verification and controlled installation before the matching candidate is allowed to trigger production CD.
+```bash
+install -d -o root -g root -m 0755 /opt/garrison-portal/recovery
+backup="/opt/garrison-portal/recovery/garrison-deploy.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+install -o root -g root -m 0755 /usr/local/sbin/garrison-deploy "$backup"
+sha256sum "$backup"
+```
 
-For a release that changes the entrypoint, compare the exact candidate script with the installed copy and record both SHA-256 digests. After release authorization and before the main update can trigger automatic CD, confirm no deployment job is queued or running. Take the production deployment lock, preserve the previous executable in the root-controlled deployment directory, and verify the candidate's digest and Bash syntax. Install it with owner `root:root` and mode `0755` using an atomic rename from the same directory. Confirm the installed digest and runner's existing sudo permission. Release the lock before triggering CD. Keep the deployment protocol and generation compatible with the active release during this step.
+4. **Atomically install the updated entrypoint:** Stage with `install -o root -g root -m 0755` into `/usr/local/sbin/` and atomically rename into place:
 
-After activation, collect the original `DEPLOYED` file and confirm its CI run and attempt, deployment run and attempt, and candidate SHA. A retry of the active SHA only checks readiness. It does not recreate a missing receipt field. Preserve the prior release receipt as recorded. [Formal acceptance receipt instructions](templates/release-closure/README.md)
+```bash
+bash -n deploy/hostinger-release.sh
+sha256sum deploy/hostinger-release.sh
+install -o root -g root -m 0755 deploy/hostinger-release.sh /usr/local/sbin/.garrison-deploy.next
+mv -Tf /usr/local/sbin/.garrison-deploy.next /usr/local/sbin/garrison-deploy
+```
+
+5. **Verify installation and release the lock:** Confirm root ownership, permissions (`0755`), SHA-256 digest equality with `deploy/hostinger-release.sh`, and runner `sudo` policy, then release lock descriptor `9`:
+
+```bash
+stat -c '%u:%g %a %n' /usr/local/sbin/garrison-deploy
+sha256sum /usr/local/sbin/garrison-deploy deploy/hostinger-release.sh
+sudo -l -U github-runner
+exec 9>&-
+```
+
+If `/usr/local/libexec/garrison-release-contract.py` was previously staged on the host solely for predeployment gating, it is no longer invoked by `/usr/local/sbin/garrison-deploy` and may be removed or kept offline for optional manual formal acceptance verification. Keep the repository variable `GARRISON_PREDEPLOY_GATE_READY` removed or unused; `deploy.yml` no longer checks it.
+
+After activation, collect the original `DEPLOYED` file from `/opt/garrison-portal/deploy/current/DEPLOYED` and confirm its `Status`, `Commit`, `CI run`, `CI attempt`, `Deploy run`, `Deploy attempt`, image IDs, schema heads, and asset/service-worker hashes. A retry of the active SHA only checks readiness and leaves `DEPLOYED` untouched. [Optional formal acceptance receipt instructions](templates/release-closure/README.md)
 
 On the VPS, use this Bash helper from an authorized operator session to target the active production project. Define it again after a release advances `current` so the file paths follow the new release.
 

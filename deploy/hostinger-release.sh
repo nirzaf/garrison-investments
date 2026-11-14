@@ -9,7 +9,6 @@ repository=nirzaf/garrison-investments
 portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
-trusted_validator=/usr/local/libexec/garrison-release-contract.py
 
 die() {
   printf '%s\n' "$*" >&2
@@ -34,7 +33,7 @@ IFS= read -r deploy_attempt || die 'A deployment workflow attempt is required on
 
 # Keep the privileged entrypoint's inputs under host operator control.
 [[ $EUID == 0 ]] || die 'Production deployment must run as root.'
-for directory in /opt "$base" "$state" "$base/releases" /usr/local /usr/local/libexec; do
+for directory in /opt "$base" "$state" "$base/releases"; do
   [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] ||
     die 'Production deployment directories must be root-owned and free of symlinks.'
   mode=$(stat -c '%a' "$directory")
@@ -153,90 +152,13 @@ if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
   exit 0
 fi
 
-[[ -f "$trusted_validator" && ! -L "$trusted_validator" ]] ||
-  die 'The trusted release validator is not installed; production activation is blocked.'
-python3 - "$trusted_validator" <<'PY'
-import os
-import stat
-import sys
-
-path = sys.argv[1]
-try:
-    file_stat = os.stat(path, follow_symlinks=False)
-    parent_stat = os.stat(os.path.dirname(path), follow_symlinks=False)
-except OSError:
-    sys.exit("The trusted release validator path is unavailable.")
-if (
-    not stat.S_ISREG(file_stat.st_mode)
-    or not stat.S_ISDIR(parent_stat.st_mode)
-    or file_stat.st_uid != os.geteuid()
-    or parent_stat.st_uid != os.geteuid()
-    or file_stat.st_mode & 0o022
-    or parent_stat.st_mode & 0o022
-):
-    sys.exit("The trusted release validator must be owner-controlled and not group/world writable.")
-PY
-
-if ! predeploy_verdict=$(printf '%s\n' "$token" | python3 "$trusted_validator" \
-  --host-state "$state" --commit "$sha" --ci-run "$run_id" \
-  --deploy-run "$deploy_run_id" --deploy-attempt "$deploy_attempt"); then
-  die 'The exact-release predeployment authorization failed; production activation is blocked.'
-fi
-predeploy_manifest_path="$state/authorizations/$sha/release_manifest.json"
-predeploy_manifest_digest=$(sha256sum "$predeploy_manifest_path" | cut -d' ' -f1)
-python3 -c '
-import hashlib
-import json
-import re
-import sys
-from pathlib import Path
-
-verdict = json.load(sys.stdin)
-sha = sys.argv[1]
-manifest_path = Path(sys.argv[2])
-if manifest_path.is_symlink() or not manifest_path.is_file():
-    sys.exit("The authorized predeployment manifest is unavailable or unsafe.")
-manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-hash_fields = (
-    "manifest_sha256",
-    "subject_sha256",
-    "configuration_sha256",
-    "validator_sha256",
-    "control_registry_sha256",
-    "trust_registry_sha256",
-)
-if (
-    verdict.get("phase") != "predeploy"
-    or verdict.get("status") != "ready_for_authorized_deployment"
-    or verdict.get("accepted_scope_complete") is not False
-    or verdict.get("ready_for_authorized_deployment") is not True
-    or verdict.get("source_sha") != sha
-    or verdict.get("target_environment") != "production"
-    or verdict.get("manifest_sha256") != manifest_digest
-    or not isinstance(verdict.get("release_id"), str)
-    or not verdict["release_id"].strip()
-    or verdict.get("blockers") != []
-    or any(
-        not isinstance(verdict.get(field), str)
-        or re.fullmatch(r"[a-f0-9]{64}", verdict[field]) is None
-        for field in hash_fields
-    )
-):
-    sys.exit("The trusted validator returned a mismatched or incomplete predeployment verdict.")
-' "$sha" "$predeploy_manifest_path" <<< "$predeploy_verdict"
-
 phase_started=$SECONDS
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED PREDEPLOY.json PREDEPLOY_MANIFEST.json READINESS.json; do
+for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json; do
   [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
     die 'The source archive contains a reserved release file.'
 done
-install -m 0600 "$predeploy_manifest_path" "$candidate/PREDEPLOY_MANIFEST.json"
-[[ "$(sha256sum "$candidate/PREDEPLOY_MANIFEST.json" | cut -d' ' -f1)" == "$predeploy_manifest_digest" ]] ||
-  die 'The captured predeployment manifest differs from the authorized bytes.'
-printf '%s\n' "$predeploy_verdict" > "$candidate/PREDEPLOY.json"
-predeploy_digest=$(sha256sum "$candidate/PREDEPLOY.json" | cut -d' ' -f1)
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
 report_duration 'CI verification and source preparation' "$phase_started"
@@ -305,12 +227,243 @@ compose() {
 }
 
 phase_started=$SECONDS
-# Bind the approved digest to source config files, external mounts and effective Compose settings.
-if ! compose "$candidate" config --format json |
-  python3 "$trusted_validator" --host-state "$state" \
-    --verify-runtime-config-root "$candidate"; then
-  die 'The candidate runtime configuration differs from the approved production profile.'
+# Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
+candidate_compose_file=$(mktemp)
+if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
+   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" <<'PY'; then
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+base, state, candidate, compose_path = (Path(arg) for arg in sys.argv[1:5])
+false_tokens = {"false", "0", "no", "off"}
+
+def within_root(path: Path, root: Path) -> Path | None:
+    raw_path = Path(os.path.normpath(str(path)))
+    raw_root = Path(os.path.normpath(str(root)))
+    try:
+        rel = raw_path.relative_to(raw_root)
+        return raw_root / rel
+    except ValueError:
+        pass
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+        return Path(os.path.normpath(str(root))) / rel
+    except ValueError:
+        return None
+
+def check_no_symlinks_under(path: Path, root: Path) -> None:
+    norm_root = Path(os.path.normpath(str(root)))
+    rel = path.relative_to(norm_root)
+    current = norm_root
+    if current.is_symlink():
+        raise SystemExit(f"{current} must not be a symlink")
+    for part in rel.parts:
+        current = current / part
+        if current.is_symlink():
+            raise SystemExit(f"{path} traverses symlink {current}")
+        if not current.exists():
+            raise SystemExit(f"{path} is missing path component {current}")
+
+def require_regular_file(path: Path, *, root: Path, mask: int = 0o022) -> bytes:
+    mapped = within_root(path, root)
+    if mapped is None:
+        raise SystemExit(f"{path} resolves outside {root}")
+    check_no_symlinks_under(mapped, root)
+    st = mapped.lstat()
+    if not stat.S_ISREG(st.st_mode):
+        raise SystemExit(f"{mapped} must be a regular file")
+    if st.st_size <= 0:
+        raise SystemExit(f"{mapped} must not be empty")
+    if st.st_mode & mask:
+        raise SystemExit(f"{mapped} has unsafe permissions {oct(st.st_mode & 0o777)}")
+    return mapped.read_bytes()
+
+def parse_env(raw: bytes) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in raw.decode("utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            raise SystemExit("Invalid line in production environment file")
+        key, val = line.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+        if val and val[0] in {"'", '"'} and len(val) >= 2 and val[-1] == val[0]:
+            val = val[1:-1]
+        else:
+            val = val.split(" #", 1)[0].strip()
+        values[key] = val
+    return values
+
+prod_env_bytes = require_regular_file(state / "production.env", root=state, mask=0o077)
+require_regular_file(state / "compose.vps.yml", root=state, mask=0o022)
+cand_env_bytes = require_regular_file(candidate / ".env", root=candidate, mask=0o077)
+if cand_env_bytes != prod_env_bytes:
+    raise SystemExit("Candidate .env does not match host production.env")
+
+for rel in (
+    "deploy/rollback-generation",
+    "docker-compose.prod.yml",
+    "observability/postgres/init-grafana-db.sh",
+    "observability/minio/loki-policy.json",
+):
+    require_regular_file(candidate / rel, root=candidate, mask=0o022)
+
+for subdir in ("nginx", "observability"):
+    root_dir = candidate / subdir
+    if root_dir.exists() or root_dir.is_symlink():
+        check_no_symlinks_under(within_root(root_dir, candidate) or root_dir, candidate)
+        for item in sorted(root_dir.rglob("*")):
+            mapped_item = within_root(item, candidate)
+            if mapped_item is None:
+                raise SystemExit(f"{item} resolves outside candidate directory")
+            check_no_symlinks_under(mapped_item, candidate)
+            st = mapped_item.lstat()
+            if st.st_mode & 0o022:
+                raise SystemExit(f"{mapped_item} is group or world writable")
+            if stat.S_ISREG(st.st_mode) and mapped_item.name != ".gitkeep" and st.st_size <= 0:
+                raise SystemExit(f"{mapped_item} must not be empty")
+
+env_values = parse_env(cand_env_bytes)
+if env_values.get("LOG_PURGE_ENABLED", "").strip().lower() not in false_tokens:
+    raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
+
+cfg = json.loads(compose_path.read_text(encoding="utf-8"))
+services = cfg.get("services")
+if not isinstance(services, dict) or not services:
+    raise SystemExit("Effective Compose configuration is missing services")
+
+expected_env_file = within_root(candidate / ".env", candidate)
+for svc_name in ("backend", "celery_worker", "celery_beat"):
+    svc = services.get(svc_name)
+    if not isinstance(svc, dict):
+        raise SystemExit(f"Effective Compose configuration is missing service {svc_name}")
+    env_files = svc.get("env_file")
+    if not isinstance(env_files, list) or not env_files:
+        raise SystemExit(f"Service {svc_name} must load env_file {candidate / '.env'}")
+    resolved_env_files = []
+    for item in env_files:
+        raw_path = item.get("path") if isinstance(item, dict) else item
+        if not isinstance(raw_path, str) or not raw_path:
+            raise SystemExit(f"Service {svc_name} has an invalid env_file entry")
+        p = Path(raw_path)
+        if not p.is_absolute():
+            p = candidate / p
+        mapped_env = within_root(p, candidate)
+        if mapped_env is None or mapped_env != expected_env_file:
+            raise SystemExit(f"Service {svc_name} must use only the pinned candidate .env file")
+        resolved_env_files.append(mapped_env)
+    env = svc.get("environment") or {}
+    if isinstance(env, list):
+        parsed_svc_env = {}
+        for entry in env:
+            if isinstance(entry, str) and "=" in entry:
+                k, v = entry.split("=", 1)
+                parsed_svc_env[k] = v
+        env = parsed_svc_env
+    if not isinstance(env, dict):
+        raise SystemExit(f"Service {svc_name} environment must be a mapping")
+    if "LOG_PURGE_ENABLED" in env:
+        purge_val = env.get("LOG_PURGE_ENABLED")
+        if not isinstance(purge_val, (str, int, bool)) or str(purge_val).strip().lower() not in false_tokens:
+            raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
+
+mounted_files_by_target: dict[str, Path] = {}
+mounted_dirs_by_target: dict[str, Path] = {}
+mounted_sources: list[Path] = []
+
+for svc_name, svc in services.items():
+    if not isinstance(svc, dict):
+        raise SystemExit(f"Service {svc_name} definition is invalid")
+    volumes = svc.get("volumes") or []
+    if not isinstance(volumes, list):
+        raise SystemExit(f"Service {svc_name} volumes must be a list")
+    for vol in volumes:
+        if not isinstance(vol, dict) or vol.get("type") != "bind":
+            continue
+        source_raw = str(vol.get("source") or "").strip()
+        target_raw = str(vol.get("target") or "").strip().rstrip("/") or "/"
+        if not source_raw:
+            raise SystemExit(f"Service {svc_name} has a bind mount without source")
+        if source_raw == "/var/run/docker.sock":
+            continue
+        source_path = Path(source_raw)
+        if not source_path.is_absolute():
+            source_path = candidate / source_path
+        stop_root = candidate if within_root(source_path, candidate) is not None else base
+        mapped = within_root(source_path, stop_root)
+        if mapped is None:
+            raise SystemExit(f"Service {svc_name} bind mount {source_raw} escapes {base}")
+        check_no_symlinks_under(mapped, stop_root)
+        st = mapped.lstat()
+        if st.st_mode & 0o022:
+            raise SystemExit(f"Bind mount source {mapped} is group or world writable")
+        if stat.S_ISREG(st.st_mode):
+            if st.st_size <= 0:
+                raise SystemExit(f"Bind mount file {mapped} must not be empty")
+            mounted_files_by_target[target_raw] = mapped
+            mounted_sources.append(mapped)
+        elif stat.S_ISDIR(st.st_mode):
+            has_file = False
+            for member in sorted(mapped.rglob("*")):
+                mapped_member = within_root(member, stop_root)
+                if mapped_member is None:
+                    raise SystemExit(f"Bind mount member {member} escapes {stop_root}")
+                check_no_symlinks_under(mapped_member, stop_root)
+                mst = mapped_member.lstat()
+                if mst.st_mode & 0o022:
+                    raise SystemExit(f"Bind mount member {mapped_member} is group or world writable")
+                if stat.S_ISREG(mst.st_mode):
+                    has_file = True
+                    if mapped_member.name == ".gitkeep":
+                        continue
+                    if mst.st_size <= 0:
+                        raise SystemExit(f"Bind mount file {mapped_member} must not be empty")
+                    rel_member = mapped_member.relative_to(mapped).as_posix()
+                    mounted_files_by_target[f"{target_raw}/{rel_member}"] = mapped_member
+                    mounted_sources.append(mapped_member)
+            if not has_file:
+                raise SystemExit(f"Bind mount directory {mapped} must contain at least one non-empty file")
+            mounted_dirs_by_target[target_raw] = mapped
+        else:
+            raise SystemExit(f"Bind mount source {mapped} must be a regular file or directory")
+
+# Verify TLS certificate files are mounted via /etc/nginx/ssl or matching paths.
+tls_fullchain = mounted_files_by_target.get("/etc/nginx/ssl/fullchain.pem") or next(
+    (p for p in mounted_sources if p.as_posix().endswith("/nginx/ssl/fullchain.pem")), None
+)
+tls_privkey = mounted_files_by_target.get("/etc/nginx/ssl/privkey.pem") or next(
+    (p for p in mounted_sources if p.as_posix().endswith("/nginx/ssl/privkey.pem")), None
+)
+if tls_fullchain is None or tls_privkey is None or tls_fullchain.parent != tls_privkey.parent:
+    raise SystemExit("Effective Compose configuration omits a valid TLS fullchain/privkey mount")
+
+# Verify JWT signing keys are mounted for production token signing and verification.
+jwt_priv_target = env_values.get("JWT_PRIVATE_KEY_PATH", "/run/secrets/jwt_private_key").rstrip("/")
+jwt_pub_target = env_values.get("JWT_PUBLIC_KEY_PATH", "/run/secrets/jwt_public_key").rstrip("/")
+jwt_priv = (
+    mounted_files_by_target.get(jwt_priv_target)
+    or mounted_files_by_target.get("/run/secrets/jwt_private_key")
+    or next((p for p in mounted_sources if p.as_posix().endswith("/secrets/jwt_private_key")), None)
+)
+jwt_pub = (
+    mounted_files_by_target.get(jwt_pub_target)
+    or mounted_files_by_target.get("/run/secrets/jwt_public_key")
+    or next((p for p in mounted_sources if p.as_posix().endswith("/secrets/jwt_public_key")), None)
+)
+if jwt_priv is None or jwt_pub is None:
+    raise SystemExit("Effective Compose configuration omits a valid JWT signing key mount")
+PY
+  rm -f "$candidate_compose_file"
+  die 'Effective runtime configuration failed technical configuration, secret/TLS/key, or log-retention safety validation.'
 fi
+rm -f "$candidate_compose_file"
 # Build from the tested archive. Docker can reuse its layer cache.
 compose "$candidate" build frontend_dist
 image_heads() {
@@ -484,8 +637,8 @@ check_readiness < "$candidate/READINESS.json"
 report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
 
-printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nPredeploy verdict SHA-256: %s\nPredeploy manifest SHA-256: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
-  "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$predeploy_digest" "$predeploy_manifest_digest" "$(date -u +%FT%TZ)" \
+printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
+  "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
 ln -sfn "$candidate" "$state/.current-next"
