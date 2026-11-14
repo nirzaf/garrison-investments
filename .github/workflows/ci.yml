@@ -220,7 +220,8 @@ jobs:
         run: |
           # Balance by measured test time. The complement also picks up new test files.
           # Runs 43533754801 and 43534240845 averaged 126.00s/153.10s by shard.
-          # Moving approval-delegation (16.59s average) projects 142.59s/136.51s.
+          # Moving approval-delegation (16.59s average) projected 142.59s/136.51s;
+          # run 43534831860 measured 161.25s/114.96s, so check more runs for variance.
           group='/(approval-delegation|daily-report|offline-isolation|role-navigation|user-role|supervisor-draft)\.e2e\.ts$'
           case "$BROWSER_SHARD" in
             1) filter="$group" ;;
