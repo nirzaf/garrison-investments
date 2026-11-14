@@ -3461,18 +3461,19 @@ def _production_environment(path: Path) -> dict[str, str]:
 def _effective_environment(service: dict[str, Any], service_name: str) -> dict[str, str]:
     raw_environment = service.get("environment") or {}
     environment: dict[str, str] = {}
+    entries: list[tuple[Any, Any]]
     if isinstance(raw_environment, dict):
-        entries = raw_environment.items()
+        entries = list(raw_environment.items())
     elif isinstance(raw_environment, list):
-        parsed: list[tuple[str, str]] = []
+        entries = []
         for entry in raw_environment:
             require(
                 isinstance(entry, str) and "=" in entry,
                 f"Invalid effective application environment for {service_name}.",
                 3,
             )
-            parsed.append(tuple(entry.split("=", 1)))
-        entries = parsed
+            key, value = entry.split("=", 1)
+            entries.append((key, value))
     else:
         raise ContractError(
             3, f"Invalid effective application environment for {service_name}."
@@ -3482,7 +3483,8 @@ def _effective_environment(service: dict[str, Any], service_name: str) -> dict[s
         require(
             isinstance(key, str)
             and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is not None
-            and isinstance(value, (str, int, float, bool)),
+            and isinstance(value, (str, int, float, bool))
+            and key not in environment,
             f"Invalid effective application environment for {service_name}.",
             3,
         )
