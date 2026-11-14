@@ -6502,7 +6502,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_auth_repository",
-      "community": 193,
+      "community": 46,
       "norm_label": "auth_repository.py"
     },
     {
@@ -6512,7 +6512,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository",
-      "community": 193,
+      "community": 46,
       "norm_label": "authrepository"
     },
     {
@@ -6522,7 +6522,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_init",
-      "community": 193,
+      "community": 46,
       "norm_label": ".__init__()"
     },
     {
@@ -6532,7 +6532,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "backend_app_repositories_auth_repository_py_asyncsession",
-      "community": 193,
+      "community": 46,
       "norm_label": "asyncsession"
     },
     {
@@ -6542,7 +6542,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_add_otp_challenge",
-      "community": 193,
+      "community": 46,
       "norm_label": ".add_otp_challenge()"
     },
     {
@@ -6552,7 +6552,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "backend_app_repositories_auth_repository_py_authotpchallenge",
-      "community": 193,
+      "community": 46,
       "norm_label": "authotpchallenge"
     },
     {
@@ -6562,7 +6562,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_get_otp_challenge",
-      "community": 193,
+      "community": 46,
       "norm_label": ".get_otp_challenge()"
     },
     {
@@ -6572,7 +6572,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "backend_app_repositories_auth_repository_py_uuid",
-      "community": 193,
+      "community": 46,
       "norm_label": "uuid"
     },
     {
@@ -6582,7 +6582,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_revoke_all_refresh_tokens",
-      "community": 193,
+      "community": 46,
       "norm_label": ".revoke_all_refresh_tokens()"
     },
     {
@@ -6592,7 +6592,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_revoke_user_authentication",
-      "community": 193,
+      "community": 46,
       "norm_label": ".revoke_user_authentication()"
     },
     {
@@ -6602,7 +6602,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_add_refresh_token",
-      "community": 193,
+      "community": 46,
       "norm_label": ".add_refresh_token()"
     },
     {
@@ -6612,7 +6612,7 @@
       "source_location": "L66",
       "_origin": "ast",
       "id": "authrefreshtoken",
-      "community": 193,
+      "community": 46,
       "norm_label": "authrefreshtoken"
     },
     {
@@ -6622,7 +6622,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "repositories_auth_repository_authrepository_get_refresh_token_by_hash",
-      "community": 193,
+      "community": 46,
       "norm_label": ".get_refresh_token_by_hash()"
     },
     {
@@ -6632,7 +6632,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "repositories_auth_repository_rationale_37",
-      "community": 193,
+      "community": 46,
       "norm_label": "revoke every live session for a user; returns the number of rows affected."
     },
     {
@@ -8422,7 +8422,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schemas_dashboard",
-      "community": 94,
+      "community": 225,
       "norm_label": "dashboard.py"
     },
     {
@@ -8432,7 +8432,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "schemas_dashboard_dashboardsummaryresponse",
-      "community": 94,
+      "community": 225,
       "norm_label": "dashboardsummaryresponse"
     },
     {
@@ -10722,7 +10722,7 @@
       "source_location": "L207",
       "_origin": "ast",
       "id": "services_auth_service_authservice_change_password",
-      "community": 46,
+      "community": 212,
       "norm_label": ".change_password()"
     },
     {
@@ -15112,7 +15112,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "services_user_service_userservice_create_user",
-      "community": 59,
+      "community": 212,
       "norm_label": ".create_user()"
     },
     {
@@ -15172,7 +15172,7 @@
       "source_location": "L131",
       "_origin": "ast",
       "id": "services_user_service_userservice_admin_reset_password",
-      "community": 59,
+      "community": 212,
       "norm_label": ".admin_reset_password()"
     },
     {
@@ -16202,7 +16202,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "id": "utils_security_hash_password",
-      "community": 46,
+      "community": 212,
       "norm_label": "hash_password()"
     },
     {
@@ -16212,7 +16212,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "utils_security_verify_password",
-      "community": 46,
+      "community": 212,
       "norm_label": "verify_password()"
     },
     {
@@ -16252,7 +16252,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "utils_security_validate_password_policy",
-      "community": 46,
+      "community": 212,
       "norm_label": "validate_password_policy()"
     },
     {
@@ -26132,7 +26132,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_password_hashing",
-      "community": 46,
+      "community": 212,
       "norm_label": "test_password_hashing.py"
     },
     {
@@ -26142,7 +26142,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "tests_test_password_hashing_test_new_password_hashes_can_be_verified",
-      "community": 46,
+      "community": 212,
       "norm_label": "test_new_password_hashes_can_be_verified()"
     },
     {
@@ -26152,7 +26152,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "tests_test_password_hashing_test_existing_passlib_bcrypt_hashes_can_be_verified",
-      "community": 46,
+      "community": 212,
       "norm_label": "test_existing_passlib_bcrypt_hashes_can_be_verified()"
     },
     {
@@ -31550,7 +31550,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_audit",
-      "community": 98,
+      "community": 193,
       "norm_label": "audit.ts"
     },
     {
@@ -31560,7 +31560,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_audit_auditlogrecord",
-      "community": 98,
+      "community": 193,
       "norm_label": "auditlogrecord"
     },
     {
@@ -31570,7 +31570,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_audit_auditloglistresponse",
-      "community": 98,
+      "community": 193,
       "norm_label": "auditloglistresponse"
     },
     {
@@ -31580,7 +31580,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "api_audit_auditlogfilters",
-      "community": 98,
+      "community": 193,
       "norm_label": "auditlogfilters"
     },
     {
@@ -31590,7 +31590,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "api_audit_getauditlogs",
-      "community": 194,
+      "community": 193,
       "norm_label": "getauditlogs()"
     },
     {
@@ -31790,7 +31790,7 @@
       "source_location": "L21",
       "_origin": "ast",
       "id": "api_browsersession_getbrowsersession",
-      "community": 2,
+      "community": 20,
       "norm_label": "getbrowsersession()"
     },
     {
@@ -31920,7 +31920,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_client",
-      "community": 98,
+      "community": 19,
       "norm_label": "client.ts"
     },
     {
@@ -31930,7 +31930,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "api_client_refreshresponse",
-      "community": 98,
+      "community": 19,
       "norm_label": "refreshresponse"
     },
     {
@@ -31940,7 +31940,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "api_client_browserrequest",
-      "community": 98,
+      "community": 19,
       "norm_label": "browserrequest"
     },
     {
@@ -31950,7 +31950,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_client_sessionrequestconfig",
-      "community": 20,
+      "community": 8,
       "norm_label": "sessionrequestconfig()"
     },
     {
@@ -31960,7 +31960,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "api_client_safe_retry_methods",
-      "community": 98,
+      "community": 19,
       "norm_label": "safe_retry_methods"
     },
     {
@@ -31970,7 +31970,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "api_client_no_session_refresh_paths",
-      "community": 98,
+      "community": 19,
       "norm_label": "no_session_refresh_paths"
     },
     {
@@ -31980,7 +31980,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "api_client_issessionrequest",
-      "community": 98,
+      "community": 19,
       "norm_label": "issessionrequest()"
     },
     {
@@ -31990,7 +31990,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "api_client_apiclient",
-      "community": 98,
+      "community": 193,
       "norm_label": "apiclient"
     },
     {
@@ -32000,7 +32000,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_dashboard",
-      "community": 98,
+      "community": 193,
       "norm_label": "dashboard.ts"
     },
     {
@@ -32010,7 +32010,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_dashboard_dashboardsummary",
-      "community": 98,
+      "community": 193,
       "norm_label": "dashboardsummary"
     },
     {
@@ -32020,7 +32020,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_dashboard_getdashboardsummary",
-      "community": 98,
+      "community": 193,
       "norm_label": "getdashboardsummary()"
     },
     {
@@ -33010,7 +33010,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_notifications",
-      "community": 194,
+      "community": 193,
       "norm_label": "notifications.ts"
     },
     {
@@ -33020,7 +33020,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "id": "api_notifications_notificationrecord",
-      "community": 194,
+      "community": 193,
       "norm_label": "notificationrecord"
     },
     {
@@ -33030,7 +33030,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "api_notifications_notificationlistresponse",
-      "community": 194,
+      "community": 193,
       "norm_label": "notificationlistresponse"
     },
     {
@@ -33040,7 +33040,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_notifications_unreadcountresponse",
-      "community": 194,
+      "community": 193,
       "norm_label": "unreadcountresponse"
     },
     {
@@ -33050,7 +33050,7 @@
       "source_location": "L8",
       "_origin": "ast",
       "id": "api_notifications_listnotifications",
-      "community": 194,
+      "community": 193,
       "norm_label": "listnotifications()"
     },
     {
@@ -33070,7 +33070,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "api_notifications_marknotificationread",
-      "community": 194,
+      "community": 193,
       "norm_label": "marknotificationread()"
     },
     {
@@ -33080,7 +33080,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "api_notifications_markallnotificationsread",
-      "community": 194,
+      "community": 193,
       "norm_label": "markallnotificationsread()"
     },
     {
@@ -33090,7 +33090,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "api_notifications_mutenotification",
-      "community": 194,
+      "community": 193,
       "norm_label": "mutenotification()"
     },
     {
@@ -33100,7 +33100,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "api_notifications_unmutenotification",
-      "community": 194,
+      "community": 193,
       "norm_label": "unmutenotification()"
     },
     {
@@ -34300,7 +34300,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "api_reports_createdailyreport",
-      "community": 2,
+      "community": 8,
       "norm_label": "createdailyreport()"
     },
     {
@@ -34310,7 +34310,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "api_reports_getdailyreport",
-      "community": 20,
+      "community": 8,
       "norm_label": "getdailyreport()"
     },
     {
@@ -34320,7 +34320,7 @@
       "source_location": "L63",
       "_origin": "ast",
       "id": "api_reports_updatedailyreport",
-      "community": 2,
+      "community": 8,
       "norm_label": "updatedailyreport()"
     },
     {
@@ -34330,7 +34330,7 @@
       "source_location": "L77",
       "_origin": "ast",
       "id": "api_reports_submitdailyreport",
-      "community": 20,
+      "community": 8,
       "norm_label": "submitdailyreport()"
     },
     {
@@ -34530,7 +34530,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "api_supervisorupdates_submitsupervisorupdate",
-      "community": 20,
+      "community": 8,
       "norm_label": "submitsupervisorupdate()"
     },
     {
@@ -34810,7 +34810,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "shared_emptystate",
-      "community": 20,
+      "community": 193,
       "norm_label": "emptystate.tsx"
     },
     {
@@ -34820,7 +34820,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "shared_emptystate_emptystate",
-      "community": 20,
+      "community": 193,
       "norm_label": "emptystate()"
     },
     {
@@ -35130,7 +35130,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "admin_auditlogpage",
-      "community": 194,
+      "community": 193,
       "norm_label": "auditlogpage.tsx"
     },
     {
@@ -35140,7 +35140,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "admin_auditlogpage_actionoptions",
-      "community": 194,
+      "community": 193,
       "norm_label": "actionoptions"
     },
     {
@@ -35150,7 +35150,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "admin_auditlogpage_entityoptions",
-      "community": 194,
+      "community": 193,
       "norm_label": "entityoptions"
     },
     {
@@ -35160,7 +35160,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "admin_auditlogpage_readableaction",
-      "community": 194,
+      "community": 193,
       "norm_label": "readableaction()"
     },
     {
@@ -35170,7 +35170,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "admin_auditlogpage_auditlogpage",
-      "community": 194,
+      "community": 193,
       "norm_label": "auditlogpage()"
     },
     {
@@ -35480,7 +35480,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "dashboard_dashboardpage",
-      "community": 98,
+      "community": 193,
       "norm_label": "dashboardpage.tsx"
     },
     {
@@ -35490,7 +35490,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "dashboard_dashboardpage_dashboardpage",
-      "community": 98,
+      "community": 193,
       "norm_label": "dashboardpage()"
     },
     {
@@ -35500,7 +35500,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "dashboard_dashboardpage_statuspanel",
-      "community": 98,
+      "community": 193,
       "norm_label": "statuspanel()"
     },
     {
@@ -36150,7 +36150,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "notifications_notificationspage",
-      "community": 194,
+      "community": 193,
       "norm_label": "notificationspage.tsx"
     },
     {
@@ -36160,7 +36160,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "notifications_notificationspage_workflowpaths",
-      "community": 194,
+      "community": 193,
       "norm_label": "workflowpaths"
     },
     {
@@ -36170,7 +36170,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "notifications_notificationspage_workflowlink",
-      "community": 194,
+      "community": 193,
       "norm_label": "workflowlink()"
     },
     {
@@ -36180,7 +36180,7 @@
       "source_location": "L44",
       "_origin": "ast",
       "id": "notifications_notificationspage_notificationspage",
-      "community": 194,
+      "community": 193,
       "norm_label": "notificationspage()"
     },
     {
@@ -38465,7 +38465,7 @@
       "label": "Host bootstrap and runner maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L81",
+      "source_location": "L85",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_host_bootstrap_and_runner_maintenance",
       "community": 103,
@@ -38475,7 +38475,7 @@
       "label": "Production maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L119",
+      "source_location": "L123",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_production_maintenance",
       "community": 103,
@@ -38485,7 +38485,7 @@
       "label": "Upgrade an existing PostgreSQL 16 database",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L130",
+      "source_location": "L134",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_upgrade_an_existing_postgresql_16_database",
       "community": 103,
@@ -38495,7 +38495,7 @@
       "label": "Post-Deploy Verification",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L139",
+      "source_location": "L143",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_post_deploy_verification",
       "community": 103,
@@ -38505,7 +38505,7 @@
       "label": "Local production Compose rehearsal",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L161",
+      "source_location": "L165",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_local_production_compose_rehearsal",
       "community": 103,
@@ -38515,7 +38515,7 @@
       "label": "3. Operations, Backup & Restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L171",
+      "source_location": "L175",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_3_operations_backup_restore",
       "community": 78,
@@ -38525,7 +38525,7 @@
       "label": "Scheduled jobs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L173",
+      "source_location": "L177",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_scheduled_jobs",
       "community": 78,
@@ -38535,7 +38535,7 @@
       "label": "Backup and restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L184",
+      "source_location": "L188",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_backup_and_restore",
       "community": 78,
@@ -38545,7 +38545,7 @@
       "label": "Independent database and file recovery drill",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L207",
+      "source_location": "L211",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_independent_database_and_file_recovery_drill",
       "community": 78,
@@ -38555,7 +38555,7 @@
       "label": "Data checks and repairs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L253",
+      "source_location": "L257",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_data_checks_and_repairs",
       "community": 78,
@@ -38565,7 +38565,7 @@
       "label": "Offline storage upgrade",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L264",
+      "source_location": "L268",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_offline_storage_upgrade",
       "community": 78,
@@ -38575,7 +38575,7 @@
       "label": "Rollback",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L272",
+      "source_location": "L276",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_rollback",
       "community": 78,
@@ -38585,7 +38585,7 @@
       "label": "User acceptance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L280",
+      "source_location": "L284",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_user_acceptance",
       "community": 39,
@@ -38595,7 +38595,7 @@
       "label": "Formal acceptance still pending",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L284",
+      "source_location": "L288",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_formal_acceptance_still_pending",
       "community": 103,
@@ -38605,7 +38605,7 @@
       "label": "5. Formal Acceptance Evidence",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L299",
+      "source_location": "L303",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_5_formal_acceptance_evidence",
       "community": 103,
@@ -181099,9 +181099,9 @@
       "source_file": "backend/tests/test_release_rollback.py",
       "source_location": "L684",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_release_rollback",
-      "target": "tests_test_release_rollback_test_production_workflow_requires_verified_host_gate_readiness",
-      "confidence_score": 1.0
+      "target": "tests_test_release_rollback_test_production_workflow_requires_verified_host_gate_readiness"
     },
     {
       "relation": "contains",
@@ -181196,9 +181196,9 @@
       "source_file": "backend/tests/test_release_rollback.py",
       "source_location": "L685",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_release_rollback_test_production_workflow_requires_verified_host_gate_readiness",
-      "target": "backend_tests_test_release_rollback_py_path",
-      "confidence_score": 1.0
+      "target": "backend_tests_test_release_rollback_py_path"
     },
     {
       "relation": "references",
@@ -208513,5 +208513,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "c50de62e4fbb2c57426d208e38e787421ac96f90"
+  "built_at_commit": "6bd8dfbd17bd516525d327ac61cb8e3820cbf682"
 }
