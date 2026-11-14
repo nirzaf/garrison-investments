@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-14)
 
 ## Corpus Check
-- 449 files · ~395,452 words
+- 449 files · ~395,538 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4390 nodes · 17204 edges · 226 communities (212 shown, 14 thin omitted)
+- 4390 nodes · 17204 edges · 227 communities (213 shown, 14 thin omitted)
 - Extraction: 59% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS · INFERRED: 7055 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cd2bc478`
+- Built from commit: `2a0cf6e5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -194,6 +194,7 @@
 - [[_COMMUNITY_Community 222|Community 222]]
 - [[_COMMUNITY_Community 223|Community 223]]
 - [[_COMMUNITY_Community 225|Community 225]]
+- [[_COMMUNITY_Community 226|Community 226]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `User` - 491 edges
@@ -248,7 +249,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (226 total, 14 thin omitted)
+## Communities (227 total, 14 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.06
@@ -299,8 +300,8 @@ Cohesion: 0.05
 Nodes (75): alias, DbSession, File, Header, ImportPreviewResponse, ImportRunResponse, Response, UploadFile (+67 more)
 
 ### Community 12 - "Inventory Endpoints and Schemas"
-Cohesion: 0.33
-Nodes (26): alias, CanViewReports, DbSession, description, File, Form, ge, Header (+18 more)
+Cohesion: 0.35
+Nodes (25): alias, CanViewReports, DbSession, description, File, Form, ge, Header (+17 more)
 
 ### Community 13 - "Analytics Export Service"
 Cohesion: 0.11
@@ -315,8 +316,8 @@ Cohesion: 0.06
 Nodes (66): ActivityLog, AuditService, ColumnElement, datetime, AsyncSession, ColumnElement, datetime, Select (+58 more)
 
 ### Community 16 - "Photo Service and Protected Delivery"
-Cohesion: 0.11
-Nodes (13): AsyncSession, SupervisorUpdate, UUID, DailyReport, Minio, Photo, SupervisorUpdate, UploadFile (+5 more)
+Cohesion: 0.19
+Nodes (6): DailyReport, Photo, SupervisorUpdate, User, UUID, PhotoService
 
 ### Community 17 - "Supplier Management"
 Cohesion: 0.16
@@ -368,7 +369,7 @@ Nodes (44): DbSession, File, ge, le, max_length, Query, SupplierCreateRequest, S
 
 ### Community 29 - "Analytics and Import Test Suites"
 Cohesion: 0.05
-Nodes (46): Alert delivery, Grafana, Loki, and Alloy, Incident fallback, Environment and configuration, nginx/grafana.prod.conf.template, nginx/nginx.conf, nginx/nginx.prod.conf, observability/alloy-config.alloy (+38 more)
+Nodes (45): Alert delivery, Grafana, Loki, and Alloy, Incident fallback, nginx/grafana.prod.conf.template, nginx/nginx.conf, nginx/nginx.prod.conf, observability/alloy-config.alloy, observability/grafana/provisioning/alerting/alerts.yml (+37 more)
 
 ### Community 30 - "Daily Report Repository"
 Cohesion: 0.26
@@ -383,8 +384,8 @@ Cohesion: 0.13
 Nodes (31): persistOwnedDraft(), reportDraftErrors(), reportPayload(), classifyQueuedReportFile(), commitUploadReceipt(), uploadFailure(), uploadRetry(), APP_SHELL (+23 more)
 
 ### Community 33 - "App Bootstrap and Architecture Docs"
-Cohesion: 0.33
-Nodes (4): SupervisorUpdate, SupervisorUpdateCreateRequest, User, UUID
+Cohesion: 0.14
+Nodes (12): AsyncSession, SupervisorUpdate, UUID, Minio, UploadFile, AsyncSession, SupervisorUpdate, SupervisorUpdateCreateRequest (+4 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.09
@@ -463,8 +464,8 @@ Cohesion: 0.14
 Nodes (18): T, run_async_task(), _run_with_fresh_pool(), send_report_email(), archive_and_purge_logs(), check_late_reports(), check_supplier_tds_expiry(), cleanup_old_notifications() (+10 more)
 
 ### Community 54 - "test_structured_logging.py cluster"
-Cohesion: 0.09
-Nodes (20): get_db(), lifespan(), AsyncSession, Backend architecture, Cross-cutting entry points, Trace an API request, Verify a change, Runtime and data flow (+12 more)
+Cohesion: 0.12
+Nodes (22): get_db(), lifespan(), AsyncSession, User, Runtime and data flow, main(), Report owners whose active photos exceed the report media quota., report_drift() (+14 more)
 
 ### Community 55 - "inventory.py cluster"
 Cohesion: 0.16
@@ -659,8 +660,8 @@ Cohesion: 0.17
 Nodes (10): Audit retention, Audit writer inventory, 3. Operations, Backup & Restore, Backup and restore, Data checks and repairs, Independent database and file recovery drill, Offline storage upgrade, Rollback (+2 more)
 
 ### Community 103 - "celery_app.py cluster"
-Cohesion: 0.04
-Nodes (65): Engineering and safety guardrails, graphify, Key entry points, Repository documentation, Verification commands, components, $defs, operations (+57 more)
+Cohesion: 0.05
+Nodes (57): Engineering and safety guardrails, graphify, Key entry points, Repository documentation, Verification commands, Backend architecture, Cross-cutting entry points, Trace an API request (+49 more)
 
 ### Community 104 - "package.json cluster"
 Cohesion: 0.29
@@ -692,7 +693,7 @@ Nodes (12): Skip the calling test when PostgreSQL is unreachable., require_datab
 
 ### Community 112 - "Community 112"
 Cohesion: 0.13
-Nodes (14): Garrisons portal release scope, Approvals, inventory, and finance, Field reporting and offline recovery, Files, documents, and imports, Implementation map, Project setup and scheduling, Workflow invariants, Backend enforcement overview (+6 more)
+Nodes (15): Garrisons portal release scope, Approvals, inventory, and finance, Field reporting and offline recovery, Files, documents, and imports, Implementation map, Project setup and scheduling, Workflow invariants, Backend enforcement overview (+7 more)
 
 ### Community 113 - "users.py cluster"
 Cohesion: 0.06
@@ -779,8 +780,8 @@ Cohesion: 0.33
 Nodes (8): Minio, Settings, main(), _client(), discard_new_uploads(), minio_client(), minio_signed_url_client(), test_presigned_url_uses_public_minio_endpoint()
 
 ### Community 152 - "Community 152"
-Cohesion: 0.14
-Nodes (21): Any, BaseException, Exception, Request, Any, EmailService, _authenticated_subject(), _format_value() (+13 more)
+Cohesion: 0.17
+Nodes (17): Any, BaseException, Exception, Request, Any, EmailService, _authenticated_subject(), _format_value() (+9 more)
 
 ### Community 160 - "Community 160"
 Cohesion: 0.23
@@ -823,8 +824,8 @@ Cohesion: 0.33
 Nodes (5): AttachmentRef, SupervisorUpdateCreateRequest, SupervisorUpdateListResponse, SupervisorUpdateResponse, SupervisorUpdateSubmitRequest
 
 ### Community 196 - "Community 196"
-Cohesion: 0.49
-Nodes (9): User, create_project(), create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_inventory_stock_request_reserve_issue_and_negative_stock_block(), test_request_project_lookup_and_write_share_active_role_and_membership_scope() (+1 more)
+Cohesion: 0.10
+Nodes (15): components, $defs, operations, paths, webhooks, API contract, docs/openapi.json, API contract changes (+7 more)
 
 ### Community 197 - "Community 197"
 Cohesion: 0.33
@@ -910,6 +911,10 @@ Nodes (4): Columns, Foreign keys, Keys and constraints, material_request_lines
 Cohesion: 0.40
 Nodes (5): Columns, daily_reports, Foreign keys, Indexes, Keys and constraints
 
+### Community 226 - "Community 226"
+Cohesion: 0.50
+Nodes (4): main(), Export the FastAPI OpenAPI schema to ``docs/openapi.json``.  Import-only: buildi, Return the canonical serialization of the live application schema., render_schema()
+
 ## Knowledge Gaps
 - **523 isolated node(s):** `$schema`, `enabled`, `AsyncSession`, `UUIDPrimaryKeyMixin`, `Any` (+518 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -918,11 +923,11 @@ Nodes (5): Columns, daily_reports, Foreign keys, Indexes, Keys and constraints
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `User` connect `Inventory Service and Idempotency` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Inventory Accounting Tests and Errors`, `Bulk CSV Import Pipeline`, `Inventory Endpoints and Schemas`, `Analytics Export Service`, `Document Control API and Service`, `Photo Service and Protected Delivery`, `Supplier Management`, `Daily Report Endpoints`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Notification Delivery`, `Daily Report Repository`, `App Bootstrap and Architecture Docs`, `Community 34`, `Daily Report Endpoint Tests`, `test_finance.py cluster`, `test_report_payment_concurrency.py cluster`, `docker-compose.staging.yml cluster`, `report_export_service.py cluster`, `audit_retention_policy.py cluster`, `test_request_ip_resolution.py cluster`, `Community 51`, `inventory.py cluster`, `Community 193`, `Community 196`, `Community 197`, `Community 70`, `test_authorization_matrix.py cluster`, `Community 200`, `Community 203`, `Community 75`, `Community 207`, `Community 208`, `Community 80`, `Community 88`, `suppliers.py cluster`, `Community 106`, `users.py cluster`, `Community 125`?**
+- **Why does `User` connect `Inventory Service and Idempotency` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Inventory Accounting Tests and Errors`, `Bulk CSV Import Pipeline`, `Inventory Endpoints and Schemas`, `Analytics Export Service`, `Document Control API and Service`, `Photo Service and Protected Delivery`, `Supplier Management`, `Daily Report Endpoints`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Notification Delivery`, `Daily Report Repository`, `App Bootstrap and Architecture Docs`, `Community 34`, `Daily Report Endpoint Tests`, `test_finance.py cluster`, `test_report_payment_concurrency.py cluster`, `docker-compose.staging.yml cluster`, `report_export_service.py cluster`, `audit_retention_policy.py cluster`, `test_request_ip_resolution.py cluster`, `Community 51`, `test_structured_logging.py cluster`, `inventory.py cluster`, `Community 193`, `Community 197`, `Community 70`, `test_authorization_matrix.py cluster`, `Community 200`, `Community 203`, `Community 75`, `Community 207`, `Community 208`, `Community 80`, `Community 88`, `suppliers.py cluster`, `Community 106`, `users.py cluster`, `Community 125`?**
   _High betweenness centrality (0.093) - this node is a cross-community bridge._
-- **Why does `BaseModel` connect `inventory.py cluster` to `Authenticated Backup Set`, `Audit Retention Enforcement`, `Daily Report Endpoints`, `Health Monitor Daemon`, `Community 51`, `Community 188`, `projects.py cluster`, `Community 195`, `photo_repository.py cluster`, `imports.ts cluster`, `Community 202`, `Community 83`, `Community 212`, `repair_offline_duplicates.py cluster`, `Community 217`, `Community 220`, `context.py cluster`, `Community 95`, `Community 225`, `Community 112`, `Community 121`, `Community 126`?**
+- **Why does `BaseModel` connect `inventory.py cluster` to `Authenticated Backup Set`, `Audit Retention Enforcement`, `Daily Report Endpoints`, `Health Monitor Daemon`, `Community 51`, `Community 188`, `projects.py cluster`, `Community 195`, `photo_repository.py cluster`, `Community 196`, `imports.ts cluster`, `Community 202`, `Community 83`, `Community 212`, `repair_offline_duplicates.py cluster`, `Community 217`, `Community 220`, `context.py cluster`, `Community 95`, `Community 225`, `Community 121`, `Community 126`?**
   _High betweenness centrality (0.089) - this node is a cross-community bridge._
-- **Why does `Runtime and data flow` connect `test_structured_logging.py cluster` to `Community 194`, `Community 102`, `celery_app.py cluster`, `Community 135`, `test_inventory_accounting.py cluster`, `Community 112`, `Frontend Auth Session`, `Community 124`, `Analytics and Import Test Suites`?**
+- **Why does `Runtime and data flow` connect `test_structured_logging.py cluster` to `Community 194`, `Community 102`, `celery_app.py cluster`, `Community 135`, `test_inventory_accounting.py cluster`, `Community 112`, `Frontend Auth Session`, `Community 152`, `Community 124`, `Analytics and Import Test Suites`?**
   _High betweenness centrality (0.081) - this node is a cross-community bridge._
 - **Are the 490 inferred relationships involving `User` (e.g. with `ApprovalDecisionRequest` and `ApprovalDelegateListResponse`) actually correct?**
   _`User` has 490 INFERRED edges - model-reasoned connections that need verification._

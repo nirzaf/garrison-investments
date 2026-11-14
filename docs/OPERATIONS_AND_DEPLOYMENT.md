@@ -102,6 +102,8 @@ For release candidate `0a3ac92`, local Playwright browser regressions passed on 
 
 For deployment, measure runner queue time separately from the host phase timings. The host builds the tested archive using Docker's layer cache and reuses the running backend image when only tests, backend documentation or frontend files change. The release script reads the frontend hashes in one container and checks the served bytes after activation.
 
+CI run `43586029198` on `2a0cf6e5d82654f32c1831ac2c8ee48ab87321a8` is a failed, partial measurement, not a release baseline: backend Mypy exited with `INTERNAL ERROR`, while browser shard 1 passed. Its self-hosted `setup-python` step spent 10m02s timing out during GitHub pip-cache restoration; `setup-node` restored an 82 MiB npm cache in 90 seconds. The Python and Node tool runtimes were already present locally. CI now uses persistent runner-local caches at `/runner/state/pip-cache` and `/runner/state/npm-cache` instead of remote package-cache actions. Compare the next exact-main run's queue, setup, and job durations before claiming a speedup.
+
 ### Host bootstrap and runner maintenance
 
 Provision the existing stack and an initial active release before registering the production runner. The script expects the project `garrison-portal`, an active release under `/opt/garrison-portal/releases/`, and the `garrison-portal_frontend_dist` volume. Under `/opt/garrison-portal/deploy/`, keep the following root-controlled.

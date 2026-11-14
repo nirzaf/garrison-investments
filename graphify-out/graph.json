@@ -4722,7 +4722,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "v1_router",
-      "community": 103,
+      "community": 196,
       "norm_label": "router.py"
     },
     {
@@ -4732,7 +4732,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "v1_router_api_root",
-      "community": 103,
+      "community": 196,
       "norm_label": "api_root()"
     },
     {
@@ -6402,7 +6402,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_supervisor_update",
-      "community": 16,
+      "community": 33,
       "norm_label": "supervisor_update.py"
     },
     {
@@ -6412,7 +6412,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "models_supervisor_update_supervisorupdate",
-      "community": 16,
+      "community": 33,
       "norm_label": "supervisorupdate"
     },
     {
@@ -7912,7 +7912,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository",
-      "community": 16,
+      "community": 33,
       "norm_label": "supervisor_update_repository.py"
     },
     {
@@ -7922,7 +7922,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository",
-      "community": 16,
+      "community": 33,
       "norm_label": "supervisorupdaterepository"
     },
     {
@@ -7932,7 +7932,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_init",
-      "community": 16,
+      "community": 33,
       "norm_label": ".__init__()"
     },
     {
@@ -7942,7 +7942,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "backend_app_repositories_supervisor_update_repository_py_asyncsession",
-      "community": 16,
+      "community": 33,
       "norm_label": "asyncsession"
     },
     {
@@ -7952,7 +7952,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_add",
-      "community": 16,
+      "community": 33,
       "norm_label": ".add()"
     },
     {
@@ -7962,7 +7962,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "backend_app_repositories_supervisor_update_repository_py_supervisorupdate",
-      "community": 16,
+      "community": 33,
       "norm_label": "supervisorupdate"
     },
     {
@@ -7972,7 +7972,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_get_by_id",
-      "community": 16,
+      "community": 33,
       "norm_label": ".get_by_id()"
     },
     {
@@ -7982,7 +7982,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "backend_app_repositories_supervisor_update_repository_py_uuid",
-      "community": 16,
+      "community": 33,
       "norm_label": "uuid"
     },
     {
@@ -7992,7 +7992,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_lock_linked",
-      "community": 16,
+      "community": 33,
       "norm_label": ".lock_linked()"
     },
     {
@@ -8002,7 +8002,7 @@
       "source_location": "L41",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_bound_ids",
-      "community": 16,
+      "community": 33,
       "norm_label": ".bound_ids()"
     },
     {
@@ -8012,7 +8012,7 @@
       "source_location": "L51",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_list_report_evidence",
-      "community": 16,
+      "community": 33,
       "norm_label": ".list_report_evidence()"
     },
     {
@@ -8022,7 +8022,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "repositories_supervisor_update_repository_supervisorupdaterepository_list_updates",
-      "community": 16,
+      "community": 33,
       "norm_label": ".list_updates()"
     },
     {
@@ -11712,7 +11712,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "services_email_service",
-      "community": 29,
+      "community": 152,
       "norm_label": "email_service.py"
     },
     {
@@ -13632,7 +13632,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "services_photo_service_photoservice",
-      "community": 12,
+      "community": 16,
       "norm_label": "photoservice"
     },
     {
@@ -13672,7 +13672,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "backend_app_services_photo_service_py_uploadfile",
-      "community": 16,
+      "community": 33,
       "norm_label": "uploadfile"
     },
     {
@@ -13912,7 +13912,7 @@
       "source_location": "L548",
       "_origin": "ast",
       "id": "services_photo_service_photoservice_validate_file",
-      "community": 12,
+      "community": 16,
       "norm_label": "._validate_file()"
     },
     {
@@ -13922,7 +13922,7 @@
       "source_location": "L581",
       "_origin": "ast",
       "id": "services_photo_service_photoservice_detect_mime",
-      "community": 12,
+      "community": 16,
       "norm_label": "._detect_mime()"
     },
     {
@@ -13942,7 +13942,7 @@
       "source_location": "L601",
       "_origin": "ast",
       "id": "services_photo_service_photoservice_create_photo_variants",
-      "community": 12,
+      "community": 16,
       "norm_label": "._create_photo_variants()"
     },
     {
@@ -13972,7 +13972,7 @@
       "source_location": "L628",
       "_origin": "ast",
       "id": "backend_app_services_photo_service_py_minio",
-      "community": 16,
+      "community": 33,
       "norm_label": "minio"
     },
     {
@@ -14022,7 +14022,7 @@
       "source_location": "L56",
       "_origin": "ast",
       "id": "backend_app_services_project_service_py_asyncsession",
-      "community": 1,
+      "community": 27,
       "norm_label": "asyncsession"
     },
     {
@@ -14232,7 +14232,7 @@
       "source_location": "L291",
       "_origin": "ast",
       "id": "backend_app_services_project_service_py_projecttaskupdaterequest",
-      "community": 27,
+      "community": 1,
       "norm_label": "projecttaskupdaterequest"
     },
     {
@@ -14992,7 +14992,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "services_reporting_service_reportingservice_init",
-      "community": 16,
+      "community": 33,
       "norm_label": ".__init__()"
     },
     {
@@ -15002,7 +15002,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "backend_app_services_reporting_service_py_asyncsession",
-      "community": 16,
+      "community": 33,
       "norm_label": "asyncsession"
     },
     {
@@ -16122,7 +16122,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tasks_outbox",
-      "community": 54,
+      "community": 103,
       "norm_label": "outbox.py"
     },
     {
@@ -16192,7 +16192,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "utils_exceptions",
-      "community": 112,
+      "community": 196,
       "norm_label": "exceptions.py"
     },
     {
@@ -16212,7 +16212,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "utils_exceptions_apperrorresponse",
-      "community": 112,
+      "community": 196,
       "norm_label": "apperrorresponse"
     },
     {
@@ -16222,7 +16222,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "utils_exceptions_validationissue",
-      "community": 112,
+      "community": 196,
       "norm_label": "validationissue"
     },
     {
@@ -16232,7 +16232,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "utils_exceptions_validationerrorresponse",
-      "community": 112,
+      "community": 196,
       "norm_label": "validationerrorresponse"
     },
     {
@@ -18642,7 +18642,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_export_openapi",
-      "community": 103,
+      "community": 226,
       "norm_label": "export_openapi.py"
     },
     {
@@ -18652,7 +18652,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "scripts_export_openapi_render_schema",
-      "community": 103,
+      "community": 226,
       "norm_label": "render_schema()"
     },
     {
@@ -18662,7 +18662,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "scripts_export_openapi_main",
-      "community": 103,
+      "community": 226,
       "norm_label": "main()"
     },
     {
@@ -18672,7 +18672,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_export_openapi_rationale_1",
-      "community": 103,
+      "community": 226,
       "norm_label": "export the fastapi openapi schema to ``docs/openapi.json``.  import-only: buildi"
     },
     {
@@ -18682,7 +18682,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "scripts_export_openapi_rationale_31",
-      "community": 103,
+      "community": 226,
       "norm_label": "return the canonical serialization of the live application schema."
     },
     {
@@ -25792,7 +25792,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_exception_reporting",
-      "community": 152,
+      "community": 112,
       "norm_label": "test_exception_reporting.py"
     },
     {
@@ -25802,7 +25802,7 @@
       "source_location": "L11",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_fakeexceptionsettings",
-      "community": 152,
+      "community": 112,
       "norm_label": "fakeexceptionsettings"
     },
     {
@@ -25812,7 +25812,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_unhandled_exception_sends_configured_email_with_debug_context",
-      "community": 152,
+      "community": 112,
       "norm_label": "test_unhandled_exception_sends_configured_email_with_debug_context()"
     },
     {
@@ -25822,7 +25822,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_unhandled_exception_email_respects_disabled_config",
-      "community": 152,
+      "community": 112,
       "norm_label": "test_unhandled_exception_email_respects_disabled_config()"
     },
     {
@@ -25832,7 +25832,7 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "tests_test_exception_reporting_test_celery_task_failure_sends_configured_email",
-      "community": 152,
+      "community": 112,
       "norm_label": "test_celery_task_failure_sends_configured_email()"
     },
     {
@@ -27062,7 +27062,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_inventory",
-      "community": 196,
+      "community": 54,
       "norm_label": "test_inventory.py"
     },
     {
@@ -27072,7 +27072,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "tests_test_inventory_isolated_engine_pool",
-      "community": 196,
+      "community": 54,
       "norm_label": "isolated_engine_pool()"
     },
     {
@@ -27082,7 +27082,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "tests_test_inventory_skip_if_database_unavailable",
-      "community": 196,
+      "community": 54,
       "norm_label": "skip_if_database_unavailable()"
     },
     {
@@ -27092,7 +27092,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tests_test_inventory_create_user",
-      "community": 196,
+      "community": 54,
       "norm_label": "create_user()"
     },
     {
@@ -27102,7 +27102,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "backend_tests_test_inventory_py_user",
-      "community": 196,
+      "community": 54,
       "norm_label": "user"
     },
     {
@@ -27112,7 +27112,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "tests_test_inventory_create_project",
-      "community": 196,
+      "community": 54,
       "norm_label": "create_project()"
     },
     {
@@ -27132,7 +27132,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "tests_test_inventory_create_test_client",
-      "community": 196,
+      "community": 54,
       "norm_label": "create_test_client()"
     },
     {
@@ -27152,7 +27152,7 @@
       "source_location": "L94",
       "_origin": "ast",
       "id": "tests_test_inventory_login_for_token",
-      "community": 196,
+      "community": 54,
       "norm_label": "login_for_token()"
     },
     {
@@ -27162,7 +27162,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "tests_test_inventory_test_inventory_stock_request_reserve_issue_and_negative_stock_block",
-      "community": 196,
+      "community": 54,
       "norm_label": "test_inventory_stock_request_reserve_issue_and_negative_stock_block()"
     },
     {
@@ -27182,7 +27182,7 @@
       "source_location": "L354",
       "_origin": "ast",
       "id": "tests_test_inventory_test_reserve_request_concurrency",
-      "community": 196,
+      "community": 54,
       "norm_label": "test_reserve_request_concurrency()"
     },
     {
@@ -27192,7 +27192,7 @@
       "source_location": "L483",
       "_origin": "ast",
       "id": "tests_test_inventory_test_request_project_lookup_and_write_share_active_role_and_membership_scope",
-      "community": 196,
+      "community": 54,
       "norm_label": "test_request_project_lookup_and_write_share_active_role_and_membership_scope()"
     },
     {
@@ -28392,7 +28392,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_openapi_contract",
-      "community": 54,
+      "community": 196,
       "norm_label": "test_openapi_contract.py"
     },
     {
@@ -28402,7 +28402,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "tests_test_openapi_contract_test_committed_openapi_matches_application",
-      "community": 54,
+      "community": 196,
       "norm_label": "test_committed_openapi_matches_application()"
     },
     {
@@ -28412,7 +28412,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "tests_test_openapi_contract_test_committed_openapi_is_canonically_serialized",
-      "community": 54,
+      "community": 196,
       "norm_label": "test_committed_openapi_is_canonically_serialized()"
     },
     {
@@ -28422,7 +28422,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_test_openapi_contract_rationale_1",
-      "community": 54,
+      "community": 196,
       "norm_label": "guardrail: the committed openapi document must match the live application.  no d"
     },
     {
@@ -28432,7 +28432,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tests_test_openapi_contract_rationale_27",
-      "community": 54,
+      "community": 196,
       "norm_label": "the export script's byte-for-byte ``--check`` must agree with this test."
     },
     {
@@ -36830,7 +36830,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "api_schema_d",
-      "community": 103,
+      "community": 196,
       "norm_label": "schema.d.ts"
     },
     {
@@ -36840,7 +36840,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "api_schema_d_paths",
-      "community": 103,
+      "community": 196,
       "norm_label": "paths"
     },
     {
@@ -36850,7 +36850,7 @@
       "source_location": "L1630",
       "_origin": "ast",
       "id": "api_schema_d_webhooks",
-      "community": 103,
+      "community": 196,
       "norm_label": "webhooks"
     },
     {
@@ -36860,7 +36860,7 @@
       "source_location": "L1631",
       "_origin": "ast",
       "id": "api_schema_d_components",
-      "community": 103,
+      "community": 196,
       "norm_label": "components"
     },
     {
@@ -36870,7 +36870,7 @@
       "source_location": "L4175",
       "_origin": "ast",
       "id": "api_schema_d_defs",
-      "community": 103,
+      "community": 196,
       "norm_label": "$defs"
     },
     {
@@ -36880,7 +36880,7 @@
       "source_location": "L4176",
       "_origin": "ast",
       "id": "api_schema_d_operations",
-      "community": 103,
+      "community": 196,
       "norm_label": "operations"
     },
     {
@@ -40548,7 +40548,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "readme_verification",
-      "community": 103,
+      "community": 196,
       "norm_label": "verification"
     },
     {
@@ -40558,7 +40558,7 @@
       "source_location": "L222",
       "_origin": "ast",
       "id": "readme_api_contract_changes",
-      "community": 103,
+      "community": 196,
       "norm_label": "api contract changes"
     },
     {
@@ -40598,7 +40598,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_architecture",
-      "community": 54,
+      "community": 103,
       "norm_label": "architecture.md"
     },
     {
@@ -40608,7 +40608,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "backend_architecture_backend_architecture",
-      "community": 54,
+      "community": 103,
       "norm_label": "backend architecture"
     },
     {
@@ -40618,7 +40618,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "backend_architecture_trace_an_api_request",
-      "community": 54,
+      "community": 103,
       "norm_label": "trace an api request"
     },
     {
@@ -40628,7 +40628,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "backend_architecture_cross_cutting_entry_points",
-      "community": 54,
+      "community": 103,
       "norm_label": "cross-cutting entry points"
     },
     {
@@ -40638,7 +40638,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "backend_architecture_verify_a_change",
-      "community": 54,
+      "community": 103,
       "norm_label": "verify a change"
     },
     {
@@ -40698,7 +40698,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "docs_architecture_api_contract",
-      "community": 103,
+      "community": 196,
       "norm_label": "api contract"
     },
     {
@@ -41038,7 +41038,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_environment_and_configuration",
-      "community": 29,
+      "community": 103,
       "norm_label": "environment and configuration"
     },
     {
@@ -41075,7 +41075,7 @@
       "label": "Host bootstrap and runner maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L105",
+      "source_location": "L107",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_host_bootstrap_and_runner_maintenance",
       "community": 103,
@@ -41085,7 +41085,7 @@
       "label": "Production maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L165",
+      "source_location": "L167",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_production_maintenance",
       "community": 103,
@@ -41095,7 +41095,7 @@
       "label": "Upgrade an existing PostgreSQL 16 database",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L176",
+      "source_location": "L178",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_upgrade_an_existing_postgresql_16_database",
       "community": 103,
@@ -41105,7 +41105,7 @@
       "label": "Post-Deploy Verification",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L185",
+      "source_location": "L187",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_post_deploy_verification",
       "community": 103,
@@ -41115,7 +41115,7 @@
       "label": "Local production Compose rehearsal",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L207",
+      "source_location": "L209",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_local_production_compose_rehearsal",
       "community": 103,
@@ -41125,7 +41125,7 @@
       "label": "3. Operations, Backup & Restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L217",
+      "source_location": "L219",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_3_operations_backup_restore",
       "community": 102,
@@ -41135,7 +41135,7 @@
       "label": "Scheduled jobs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L219",
+      "source_location": "L221",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_scheduled_jobs",
       "community": 102,
@@ -41145,7 +41145,7 @@
       "label": "Backup and restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L230",
+      "source_location": "L232",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_backup_and_restore",
       "community": 102,
@@ -41155,7 +41155,7 @@
       "label": "Independent database and file recovery drill",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L253",
+      "source_location": "L255",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_independent_database_and_file_recovery_drill",
       "community": 102,
@@ -41165,7 +41165,7 @@
       "label": "Data checks and repairs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L320",
+      "source_location": "L322",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_data_checks_and_repairs",
       "community": 102,
@@ -41175,7 +41175,7 @@
       "label": "Offline storage upgrade",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L331",
+      "source_location": "L333",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_offline_storage_upgrade",
       "community": 102,
@@ -41185,7 +41185,7 @@
       "label": "Rollback",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L339",
+      "source_location": "L341",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_rollback",
       "community": 102,
@@ -41195,7 +41195,7 @@
       "label": "User acceptance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L347",
+      "source_location": "L349",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_user_acceptance",
       "community": 103,
@@ -41205,7 +41205,7 @@
       "label": "Formal acceptance still pending",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L351",
+      "source_location": "L353",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_formal_acceptance_still_pending",
       "community": 103,
@@ -41215,7 +41215,7 @@
       "label": "5. Formal Acceptance Evidence",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L366",
+      "source_location": "L368",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_5_formal_acceptance_evidence",
       "community": 103,
@@ -43826,7 +43826,7 @@
       "author": null,
       "contributor": null,
       "kind": "infrastructure",
-      "community": 103,
+      "community": 196,
       "norm_label": "docs/openapi.json",
       "id": "infra_docs_openapi_json"
     },
@@ -195544,9 +195544,9 @@
       "source_file": "backend/tests/test_release_rollback.py",
       "source_location": "L98",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_release_rollback",
-      "target": "tests_test_release_rollback_test_active_deployment_run_status_allows_api_propagation_delay",
-      "confidence_score": 1.0
+      "target": "tests_test_release_rollback_test_active_deployment_run_status_allows_api_propagation_delay"
     },
     {
       "relation": "contains",
@@ -199699,9 +199699,9 @@
       "source_file": "deploy/hostinger-release.sh",
       "source_location": "L119",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "deploy_hostinger_release",
-      "target": "deploy_hostinger_release_verify_deploy_run",
-      "confidence_score": 1.0
+      "target": "deploy_hostinger_release_verify_deploy_run"
     },
     {
       "relation": "defines",
@@ -199900,9 +199900,9 @@
       "source_location": "L140",
       "weight": 1.0,
       "context": "call",
+      "confidence_score": 1.0,
       "source": "users_qts_repos_garrison_investments_deploy_hostinger_release_sh__entry",
-      "target": "deploy_hostinger_release_verify_deploy_run",
-      "confidence_score": 1.0
+      "target": "deploy_hostinger_release_verify_deploy_run"
     },
     {
       "relation": "calls",
@@ -199944,9 +199944,9 @@
       "source_location": "L120",
       "weight": 1.0,
       "context": "call",
+      "confidence_score": 1.0,
       "source": "deploy_hostinger_release_verify_deploy_run",
-      "target": "deploy_hostinger_release_github",
-      "confidence_score": 1.0
+      "target": "deploy_hostinger_release_github"
     },
     {
       "relation": "calls",
@@ -218230,9 +218230,9 @@
       "source_file": "AGENTS.md",
       "source_location": "L24",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "agents_repository_documentation",
-      "target": "agents_engineering_and_safety_guardrails",
-      "confidence_score": 1.0
+      "target": "agents_engineering_and_safety_guardrails"
     },
     {
       "relation": "contains",
@@ -218250,9 +218250,9 @@
       "source_file": "AGENTS.md",
       "source_location": "L11",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "agents_repository_documentation",
-      "target": "agents_key_entry_points",
-      "confidence_score": 1.0
+      "target": "agents_key_entry_points"
     },
     {
       "relation": "contains",
@@ -218260,9 +218260,9 @@
       "source_file": "AGENTS.md",
       "source_location": "L32",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "agents_repository_documentation",
-      "target": "agents_verification_commands",
-      "confidence_score": 1.0
+      "target": "agents_verification_commands"
     },
     {
       "relation": "cites",
@@ -219604,9 +219604,9 @@
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
       "source_location": "L63",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "docs_operations_and_deployment_production_deployments_from_github_actions",
-      "target": "docs_operations_and_deployment_ci_runner_capacity",
-      "confidence_score": 1.0
+      "target": "docs_operations_and_deployment_ci_runner_capacity"
     },
     {
       "relation": "contains",
@@ -223515,5 +223515,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "cd2bc478ebc0fdcce38f1890f0623ab6fbcf2972"
+  "built_at_commit": "2a0cf6e5d82654f32c1831ac2c8ee48ab87321a8"
 }
