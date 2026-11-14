@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794630268.6125565,
-    "ast_hash": "643cb607cce98ff44312faf25fc5cae8",
+    "mtime": 1794631005.807693,
+    "ast_hash": "d23069617b78612a1c9a0302599c807e",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -2035,8 +2035,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {
-    "mtime": 1794626187.985478,
-    "ast_hash": "401e717c52eaa5082b51e8e535c4e9bf",
+    "mtime": 1794630923.088112,
+    "ast_hash": "2d9d6019310fa3c5b35a341856b68406",
     "semantic_hash": ""
   },
   "deploy/capture-recovery-set.sh": {
@@ -2315,8 +2315,8 @@
     "semantic_hash": ""
   },
   "docs/POST_RELEASE_ACTIONS.md": {
-    "mtime": 1794628269.9730542,
-    "ast_hash": "0e6f4f2260645c9ca61f36adaac6b540",
+    "mtime": 1794630300.5496228,
+    "ast_hash": "3b7731ece840d45e24c18a28dd84a733",
     "semantic_hash": ""
   },
   "frontend/src/pages/analytics/AnalyticsCharts.tsx": {

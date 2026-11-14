@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-14)
 
 ## Corpus Check
-- 435 files · ~377,076 words
+- 435 files · ~377,238 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4140 nodes · 16070 edges · 227 communities (212 shown, 15 thin omitted)
+- 4140 nodes · 16070 edges · 229 communities (214 shown, 15 thin omitted)
 - Extraction: 59% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS · INFERRED: 6576 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0a3ac92a`
+- Built from commit: `b45aed6f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -196,6 +196,8 @@
 - [[_COMMUNITY_Community 224|Community 224]]
 - [[_COMMUNITY_Community 225|Community 225]]
 - [[_COMMUNITY_Community 226|Community 226]]
+- [[_COMMUNITY_Community 227|Community 227]]
+- [[_COMMUNITY_Community 228|Community 228]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `User` - 479 edges
@@ -250,7 +252,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (227 total, 15 thin omitted)
+## Communities (229 total, 15 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.05
@@ -273,8 +275,8 @@ Cohesion: 0.16
 Nodes (18): T, check_low_stock(), process_approval_reminders(), _recent_notification_exists(), run_async_task(), _run_with_fresh_pool(), send_report_email(), archive_and_purge_logs() (+10 more)
 
 ### Community 5 - "Seed Data and Release Contract Tests"
-Cohesion: 0.17
-Nodes (6): Decimal, MovementCreateRequest, User, UUID, InventoryMovement, MaterialRequest
+Cohesion: 0.14
+Nodes (9): Decimal, InventoryLocationStock, MovementCreateRequest, User, UUID, InventoryMovement, MaterialRequest, InventoryService (+1 more)
 
 ### Community 6 - "Frontend Projects API Client"
 Cohesion: 0.06
@@ -313,16 +315,16 @@ Cohesion: 0.15
 Nodes (47): alias, date, DbSession, File, Form, ge, Header, le (+39 more)
 
 ### Community 15 - "Audit Retention Enforcement"
-Cohesion: 0.17
-Nodes (34): AsyncSession, Select, AsyncSession, datetime, Path, VerifiedAuditRetentionPolicy, datetime, Path (+26 more)
+Cohesion: 0.21
+Nodes (27): AsyncSession, Select, AsyncSession, datetime, Path, VerifiedAuditRetentionPolicy, Path, VerifiedAuditRetentionPolicy (+19 more)
 
 ### Community 16 - "Photo Service and Protected Delivery"
 Cohesion: 0.14
 Nodes (31): alias, CanViewReports, DbSession, description, File, Form, ge, Header (+23 more)
 
 ### Community 17 - "Supplier Management"
-Cohesion: 0.15
-Nodes (37): ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, alias, ApprovalCreateRequest, ApprovalResponse (+29 more)
+Cohesion: 0.16
+Nodes (35): ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, alias, ApprovalCreateRequest, ApprovalResponse (+27 more)
 
 ### Community 18 - "Schema Docs and Model Index"
 Cohesion: 0.16
@@ -345,16 +347,16 @@ Cohesion: 0.10
 Nodes (25): INTERNAL_MINIO_HOSTS, LOCAL_BROWSER_HOSTS, normalizeProtectedFileUrl(), BudgetSummary, createInvoice(), createPayment(), getBudgetSummary(), getInvoice() (+17 more)
 
 ### Community 23 - "Daily Report Endpoints"
-Cohesion: 0.19
-Nodes (43): alias, CanViewReports, CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, description, ge (+35 more)
+Cohesion: 0.18
+Nodes (42): alias, CanViewReports, CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, description, ge (+34 more)
 
 ### Community 24 - "Browser Fixtures and Test Time Utils"
 Cohesion: 0.08
 Nodes (21): date, datetime, AsyncClient, MonkeyPatch, create_test_client(), create_user(), login_for_token(), project_payload() (+13 more)
 
 ### Community 25 - "Analytics and Audit UI Shell"
-Cohesion: 0.15
-Nodes (13): AsyncSession, UUID, DailyReport, User, UUID, TaskOutbox, bind(), _lookup() (+5 more)
+Cohesion: 0.26
+Nodes (6): DailyReport, User, UUID, TaskOutbox, ReportService, append_link()
 
 ### Community 26 - "Invoices and Payments API"
 Cohesion: 0.13
@@ -666,11 +668,11 @@ Nodes (6): name, overrides, minimatch@10, private, type, version
 
 ### Community 105 - "Community 105"
 Cohesion: 0.09
-Nodes (22): AsyncSession, AsyncSession, Minio, ImportRunResponse, User, UUID, AsyncSession, Notification (+14 more)
+Nodes (24): ApprovalResponse, AsyncSession, Notification, AsyncSession, Minio, ImportRunResponse, User, UUID (+16 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.14
-Nodes (108): AssetResponse, alias, AssetCreateRequest, DbSession, ge, Header, InventoryItem, InventoryItemCreateRequest (+100 more)
+Cohesion: 0.15
+Nodes (105): AssetResponse, alias, AssetCreateRequest, DbSession, ge, Header, InventoryItem, InventoryItemCreateRequest (+97 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.37
@@ -916,6 +918,14 @@ Nodes (4): main(), Export the FastAPI OpenAPI schema to ``docs/openapi.json``.  
 Cohesion: 0.50
 Nodes (4): Columns, Indexes, Keys and constraints, users
 
+### Community 227 - "Community 227"
+Cohesion: 0.39
+Nodes (8): AsyncSession, UUID, bind(), _lookup(), Idempotency keys for retried writes.  The offline photo queue replays requests a, Bind ``resource_id`` to the reserved key; return the winner's id.      Runs in t, Return the resource already bound to ``key``, or reserve the key and return None, resolve_or_reserve()
+
+### Community 228 - "Community 228"
+Cohesion: 0.50
+Nodes (7): datetime, UUID, category_page(), main(), preview(), Preview audit retention deadlines without modifying event records., utc_timestamp()
+
 ## Knowledge Gaps
 - **507 isolated node(s):** `$schema`, `enabled`, `AsyncSession`, `UUIDPrimaryKeyMixin`, `Any` (+502 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -928,7 +938,7 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.094) - this node is a cross-community bridge._
 - **Why does `User` connect `Invoices and Payments API` to `Community 132`, `Seed Data and Release Contract Tests`, `Inventory Accounting Tests and Errors`, `Bulk CSV Import Pipeline`, `Analytics Export Service`, `Document Control API and Service`, `Photo Service and Protected Delivery`, `Supplier Management`, `Schema Docs and Model Index`, `Daily Report Endpoints`, `Browser Fixtures and Test Time Utils`, `Analytics and Audit UI Shell`, `Docs Map and Generated Types`, `Notification Delivery`, `Daily Report Repository`, `App Bootstrap and Architecture Docs`, `Daily Report Endpoint Tests`, `test_finance.py cluster`, `test_report_payment_concurrency.py cluster`, `test_delegation_guards.py cluster`, `docker-compose.staging.yml cluster`, `report_export_service.py cluster`, `audit_retention_policy.py cluster`, `test_request_ip_resolution.py cluster`, `security.py cluster`, `inventory.py cluster`, `Community 193`, `Community 197`, `Community 70`, `test_authorization_matrix.py cluster`, `Community 88`, `Community 105`, `Community 106`, `Community 124`?**
   _High betweenness centrality (0.088) - this node is a cross-community bridge._
-- **Why does `Workflow invariants` connect `Community 112` to `Service Worker Sync Scripts`, `Projects Service and Membership`, `Approvals Inbox Workflow`, `Frontend Projects API Client`, `celery_app.py cluster`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `test_report_payment_concurrency.py cluster`, `documents.py cluster`, `test_idempotency.py cluster`, `Schema Docs and Model Index`, `Frontend Auth Session`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Community 124`?**
+- **Why does `Workflow invariants` connect `Community 112` to `Service Worker Sync Scripts`, `Projects Service and Membership`, `Community 227`, `Approvals Inbox Workflow`, `Frontend Projects API Client`, `celery_app.py cluster`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `test_report_payment_concurrency.py cluster`, `documents.py cluster`, `test_idempotency.py cluster`, `Schema Docs and Model Index`, `Frontend Auth Session`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Community 124`?**
   _High betweenness centrality (0.084) - this node is a cross-community bridge._
 - **Are the 478 inferred relationships involving `User` (e.g. with `ApprovalDecisionRequest` and `ApprovalDelegateListResponse`) actually correct?**
   _`User` has 478 INFERRED edges - model-reasoned connections that need verification._

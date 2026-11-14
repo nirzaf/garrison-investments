@@ -397,6 +397,9 @@ import sys
 args = sys.argv
 state = pathlib.Path(args[args.index('--host-state') + 1])
 if '--verify-runtime-config-root' in args:
+    # The real validator parses this Compose JSON; drain it before returning so
+    # the upstream compose command cannot race with a closed pipe.
+    sys.stdin.buffer.read()
     with (state.parent / 'events').open('a') as stream:
         stream.write('runtime-config\\n')
     scenario = os.environ.get('scenario')
