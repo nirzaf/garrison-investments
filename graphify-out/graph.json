@@ -12552,7 +12552,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "services_inventory_service_inventoryservice_create_item",
-      "community": 5,
+      "community": 122,
       "norm_label": ".create_item()"
     },
     {
@@ -12572,7 +12572,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "backend_app_services_inventory_service_py_inventoryitem",
-      "community": 5,
+      "community": 122,
       "norm_label": "inventoryitem"
     },
     {
@@ -12582,7 +12582,7 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "services_inventory_service_inventoryservice_list_items",
-      "community": 5,
+      "community": 122,
       "norm_label": ".list_items()"
     },
     {
@@ -12592,7 +12592,7 @@
       "source_location": "L117",
       "_origin": "ast",
       "id": "services_inventory_service_inventoryservice_list_item_page",
-      "community": 5,
+      "community": 122,
       "norm_label": ".list_item_page()"
     },
     {
@@ -12602,7 +12602,7 @@
       "source_location": "L141",
       "_origin": "ast",
       "id": "services_inventory_service_inventoryservice_get_item",
-      "community": 5,
+      "community": 122,
       "norm_label": ".get_item()"
     },
     {
@@ -13012,7 +13012,7 @@
       "source_location": "L1036",
       "_origin": "ast",
       "id": "services_inventory_service_inventoryservice_find_consumption_items",
-      "community": 5,
+      "community": 122,
       "norm_label": "._find_consumption_items()"
     },
     {
@@ -13052,7 +13052,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "services_inventory_service_rationale_120",
-      "community": 5,
+      "community": 122,
       "norm_label": "return items with their persisted prices intact.          price masking is a pre"
     },
     {
@@ -15852,7 +15852,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "utils_exceptions_permissiondeniedexception",
-      "community": 106,
+      "community": 21,
       "norm_label": "permissiondeniedexception"
     },
     {
@@ -15992,7 +15992,7 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "utils_permissions_has_permission",
-      "community": 5,
+      "community": 21,
       "norm_label": "has_permission()"
     },
     {
@@ -16002,7 +16002,7 @@
       "source_location": "L133",
       "_origin": "ast",
       "id": "backend_app_utils_permissions_py_user",
-      "community": 106,
+      "community": 21,
       "norm_label": "user"
     },
     {
@@ -38565,7 +38565,7 @@
       "label": "Host bootstrap and runner maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L85",
+      "source_location": "L87",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_host_bootstrap_and_runner_maintenance",
       "community": 103,
@@ -38575,7 +38575,7 @@
       "label": "Production maintenance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L123",
+      "source_location": "L125",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_production_maintenance",
       "community": 103,
@@ -38585,7 +38585,7 @@
       "label": "Upgrade an existing PostgreSQL 16 database",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L134",
+      "source_location": "L136",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_upgrade_an_existing_postgresql_16_database",
       "community": 103,
@@ -38595,7 +38595,7 @@
       "label": "Post-Deploy Verification",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L143",
+      "source_location": "L145",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_post_deploy_verification",
       "community": 103,
@@ -38605,7 +38605,7 @@
       "label": "Local production Compose rehearsal",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L165",
+      "source_location": "L167",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_local_production_compose_rehearsal",
       "community": 103,
@@ -38615,7 +38615,7 @@
       "label": "3. Operations, Backup & Restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L175",
+      "source_location": "L177",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_3_operations_backup_restore",
       "community": 78,
@@ -38625,7 +38625,7 @@
       "label": "Scheduled jobs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L177",
+      "source_location": "L179",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_scheduled_jobs",
       "community": 78,
@@ -38635,7 +38635,7 @@
       "label": "Backup and restore",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L188",
+      "source_location": "L190",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_backup_and_restore",
       "community": 78,
@@ -38645,7 +38645,7 @@
       "label": "Independent database and file recovery drill",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L211",
+      "source_location": "L213",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_independent_database_and_file_recovery_drill",
       "community": 78,
@@ -38655,7 +38655,7 @@
       "label": "Data checks and repairs",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L278",
+      "source_location": "L280",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_data_checks_and_repairs",
       "community": 78,
@@ -38665,7 +38665,7 @@
       "label": "Offline storage upgrade",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L289",
+      "source_location": "L291",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_offline_storage_upgrade",
       "community": 78,
@@ -38675,7 +38675,7 @@
       "label": "Rollback",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L297",
+      "source_location": "L299",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_rollback",
       "community": 78,
@@ -38685,7 +38685,7 @@
       "label": "User acceptance",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L305",
+      "source_location": "L307",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_user_acceptance",
       "community": 103,
@@ -38695,7 +38695,7 @@
       "label": "Formal acceptance still pending",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L309",
+      "source_location": "L311",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_formal_acceptance_still_pending",
       "community": 103,
@@ -38705,7 +38705,7 @@
       "label": "5. Formal Acceptance Evidence",
       "file_type": "document",
       "source_file": "docs/OPERATIONS_AND_DEPLOYMENT.md",
-      "source_location": "L324",
+      "source_location": "L326",
       "_origin": "ast",
       "id": "docs_operations_and_deployment_5_formal_acceptance_evidence",
       "community": 103,
@@ -209164,5 +209164,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "3a1c168516052a8adcdcde348f90e730ad0faa11"
+  "built_at_commit": "362163bfb9a2b439de3b88d22b91adae752dd0ca"
 }

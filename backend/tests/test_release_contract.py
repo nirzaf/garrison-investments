@@ -2223,14 +2223,16 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
             yield stream
 
     monkeypatch.setattr(contract, "open_evidence", open_fixture)
-    compose = {"services": {
-        name: {
-            "env_file": [str(candidate / ".env")],
-            "environment": {"LOG_PURGE_ENABLED": "false"},
-            "volumes": [],
+    compose: dict[str, Any] = {
+        "services": {
+            name: {
+                "env_file": [str(candidate / ".env")],
+                "environment": {"LOG_PURGE_ENABLED": "false"},
+                "volumes": [],
+            }
+            for name in ("backend", "celery_worker", "celery_beat")
         }
-        for name in ("backend", "celery_worker", "celery_beat")
-    }}
+    }
     compose["services"]["grafana"] = {"volumes": mounts}
     generated = contract.configuration_files_from_runtime(state, candidate, compose)
     assert generated == file_map
@@ -2238,7 +2240,7 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
         {"configuration_sha256": contract.canonical_digest(generated), "files": generated}
     )
     assert "not-for-output" not in profile_json
-    assert contract.verify_release_configuration(state, candidate, compose) is None
+    contract.verify_release_configuration(state, candidate, compose)
 
     usesend_mount = {
         "type": "bind",

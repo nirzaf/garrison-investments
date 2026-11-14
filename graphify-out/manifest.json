@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794627499.4683719,
-    "ast_hash": "c3ec6a85d40807cac7a00cbe10f6ad2a",
+    "mtime": 1794627953.6229439,
+    "ast_hash": "d84d5c14c38ecf2986ce10c041148d09",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -2030,8 +2030,8 @@
     "semantic_hash": "445a8d7b5d4f281d15223f58382c5da6"
   },
   "backend/tests/test_release_contract.py": {
-    "mtime": 1794626717.7895098,
-    "ast_hash": "d09add65afd3289403515280ff2321a3",
+    "mtime": 1794627834.9056451,
+    "ast_hash": "74eab6e849851bdb337b030e9214ea23",
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {

@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-14)
 
 ## Corpus Check
-- 435 files · ~376,560 words
+- 435 files · ~376,650 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4139 nodes · 16069 edges · 206 communities (190 shown, 16 thin omitted)
+- 4139 nodes · 16069 edges · 207 communities (191 shown, 16 thin omitted)
 - Extraction: 59% EXTRACTED · 41% INFERRED · 0% AMBIGUOUS · INFERRED: 6576 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3a1c1685`
+- Built from commit: `362163bf`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -136,6 +136,7 @@
 - [[_COMMUNITY_202605160009_photos.py cluster|202605160009_photos.py cluster]]
 - [[_COMMUNITY_202605160010_documents.py cluster|202605160010_documents.py cluster]]
 - [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_materials-analytics.e2e.ts cluster|materials-analytics.e2e.ts cluster]]
 - [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_Community 125|Community 125]]
@@ -228,7 +229,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (206 total, 16 thin omitted)
+## Communities (207 total, 16 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.06
@@ -251,8 +252,8 @@ Cohesion: 0.15
 Nodes (16): approveDocumentVersion(), DocumentDownloadUrl, DocumentListResponse, DocumentRecord, DocumentVersionRecord, getDocument(), getDocumentDownloadUrl(), listDocuments() (+8 more)
 
 ### Community 5 - "Seed Data and Release Contract Tests"
-Cohesion: 0.13
-Nodes (10): Decimal, InventoryItem, InventoryLocationStock, MovementCreateRequest, User, UUID, InventoryMovement, MaterialRequest (+2 more)
+Cohesion: 0.18
+Nodes (7): Decimal, InventoryLocationStock, MovementCreateRequest, User, UUID, InventoryMovement, MaterialRequest
 
 ### Community 6 - "Frontend Projects API Client"
 Cohesion: 0.06
@@ -313,6 +314,10 @@ Nodes (59): AuthUser, changePassword(), confirmPasswordReset(), login(), LoginCh
 ### Community 20 - "File Magic Validation"
 Cohesion: 0.07
 Nodes (44): sessionRequestConfig(), classifyReportFile(), detectFileFormat(), ReportFileKind, heicHeader, pngHeader, validateDocumentFile(), deletePhoto() (+36 more)
+
+### Community 21 - "Inventory Service and Idempotency"
+Cohesion: 0.25
+Nodes (4): User, BusinessRuleException, PermissionDeniedException, has_permission()
 
 ### Community 22 - "Document and Finance API Client"
 Cohesion: 0.14
@@ -640,7 +645,7 @@ Nodes (14): AsyncSession, datetime, Notification, UUID, AsyncSession, Notificati
 
 ### Community 106 - "Community 106"
 Cohesion: 0.11
-Nodes (75): Request, ApprovalCreateRequest, InventoryItem, InventoryLocationStock, AnalyticsSummaryResponse, AsyncSession, Minio, ApprovalCreateRequest (+67 more)
+Nodes (73): Request, ApprovalCreateRequest, InventoryItem, InventoryLocationStock, AnalyticsSummaryResponse, AsyncSession, Minio, ApprovalCreateRequest (+65 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.18
@@ -812,7 +817,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `BaseModel` connect `context.py cluster` to `Authenticated Backup Set`, `Audit Retention Enforcement`, `Daily Report Endpoints`, `Docs Map and Generated Types`, `Health Monitor Daemon`, `Community 160`, `inventory.py cluster`, `Community 188`, `projects.py cluster`, `Community 195`, `photo_repository.py cluster`, `Community 200`, `imports.ts cluster`, `Community 83`, `repair_offline_duplicates.py cluster`, `Community 217`, `Community 220`, `Community 95`, `Community 225`, `Community 121`, `Community 126`?**
   _High betweenness centrality (0.094) - this node is a cross-community bridge._
-- **Why does `User` connect `Community 106` to `Seed Data and Release Contract Tests`, `Community 7`, `Inventory Accounting Tests and Errors`, `Bulk CSV Import Pipeline`, `Inventory Endpoints and Schemas`, `Analytics Export Service`, `Document Control API and Service`, `Photo Service and Protected Delivery`, `Supplier Management`, `Schema Docs and Model Index`, `Daily Report Endpoints`, `Browser Fixtures and Test Time Utils`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Notification Delivery`, `Daily Report Repository`, `App Bootstrap and Architecture Docs`, `Frontend Approvals Client`, `Daily Report Endpoint Tests`, `test_finance.py cluster`, `test_report_payment_concurrency.py cluster`, `test_delegation_guards.py cluster`, `docker-compose.staging.yml cluster`, `audit_retention_policy.py cluster`, `test_scope_authorization.py cluster`, `inventory.py cluster`, `Community 70`, `test_authorization_matrix.py cluster`, `Community 88`, `Community 105`, `users.py cluster`?**
+- **Why does `User` connect `Community 106` to `Seed Data and Release Contract Tests`, `Community 7`, `Inventory Accounting Tests and Errors`, `Bulk CSV Import Pipeline`, `Inventory Endpoints and Schemas`, `Analytics Export Service`, `Document Control API and Service`, `Photo Service and Protected Delivery`, `Supplier Management`, `Schema Docs and Model Index`, `Inventory Service and Idempotency`, `Daily Report Endpoints`, `Browser Fixtures and Test Time Utils`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Notification Delivery`, `Daily Report Repository`, `App Bootstrap and Architecture Docs`, `Frontend Approvals Client`, `Daily Report Endpoint Tests`, `test_finance.py cluster`, `test_report_payment_concurrency.py cluster`, `test_delegation_guards.py cluster`, `docker-compose.staging.yml cluster`, `audit_retention_policy.py cluster`, `test_scope_authorization.py cluster`, `inventory.py cluster`, `Community 70`, `test_authorization_matrix.py cluster`, `Community 88`, `Community 105`, `users.py cluster`, `Community 122`?**
   _High betweenness centrality (0.087) - this node is a cross-community bridge._
 - **Why does `Workflow invariants` connect `Community 112` to `Service Worker Sync Scripts`, `Projects Service and Membership`, `Frontend Projects API Client`, `celery_app.py cluster`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `test_report_payment_concurrency.py cluster`, `report_export_service.py cluster`, `documents.py cluster`, `Supplier Management`, `Schema Docs and Model Index`, `Frontend Auth Session`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Community 124`, `Community 125`?**
   _High betweenness centrality (0.085) - this node is a cross-community bridge._
