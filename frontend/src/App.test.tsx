@@ -186,6 +186,9 @@ describe('App route smoke tests', () => {
     expect(html).toContain('operations guide');
     expect(html).toContain('Use disposable test services for synthetic data');
     expect(html).toContain('There is no staging deployment.');
+    expect(html).toContain('D-28: Records owner approval of the retain-only policy');
+    expect(html).toContain('D-29: System owner approval of independent backup targets');
+    expect(html).toContain('D-32: QA lead approval of Chrome and Edge targets');
     expect(html).toContain('Daily and monthly database backup schedules are configured.');
     expect(html).toContain(
       'This does not prove a successful run or recovery of referenced files; both require operational evidence and an executed restore drill.'

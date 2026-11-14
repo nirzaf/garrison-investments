@@ -5642,7 +5642,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_auth",
-      "community": 124,
+      "community": 101,
       "norm_label": "auth.py"
     },
     {
@@ -5752,7 +5752,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_daily_report",
-      "community": 125,
+      "community": 124,
       "norm_label": "daily_report.py"
     },
     {
@@ -5872,7 +5872,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "models_idempotency_record",
-      "community": 67,
+      "community": 124,
       "norm_label": "idempotency_record.py"
     },
     {
@@ -8842,7 +8842,7 @@
       "source_location": "L128",
       "_origin": "ast",
       "id": "schemas_inventory_materialrequestcreaterequest",
-      "community": 94,
+      "community": 75,
       "norm_label": "materialrequestcreaterequest"
     },
     {
@@ -35547,7 +35547,7 @@
       "label": "DeliveryPlanPage()",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L67",
+      "source_location": "L68",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_deliveryplanpage",
       "community": 194,
@@ -35557,7 +35557,7 @@
       "label": "Checklist()",
       "file_type": "code",
       "source_file": "frontend/src/pages/delivery/DeliveryPlanPage.tsx",
-      "source_location": "L128",
+      "source_location": "L129",
       "_origin": "ast",
       "id": "delivery_deliveryplanpage_checklist",
       "community": 194,
@@ -39078,7 +39078,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_auth_otp_challenges",
-      "community": 124,
+      "community": 101,
       "norm_label": "auth_otp_challenges.md"
     },
     {
@@ -39198,7 +39198,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_daily_report_approval_history",
-      "community": 125,
+      "community": 124,
       "norm_label": "daily_report_approval_history.md"
     },
     {
@@ -39258,7 +39258,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_daily_reports",
-      "community": 125,
+      "community": 124,
       "norm_label": "daily_reports.md"
     },
     {
@@ -39438,7 +39438,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_idempotency_records",
-      "community": 67,
+      "community": 124,
       "norm_label": "idempotency_records.md"
     },
     {
@@ -39448,7 +39448,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_idempotency_records_idempotency_records",
-      "community": 67,
+      "community": 7,
       "norm_label": "idempotency_records"
     },
     {
@@ -39458,7 +39458,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "schema_idempotency_records_columns",
-      "community": 67,
+      "community": 7,
       "norm_label": "columns"
     },
     {
@@ -39468,7 +39468,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "schema_idempotency_records_keys_and_constraints",
-      "community": 67,
+      "community": 7,
       "norm_label": "keys and constraints"
     },
     {
@@ -39478,7 +39478,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "schema_idempotency_records_foreign_keys",
-      "community": 67,
+      "community": 7,
       "norm_label": "foreign keys"
     },
     {
@@ -39488,7 +39488,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "schema_idempotency_records_indexes",
-      "community": 67,
+      "community": 7,
       "norm_label": "indexes"
     },
     {
@@ -40388,7 +40388,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_equipment",
-      "community": 125,
+      "community": 124,
       "norm_label": "report_equipment.md"
     },
     {
@@ -40508,7 +40508,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_manpower",
-      "community": 125,
+      "community": 124,
       "norm_label": "report_manpower.md"
     },
     {
@@ -40518,7 +40518,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_manpower_report_manpower",
-      "community": 125,
+      "community": 51,
       "norm_label": "report_manpower"
     },
     {
@@ -40528,7 +40528,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "schema_report_manpower_columns",
-      "community": 125,
+      "community": 51,
       "norm_label": "columns"
     },
     {
@@ -40538,7 +40538,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "schema_report_manpower_keys_and_constraints",
-      "community": 125,
+      "community": 51,
       "norm_label": "keys and constraints"
     },
     {
@@ -40548,7 +40548,7 @@
       "source_location": "L26",
       "_origin": "ast",
       "id": "schema_report_manpower_foreign_keys",
-      "community": 125,
+      "community": 51,
       "norm_label": "foreign keys"
     },
     {
@@ -40558,7 +40558,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "schema_report_manpower_indexes",
-      "community": 125,
+      "community": 51,
       "norm_label": "indexes"
     },
     {
@@ -40568,7 +40568,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_material_consumption",
-      "community": 125,
+      "community": 124,
       "norm_label": "report_material_consumption.md"
     },
     {
@@ -40578,7 +40578,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "schema_report_material_consumption_report_material_consumption",
-      "community": 125,
+      "community": 98,
       "norm_label": "report_material_consumption"
     },
     {
@@ -40588,7 +40588,7 @@
       "source_location": "L7",
       "_origin": "ast",
       "id": "schema_report_material_consumption_columns",
-      "community": 125,
+      "community": 98,
       "norm_label": "columns"
     },
     {
@@ -40598,7 +40598,7 @@
       "source_location": "L22",
       "_origin": "ast",
       "id": "schema_report_material_consumption_keys_and_constraints",
-      "community": 125,
+      "community": 98,
       "norm_label": "keys and constraints"
     },
     {
@@ -40608,7 +40608,7 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "schema_report_material_consumption_foreign_keys",
-      "community": 125,
+      "community": 98,
       "norm_label": "foreign keys"
     },
     {
@@ -40618,7 +40618,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "schema_report_material_consumption_indexes",
-      "community": 125,
+      "community": 98,
       "norm_label": "indexes"
     },
     {
@@ -40922,7 +40922,7 @@
       "contributor": null,
       "kind": "schema_page",
       "purpose": "Hashed refresh tokens with expiry and revocation timestamps.",
-      "community": 124,
+      "community": 101,
       "norm_label": "auth_refresh_tokens",
       "id": "schema_auth_refresh_tokens"
     },
@@ -208513,5 +208513,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "f2e77f578e6e5d1869cf114e009695e58bb9c20d"
+  "built_at_commit": "904e02f2d8b6d0931199af79b923e10d761269e4"
 }

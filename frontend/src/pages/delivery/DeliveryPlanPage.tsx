@@ -57,11 +57,12 @@ const acceptanceScenarios = [
 ];
 
 const remainingInputs = [
-  'Formal acceptance from the business sponsor, finance/data owner, QA lead, and operations owner',
-  'Independent backup and monitoring destinations and named operators',
-  'Company-approved report, export, BOQ, and numbering templates',
-  'Source spreadsheets for launch users, projects, suppliers, inventory, BOQ, and opening stock',
-  'QA sign-off for desktop Chrome and Edge'
+  'D-27: Business sponsor signature on launch_readiness_only, the frozen scope inventory, and the G-01 exclusion',
+  'D-28: Records owner approval of the retain-only policy, event classes, deadlines, hold behavior, and legacy dispositions',
+  'D-29: System owner approval of independent backup targets, RPO/RTO, key custodians, operators, and restore evidence',
+  'D-30: Operations owner approval of off-host monitoring, recipients, responders, and firing/resolution evidence',
+  'D-32: QA lead approval of Chrome and Edge targets, scenario roles, network/performance budgets, and executed results',
+  'D-33: Finance/data owner approval of assignments, business samples, financial/import conventions, and final signatories'
 ];
 
 export function DeliveryPlanPage() {
