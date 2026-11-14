@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -12,12 +15,15 @@ concurrency:
 jobs:
   backend-static:
     name: Backend lint and types
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, garrison-ci]
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -34,12 +40,15 @@ jobs:
 
   frontend:
     name: Frontend lint, types, tests and build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, garrison-ci]
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -65,19 +74,26 @@ jobs:
 
   compose-validate:
     name: Compose files are valid
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, garrison-ci]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Prepare example production environment file
         run: cp .env.example .env
       - name: Validate production compose file
         run: docker compose --env-file .env.example -f docker-compose.prod.yml config --quiet
       - name: Start object storage and initialize the Loki bucket
-        run: docker compose --env-file .env.example -f docker-compose.prod.yml run --rm loki_minio_init
+        run: docker compose --project-name garrison-ci-compose --env-file .env.example -f docker-compose.prod.yml run --rm loki_minio_init
+      - name: Clean up Compose fixtures
+        if: always() && hashFiles('.env.example') != ''
+        run: docker compose --project-name garrison-ci-compose --env-file .env.example -f docker-compose.prod.yml down --volumes
 
   integration-tests:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, garrison-ci]
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -126,6 +142,8 @@ jobs:
           --health-retries 25
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
