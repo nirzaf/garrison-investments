@@ -100,7 +100,7 @@ UAT_REQUIRED_ROLES = {
     "UAT-28": ({"civil_engineer"},),
     "UAT-33": ({"admin"},),
 }
-DESKTOP_BROWSERS = {"Chrome", "Edge"}
+DESKTOP_BROWSERS = {"Chrome"}
 OPERATOR_SCENARIOS = {33, 36, 37, 38, 40}
 FINAL_SCENARIOS = {36, 37, 38, 40}
 CONTROL_FINAL_ONLY = {
@@ -879,7 +879,7 @@ def decision_support(record: dict[str, Any]) -> None:
     desktop = {device_key(value) for value in items(record["desktop_targets"], "desktop targets")}
     require(
         {device[3] for device in desktop} == DESKTOP_BROWSERS,
-        "Approved desktop targets must include Chrome and Edge.",
+        "Approved desktop targets must include Chrome.",
         3,
     )
     require(

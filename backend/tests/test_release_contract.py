@@ -332,7 +332,7 @@ def decision_values(bundle: Bundle) -> dict[str, dict[str, Any]]:
             "maintenance_rules_ref": ref,
         },
         "D-32-SUPPORT": {
-            "desktop_targets": [device("desktop", "Chrome"), device("desktop", "Edge")],
+            "desktop_targets": [device("desktop", "Chrome")],
             "physical_mobile_targets": [],
             "scenario_platform_map": matrix,
             "network_profiles": ["Fixture impaired network"],
@@ -1804,13 +1804,13 @@ def test_uat_matrix_requires_the_specified_role_on_desktop(tmp_path: Path) -> No
         contract.scenario_matrix(matrix)
 
 
-def test_uat_support_requires_chrome_and_edge_only(tmp_path: Path) -> None:
+def test_uat_support_requires_chrome_only(tmp_path: Path) -> None:
     support = decision_values(Bundle(tmp_path))["D-32-SUPPORT"]
     contract.decision_support(support)
     assert contract.required_platforms("UAT-21") == {"desktop"}
     assert contract.required_platforms("UAT-40") == {"desktop", "operations"}
-    with pytest.raises(contract.ContractError, match="must include Chrome and Edge"):
-        contract.decision_support({**support, "desktop_targets": [device("desktop", "Chrome")]})
+    with pytest.raises(contract.ContractError, match="desktop browser"):
+        contract.decision_support({**support, "desktop_targets": [device("desktop", "Firefox")]})
     with pytest.raises(contract.ContractError, match="desktop browser"):
         extra_targets = support["desktop_targets"] + [device("desktop", "Firefox")]
         contract.decision_support({**support, "desktop_targets": extra_targets})
@@ -1968,7 +1968,7 @@ def test_production_predeploy_receipts_use_production_identity(
         ("irrelevant receipt", 3, "relevant phase-specific receipts"),
         ("unsigned publication", 3, "publication must be verified artifacts"),
         ("empty scenario", 3, "UAT scenario results"),
-        ("missing Edge result", 3, "required UAT scenario, platform or role"),
+        ("missing Chrome result", 3, "required UAT scenario, platform or role"),
     ],
 )
 def test_strict_gate_fails_closed(
@@ -2041,7 +2041,7 @@ def test_strict_gate_fails_closed(
                 data["receipts"][index] = bundle.receipt(
                     "recovery", receipt["results"], executor=receipt["executed_by"]
                 )
-    elif mutation in {"empty scenario", "missing Edge result"}:
+    elif mutation in {"empty scenario", "missing Chrome result"}:
         for index, ref in enumerate(data["receipts"]):
             if ref["path"].endswith("predeploy-uat.json"):
                 content = json.loads((bundle.root / ref["path"]).read_text())
@@ -2049,10 +2049,10 @@ def test_strict_gate_fails_closed(
                 if mutation == "empty scenario":
                     scenarios.clear()
                 else:
-                    edge_result = next(
-                        row for row in scenarios if row["device"]["browser"] == "Edge"
+                    chrome_result = next(
+                        row for row in scenarios if row["device"]["browser"] == "Chrome"
                     )
-                    scenarios.remove(edge_result)
+                    scenarios.remove(chrome_result)
                 data["receipts"][index] = bundle.receipt("uat", content["results"])
     bundle.write("release_manifest.json", data)
     with pytest.raises(contract.ContractError, match=reason) as failed:
