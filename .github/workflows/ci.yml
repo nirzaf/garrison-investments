@@ -219,10 +219,10 @@ jobs:
           BROWSER_TEST_PREBUILT: "true"
         run: |
           # Balance by measured test time. The complement also picks up new test files.
-          # Run 43535437953 measured 106.16s/162.54s by shard.
-          # Moving finance-workflows (23.41s) and import-workflow (9.29s)
-          # projects 138.86s/129.84s; compare the next exact-main run for variance.
-          group='/(approval-delegation|daily-report|finance-workflows|import-workflow|offline-isolation|role-navigation|user-role|supervisor-draft)\.e2e\.ts$'
+          # Run 43536923181 measured 208.76s/128.11s after moving finance/import.
+          # The prior assignment projects 173.26s/163.60s on those file timings;
+          # restore it and compare another run because per-test timings varied sharply.
+          group='/(approval-delegation|daily-report|offline-isolation|role-navigation|user-role|supervisor-draft)\.e2e\.ts$'
           case "$BROWSER_SHARD" in
             1) filter="$group" ;;
             2) filter="^(?!.*$group)" ;;
