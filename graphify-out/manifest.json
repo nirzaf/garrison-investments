@@ -1265,8 +1265,8 @@
     "semantic_hash": "47d728c2f7c0725b62be2c4a24873782"
   },
   "README.md": {
-    "mtime": 1794643098.0830834,
-    "ast_hash": "c8e1f1ee921d432a082670f92beb8c61",
+    "mtime": 1794647314.1710823,
+    "ast_hash": "388f64ffd20d2fec0c87c3d4209cb000",
     "semantic_hash": ""
   },
   "STAGING_DEPLOYMENT.md": {
@@ -1285,9 +1285,9 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1794490813.926286,
-    "ast_hash": "84ab2e667292199a7d13a164cc562e1a",
-    "semantic_hash": "84ab2e667292199a7d13a164cc562e1a"
+    "mtime": 1794643726.8243647,
+    "ast_hash": "e67fa2a57f4977082768c372a117b1f5",
+    "semantic_hash": ""
   },
   ".trae/skills/graphify/SKILL.md": {
     "mtime": 1794403366.8371954,
@@ -1325,8 +1325,8 @@
     "semantic_hash": "002762f3526fe5299d089c451b8505ab"
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1794641748.7292469,
-    "ast_hash": "c3142210fe459077371e127c9653da47",
+    "mtime": 1794652405.3081381,
+    "ast_hash": "3290babf34f3e5025c1e0f9d5ed8112f",
     "semantic_hash": ""
   },
   "docs/ROLES_AND_PERMISSIONS.md": {
@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794641790.1921742,
-    "ast_hash": "ce111bb9e4318e006fb11d5ffc15b453",
+    "mtime": 1794647314.1716838,
+    "ast_hash": "46fe85f891d54422afddc642dbe8523c",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -1920,8 +1920,8 @@
     "semantic_hash": "4e27e31e049f876c5f27fb3bfa2468fc"
   },
   "deploy/hostinger-release.sh": {
-    "mtime": 1794641600.6429467,
-    "ast_hash": "d5cb27b35014feffbba84a5dd5ad7f36",
+    "mtime": 1794652389.94379,
+    "ast_hash": "6f87f71a83964fbe2643ad560a9def3f",
     "semantic_hash": ""
   },
   "backend/alembic/versions/202605310001_bind_supervisor_verification.py": {
@@ -2035,8 +2035,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_release_rollback.py": {
-    "mtime": 1794641832.8172088,
-    "ast_hash": "c3619129b68d6d8414a90376a23bdf24",
+    "mtime": 1794652356.7139142,
+    "ast_hash": "5ab1aa8b6b5bad0229e93ac494aab564",
     "semantic_hash": ""
   },
   "deploy/capture-recovery-set.sh": {
@@ -2395,8 +2395,8 @@
     "semantic_hash": ""
   },
   "docs/CLI_ADMINISTRATION.md": {
-    "mtime": 1794643097.8243678,
-    "ast_hash": "d44de1ed69f56ab320c7dc86e76a1842",
+    "mtime": 1794643275.6370122,
+    "ast_hash": "41cae98936aac074091522c5b59793fa",
     "semantic_hash": ""
   }
 }

@@ -116,7 +116,8 @@ if (
 }
 
 ci_attempt=$(verify_ci)
-github "actions/runs/$deploy_run_id/attempts/$deploy_attempt" | python3 -c '
+verify_deploy_run() {
+  github "actions/runs/$deploy_run_id/attempts/$deploy_attempt" | python3 -c '
 import json, sys
 
 run = json.load(sys.stdin)
@@ -124,14 +125,19 @@ if not (
     run.get("id") == int(sys.argv[1])
     and run.get("run_attempt") == int(sys.argv[2])
     and run.get("path") == ".github/workflows/deploy.yml"
-    and run.get("status") == "in_progress"
+    # GitHub can dispatch a self-hosted job before the run-status API catches
+    # up from queued. This privileged script is invoked by that runner, so
+    # accept either live state while retaining the exact run identity checks.
+    and run.get("status") in {"queued", "in_progress"}
     and run.get("head_branch") == "main"
     and (run.get("head_repository") or {}).get("full_name") == sys.argv[3]
     and (run.get("event") == "workflow_run"
          or (run.get("event") == "workflow_dispatch" and run.get("head_sha") == sys.argv[4]))
 ):
     sys.exit("The production deployment run does not match this invocation.")
-' "$deploy_run_id" "$deploy_attempt" "$repository" "$sha"
+  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$sha"
+}
+verify_deploy_run
 verify_main
 
 check_readiness() {

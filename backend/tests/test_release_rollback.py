@@ -19,7 +19,7 @@ def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
 ) -> None:
     source = SCRIPT.read_text()
     start = source.index("\nverify_ci() {\n")
-    end = source.index('\ngithub "actions/runs/$deploy_run_id', start)
+    end = source.index("\nverify_deploy_run() {", start)
     receipt_start = source.index("\nprintf 'Status: Deployed")
     receipt_end = source.index("\nln -sfn", receipt_start)
     sha = "a" * 40
@@ -89,6 +89,55 @@ github() {{
         assert result.returncode != 0
         assert not receipt.exists()
         assert "missing a passed required job" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("run_status", "accepted"),
+    [("queued", True), ("in_progress", True), ("completed", False), ("waiting", False)],
+)
+def test_active_deployment_run_status_allows_api_propagation_delay(
+    run_status: str, accepted: bool
+) -> None:
+    source = SCRIPT.read_text()
+    start = source.index("\nverify_deploy_run() {\n")
+    end = source.index("\nverify_deploy_run\n", start)
+    sha = "a" * 40
+    repository = "nirzaf/garrison-investments"
+    run = json.dumps({
+        "id": 456,
+        "run_attempt": 1,
+        "path": ".github/workflows/deploy.yml",
+        "status": run_status,
+        "head_branch": "main",
+        "head_repository": {"full_name": repository},
+        "event": "workflow_run",
+        "head_sha": sha,
+    })
+    result = subprocess.run(
+        ["bash", "-c", f"""
+set -euo pipefail
+deploy_run_id=456
+deploy_attempt=1
+repository={repository}
+sha={sha}
+github() {{
+  case "$1" in
+    actions/runs/456/attempts/1) printf '%s\\n' {shlex.quote(run)} ;;
+    *) return 2 ;;
+  esac
+}}
+{source[start:end]}
+verify_deploy_run
+"""],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if accepted:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode != 0
+        assert "does not match this invocation" in result.stderr
 
 
 @pytest.mark.parametrize(
