@@ -219,10 +219,10 @@ jobs:
           BROWSER_TEST_PREBUILT: "true"
         run: |
           # Balance by measured test time. The complement also picks up new test files.
-          # Run 43528889335 measured 205.96s on shard 1 and 106.06s on shard 2.
-          # Moving finance-workflows (27.13s) and project-setup (20.67s) to shard 2
-          # projects 158.16s and 153.86s of case time, respectively; verify job time.
-          group='/(media-documents|offline-isolation|role-navigation)\.e2e\.ts$'
+          # Run 43529924115 measured 126.98s on shard 1 and 202.26s on shard 2.
+          # Moving daily-report (32.93s) and user-role (6.48s) to shard 1
+          # projects 166.39s and 162.85s of case time, respectively.
+          group='/(media-documents|offline-isolation|role-navigation|daily-report|user-role)\.e2e\.ts$'
           case "$BROWSER_SHARD" in
             1) filter="$group" ;;
             2) filter="^(?!.*$group)" ;;
