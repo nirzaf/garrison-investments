@@ -214,21 +214,42 @@ Agree on the backup destination, key custodian, retained evidence, recovery poin
 
 [The backup-set tool](../backend/scripts/backup_set.py) captures the application database and required files. It reads database references from the same PostgreSQL snapshot as the dump. The set includes active and superseded document versions, report PDFs, current invoice and supplier attachments, and photo originals and generated variants for active and recoverable records. If policy retains replaced attachment objects, supply their keys from the approved inventory with `--extra-objects`. Supply `BACKUP_GRAFANA_DATABASE_URL` in the private environment to include the Grafana database. Capture during a recorded write pause that also covers the object store and any Grafana database included in the set.
 
-From the authorized backend environment, set `BACKUP_ENCRYPTION_PASSWORD` privately. Create a new set directory on the approved destination and verify its encrypted artifacts.
+For a new set that can count toward acceptance, use the approved D-29 policy and authenticated format 2. Captures without `--policy` use the legacy checksum-only format 1 and are retained only for historical recovery. In the authorized backend environment, provide `BACKUP_ENCRYPTION_PASSWORD`, `BACKUP_AUTH_KEY_FILE`, and `BACKUP_AUTH_KEY_ID` through restricted inputs. Keep the approved policy at `$RECOVERY_POLICY` and the allowlisted nonsecret runtime files at `$RECOVERY_CONFIGURATION_ROOT`.
 
 ```bash
 python -m scripts.backup_set capture \
   --source-sha "$RELEASE_SHA" \
   --consistency-note "$WRITE_PAUSE_EVIDENCE" \
-  --destination /private/independent-storage/backup-set
-python -m scripts.backup_set verify /private/independent-storage/backup-set
+  --destination "$LOCAL_SET" \
+  --policy "$RECOVERY_POLICY" \
+  --capture-receipt "$CAPTURE_RECEIPT" \
+  --configuration-root "$RECOVERY_CONFIGURATION_ROOT"
+python -m scripts.backup_set verify "$LOCAL_SET" \
+  --policy "$RECOVERY_POLICY" --require-authenticated
 ```
 
-The `verify` command checks artifact presence, size and SHA-256. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
+The authenticated `verify` command checks the exact manifest signature, artifact presence, size, and hashes before restore. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
 
-For the approved D-29 recovery policy, pass `--policy "$RECOVERY_POLICY"` when capturing, publishing, fetching and restoring a format 2 set. Supply `BACKUP_AUTH_KEY_FILE` and `BACKUP_AUTH_KEY_ID` through the operator's restricted environment, separately from the backup encryption password. The independent destination uses its approved `DR_BACKUP_*` settings and separate publisher and reader credentials. Publish with `python -m scripts.backup_set publish "$LOCAL_SET" --policy "$RECOVERY_POLICY" --receipt "$PUBLICATION_RECEIPT"`. The publisher verifies the remote encrypted artifacts before it writes the signed completion record. A substitute operator can fetch a complete set with `fetch "$BACKUP_SET_ID" --policy "$RECOVERY_POLICY" --destination "$ISOLATED_SET"` and then restore it with `--require-authenticated`. Retain the existing format 1 sets for historical recovery and record their checksum-only assurance.
+Use that same approved policy for publication, fetch and restore. Publication also requires the separate prefix-scoped `DR_BACKUP_*` publisher credentials; it verifies remote encrypted bytes before writing the authenticated completion record. For example, publish with `python -m scripts.backup_set publish "$LOCAL_SET" --policy "$RECOVERY_POLICY" --receipt "$PUBLICATION_RECEIPT"`. A substitute operator can fetch a complete set with `fetch "$BACKUP_SET_ID" --policy "$RECOVERY_POLICY" --destination "$ISOLATED_SET"` and restore it with `--require-authenticated`. Retain the existing format 1 sets for historical recovery and record their checksum-only assurance.
 
-The [scheduled capture service](../deploy/backup-set.service) invokes the [capture wrapper](../deploy/capture-recovery-set.sh) under the same host lock as deployment. Set `RECOVERY_POLICY`, `RECOVERY_CAPTURE_TEMPLATE`, `RECOVERY_CAPTURE_ENV`, `RECOVERY_PUBLISH_ENV`, and the two authentication key variables in the root-owned scheduler environment. Set `RECOVERY_CONFIGURATION_ROOT` to a dedicated root-owned directory containing only the approved nonsecret recovery configuration. Keep the policy, capture inventory, credentials and authentication key outside that directory. Install the service and wrapper only after exercising the write pause and recovery against the approved destination. Choose the timer interval from the approved recovery point target and measured capture duration.
+The [scheduled capture service](../deploy/backup-set.service) invokes the [capture wrapper](../deploy/capture-recovery-set.sh) under the same host lock as deployment. Set `RECOVERY_POLICY`, `RECOVERY_CAPTURE_TEMPLATE`, `RECOVERY_CAPTURE_ENV`, `RECOVERY_PUBLISH_ENV`, and the two authentication key variables in the root-owned scheduler environment. Set `RECOVERY_CONFIGURATION_ROOT` to a dedicated root-owned directory containing only the approved nonsecret recovery configuration. Keep the policy, capture inventory, credentials and authentication key outside that directory. Install the service and wrapper only after exercising the write pause and recovery against the approved destination.
+
+Generate the systemd timer from the authenticated approved policy; do not hand-edit an interval or use an unexpanded environment variable in `OnCalendar`. The generator uses `backup_interval_minutes` and rejects intervals longer than one day so those can use a separately approved external scheduler. Installing or enabling this timer in production requires the approved recovery decision, a successful rehearsal, and the separate operational authorization for that change.
+
+```bash
+TIMER_DIR=$(mktemp -d)
+TIMER_TMP="$TIMER_DIR/backup-set.timer"
+python -m scripts.backup_set schedule \
+  --policy "$RECOVERY_POLICY" \
+  --output "$TIMER_TMP"
+sudo systemd-analyze verify "$TIMER_TMP" /etc/systemd/system/backup-set.service
+sudo install -o root -g root -m 0644 "$TIMER_TMP" /etc/systemd/system/backup-set.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now backup-set.timer
+sudo systemctl list-timers backup-set.timer
+rm -f "$TIMER_TMP"
+rmdir "$TIMER_DIR"
+```
 
 The wrapper uses one private `.scheduled-capture` workspace under `/opt/garrison-portal/recovery/scheduled/`. It removes that workspace after verified publication and writer recovery. When publication fails after writers resume, the next run retries the same signed set before creating another capture. If its publication deadline has passed, the active release changed, or writer recovery is unverified, review `last-attempt.json` and resolve the pending set with the recovery operator. Review historical `capture-*` directories separately before reclaiming their disk space.
 
