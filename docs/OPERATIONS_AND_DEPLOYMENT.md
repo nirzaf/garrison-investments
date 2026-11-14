@@ -56,7 +56,7 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, required jobs and current `main` before fetching the tested archive.
 
-The installed [host release script](../deploy/hostinger-release.sh) checks protected configuration, audit deletion settings, stateful Compose resources and Alembic heads. It builds from the tested source and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [release closure guide](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
+The installed [host release script](../deploy/hostinger-release.sh) verifies the CI run and attempt, checks the exact-release predeployment authorization and effective runtime configuration (including disabled audit deletion) through `/usr/local/libexec/garrison-release-contract.py`, and checks stateful Compose resources and Alembic heads. It records `PREDEPLOY_MANIFEST.json` and `PREDEPLOY.json`, builds from the tested source, and takes encrypted application and Grafana database backups before activation. It swaps the frontend index atomically and checks running images, readiness and served HTML, JavaScript and service worker hashes. Success advances `current` and writes `DEPLOYED` with **Deployed — Formal Acceptance Pending**. Failed activations follow the [rollback procedure](#rollback). Formal acceptance follows the [release closure guide](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
 ### Review pipeline time on every release
 
@@ -102,6 +102,9 @@ Provision the existing stack and an initial active release before registering th
 | --- | --- |
 | `production.env` | Private configuration copied into each candidate release. |
 | `compose.vps.yml` | Existing stateful resource names, TLS and key mounts, and host-specific overrides. |
+| `authorized-configuration.json` | Approved `files` digest map and `configuration_sha256` checked against host, release, and external mounts. |
+| `approval-trust.json` | Root-controlled registry of independently verified approval artifacts. |
+| `authorizations/<full-source-sha>/` | Root-controlled predeployment manifest and evidence for each authorized candidate SHA. |
 | `current` | Link to the last verified release containing `.env`, `.images.env`, `SOURCE_COMMIT`, and its deployment receipt. |
 | `deploy.lock` | Host-side serialization across release attempts. |
 
@@ -240,7 +243,7 @@ python -m scripts.backup_set verify "$LOCAL_SET" \
   --policy "$RECOVERY_POLICY" --require-authenticated
 ```
 
-The authenticated `verify` command checks the exact manifest signature, artifact presence, size, and hashes before restore. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
+The authenticated `verify` command checks the exact manifest signature, artifact presence, size, and hashes before restore. For a recovery exercise, mount the set in a disposable environment with its own empty PostgreSQL databases and new object bucket. Configure `RESTORE_DATABASE_URL`, optional `RESTORE_GRAFANA_DATABASE_URL`, `RESTORE_OBJECT_ENDPOINT`, `RESTORE_OBJECT_BUCKET`, `RESTORE_OBJECT_ACCESS_KEY`, and `RESTORE_OBJECT_SECRET_KEY` privately. The tool accepts only loopback PostgreSQL databases named `garrison_restore_test_*` (querying `pg_catalog` to reject databases that already contain user schemas, relations, functions, types, or large objects) and a new loopback bucket named `garrison-restore-test-*`. Disable outbound mail and scheduled business jobs in the restored application.
 
 Use that same approved policy for publication, fetch and restore. Publication also requires the separate prefix-scoped `DR_BACKUP_*` publisher credentials; it verifies remote encrypted bytes before writing the authenticated completion record. For example, publish with `python -m scripts.backup_set publish "$LOCAL_SET" --policy "$RECOVERY_POLICY" --receipt "$PUBLICATION_RECEIPT"`. A substitute operator can fetch a complete set with `fetch "$BACKUP_SET_ID" --policy "$RECOVERY_POLICY" --destination "$ISOLATED_SET"` and restore it with `--require-authenticated`. Retain the existing format 1 sets for historical recovery and record their checksum-only assurance.
 
@@ -349,7 +352,7 @@ python scripts/launch_evidence.py --target production --commit "$RELEASE_SHA" \
 
 After deployed readback, live checks, the approved observation cycle, and final owner sign-off, run the same command with `--phase final` and separate verdict paths. Its evidence requirements apply to formal acceptance. The production workflow runs its technical checks independently. Only the final successful verdict can certify the frozen scope. The existing collection command below remains useful for a draft evidence summary.
 
-[launch_evidence.py](../backend/scripts/launch_evidence.py) checks the supplied URLs and records hashes for attached evidence files. Run it from a trusted checkout using private output paths and the actual release values:
+[launch_evidence.py](../backend/scripts/launch_evidence.py) checks the supplied URLs and records hashes for attached evidence files (`--target` accepts `production` or `test`, and `production` requires an explicit `--operator` identity independent of `GITHUB_ACTOR` or `--approver`). Run it from a trusted checkout using private output paths and the actual release values:
 
 ```bash
 cd backend

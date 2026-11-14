@@ -8,18 +8,18 @@ The portal connects daily site reporting with project oversight, document contro
 
 | Area | What the portal supports |
 | --- | --- |
-| Identity and account management | Password and emailed one-time code sign-in, password reset and change, session refresh and logout, a read-only user profile, and administrator controls for creating, deactivating, resetting, and changing the roles of other active users. |
+| Identity and account management | Password and emailed one-time code sign-in (with code restart and offline-storage prechecks before consuming an OTP), password reset and change, session refresh and logout, a read-only user profile, and administrator controls for creating, deactivating, resetting, and changing the roles of other active users. |
 | Dashboards and projects | Company-wide or scoped dashboards, recent activity, searchable projects, multi-row bill of quantities (BOQ) and milestone setup, project editing and team assignments, and task timelines with an accessible Gantt view. |
-| Supervisor site updates | Capture attendance, overtime, work location, progress, delays, notes, and files. Supervisors can save, reopen, update, and submit drafts. |
+| Supervisor site updates | Capture attendance, overtime, work location, progress, delays, notes, and files. Supervisors can save, reopen, update, preview or download uploaded draft files (including original-only HEIC files), and submit drafts. |
 | Engineer daily reports | Capture work completed, next-day plans, progress, safety and inspections, manpower, equipment, materials, and media. Report submission verifies linked supervisor updates. Returned reports retain their verified evidence and report number. Engineers can reopen returned reports with reviewer feedback, revise them, and resubmit. Reviewers can approve or return reports, inspect approval history, and download approved report PDFs. |
 | Approvals | A report approval inbox, a workflow inbox for material requests and invoices, and an outbox for the current user’s submissions. Eligible approvers can approve, reject with a reason, delegate, or override where the workflow permits. Reminders and notifications track pending work. |
-| Documents and photos | Searchable document library, replacement versions with explicit approval, authorized previews and downloads, photo and attachment uploads, and Admin recovery of eligible deleted media. HEIC files are available as originals. File access uses time-limited signed URLs. |
+| Documents and photos | Searchable document library with matching filter counts, replacement versions with explicit approval, authorized previews with in-dialog link refresh and downloads, photo and attachment uploads, and Admin recovery of eligible deleted media. HEIC files are available as originals. File access uses time-limited signed URLs. |
 | Inventory and stores | Warehouses and project stores, consumables and asset-tagged equipment, stock by location, receipts, transfers, returns, adjustments, and movement history. Multi-line material requests support approval, quantity-selected partial reservation and issue, and cancellation of unissued stock. Low-stock alerts and report-linked material consumption support reconciliation. |
 | Suppliers | Supplier register and compliance edits, deactivation that preserves history, technical data sheet (TDS) maintenance, and expiry reminders. |
 | Finance | Invoice details and attachments, a restricted supplier lookup, correction and resubmission for unpaid rejected invoices, project budget comparisons, and payments against approved invoices. The system tracks partial and full payment and checks the outstanding balance. |
 | Analytics and exports | Scoped analytics with filters for project, date range, location, and department where supported. Download project progress and material usage as XLSX files or a management summary as PDF. |
 | Data imports | Downloadable templates, CSV and XLSX validation previews, synchronous and background processing, batch status, and import history for users, projects, suppliers, materials, BOQ, opening stock, and document metadata. Document binaries are uploaded through the document library. |
-| Notifications and guidance | Notification history, unread counts, read and mute controls, email delivery through useSend or SMTP, role-specific in-app manuals, a permission reference, and a launch acceptance checklist. |
+| Notifications and guidance | Notification history with direct links to target workflows, unread counts, read and mute controls, email delivery through useSend or SMTP, role-specific in-app manuals, a permission reference, and a launch acceptance checklist. |
 | Offline and file reporting | Installable progressive web app (PWA), responsive screens, photo file selection, account-owned local drafts, and file uploads that resume after reconnecting. Valid daily report drafts can sync without files, and revision checks protect newer server changes. |
 | Audit and operations | Business and security audit records, an audit and security UI for authorized users, filtered operational log search and streaming through the API and remote CLI, structured application logs, Grafana dashboards and alerting, and encrypted backups with restore procedures. |
 
@@ -103,16 +103,16 @@ Grafana uses its configured virtual host when DNS and TLS are in place. Business
 ```mermaid
 flowchart TB
     change["Pull request or push to main"] --> ci["GitHub-hosted CI<br/>Lint, types, API contract, tests, build, Compose"]
-    ci --> gate{"Successful push CI<br/>for the current main commit?"}
+    ci --> gate{"Successful push CI for main<br/>and GARRISON_PREDEPLOY_GATE_READY?"}
     gate -->|"Yes"| runner["Self-hosted Hostinger runner<br/>garrison-production"]
     gate -->|"No"| stop["Stop before deployment"]
-    runner --> release["Verify the exact commit<br/>Build, check compatibility, and activate"]
+    runner --> release["Verify commit, predeploy authorization,<br/>and runtime config; build and activate"]
     release --> smoke{"Public readiness and<br/>served asset hashes pass?"}
     smoke -->|"Yes"| receipt["Record the active release"]
     smoke -->|"No"| rollback["Restore a compatible release or stop writers for forward recovery"]
 ```
 
-[CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run, required CI jobs, current `main` commit, protected host configuration, and disabled audit deletion, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
+[CI](.github/workflows/ci.yml) runs on GitHub-hosted `ubuntu-latest` runners for pull requests and pushes to `main`. The [production workflow](.github/workflows/deploy.yml) runs after successful CI for the current `main` commit when `GARRISON_PREDEPLOY_GATE_READY` is `true` and uses the dedicated self-hosted Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run and attempt, required CI jobs, current `main` commit, exact-release predeployment authorization, and effective runtime configuration (including disabled audit deletion) through the root-installed trusted validator, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
 
 Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers post-release approval, backup and restore evidence, and desktop Chrome and Edge acceptance. Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
 
