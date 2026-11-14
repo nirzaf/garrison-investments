@@ -1,12 +1,23 @@
-from uuid import uuid4
+from datetime import timedelta
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.activity_log import ActivityLog
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.users import UserUpdateRequest
+from app.services.user_service import UserService
+from app.utils.exceptions import AppException
+from app.utils.permissions import ROLE_ADMIN, permissions_for_role
+from app.utils.security import utc_now
+from tests.concurrency_helpers import race, status_counts
 from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
@@ -131,3 +142,179 @@ async def test_operation_manager_can_read_users_but_cannot_manage_users() -> Non
         )
 
         assert create_response.status_code == 403
+
+
+async def test_user_state_preconditions_permissions_and_revocation() -> None:
+    await skip_if_database_unavailable()
+    admin_credentials = await create_user("admin")
+    engineer_credentials = await create_user("civil_engineer")
+    manager_credentials = await create_user("operation_manager")
+
+    async with create_test_client() as client, create_test_client() as subject:
+        admin_token = await login_for_token(client, *admin_credentials)
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        admin_id = (await client.get("/api/v1/auth/me", headers=admin_headers)).json()["id"]
+        engineer_token = await login_for_token(subject, *engineer_credentials)
+        engineer_headers = {"Authorization": f"Bearer {engineer_token}"}
+        engineer_id = (await subject.get("/api/v1/auth/me", headers=engineer_headers)).json()["id"]
+        challenge = await subject.post(
+            "/api/v1/auth/login",
+            json={"email": engineer_credentials[0], "password": engineer_credentials[1]},
+        )
+        assert challenge.status_code == 200
+        engineer_url = f"/api/v1/users/{engineer_id}"
+        manager_token = await login_for_token(client, *manager_credentials)
+        manager_headers = {"Authorization": f"Bearer {manager_token}"}
+        assert (await client.get(engineer_url, headers=engineer_headers)).status_code == 403
+        engineer = (await client.get(engineer_url, headers=manager_headers)).json()
+        assert engineer["permissions"] == permissions_for_role("civil_engineer")
+        assert not {"password_hash", "access_revision", "refresh_token"} & engineer.keys()
+        exact_email = await client.get(
+            "/api/v1/users",
+            headers=manager_headers,
+            params={"email": engineer_credentials[0].upper()},
+        )
+        assert exact_email.status_code == 200
+        assert [row["id"] for row in exact_email.json()["items"]] == [engineer_id]
+        assert exact_email.json()["total"] == 1
+        roles = (await client.get("/api/v1/users/roles", headers=manager_headers)).json()["items"]
+        assert {item["role"] for item in roles} == {
+            "admin",
+            "general_manager",
+            "operation_manager",
+            "project_manager",
+            "civil_engineer",
+            "civil_supervisor",
+            "store_keeper",
+            "accounts",
+        }
+        update = {"role": "accounts", "expected_updated_at": engineer["updated_at"]}
+        assert (
+            await client.patch(engineer_url, headers=manager_headers, json=update)
+        ).status_code == 403
+        changed = await client.patch(engineer_url, headers=admin_headers, json=update)
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["role"] == "accounts"
+        assert changed.json()["designation"] == engineer["designation"]
+        assert (await subject.get("/api/v1/auth/me", headers=engineer_headers)).status_code == 401
+        assert (await subject.post("/api/v1/auth/refresh")).status_code == 401
+        otp = challenge.json()
+        used_challenge = await subject.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": otp["challenge_id"], "otp": otp["dev_otp"]},
+        )
+        assert used_challenge.status_code == 401
+
+        for stale_response in (
+            await client.patch(engineer_url, headers=admin_headers, json=update),
+            await client.delete(
+                engineer_url,
+                headers=admin_headers,
+                params={"expected_updated_at": engineer["updated_at"]},
+            ),
+            await client.post(
+                f"{engineer_url}/reset-password",
+                headers=admin_headers,
+                json={"new_password": "Reset456!", "expected_updated_at": engineer["updated_at"]},
+            ),
+        ):
+            assert stale_response.status_code == 409
+            assert stale_response.json()["error_code"] == "USER_STATE_CONFLICT"
+
+        login = await login_for_token(subject, *engineer_credentials)
+        current = (await client.get(engineer_url, headers=admin_headers)).json()
+        off = await client.delete(
+            engineer_url,
+            headers=admin_headers,
+            params={"expected_updated_at": current["updated_at"]},
+        )
+        assert off.status_code == 200
+        on = await client.patch(
+            engineer_url,
+            headers=admin_headers,
+            json={
+                "is_active": True,
+                "designation": None,
+                "expected_updated_at": off.json()["updated_at"],
+            },
+        )
+        assert on.status_code == 200
+        assert on.json()["designation"] is None
+        assert (
+            await subject.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {login}"})
+        ).status_code == 401
+        self_deactivate = await client.delete(f"/api/v1/users/{admin_id}", headers=admin_headers)
+        assert self_deactivate.json()["error_code"] == "SELF_DEACTIVATION_BLOCKED"
+        self_reset = await client.post(
+            f"/api/v1/users/{admin_id}/reset-password",
+            headers=admin_headers,
+            json={"new_password": "Reset456!"},
+        )
+        assert self_reset.json()["error_code"] == "SELF_PASSWORD_RESET_BLOCKED"
+
+    async with AsyncSessionLocal() as session:
+        events = await session.scalars(
+            select(ActivityLog).where(
+                ActivityLog.entity_id == UUID(engineer_id), ActivityLog.action == "users.updated"
+            )
+        )
+        assert [event.user_id for event in events] == [UUID(admin_id)] * 3
+
+
+async def test_last_usable_administrator_survives_concurrent_demotions() -> None:
+    await skip_if_database_unavailable()
+    # Keep the test population exact even when the integration database contains
+    # administrators from earlier tests. The schema contains synthetic rows only.
+    schema = f"test_admin_{uuid4().hex}"
+    async with engine.begin() as connection:
+        await connection.execute(text(f"CREATE SCHEMA {schema}"))
+        for table in ("users", "auth_refresh_tokens", "auth_otp_challenges", "activity_log"):
+            await connection.execute(
+                text(f"CREATE TABLE {schema}.{table} (LIKE public.{table} INCLUDING ALL)")
+            )
+    isolated = create_async_engine(
+        get_settings().database_url,
+        connect_args={"server_settings": {"search_path": f"{schema},public"}},
+    )
+    sessions = async_sessionmaker(isolated, expire_on_commit=False)
+    try:
+        async with sessions() as session:
+            usable = [
+                User(
+                    email=f"{i}@example.com",
+                    full_name=f"Admin {i}",
+                    role=ROLE_ADMIN,
+                    password_hash=hash_fixture_password("Start123!"),
+                )
+                for i in range(2)
+            ]
+            locked = User(
+                email="locked@example.com",
+                full_name="Locked admin",
+                role=ROLE_ADMIN,
+                password_hash=hash_fixture_password("Start123!"),
+                locked_until=utc_now() + timedelta(hours=1),
+            )
+            no_password = User(email="empty@example.com", full_name="No password", role=ROLE_ADMIN)
+            session.add_all([*usable, locked, no_password])
+            await session.commit()
+            user_ids = [user.id for user in usable]
+
+        async def demote(user_id: UUID) -> int:
+            async with sessions() as session:
+                actor = await UserRepository(session).get_by_id(user_id)
+                assert actor is not None
+                await UserService(session).update_user(
+                    user_id, UserUpdateRequest(role="accounts"), actor
+                )
+                return 200
+
+        outcomes = await race(*(demote(user_id) for user_id in user_ids))
+        assert status_counts(outcomes) == {200: 1, 409: 1}
+        assert [error.error_code for error in outcomes if isinstance(error, AppException)] == [
+            "LAST_ADMINISTRATOR_REQUIRED"
+        ]
+    finally:
+        await isolated.dispose()
+        async with engine.begin() as connection:
+            await connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))

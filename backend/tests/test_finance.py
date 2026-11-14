@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.approval import Approval
@@ -433,6 +434,47 @@ async def approval_for(invoice_id: str) -> Approval | None:
                 Approval.deleted_at.is_(None),
             )
         )
+
+
+async def test_business_currency_policy_and_historical_approval_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    admin, admin_password = await create_user("admin")
+    engineer, engineer_password = await create_user("civil_engineer")
+    project, supplier = await create_project_and_supplier(admin)
+    policy = Settings(app_env="test", business_currency="USD")
+    monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
+    monkeypatch.setattr("app.services.finance_service.get_settings", lambda: policy)
+    monkeypatch.setattr("app.api.v1.finance.get_settings", lambda: policy)
+    async with create_test_client() as client:
+        admin_token = await login_for_token(client, admin, admin_password)
+        engineer_token = await login_for_token(client, engineer, engineer_password)
+        history = await create_invoice_via_api(client, admin_token, project, supplier)
+        policy = Settings(app_env="test", business_currency="LKR")
+        created = await create_invoice_via_api(client, admin_token, project, supplier)
+        assert (await client.get("/api/v1/finance/policy")).status_code == 401
+        engineer_headers = {"Authorization": f"Bearer {engineer_token}"}
+        configured = await client.get("/api/v1/finance/policy", headers=engineer_headers)
+        assert configured.status_code == 200
+        assert configured.json() == policy.business_policy().model_dump(mode="json")
+
+        reconciliation_path = "/api/v1/finance/policy/reconciliation"
+        denied = await client.get(reconciliation_path, headers=engineer_headers)
+        assert denied.status_code == 403
+        report = await client.get(
+            reconciliation_path, headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert report.status_code == 200
+        assert report.json()["unlabelled_row_counts"]["invoices"] >= 2
+        assert {row["currency"] for row in report.json()["approval_currency_counts"]} >= {
+            "USD", "LKR"
+        }
+
+    old_approval = await approval_for(history["id"])
+    new_approval = await approval_for(created["id"])
+    assert old_approval is not None and old_approval.currency == "USD"
+    assert new_approval is not None and new_approval.currency == "LKR"
 
 
 async def patch_status(client: httpx.AsyncClient, token: str, invoice_id: str, status: str):

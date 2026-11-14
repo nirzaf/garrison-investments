@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios';
 import { useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { labelledAmount, useBusinessPolicy } from '../../api/businessPolicy';
 import { formatApiError } from '../../api/errors';
 import {
   createPayment,
@@ -33,6 +34,8 @@ const paymentRejectedCodes = new Set([
 
 export function FinancePage() {
   const { user } = useAuth();
+  const policy = useBusinessPolicy();
+  const currency = policy.data?.business_currency;
   const [params, setParams] = useSearchParams();
   const invoiceId = params.get('invoiceId');
   const [projectId, setProjectId] = useState('');
@@ -89,8 +92,12 @@ export function FinancePage() {
           </button>
         )}
       </div>
+      {currency && <p className="text-sm">Operating currency {currency}</p>}
+      {policy.isError && <p role="status">Currency information is unavailable.</p>}
       {creating && (
         <InvoiceForm
+          currency={currency}
+          timeZone={policy.data?.business_timezone}
           onCancel={() => setCreating(false)}
           onSaved={(invoice) => {
             refresh(invoice);
@@ -159,7 +166,7 @@ export function FinancePage() {
                 ).map(([label, value]) => (
                   <div key={label}>
                     <dt>{label}</dt>
-                    <dd className="font-semibold">{value}</dd>
+                    <dd className="font-semibold">{labelledAmount(value, currency)}</dd>
                   </div>
                 ))}
               </dl>
@@ -194,6 +201,8 @@ export function FinancePage() {
           )}
           {detail.data && (
             <InvoiceDetails
+              currency={currency}
+              timeZone={policy.data?.business_timezone}
               key={`${user?.id}:${invoiceId}`}
               invoice={detail.data}
               refresh={refresh}
@@ -247,8 +256,8 @@ export function FinancePage() {
                         </td>
                         <td className="p-2">{invoice.project_name || '—'}</td>
                         <td className="p-2">{invoice.supplier_name || '—'}</td>
-                        <td className="p-2">{invoice.total_amount}</td>
-                        <td className="p-2">{invoice.outstanding_amount}</td>
+                        <td className="p-2">{labelledAmount(invoice.total_amount, currency)}</td>
+                        <td className="p-2">{labelledAmount(invoice.outstanding_amount, currency)}</td>
                         <td className="p-2 capitalize">{invoice.status}</td>
                       </tr>
                     ))}
@@ -287,10 +296,14 @@ export function FinancePage() {
 }
 
 function InvoiceDetails({
+  currency,
+  timeZone,
   invoice,
   refresh,
   reload
 }: {
+  currency: string | undefined;
+  timeZone: string | undefined;
   invoice: InvoiceRecord;
   refresh: (invoice: InvoiceRecord) => void;
   reload: () => void;
@@ -354,7 +367,7 @@ function InvoiceDetails({
       key: crypto.randomUUID(),
       payload: {
         amount: paymentAmount ?? invoice.outstanding_amount,
-        payment_date: businessDate(),
+        payment_date: businessDate(new Date(), timeZone),
         method: 'bank_transfer'
       }
     };
@@ -403,11 +416,11 @@ function InvoiceDetails({
             ['Supplier', invoice.supplier_name],
             ['Invoice date', invoice.invoice_date],
             ['Due date', invoice.due_date],
-            ['Amount', invoice.amount],
-            ['Tax', invoice.tax_amount],
-            ['Total', invoice.total_amount],
-            ['Paid', invoice.paid_total],
-            ['Outstanding', invoice.outstanding_amount],
+            ['Amount', labelledAmount(invoice.amount, currency)],
+            ['Tax', labelledAmount(invoice.tax_amount, currency)],
+            ['Total', labelledAmount(invoice.total_amount, currency)],
+            ['Paid', labelledAmount(invoice.paid_total, currency)],
+            ['Outstanding', labelledAmount(invoice.outstanding_amount, currency)],
             ['Invoice status', invoice.status],
             ['Payment status', invoice.payment_status]
           ] as const
@@ -429,6 +442,8 @@ function InvoiceDetails({
       )}
       {editing ? (
         <InvoiceForm
+          currency={currency}
+          timeZone={timeZone}
           invoice={invoice}
           onCancel={() => setEditing(false)}
           onSaved={(saved) => {
@@ -575,7 +590,7 @@ function InvoiceDetails({
             {invoice.payments.map((payment) => (
               <tr key={payment.id}>
                 <td className="p-2">{payment.payment_date}</td>
-                <td className="p-2">{payment.amount}</td>
+                <td className="p-2">{labelledAmount(payment.amount, currency)}</td>
                 <td className="p-2">{payment.method.replace(/_/g, ' ')}</td>
                 <td className="p-2">{payment.reference_number || '—'}</td>
               </tr>

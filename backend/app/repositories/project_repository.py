@@ -60,6 +60,15 @@ class ProjectRepository:
         await self.session.flush()
         return member
 
+    async def get_member(self, project_id: UUID, user_id: UUID) -> ProjectMember | None:
+        return await self.session.scalar(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == user_id,
+                ProjectMember.deleted_at.is_(None),
+            )
+        )
+
     async def list_members(self, project_id: UUID) -> list[ProjectMember]:
         result = await self.session.execute(
             select(ProjectMember)

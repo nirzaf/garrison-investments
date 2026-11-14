@@ -24,6 +24,7 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
     designation: Mapped[str | None] = mapped_column(String(100), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    access_revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     must_change_password: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

@@ -1,5 +1,7 @@
 # Logging and Remote CLI Guide
 
+For portal administration and credential-safe JSON log searches, see the [garrisonctl command guide](CLI_ADMINISTRATION.md).
+
 [Documentation index](README.md) · [Observability architecture](../README.md#observability-and-audit) · [Operations runbook](OPERATIONS_AND_DEPLOYMENT.md)
 
 ## Choose a log source

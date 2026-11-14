@@ -3,7 +3,6 @@ from decimal import Decimal
 from io import BytesIO
 from uuid import UUID, uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from minio import Minio
 from reportlab.lib.pagesizes import A4
@@ -69,9 +68,13 @@ class AnalyticsService:
         project_scope = await self._project_scope(actor, project_id)
         self._validate_date_range(date_from, date_to)
         rows = await self._project_rows(project_scope, date_from, date_to, location, department)
+        currency = self.settings.business_currency
+        headings = [
+            "Project", "Progress %", "Reports", f"Invoice Total ({currency})", f"Paid ({currency})"
+        ]
         return build_xlsx(
             "Project Progress",
-            [["Project", "Progress %", "Reports", "Invoice Total", "Paid Total"]]
+            [headings]
             + [
                 [
                     row.project_name,
@@ -127,6 +130,7 @@ class AnalyticsService:
             location=location,
             department=department,
         )
+        currency = self.settings.business_currency
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         styles = getSampleStyleSheet()
@@ -141,7 +145,7 @@ class AnalyticsService:
             ),
             Paragraph("Project Progress", styles["Heading2"]),
             Table(
-                [["Project", "Progress", "Reports", "Invoiced", "Paid"]]
+                [["Project", "Progress", "Reports", f"Invoiced ({currency})", f"Paid ({currency})"]]
                 + [
                     [
                         row.project_name,
@@ -323,11 +327,9 @@ class AnalyticsService:
             )
             query = query.where(InventoryMovement.project_id.in_(projects))
         if date_from or date_to:
-            try:
-                zone = ZoneInfo(self.settings.business_timezone).key
-            except ZoneInfoNotFoundError:
-                zone = "UTC"
-            movement_day = func.date(func.timezone(zone, InventoryMovement.created_at))
+            movement_day = func.date(
+                func.timezone(self.settings.business_timezone, InventoryMovement.created_at)
+            )
             if date_from:
                 query = query.where(movement_day >= date_from)
             if date_to:

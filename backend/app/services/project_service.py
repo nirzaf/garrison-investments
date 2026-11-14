@@ -25,7 +25,12 @@ from app.schemas.projects import (
     ProjectUpdateRequest,
 )
 from app.services.audit_service import AuditService
-from app.utils.exceptions import AppException, ErrorDetail, NotFoundException
+from app.utils.exceptions import (
+    AppException,
+    ErrorDetail,
+    NotFoundException,
+    PermissionDeniedException,
+)
 from app.utils.permissions import (
     PERMISSION_PROJECTS_MANAGE,
     ROLE_ACCOUNTS,
@@ -34,6 +39,7 @@ from app.utils.permissions import (
     ROLE_OPERATION_MANAGER,
     ensure_permission,
 )
+from app.utils.security import utc_now
 
 PROJECT_STATUSES = {"planning", "active", "on_hold", "completed", "cancelled"}
 PROJECT_TASK_STATUSES = {"not_started", "in_progress", "blocked", "completed", "cancelled"}
@@ -171,7 +177,8 @@ class ProjectService:
         self._check_revision(
             project.revision, payload.expected_revision, "PROJECT_REVISION_CONFLICT"
         )
-        user = await self.users.get_by_id(payload.user_id, for_update=True)
+        users = await self._lock_membership_users(actor, payload.user_id)
+        user = users.get(payload.user_id)
         if not user or not user.is_active:
             raise NotFoundException("User")
         member = ProjectMember(
@@ -202,6 +209,49 @@ class ProjectService:
                 error_code="PROJECT_MEMBER_EXISTS",
             ) from exc
         return member
+
+    async def revoke_member(
+        self, project_id: UUID, user_id: UUID, expected_revision: int, actor: User
+    ) -> int:
+        project = await self._get_editable_project(project_id, actor)
+        self._check_revision(project.revision, expected_revision, "PROJECT_REVISION_CONFLICT")
+        await self._lock_membership_users(actor)
+        member = await self.projects.get_member(project_id, user_id)
+        if not member:
+            raise AppException(
+                "Project membership not found.",
+                status_code=404,
+                error_code="PROJECT_MEMBER_NOT_FOUND",
+            )
+        member.deleted_at = utc_now()
+        project.revision += 1
+        await self.audit.record(
+            action="projects.member_revoked",
+            user_id=actor.id,
+            entity_type="projects",
+            entity_id=project.id,
+            old_values={
+                "member_user_id": str(member.user_id),
+                "role_in_project": member.role_in_project,
+                "revision": expected_revision,
+            },
+            new_values={"revision": project.revision},
+        )
+        await self.session.commit()
+        return project.revision
+
+    async def _lock_membership_users(self, actor: User, *targets: UUID) -> dict[UUID, User]:
+        actor_access_revision = actor.access_revision
+        users = await self.users.lock_users(actor.id, *targets)
+        current_actor = users.get(actor.id)
+        if (
+            not current_actor
+            or not current_actor.is_active
+            or current_actor.access_revision != actor_access_revision
+        ):
+            raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
+        ensure_permission(current_actor, PERMISSION_PROJECTS_MANAGE)
+        return users
 
     async def list_members(self, project_id: UUID, current_user: User) -> list[ProjectMember]:
         project = await self._get_authorized_project(project_id, current_user)

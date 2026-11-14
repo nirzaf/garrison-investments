@@ -3,6 +3,18 @@
     "schemas": {
       "AdminPasswordResetRequest": {
         "properties": {
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
           "new_password": {
             "maxLength": 256,
             "minLength": 8,
@@ -143,6 +155,36 @@
           "title"
         ],
         "title": "ApprovalCreateRequest",
+        "type": "object"
+      },
+      "ApprovalCurrencyCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_type",
+          "currency",
+          "count"
+        ],
+        "title": "ApprovalCurrencyCount",
         "type": "object"
       },
       "ApprovalDecisionRequest": {
@@ -1374,6 +1416,102 @@
           "remaining_budget"
         ],
         "title": "BudgetSummaryResponse",
+        "type": "object"
+      },
+      "BusinessPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "business_currency": {
+            "default": "USD",
+            "enum": [
+              "USD",
+              "LKR",
+              "QAR"
+            ],
+            "title": "Business Currency",
+            "type": "string"
+          },
+          "business_timezone": {
+            "default": "Asia/Qatar",
+            "title": "Business Timezone",
+            "type": "string"
+          },
+          "invoice_tax_mode": {
+            "const": "explicit_amount",
+            "default": "explicit_amount",
+            "title": "Invoice Tax Mode",
+            "type": "string"
+          },
+          "material_approval_threshold": {
+            "default": "1000.00",
+            "title": "Material Approval Threshold",
+            "type": "string"
+          },
+          "money_decimal_places": {
+            "const": 2,
+            "default": 2,
+            "title": "Money Decimal Places",
+            "type": "integer"
+          },
+          "supported_business_currencies": {
+            "default": [
+              "USD",
+              "LKR",
+              "QAR"
+            ],
+            "items": {
+              "enum": [
+                "USD",
+                "LKR",
+                "QAR"
+              ],
+              "type": "string"
+            },
+            "title": "Supported Business Currencies",
+            "type": "array"
+          },
+          "threshold_comparison": {
+            "const": "greater_than",
+            "default": "greater_than",
+            "title": "Threshold Comparison",
+            "type": "string"
+          }
+        },
+        "title": "BusinessPolicyResponse",
+        "type": "object"
+      },
+      "CurrencyReconciliationResponse": {
+        "properties": {
+          "approval_currency_counts": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalCurrencyCount"
+            },
+            "title": "Approval Currency Counts",
+            "type": "array"
+          },
+          "business_currency": {
+            "enum": [
+              "USD",
+              "LKR",
+              "QAR"
+            ],
+            "title": "Business Currency",
+            "type": "string"
+          },
+          "unlabelled_row_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Unlabelled Row Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "business_currency",
+          "unlabelled_row_counts",
+          "approval_currency_counts"
+        ],
+        "title": "CurrencyReconciliationResponse",
         "type": "object"
       },
       "DailyReportApprovalHistoryResponse": {
@@ -2644,6 +2782,7 @@
           "unit_cost": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -5166,6 +5305,31 @@
         "title": "ProjectMemberResponse",
         "type": "object"
       },
+      "ProjectMemberRevocationResponse": {
+        "properties": {
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "user_id",
+          "revision"
+        ],
+        "title": "ProjectMemberRevocationResponse",
+        "type": "object"
+      },
       "ProjectResponse": {
         "properties": {
           "actual_end_date": {
@@ -7274,6 +7438,95 @@
         "title": "UserCreateRequest",
         "type": "object"
       },
+      "UserDetailResponse": {
+        "properties": {
+          "designation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "must_change_password": {
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "full_name",
+          "role",
+          "employee_code",
+          "phone",
+          "designation",
+          "is_active",
+          "must_change_password",
+          "updated_at",
+          "permissions"
+        ],
+        "title": "UserDetailResponse",
+        "type": "object"
+      },
       "UserListResponse": {
         "properties": {
           "items": {
@@ -7354,6 +7607,11 @@
           "role": {
             "title": "Role",
             "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -7365,9 +7623,47 @@
           "phone",
           "designation",
           "is_active",
-          "must_change_password"
+          "must_change_password",
+          "updated_at"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "UserRoleListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserRoleResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "UserRoleListResponse",
+        "type": "object"
+      },
+      "UserRoleResponse": {
+        "properties": {
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "permissions"
+        ],
+        "title": "UserRoleResponse",
         "type": "object"
       },
       "UserUpdateRequest": {
@@ -7396,6 +7692,18 @@
               }
             ],
             "title": "Employee Code"
+          },
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
           },
           "full_name": {
             "anyOf": [
@@ -10200,6 +10508,94 @@
           }
         ],
         "summary": "Create Payment",
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/policy": {
+      "get": {
+        "operationId": "effective_business_policy_api_v1_finance_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Effective Business Policy Api V1 Finance Policy Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Effective Business Policy",
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/policy/reconciliation": {
+      "get": {
+        "operationId": "currency_reconciliation_api_v1_finance_policy_reconciliation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyReconciliationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Currency Reconciliation Api V1 Finance Policy Reconciliation Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Currency Reconciliation",
         "tags": [
           "Finance"
         ]
@@ -13703,6 +14099,82 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/members/{user_id}": {
+      "delete": {
+        "operationId": "revoke_project_member_api_v1_projects__project_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Expected Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMemberRevocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Revoke Project Member Api V1 Projects  Project Id  Members  User Id  Delete"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Project Member",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/tasks": {
       "post": {
         "operationId": "create_project_task_api_v1_projects__project_id__tasks_post",
@@ -15339,6 +15811,23 @@
           },
           {
             "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "email",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -15454,6 +15943,50 @@
         ]
       }
     },
+    "/api/v1/users/roles": {
+      "get": {
+        "operationId": "list_user_roles_api_v1_users_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRoleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List User Roles Api V1 Users Roles Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List User Roles",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/api/v1/users/{user_id}": {
       "delete": {
         "operationId": "deactivate_user_api_v1_users__user_id__delete",
@@ -15466,6 +15999,23 @@
               "format": "uuid",
               "title": "User Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_updated_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Updated At"
             }
           }
         ],
@@ -15505,6 +16055,60 @@
           }
         ],
         "summary": "Deactivate User",
+        "tags": [
+          "Users"
+        ]
+      },
+      "get": {
+        "operationId": "get_user_api_v1_users__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get User Api V1 Users  User Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get User",
         "tags": [
           "Users"
         ]

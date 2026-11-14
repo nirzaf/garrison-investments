@@ -182,7 +182,7 @@ test('Accounts and assigned Project Manager correct, retry, and race invoice pay
     await details.getByLabel('Tax amount', { exact: true }).fill('4.25');
     await details.getByLabel('Supplier', { exact: true }).selectOption('');
     await details.getByRole('button', { name: 'Save corrections', exact: true }).click();
-    await expect(details.getByText('145.00', { exact: true })).toHaveCount(2);
+    await expect(details.getByText('USD 145.00', { exact: true })).toHaveCount(2);
     await details.getByRole('button', { name: 'Resubmit invoice', exact: true }).click();
     await expect(details.getByText('submitted', { exact: true })).toBeVisible();
     await expect(details.getByRole('button', { name: 'Approve invoice', exact: true })).toHaveCount(
@@ -275,7 +275,7 @@ test('Accounts and assigned Project Manager correct, retry, and race invoice pay
     const conflictedAmount = conflict.invoice.getByLabel('Payment amount', { exact: true });
     await expect(conflictedAmount).toHaveValue('75.00');
     await conflict.invoice.getByRole('button', { name: 'Refresh invoice' }).click();
-    await expect(conflict.invoice.getByText('29.90', { exact: true })).toBeVisible();
+    await expect(conflict.invoice.getByText('USD 29.90', { exact: true })).toBeVisible();
     await conflictedAmount.fill('29.90');
     await conflict.invoice.getByRole('button', { name: 'Record payment', exact: true }).click();
     await expect(conflict.invoice.getByText('paid', { exact: true })).toBeVisible();
@@ -283,19 +283,19 @@ test('Accounts and assigned Project Manager correct, retry, and race invoice pay
     await accountsPage.reload();
     const history = details.getByRole('table', { name: 'Payment history' });
     await expect(history.getByRole('row')).toHaveCount(4);
-    for (const amount of ['40.10', '75.00', '29.90']) {
+    for (const amount of ['USD 40.10', 'USD 75.00', 'USD 29.90']) {
       await expect(history.getByRole('cell', { name: amount, exact: true })).toHaveCount(1);
     }
     await expect(details.getByRole('button', { name: 'Record payment', exact: true })).toHaveCount(
       0
     );
-    await expect(details.getByText('0.00', { exact: true })).toBeVisible();
+    await expect(details.getByText('USD 0.00', { exact: true })).toBeVisible();
     await accountsPage.getByLabel('Search project filter options').fill(projectName);
     await accountsPage.getByLabel('Project filter', { exact: true }).selectOption(admin.projectId);
-    await expect(accountsPage.getByText('270.50', { exact: true })).toBeVisible();
+    await expect(accountsPage.getByText('USD 270.50', { exact: true })).toBeVisible();
     await expect(
       accountsPage.getByText('Recorded payments', { exact: true }).locator('..')
-    ).toHaveText('Recorded payments145.00');
+    ).toHaveText('Recorded paymentsUSD 145.00');
   } finally {
     await Promise.all([accountsPage.close(), managerPage.close(), operationsPage.close()]);
   }

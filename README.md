@@ -167,6 +167,8 @@ npm run dev
 
 Use [.env.example](.env.example) as the local configuration reference and the [runbook](docs/OPERATIONS_AND_DEPLOYMENT.md) for production settings, mail, signing keys, and backup encryption. Keep credentials in private environment files. Existing PostgreSQL 16 volumes require the [database upgrade procedure](docs/OPERATIONS_AND_DEPLOYMENT.md#upgrade-an-existing-postgresql-16-database) before starting PostgreSQL 18.
 
+For terminal administration, see the [garrisonctl command guide](docs/CLI_ADMINISTRATION.md).
+
 Production uses HTTPS, short-lived JWT access tokens, rotating HTTP-only refresh cookies, and configured RS256 signing keys. Nginx is the public gateway for the portal. Database, queue, object storage, and observability services use private container ports. Configure the public object URL and trusted ingress addresses with the production proxy settings so signed downloads and client attribution work through Nginx.
 
 ## Verification

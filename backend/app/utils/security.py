@@ -3,6 +3,7 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from typing import Any
 from uuid import UUID
 
 import bcrypt
@@ -172,12 +173,15 @@ def validate_signing_keys() -> None:
             raise RuntimeError(f"{label} is not a valid PEM key: {path}") from exc
 
 
-def create_access_token(user_id: UUID, role: str) -> tuple[str, datetime]:
+def create_access_token(
+    user_id: UUID, role: str, *, access_revision: int = 0
+) -> tuple[str, datetime]:
     settings = get_settings()
     expires_at = utc_now() + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": str(user_id),
         "role": role,
+        "access_revision": access_revision,
         "type": "access",
         "exp": expires_at,
         "iat": utc_now(),
@@ -185,7 +189,7 @@ def create_access_token(user_id: UUID, role: str) -> tuple[str, datetime]:
     return jwt.encode(payload, _jwt_private_key(), algorithm=settings.jwt_algorithm), expires_at
 
 
-def decode_access_token(token: str) -> dict[str, str]:
+def decode_access_token(token: str) -> dict[str, Any]:
     settings = get_settings()
     try:
         payload = jwt.decode(token, _jwt_public_key(), algorithms=[settings.jwt_algorithm])

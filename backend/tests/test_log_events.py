@@ -144,6 +144,14 @@ async def test_log_event_stream_returns_matching_events() -> None:
         await session.commit()
 
     async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
+        unauthorized = await client.get("/api/v1/log-events/stream")
+        assert unauthorized.status_code == 401
+        engineer_email, engineer_password = await create_user("civil_engineer")
+        engineer_token = await login_for_token(client, engineer_email, engineer_password)
+        forbidden = await client.get(
+            "/api/v1/log-events/stream", headers={"Authorization": f"Bearer {engineer_token}"}
+        )
+        assert forbidden.status_code == 403
         admin_token = await login_for_token(client, admin_email, admin_password)
         async with (
             asyncio.timeout(10),
@@ -158,6 +166,7 @@ async def test_log_event_stream_returns_matching_events() -> None:
             ) as response,
         ):
             assert response.status_code == 200
+            assert response.headers["x-accel-buffering"] == "no"
             ids: list[str] = []
             async for line in response.aiter_lines():
                 if line.startswith("data: "):

@@ -28,6 +28,7 @@ services:
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
       MINIO_PUBLIC_SECURE: ${MINIO_PUBLIC_SECURE:-false}
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     ports:
       - "8000:8000"
     volumes:
@@ -44,6 +45,8 @@ services:
     command: celery -A app.tasks.celery_app.celery_app worker -Q email,image,report,backup,maintenance --loglevel=INFO
     env_file:
       - .env
+    environment:
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     volumes:
       - ./backend:/app
     depends_on:
@@ -58,6 +61,8 @@ services:
     command: celery -A app.tasks.celery_app.celery_app beat --loglevel=INFO
     env_file:
       - .env
+    environment:
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     volumes:
       - ./backend:/app
     depends_on:
@@ -70,6 +75,7 @@ services:
     command: npm run dev -- --host 0.0.0.0
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+      VITE_BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     ports:
       - "3000:3000"
     volumes:

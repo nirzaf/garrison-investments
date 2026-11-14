@@ -170,7 +170,9 @@ async def stream_log_events(
             yield ": keep-alive\n\n"
             await asyncio.sleep(poll_seconds)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
+    )
 
 
 async def _record_log_access(

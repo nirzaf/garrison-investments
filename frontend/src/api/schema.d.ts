@@ -537,6 +537,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/finance/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Effective Business Policy */
+        get: operations["effective_business_policy_api_v1_finance_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/finance/policy/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Currency Reconciliation */
+        get: operations["currency_reconciliation_api_v1_finance_policy_reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/finance/projects/{project_id}/budget-summary": {
         parameters: {
             query?: never;
@@ -1175,6 +1209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Project Member */
+        delete: operations["revoke_project_member_api_v1_projects__project_id__members__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/tasks": {
         parameters: {
             query?: never;
@@ -1488,6 +1539,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List User Roles */
+        get: operations["list_user_roles_api_v1_users_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}": {
         parameters: {
             query?: never;
@@ -1495,7 +1563,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get User */
+        get: operations["get_user_api_v1_users__user_id__get"];
         put?: never;
         post?: never;
         /** Deactivate User */
@@ -1563,6 +1632,8 @@ export interface components {
     schemas: {
         /** AdminPasswordResetRequest */
         AdminPasswordResetRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** New Password */
             new_password: string;
         };
@@ -1601,6 +1672,15 @@ export interface components {
             request_type: string;
             /** Title */
             title: string;
+        };
+        /** ApprovalCurrencyCount */
+        ApprovalCurrencyCount: {
+            /** Count */
+            count: number;
+            /** Currency */
+            currency: string | null;
+            /** Request Type */
+            request_type: string;
         };
         /** ApprovalDecisionRequest */
         ApprovalDecisionRequest: {
@@ -1998,6 +2078,66 @@ export interface components {
             project_id: string;
             /** Remaining Budget */
             remaining_budget: string;
+        };
+        /** BusinessPolicyResponse */
+        BusinessPolicyResponse: {
+            /**
+             * Business Currency
+             * @default USD
+             * @enum {string}
+             */
+            business_currency: "USD" | "LKR" | "QAR";
+            /**
+             * Business Timezone
+             * @default Asia/Qatar
+             */
+            business_timezone: string;
+            /**
+             * Invoice Tax Mode
+             * @default explicit_amount
+             * @constant
+             */
+            invoice_tax_mode: "explicit_amount";
+            /**
+             * Material Approval Threshold
+             * @default 1000.00
+             */
+            material_approval_threshold: string;
+            /**
+             * Money Decimal Places
+             * @default 2
+             * @constant
+             */
+            money_decimal_places: 2;
+            /**
+             * Supported Business Currencies
+             * @default [
+             *       "USD",
+             *       "LKR",
+             *       "QAR"
+             *     ]
+             */
+            supported_business_currencies: ("USD" | "LKR" | "QAR")[];
+            /**
+             * Threshold Comparison
+             * @default greater_than
+             * @constant
+             */
+            threshold_comparison: "greater_than";
+        };
+        /** CurrencyReconciliationResponse */
+        CurrencyReconciliationResponse: {
+            /** Approval Currency Counts */
+            approval_currency_counts: components["schemas"]["ApprovalCurrencyCount"][];
+            /**
+             * Business Currency
+             * @enum {string}
+             */
+            business_currency: "USD" | "LKR" | "QAR";
+            /** Unlabelled Row Counts */
+            unlabelled_row_counts: {
+                [key: string]: number;
+            };
         };
         /** DailyReportApprovalHistoryResponse */
         DailyReportApprovalHistoryResponse: {
@@ -3259,6 +3399,21 @@ export interface components {
             /** User Name */
             user_name?: string | null;
         };
+        /** ProjectMemberRevocationResponse */
+        ProjectMemberRevocationResponse: {
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** ProjectResponse */
         ProjectResponse: {
             /** Actual End Date */
@@ -3883,6 +4038,37 @@ export interface components {
             /** Temporary Password */
             temporary_password: string;
         };
+        /** UserDetailResponse */
+        UserDetailResponse: {
+            /** Designation */
+            designation: string | null;
+            /** Email */
+            email: string;
+            /** Employee Code */
+            employee_code: string | null;
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Must Change Password */
+            must_change_password: boolean;
+            /** Permissions */
+            permissions: string[];
+            /** Phone */
+            phone: string | null;
+            /** Role */
+            role: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** UserListResponse */
         UserListResponse: {
             /** Items */
@@ -3913,6 +4099,23 @@ export interface components {
             phone: string | null;
             /** Role */
             role: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** UserRoleListResponse */
+        UserRoleListResponse: {
+            /** Items */
+            items: components["schemas"]["UserRoleResponse"][];
+        };
+        /** UserRoleResponse */
+        UserRoleResponse: {
+            /** Permissions */
+            permissions: string[];
+            /** Role */
+            role: string;
         };
         /** UserUpdateRequest */
         UserUpdateRequest: {
@@ -3920,6 +4123,8 @@ export interface components {
             designation?: string | null;
             /** Employee Code */
             employee_code?: string | null;
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Full Name */
             full_name?: string | null;
             /** Is Active */
@@ -5189,6 +5394,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    effective_business_policy_api_v1_finance_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessPolicyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    currency_reconciliation_api_v1_finance_policy_reconciliation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrencyReconciliationResponse"];
                 };
             };
             /** @description Invalid request */
@@ -6726,6 +6989,40 @@ export interface operations {
             };
         };
     };
+    revoke_project_member_api_v1_projects__project_id__members__user_id__delete: {
+        parameters: {
+            query: {
+                expected_revision: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemberRevocationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     create_project_task_api_v1_projects__project_id__tasks_post: {
         parameters: {
             query?: never;
@@ -7504,6 +7801,7 @@ export interface operations {
                 active?: boolean | null;
                 role?: string | null;
                 search?: string | null;
+                email?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -7566,9 +7864,71 @@ export interface operations {
             };
         };
     };
-    deactivate_user_api_v1_users__user_id__delete: {
+    list_user_roles_api_v1_users_roles_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRoleListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_user_api_v1_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetailResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    deactivate_user_api_v1_users__user_id__delete: {
+        parameters: {
+            query?: {
+                expected_updated_at?: string | null;
+            };
             header?: never;
             path: {
                 user_id: string;

@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: process.env.BUSINESS_TIMEZONE
+    ? { 'import.meta.env.VITE_BUSINESS_TIMEZONE': JSON.stringify(process.env.BUSINESS_TIMEZONE) }
+    : undefined,
   server: {
     host: '0.0.0.0',
     port: 3000

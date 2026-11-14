@@ -51,7 +51,9 @@ services:
     env_file:
       - .env
     environment:
+      APP_ENV: production
       TRUSTED_PROXY_IPS: 127.0.0.1,::1,${NGINX_BACKEND_PROXY_IP:-172.29.254.2}
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     networks:
       default:
       backend_proxy:
@@ -77,6 +79,9 @@ services:
     command: celery -A app.tasks.celery_app.celery_app worker -Q email,image,report,backup,maintenance --concurrency=4 --loglevel=INFO
     env_file:
       - .env
+    environment:
+      APP_ENV: production
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     depends_on:
       - redis
       - postgres
@@ -88,6 +93,9 @@ services:
     command: celery -A app.tasks.celery_app.celery_app beat --loglevel=INFO
     env_file:
       - .env
+    environment:
+      APP_ENV: production
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Qatar}
     depends_on:
       - redis
     logging: *default-logging

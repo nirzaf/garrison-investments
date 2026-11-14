@@ -568,7 +568,7 @@ test('analytics downloads match the filtered project and material control totals
     projects: [{ project_id: account.projectId, invoice_total: '214.50', paid_total: '42.15', report_count: 0 }],
     material_usage: [{ item_name: itemName, issued_quantity: '2.750', consumed_quantity: '1.125' }]
   });
-  await expect(page.getByText(`${project.name}: 0 reports, 214.50 invoiced`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`${project.name}: 0 reports, USD 214.50 invoiced`, { exact: true })).toBeVisible();
 
   for (const [label, filename] of [
     ['Project XLSX', 'project-progress.xlsx'],
@@ -653,7 +653,7 @@ test('analytics preserves labelled results and filters through a failed refresh'
   await expect(page.getByRole('alert').filter({ hasText: 'Analytics unavailable' })).toBeVisible();
   expect(chartRequests).toBe(0);
   failure = null;
-  const fixtureSummary = page.getByText(`${projectName}: 0 reports, 0 invoiced`, { exact: true });
+  const fixtureSummary = page.getByText(`${projectName}: 0 reports, USD 0 invoiced`, { exact: true });
   try {
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(fixtureSummary).toBeVisible();

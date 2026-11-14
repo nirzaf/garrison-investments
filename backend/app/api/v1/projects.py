@@ -15,6 +15,7 @@ from app.schemas.projects import (
     ProjectListResponse,
     ProjectMemberCreateRequest,
     ProjectMemberResponse,
+    ProjectMemberRevocationResponse,
     ProjectResponse,
     ProjectTaskCreateRequest,
     ProjectTaskResponse,
@@ -129,6 +130,22 @@ async def assign_project_member(
     member = await ProjectService(session).assign_member(project_id, payload, current_user)
     responses = await _member_responses([member], session)
     return responses[0]
+
+
+@router.delete("/{project_id}/members/{user_id}", response_model=ProjectMemberRevocationResponse)
+async def revoke_project_member(
+    project_id: UUID,
+    user_id: UUID,
+    expected_revision: Annotated[int, Query(ge=1)],
+    current_user: CanManageProjects,
+    session: DbSession,
+) -> ProjectMemberRevocationResponse:
+    revision = await ProjectService(session).revoke_member(
+        project_id, user_id, expected_revision, current_user
+    )
+    return ProjectMemberRevocationResponse(
+        project_id=project_id, user_id=user_id, revision=revision
+    )
 
 
 @router.get("/{project_id}/timeline", response_model=ProjectTimelineResponse)

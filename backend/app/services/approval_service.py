@@ -1,11 +1,11 @@
 from datetime import timedelta
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import case, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.approval import Approval
 from app.models.finance import Invoice
 from app.models.inventory import MaterialRequest
@@ -39,6 +39,7 @@ from app.utils.security import utc_now
 
 APPROVAL_PENDING_STATUSES = {"pending", "delegated", "escalated"}
 ENTITY_BACKED_REQUEST_TYPES = {"material_request", "invoice", "daily_report", "document"}
+OPERATING_CURRENCY_APPROVAL_TYPES = {"material_request", "invoice"}
 APPROVAL_REMINDER_TITLE = "Approval reminder"
 APPROVAL_ESCALATION_TITLE = "Approval escalated"
 
@@ -82,6 +83,8 @@ class ApprovalService:
                 status_code=403,
                 error_code="APPROVAL_TYPE_FORBIDDEN",
             )
+        if payload.request_type in OPERATING_CURRENCY_APPROVAL_TYPES:
+            payload = payload.model_copy(update={"currency": get_settings().business_currency})
         existing = await self.approvals.get_open_for_request(
             payload.request_type, payload.request_id
         )
@@ -133,6 +136,7 @@ class ApprovalService:
                     "approval_id": str(approval.id),
                     "approver_id": str(approver.id),
                     "amount": str(payload.amount) if payload.amount is not None else None,
+                    "currency": payload.currency,
                 },
             )
             if commit:
@@ -685,7 +689,7 @@ class ApprovalService:
         if (
             payload.request_type == "material_request"
             and payload.amount is not None
-            and payload.amount > Decimal("1000.00")
+            and payload.amount > get_settings().material_approval_threshold
         ):
             approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
             if approver:

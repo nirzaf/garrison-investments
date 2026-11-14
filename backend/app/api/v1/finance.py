@@ -3,10 +3,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, status
 
-from app.api.dependencies import DbSession, require_permission
+from app.api.dependencies import CurrentUser, DbSession, require_permission
+from app.business_policy import BusinessPolicyResponse
+from app.config import get_settings
 from app.models.user import User
 from app.schemas.finance import (
     BudgetSummaryResponse,
+    CurrencyReconciliationResponse,
     InvoiceAttachmentUrlResponse,
     InvoiceCreateRequest,
     InvoiceListResponse,
@@ -22,6 +25,18 @@ from app.utils.permissions import PERMISSION_FINANCIAL_VIEW
 
 router = APIRouter(prefix="/finance", tags=["Finance"])
 CanViewFinance = Annotated[User, Depends(require_permission(PERMISSION_FINANCIAL_VIEW))]
+
+
+@router.get("/policy", response_model=BusinessPolicyResponse)
+async def effective_business_policy(current_user: CurrentUser) -> BusinessPolicyResponse:
+    return get_settings().business_policy()
+
+
+@router.get("/policy/reconciliation", response_model=CurrencyReconciliationResponse)
+async def currency_reconciliation(
+    current_user: CurrentUser, session: DbSession
+) -> CurrencyReconciliationResponse:
+    return await FinanceService(session).currency_reconciliation(current_user)
 
 
 @router.get("/supplier-options", response_model=InvoiceSupplierOptionsResponse)

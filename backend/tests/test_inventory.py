@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.inventory import StorageLocation
@@ -106,8 +107,12 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
-async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() -> None:
+async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     await skip_if_database_unavailable()
+    policy = Settings(app_env="test", business_currency="LKR")
+    monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
     store, store_password = await create_user("store_keeper")
     engineer, engineer_password = await create_user("civil_engineer")
     pm, pm_password = await create_user("project_manager")
@@ -283,6 +288,7 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block() 
             for item in approvals.json()["items"]
             if item["request_id"] == material_request["id"]
         )
+        assert approval["currency"] == "LKR"
         approved = await client.post(
             f"/api/v1/approvals/{approval['id']}/approve",
             json={"comments": "Approved for site work."},

@@ -1,11 +1,13 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import HttpUrl, SecretStr
+from pydantic import HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.business_policy import DEFAULT_BUSINESS_CURRENCY, BusinessPolicy, BusinessPolicyResponse
 
-class Settings(BaseSettings):
+
+class Settings(BaseSettings, BusinessPolicy):
     app_name: str = "Construction Internal Portal"
     app_env: str = "development"
     debug: bool = False
@@ -31,7 +33,6 @@ class Settings(BaseSettings):
     exception_email_recipients: str = "admin@garrisons.lk"
     exception_email_enabled: bool | None = None
     notification_retention_days: int = 90
-    business_timezone: str = "Asia/Qatar"
 
     minio_endpoint: str = "localhost:9000"
     minio_root_user: str = "garrison_minio"
@@ -76,7 +77,25 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        hide_input_in_errors=True,
     )
+
+    @model_validator(mode="after")
+    def validate_business_currency_environment(self) -> "Settings":
+        disposable_environment = self.app_env.strip().lower() in {"development", "test", "local"}
+        if self.business_currency != DEFAULT_BUSINESS_CURRENCY and not disposable_environment:
+            raise ValueError(
+                "Changing the deployed operating currency requires approved historical "
+                "currency reconciliation and a separate data migration."
+            )
+        return self
+
+    def business_policy(self) -> BusinessPolicyResponse:
+        return BusinessPolicyResponse(
+            business_currency=self.business_currency,
+            business_timezone=self.business_timezone,
+            material_approval_threshold=self.material_approval_threshold,
+        )
 
     @property
     def cors_origins_list(self) -> list[str]:

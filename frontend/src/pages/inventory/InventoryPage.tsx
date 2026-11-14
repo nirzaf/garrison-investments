@@ -27,6 +27,8 @@ import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+import { useBusinessPolicy } from '../../api/businessPolicy';
+import { businessDate } from '../../businessDate';
 import { MaterialFulfillment, MaterialRequestForm } from './MaterialRequestControls';
 
 const inventoryPageSize = 20;
@@ -53,6 +55,7 @@ export function InventoryPage() {
   const [movementOffset, setMovementOffset] = useState(0);
   const materialRequestRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
+  const { data: businessPolicy } = useBusinessPolicy();
   const canCreateMaterialRequest =
     user?.role === 'admin' ||
     user?.role === 'project_manager' ||
@@ -270,7 +273,7 @@ export function InventoryPage() {
                 unit: String(form.get('unit')),
                 minimum_stock: String(form.get('minimum_stock') || '0'),
                 reorder_level: String(form.get('reorder_level') || '0'),
-                unit_cost: String(form.get('unit_cost') || ''),
+                unit_cost: String(form.get('unit_cost') || '').trim() || null,
                 supplier_id: String(form.get('supplier_id'))
               });
               event.currentTarget.reset();
@@ -300,8 +303,10 @@ export function InventoryPage() {
               <input
                 className="form-field"
                 name="unit_cost"
-                placeholder="Unit cost"
+                placeholder={businessPolicy ? `Unit cost (${businessPolicy.business_currency})` : 'Unit cost'}
                 type="number"
+                min="0"
+                step="0.01"
               />
               <input className="form-field" name="minimum_stock" placeholder="Minimum stock" />
               <input className="form-field" name="reorder_level" placeholder="Reorder level" />
@@ -762,7 +767,7 @@ export function InventoryPage() {
                     </p>
                   </div>
                   <StatusBadge tone="info">
-                    {new Date(movement.created_at).toLocaleDateString()}
+                    {businessDate(new Date(movement.created_at), businessPolicy?.business_timezone)}
                   </StatusBadge>
                 </div>
               ))}

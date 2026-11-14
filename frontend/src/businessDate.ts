@@ -1,10 +1,13 @@
-export function businessDate() {
-  const now = new Date();
-  const timeZone = import.meta.env.VITE_BUSINESS_TIMEZONE || 'Asia/Qatar';
-  try {
-    return now.toLocaleDateString('en-CA', { timeZone });
-  } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
-    return now.toISOString().slice(0, 10);
-  }
+export function businessDate(
+  now = new Date(),
+  timeZone = import.meta.env.VITE_BUSINESS_TIMEZONE || 'Asia/Qatar'
+) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
 }

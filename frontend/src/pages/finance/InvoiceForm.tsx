@@ -6,10 +6,14 @@ import { businessDate } from '../../businessDate';
 import { FinancePicker } from './FinancePicker';
 
 export function InvoiceForm({
+  currency,
+  timeZone,
   invoice,
   onSaved,
   onCancel
 }: {
+  currency: string | undefined;
+  timeZone: string | undefined;
   invoice?: InvoiceRecord;
   onSaved: (saved: InvoiceRecord) => void;
   onCancel: () => void;
@@ -18,7 +22,7 @@ export function InvoiceForm({
     invoice_number: invoice?.invoice_number ?? '',
     project_id: invoice?.project_id ?? '',
     supplier_id: invoice?.supplier_id ?? '',
-    invoice_date: invoice?.invoice_date ?? businessDate(),
+    invoice_date: invoice?.invoice_date ?? businessDate(new Date(), timeZone),
     due_date: invoice?.due_date ?? '',
     amount: invoice?.amount ?? '',
     tax_amount: invoice?.tax_amount ?? '0',
@@ -63,6 +67,7 @@ export function InvoiceForm({
       onSubmit={(event) => void submit(event)}
     >
       <h3 className="font-semibold">{invoice ? 'Correct rejected invoice' : 'New invoice'}</h3>
+      {currency && <p className="text-sm">Enter amounts in {currency}.</p>}
       {error && (
         <p className="alert-error rounded-md p-2 text-sm" role="alert">
           {error}

@@ -10,12 +10,13 @@ from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.activity_log import ActivityLog
 from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.project_task import ProjectTask
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.projects import ProjectTaskUpdateRequest, ProjectUpdateRequest
 from app.services.project_service import ProjectService
-from tests.concurrency_helpers import error_codes, race_sessions, status_counts
+from tests.concurrency_helpers import error_codes, race, race_sessions, status_counts
 from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
@@ -221,6 +222,86 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         assert denied_task_edit.status_code == 403
+
+
+async def test_revoke_project_member_is_scoped_revision_checked_and_audited() -> None:
+    await skip_if_database_unavailable()
+    manager = await create_user("operation_manager")
+    engineer = await create_user("civil_engineer")
+
+    async with create_test_client() as client:
+        manager_token = await login_for_token(client, *manager)
+        engineer_token = await login_for_token(client, *engineer)
+        manager_headers = {"Authorization": f"Bearer {manager_token}"}
+        engineer_headers = {"Authorization": f"Bearer {engineer_token}"}
+        manager_id = (await client.get("/api/v1/auth/me", headers=manager_headers)).json()["id"]
+        engineer_id = (await client.get("/api/v1/auth/me", headers=engineer_headers)).json()["id"]
+        project_response = await client.post(
+            "/api/v1/projects", json=project_payload(), headers=manager_headers
+        )
+        assert project_response.status_code == 201, project_response.text
+        project = project_response.json()
+        project_url = f"/api/v1/projects/{project['id']}"
+        member_url = f"{project_url}/members/{engineer_id}"
+        assigned = await client.post(
+            f"{project_url}/members",
+            headers=manager_headers,
+            json={"user_id": engineer_id, "expected_revision": project["revision"]},
+        )
+        assert assigned.status_code == 201, assigned.text
+        assert (await client.get(project_url, headers=engineer_headers)).status_code == 200
+        revision = project["revision"] + 1
+        forbidden = await client.delete(
+            member_url, headers=engineer_headers, params={"expected_revision": revision}
+        )
+        assert forbidden.status_code == 403
+        missing_precondition = await client.delete(member_url, headers=manager_headers)
+        assert missing_precondition.status_code == 422
+        attempts = await race(
+            *(
+                client.delete(
+                    member_url, headers=manager_headers, params={"expected_revision": revision}
+                )
+                for _ in range(2)
+            )
+        )
+        assert status_counts(attempts) == {200: 1, 409: 1}
+        revoked = next(response.json() for response in attempts if response.status_code == 200)
+        assert revoked == {
+            "project_id": project["id"],
+            "user_id": engineer_id,
+            "revision": revision + 1,
+        }
+        assert (await client.get(project_url, headers=engineer_headers)).status_code == 404
+        assert (await client.get(f"{project_url}/members", headers=manager_headers)).json() == []
+        missing_member = await client.delete(
+            member_url, headers=manager_headers, params={"expected_revision": revoked["revision"]}
+        )
+        assert missing_member.status_code == 404
+        reassigned = await client.post(
+            f"{project_url}/members",
+            headers=manager_headers,
+            json={"user_id": engineer_id, "expected_revision": revoked["revision"]},
+        )
+        assert reassigned.status_code == 201
+        assert reassigned.json()["id"] != assigned.json()["id"]
+
+    async with AsyncSessionLocal() as session:
+        removed = await session.get(ProjectMember, UUID(assigned.json()["id"]))
+        assert removed is not None and removed.deleted_at is not None
+        event = await session.scalar(
+            select(ActivityLog).where(
+                ActivityLog.entity_id == UUID(project["id"]),
+                ActivityLog.action == "projects.member_revoked",
+            )
+        )
+        assert event is not None and event.user_id == UUID(manager_id)
+        assert event.old_values == {
+            "member_user_id": engineer_id,
+            "role_in_project": None,
+            "revision": revision,
+        }
+        assert event.new_values == {"revision": revoked["revision"]}
 
 
 @pytest.mark.parametrize("final_status", ["completed", "cancelled"])

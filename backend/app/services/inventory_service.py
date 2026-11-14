@@ -7,6 +7,7 @@ from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.business_policy import MAX_MONEY
 from app.models.daily_report import DailyReport
 from app.models.idempotency_record import IdempotencyRecord
 from app.models.inventory import (
@@ -393,6 +394,12 @@ class InventoryService:
                     unit_cost=item.unit_cost,
                 )
             )
+        if total > MAX_MONEY:
+            raise AppException(
+                "Material request total exceeds the allowed amount.",
+                status_code=422,
+                error_code="MATERIAL_REQUEST_AMOUNT_TOO_LARGE",
+            )
         request.total_estimated_cost = total
         await self.session.flush()
         await ApprovalService(self.session).create_approval(
@@ -402,7 +409,6 @@ class InventoryService:
                 project_id=request.project_id,
                 title=request.request_number,
                 amount=total,
-                currency="USD",
                 comments=payload.notes,
             ),
             actor,

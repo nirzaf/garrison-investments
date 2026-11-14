@@ -10,6 +10,7 @@ import {
   type AnalyticsFilters,
   type AnalyticsSummary
 } from '../../api/analytics';
+import { labelledAmount, useBusinessPolicy } from '../../api/businessPolicy';
 import { formatApiError } from '../../api/errors';
 import { listProjects } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -40,6 +41,7 @@ const filterFields = [
 
 export function AnalyticsPage() {
   const { user } = useAuth();
+  const policy = useBusinessPolicy();
   const [lastSuccessful, setLastSuccessful] = useState<{
     ownerId: string | undefined;
     data: AnalyticsSummary;
@@ -274,7 +276,7 @@ export function AnalyticsPage() {
                   {displayed.projects.map((project) => (
                     <p className="text-xs text-theme-text-muted" key={project.project_id}>
                       {project.project_name}: {project.report_count} reports,{' '}
-                      {project.invoice_total} invoiced
+                      {labelledAmount(project.invoice_total, policy.data?.business_currency)} invoiced
                     </p>
                   ))}
                 </div>

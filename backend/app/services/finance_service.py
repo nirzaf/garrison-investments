@@ -13,15 +13,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.business_policy import MAX_MONEY
 from app.config import get_settings
 from app.models.activity_log import ActivityLog
 from app.models.approval import Approval
+from app.models.boq_item import BoqItem
 from app.models.finance import Invoice, Payment
+from app.models.inventory import InventoryItem, MaterialRequest, MaterialRequestLine
 from app.models.project import Project
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.approvals import ApprovalCreateRequest
 from app.schemas.finance import (
+    ApprovalCurrencyCount,
+    CurrencyReconciliationResponse,
     InvoiceAction,
     InvoiceCreateRequest,
     InvoiceResponse,
@@ -29,7 +34,11 @@ from app.schemas.finance import (
     PaymentCreateRequest,
     PaymentResponse,
 )
-from app.services.approval_service import APPROVAL_PENDING_STATUSES, ApprovalService
+from app.services.approval_service import (
+    APPROVAL_PENDING_STATUSES,
+    OPERATING_CURRENCY_APPROVAL_TYPES,
+    ApprovalService,
+)
 from app.services.audit_service import AuditService
 from app.services.authorization import accessible_project_ids, ensure_project_access
 from app.services.idempotency import bind, resolve_or_reserve
@@ -98,6 +107,47 @@ class FinanceService:
                 error_code="FINANCE_FORBIDDEN",
             )
 
+    async def currency_reconciliation(self, actor: User) -> CurrencyReconciliationResponse:
+        if actor.role != ROLE_ADMIN:
+            raise AppException(
+                "Currency reconciliation requires an administrator.",
+                status_code=403,
+                error_code="FINANCE_FORBIDDEN",
+            )
+        # Include soft-deleted records: their currency semantics matter during a migration.
+        unlabelled = {
+            "invoices": select(func.count()).select_from(Invoice),
+            "payments": select(func.count()).select_from(Payment),
+            "project_budgets": select(func.count()).where(Project.budget_amount.is_not(None)),
+            "boq_rates": select(func.count()).select_from(BoqItem),
+            "inventory_item_costs": select(func.count()).where(
+                InventoryItem.unit_cost.is_not(None)
+            ),
+            "material_requests": select(func.count()).select_from(MaterialRequest),
+            "material_request_line_costs": select(func.count()).where(
+                MaterialRequestLine.unit_cost.is_not(None)
+            ),
+        }
+        counts = (
+            await self.session.execute(
+                select(*(query.scalar_subquery().label(name) for name, query in unlabelled.items()))
+            )
+        ).mappings().one()
+        approvals = await self.session.execute(
+            select(Approval.request_type, Approval.currency, func.count())
+            .where(Approval.request_type.in_(OPERATING_CURRENCY_APPROVAL_TYPES))
+            .group_by(Approval.request_type, Approval.currency)
+            .order_by(Approval.request_type, Approval.currency)
+        )
+        return CurrencyReconciliationResponse(
+            business_currency=self.settings.business_currency,
+            unlabelled_row_counts=dict(counts),
+            approval_currency_counts=[
+                ApprovalCurrencyCount(request_type=request_type, currency=currency, count=count)
+                for request_type, currency, count in approvals
+            ],
+        )
+
     async def create_invoice(self, payload: InvoiceCreateRequest, actor: User) -> Invoice:
         self.ensure_finance_access(actor)
         await self._ensure_project_scope(payload.project_id, actor)
@@ -151,7 +201,6 @@ class FinanceService:
                 project_id=invoice.project_id,
                 title=invoice.invoice_number,
                 amount=invoice.total_amount,
-                currency="USD",
                 comments=invoice.notes,
             ),
             actor,
@@ -667,7 +716,7 @@ class FinanceService:
     @staticmethod
     def _invoice_total(amount: Decimal, tax_amount: Decimal) -> Decimal:
         total = amount + tax_amount
-        if total >= Decimal("1000000000000"):
+        if total > MAX_MONEY:
             raise AppException(
                 "Invoice total exceeds the allowed amount.",
                 status_code=422,

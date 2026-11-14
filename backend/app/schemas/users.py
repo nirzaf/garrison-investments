@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserResponse(BaseModel):
@@ -13,6 +14,7 @@ class UserResponse(BaseModel):
     designation: str | None
     is_active: bool
     must_change_password: bool
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,6 +22,19 @@ class UserResponse(BaseModel):
 class UserListResponse(BaseModel):
     items: list[UserResponse]
     total: int
+
+
+class UserDetailResponse(UserResponse):
+    permissions: list[str]
+
+
+class UserRoleResponse(BaseModel):
+    role: str
+    permissions: list[str]
+
+
+class UserRoleListResponse(BaseModel):
+    items: list[UserRoleResponse]
 
 
 class UserCreateRequest(BaseModel):
@@ -33,6 +48,7 @@ class UserCreateRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
+    expected_updated_at: AwareDatetime | None = None
     full_name: str | None = Field(default=None, min_length=2, max_length=255)
     role: str | None = None
     employee_code: str | None = Field(default=None, min_length=1, max_length=64)
@@ -43,3 +59,4 @@ class UserUpdateRequest(BaseModel):
 
 class AdminPasswordResetRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=256)
+    expected_updated_at: AwareDatetime | None = None

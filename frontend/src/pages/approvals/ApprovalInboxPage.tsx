@@ -26,6 +26,7 @@ import {
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
+import { labelledAmount } from '../../api/businessPolicy';
 import { ReportSupervisorEvidence } from '../reports/SupervisorEvidence';
 
 function roleLabel(role: string) {
@@ -482,7 +483,7 @@ export function ApprovalInboxPage() {
                   </div>
                   {approval.amount ? (
                     <p className="text-sm font-medium text-theme-text-secondary">
-                      {approval.currency ?? 'USD'} {approval.amount}
+                      {labelledAmount(approval.amount, approval.currency)}
                     </p>
                   ) : null}
                 </div>

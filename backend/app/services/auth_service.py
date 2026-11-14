@@ -196,7 +196,11 @@ class AuthService:
     async def get_user_from_access_token(self, token: str) -> User:
         payload = decode_access_token(token)
         user = await self.users.get_by_id(UUID(payload["sub"]))
-        if not user or not user.is_active:
+        if (
+            not user
+            or not user.is_active
+            or payload.get("access_revision", 0) != user.access_revision
+        ):
             raise AppException(
                 "Invalid or expired session.",
                 status_code=401,
@@ -375,7 +379,9 @@ class AuthService:
         await self.session.commit()
 
     async def _create_session(self, user: User) -> SessionResult:
-        access_token, access_expires_at = create_access_token(user.id, user.role)
+        access_token, access_expires_at = create_access_token(
+            user.id, user.role, access_revision=user.access_revision
+        )
         refresh_token = generate_refresh_token()
         refresh_expires_at = utc_now() + timedelta(hours=self.settings.refresh_token_expire_hours)
         await self.auth.add_refresh_token(

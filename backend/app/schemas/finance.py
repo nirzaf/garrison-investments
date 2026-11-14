@@ -5,7 +5,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from app.business_policy import BusinessCurrency
+
 InvoiceAction = Literal["correct", "resubmit", "approve", "reject", "record_payment"]
+
+
+class ApprovalCurrencyCount(BaseModel):
+    request_type: str
+    currency: str | None
+    count: int
+
+
+class CurrencyReconciliationResponse(BaseModel):
+    business_currency: BusinessCurrency
+    unlabelled_row_counts: dict[str, int]
+    approval_currency_counts: list[ApprovalCurrencyCount]
 
 
 class InvoiceCreateRequest(BaseModel):

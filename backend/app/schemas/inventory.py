@@ -29,7 +29,7 @@ class InventoryItemCreateRequest(BaseModel):
     unit: str = Field(pattern="^(Nos|KG|TON|SQM|bag|m|m2)$")
     minimum_stock: Decimal = Decimal("0")
     reorder_level: Decimal = Decimal("0")
-    unit_cost: Decimal | None = None
+    unit_cost: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     supplier_id: UUID
 
 

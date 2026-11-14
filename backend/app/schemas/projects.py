@@ -115,6 +115,12 @@ class ProjectMemberResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProjectMemberRevocationResponse(BaseModel):
+    project_id: UUID
+    user_id: UUID
+    revision: int
+
+
 class MilestoneResponse(BaseModel):
     id: UUID
     project_id: UUID
