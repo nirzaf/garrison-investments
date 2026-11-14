@@ -7,8 +7,9 @@ import pytest
 
 # Median module runtimes in milliseconds from CI runs 43293023176,
 # 43359757307, 43375671327, and 43379155322, rounded to the nearest 100 ms.
+# The capture wrapper entry below is refreshed from runs 43587573918 and 43599068234.
 SLOW_MODULE_MS = {
-    "tests/test_capture_recovery_wrapper.py": 21_500,
+    "tests/test_capture_recovery_wrapper.py": 177_200,
     "tests/test_scope_authorization.py": 12_500,
     "tests/test_daily_reports.py": 11_800,
     "tests/test_authorization_matrix.py": 11_500,

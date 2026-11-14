@@ -15,7 +15,7 @@ export default defineConfig({
   timeout: 45_000,
   use: {
     baseURL: 'http://127.0.0.1:4325',
-    channel: env.BROWSER_TEST_CHANNEL,
+    channel: 'chrome',
     trace: 'retain-on-failure'
   },
   webServer: [

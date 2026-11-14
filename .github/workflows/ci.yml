@@ -199,14 +199,14 @@ jobs:
             (
               cd ../frontend
               npm ci
-              # Downloads and system packages are independent. Wait for both before testing.
+              # Chrome dependencies, browser install, and frontend build are independent.
               npx playwright install-deps chromium &
               system_deps_pid=$!
-              # Build the same bundle that Playwright will serve while Chromium is provisioned.
+              # Build the bundle while Google Chrome is installed.
               VITE_API_BASE_URL=/api/v1 npm exec --offline -- vite build &
               browser_build_pid=$!
               browser_failed=0
-              npx playwright install --only-shell chromium || browser_failed=1
+              npx playwright install chrome || browser_failed=1
               wait "$system_deps_pid" || browser_failed=1
               wait "$browser_build_pid" || browser_failed=1
               exit "$browser_failed"
