@@ -3427,13 +3427,13 @@ def _mounted_tree_hashes(path: Path, *, protected: bool) -> dict[str, str]:
     return result
 
 
-def _dotenv_value(path: Path, name: str) -> str:
+def _production_environment(path: Path) -> dict[str, str]:
     with open_evidence(path) as file:
         try:
             lines = file.read().decode("utf-8").splitlines()
         except UnicodeDecodeError:
             raise ContractError(3, "The protected production environment is invalid.") from None
-    values: list[str] = []
+    values: dict[str, str] = {}
     for line in lines:
         value = line.strip()
         if not value or value.startswith("#"):
@@ -3441,40 +3441,53 @@ def _dotenv_value(path: Path, name: str) -> str:
         if value.startswith("export "):
             value = value[7:].lstrip()
         key, separator, item = value.partition("=")
-        if separator and key.strip() == name:
-            values.append(item.strip())
-    require(
-        len(values) == 1,
-        f"The protected production environment must set {name} exactly once.",
-        3,
-    )
-    return values[0]
-
-
-def _effective_environment_files(service: dict[str, Any], candidate_root: Path) -> list[Path]:
-    entries = service.get("env_file", [])
-    if isinstance(entries, str):
-        entries = [entries]
-    require(isinstance(entries, list), "Invalid effective application environment files.", 3)
-    paths: list[Path] = []
-    for entry in entries:
-        if isinstance(entry, str):
-            value = entry
-        else:
-            require(
-                isinstance(entry, dict),
-                "Invalid effective application environment file.",
-                3,
-            )
-            value = entry.get("path")
+        key = key.strip()
         require(
-            isinstance(value, str) and value,
-            "Invalid effective application environment file.",
+            separator
+            and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is not None
+            and key not in values,
+            "The protected production environment is invalid or ambiguous.",
             3,
         )
-        path = Path(value)
-        paths.append(path if path.is_absolute() else candidate_root / path)
-    return [Path(os.path.normpath(path)) for path in paths]
+        item = item.strip()
+        if item and item[0] in {"'", '"'} and len(item) >= 2 and item[-1] == item[0]:
+            item = item[1:-1]
+        else:
+            item = item.split(" #", 1)[0].strip()
+        values[key] = item
+    return values
+
+
+def _effective_environment(service: dict[str, Any], service_name: str) -> dict[str, str]:
+    raw_environment = service.get("environment") or {}
+    environment: dict[str, str] = {}
+    if isinstance(raw_environment, dict):
+        entries = raw_environment.items()
+    elif isinstance(raw_environment, list):
+        parsed: list[tuple[str, str]] = []
+        for entry in raw_environment:
+            require(
+                isinstance(entry, str) and "=" in entry,
+                f"Invalid effective application environment for {service_name}.",
+                3,
+            )
+            parsed.append(tuple(entry.split("=", 1)))
+        entries = parsed
+    else:
+        raise ContractError(
+            3, f"Invalid effective application environment for {service_name}."
+        )
+
+    for key, value in entries:
+        require(
+            isinstance(key, str)
+            and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is not None
+            and isinstance(value, (str, int, float, bool)),
+            f"Invalid effective application environment for {service_name}.",
+            3,
+        )
+        environment[key] = str(value).strip().strip("\"'")
+    return environment
 
 
 def configuration_files_from_runtime(
@@ -3496,8 +3509,8 @@ def configuration_files_from_runtime(
         "The candidate environment file differs from the pinned production environment.",
         3,
     )
-    dotenv_purge_setting = _dotenv_value(candidate_root / ".env", "LOG_PURGE_ENABLED")
-    dotenv_purge_setting = dotenv_purge_setting.split(" #", 1)[0].strip()
+    expected_environment = _production_environment(candidate_root / ".env")
+    dotenv_purge_setting = expected_environment.get("LOG_PURGE_ENABLED", "")
     require(
         dotenv_purge_setting.strip("\"'").lower() in {"false", "0", "no", "off"},
         "Production audit deletion must be disabled for this release.",
@@ -3508,8 +3521,25 @@ def configuration_files_from_runtime(
         with open_evidence(candidate_root.joinpath(*safe_parts(name)), protected=True) as file:
             checksums[f"release/{name}"] = hashlib.file_digest(file, "sha256").hexdigest()
 
+    require(
+        isinstance(compose_config, dict),
+        "Invalid effective Compose configuration fields.",
+        3,
+    )
+    compose_fields: dict[str, Any] = {}
+    for name, value in compose_config.items():
+        require(
+            isinstance(name, str),
+            "Invalid effective Compose configuration fields.",
+            3,
+        )
+        if name.startswith("x-"):
+            require(len(name) > 2, "Invalid effective Compose extension field.", 3)
+            continue
+        compose_fields[name] = value
+
     compose = fields(
-        compose_config,
+        compose_fields,
         "services",
         optional="configs name networks secrets version volumes",
         label="effective Compose configuration",
@@ -3519,22 +3549,31 @@ def configuration_files_from_runtime(
     for service_name in ("backend", "celery_worker", "celery_beat"):
         service = services.get(service_name)
         require(isinstance(service, dict), "A required application service is absent.", 3)
-        environment_files = _effective_environment_files(service, candidate_root)
-        require(
-            environment_files == [candidate_root / ".env"],
-            "An application service does not use the pinned production environment file.",
-            3,
-        )
-        environment = service.get("environment", {})
-        require(isinstance(environment, dict), "Invalid effective application environment.", 3)
+        environment = _effective_environment(service, service_name)
         if "LOG_PURGE_ENABLED" in environment:
             purge_setting = environment["LOG_PURGE_ENABLED"]
             require(
-                isinstance(purge_setting, str | int | bool)
-                and str(purge_setting).lower() in {"false", "0", "no", "off"},
+                purge_setting.lower() in {"false", "0", "no", "off"},
                 "Production audit deletion must be disabled for this release.",
                 3,
             )
+        missing = sorted(set(expected_environment) - set(environment))
+        mismatched = sorted(
+            key
+            for key, expected in expected_environment.items()
+            if key in environment and environment[key] != expected
+        )
+        details = []
+        if missing:
+            details.append(f"missing keys: {', '.join(missing)}")
+        if mismatched:
+            details.append(f"mismatched keys: {', '.join(mismatched)}")
+        require(
+            not details,
+            f"Service {service_name} does not receive the pinned production environment "
+            f"({'; '.join(details)}).",
+            3,
+        )
 
     release_mounts: set[str] = set()
     external_mounts: dict[str, str] = {}

@@ -2226,13 +2226,18 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
     compose: dict[str, Any] = {
         "services": {
             name: {
-                "env_file": [str(candidate / ".env")],
-                "environment": {"LOG_PURGE_ENABLED": "false"},
+                "environment": {
+                    "LOG_PURGE_ENABLED": "false",
+                    "SECRET_VALUE": "not-for-output",
+                    "COMPOSE_DEFAULT": "allowed-extra-value",
+                },
                 "volumes": [],
             }
             for name in ("backend", "celery_worker", "celery_beat")
         }
     }
+    compose["x-keys"] = {"logging": "default"}
+    compose["x-logging"] = {"options": {"max-size": "10m"}}
     compose["services"]["grafana"] = {"volumes": mounts}
     generated = contract.configuration_files_from_runtime(state, candidate, compose)
     assert generated == file_map
@@ -2241,6 +2246,19 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
     )
     assert "not-for-output" not in profile_json
     contract.verify_release_configuration(state, candidate, compose)
+
+    compose["services"]["backend"]["environment"]["SECRET_VALUE"] = "wrong-secret"
+    with pytest.raises(contract.ContractError, match="mismatched keys: SECRET_VALUE") as error:
+        contract.configuration_files_from_runtime(state, candidate, compose)
+    assert "not-for-output" not in str(error.value)
+    compose["services"]["backend"]["environment"]["SECRET_VALUE"] = "not-for-output"
+
+    compose["unexpected"] = {"ignored": True}
+    with pytest.raises(
+        contract.ContractError, match="Invalid effective Compose configuration fields"
+    ):
+        contract.configuration_files_from_runtime(state, candidate, compose)
+    del compose["unexpected"]
 
     usesend_mount = {
         "type": "bind",
