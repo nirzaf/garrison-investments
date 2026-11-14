@@ -345,36 +345,17 @@ services = cfg.get("services")
 if not isinstance(services, dict) or not services:
     raise SystemExit("Effective Compose configuration is missing services")
 
-expected_env_file = within_root(candidate / ".env", candidate)
+sys.path.insert(0, str(candidate / "deploy"))
+from release_config_contract import validate_pinned_service_environment
+
 for svc_name in ("backend", "celery_worker", "celery_beat"):
     svc = services.get(svc_name)
     if not isinstance(svc, dict):
         raise SystemExit(f"Effective Compose configuration is missing service {svc_name}")
-    env_files = svc.get("env_file")
-    if not isinstance(env_files, list) or not env_files:
-        raise SystemExit(f"Service {svc_name} must load env_file {candidate / '.env'}")
-    resolved_env_files = []
-    for item in env_files:
-        raw_path = item.get("path") if isinstance(item, dict) else item
-        if not isinstance(raw_path, str) or not raw_path:
-            raise SystemExit(f"Service {svc_name} has an invalid env_file entry")
-        p = Path(raw_path)
-        if not p.is_absolute():
-            p = candidate / p
-        mapped_env = within_root(p, candidate)
-        if mapped_env is None or mapped_env != expected_env_file:
-            raise SystemExit(f"Service {svc_name} must use only the pinned candidate .env file")
-        resolved_env_files.append(mapped_env)
-    env = svc.get("environment") or {}
-    if isinstance(env, list):
-        parsed_svc_env = {}
-        for entry in env:
-            if isinstance(entry, str) and "=" in entry:
-                k, v = entry.split("=", 1)
-                parsed_svc_env[k] = v
-        env = parsed_svc_env
-    if not isinstance(env, dict):
-        raise SystemExit(f"Service {svc_name} environment must be a mapping")
+    try:
+        env = validate_pinned_service_environment(svc_name, svc, env_values)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     if "LOG_PURGE_ENABLED" in env:
         purge_val = env.get("LOG_PURGE_ENABLED")
         if not isinstance(purge_val, (str, int, bool)) or str(purge_val).strip().lower() not in false_tokens:
