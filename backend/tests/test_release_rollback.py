@@ -385,7 +385,7 @@ apply_runtime previous || exit "$?"
         ("wrong-deployment", "does not match this invocation"),
         ("generation-change", "Rollback generation changed"),
         ("quiesced-generation-change", ""),
-        ("purge-enabled", "audit deletion must be disabled"),
+        ("purge-enabled", "mismatched keys: LOG_PURGE_ENABLED"),
         ("stateful-change", "Production volumes changed"),
         ("schema-change", "Pending database migrations"),
         (
@@ -521,6 +521,9 @@ def test_release_entrypoint_uses_technical_checks(
 
     archive_files = {
         "deploy/rollback-generation": "2\n" if "generation-change" in scenario else "1\n",
+        "deploy/release_config_contract.py": (
+            SCRIPT.parent / "release_config_contract.py"
+        ).read_text(),
         "docker-compose.prod.yml": "new",
         "observability/postgres/init-grafana-db.sh": "fixture",
         "observability/minio/loki-policy.json": "fixture",
@@ -611,11 +614,16 @@ if scenario != "missing-tls-or-key":
         },
     )
 for name in ("backend", "celery_worker", "celery_beat"):
+    environment = {
+        "LOG_PURGE_ENABLED": "true" if scenario == "purge-enabled" and candidate else "false",
+        "JWT_PRIVATE_KEY_PATH": "/run/secrets/jwt_private_key",
+        "JWT_PUBLIC_KEY_PATH": "/run/secrets/jwt_public_key",
+    }
     services[name] = {
-        "env_file": [{"path": f"{location}/.env", "required": True}],
-        "environment": {
-            "LOG_PURGE_ENABLED": "true" if scenario == "purge-enabled" and candidate else "false"
-        },
+        # Compose config --format json flattens env_file values into the
+        # effective environment instead of retaining their source paths.
+        "env_file": [],
+        "environment": environment,
         "volumes": backend_volumes if name == "backend" else [],
     }
 services["nginx"] = {
