@@ -1345,8 +1345,8 @@
     "semantic_hash": ""
   },
   "docs/OPERATIONS_AND_DEPLOYMENT.md": {
-    "mtime": 1794628276.4550743,
-    "ast_hash": "df4e612ee432ac51784db873679c2f77",
+    "mtime": 1794629016.3459897,
+    "ast_hash": "2f162954b87d34fb9dd7013155c45eb3",
     "semantic_hash": ""
   },
   "docs/schema/notifications.md": {
@@ -1960,8 +1960,8 @@
     "semantic_hash": "9e29f2bfc43a24d920915f199ab310d7"
   },
   "backend/scripts/backup_set.py": {
-    "mtime": 1794573065.3779774,
-    "ast_hash": "b87ed7d817fba205c4c7164c1fd21169",
+    "mtime": 1794629016.3444567,
+    "ast_hash": "3859bae21ba4475db590a4c53703402b",
     "semantic_hash": ""
   },
   "backend/scripts/backup_set_contract.py": {
@@ -2005,8 +2005,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_authenticated_backup_set.py": {
-    "mtime": 1794573088.2341034,
-    "ast_hash": "a6c24ead21b119dce1ffc68e449770a6",
+    "mtime": 1794629016.345612,
+    "ast_hash": "84b69285c551d35c92e54480610d16c0",
     "semantic_hash": ""
   },
   "backend/tests/test_backup_set.py": {

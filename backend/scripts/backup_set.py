@@ -1337,6 +1337,10 @@ def render_timer(policy: RecoveryPolicy) -> str:
     interval = policy.backup_interval_minutes
     if interval > 1440:
         raise BackupSetError("Use an approved external scheduler for intervals beyond one day.")
+    if 1440 % interval:
+        raise BackupSetError(
+            "Use an approved external scheduler for intervals that do not divide one day."
+        )
     slots = [
         f"OnCalendar=*-*-* {minute // 60:02d}:{minute % 60:02d}:00 UTC"
         for minute in range(0, 1440, interval)

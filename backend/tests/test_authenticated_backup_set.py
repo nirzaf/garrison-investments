@@ -697,3 +697,11 @@ def test_schedule_uses_policy_intervals(recovery) -> None:
     timer = backup_set.render_timer(policy)
     assert timer.count("OnCalendar=") == 24
     assert "OnCalendar=*-*-* 23:00:00 UTC" in timer
+
+
+def test_schedule_rejects_intervals_that_drift_at_midnight(recovery) -> None:
+    _, _, (policy, _), _, _ = recovery
+    irregular = policy.model_copy(update={"backup_interval_minutes": 100})
+
+    with pytest.raises(BackupSetError, match="do not divide one day"):
+        backup_set.render_timer(irregular)
