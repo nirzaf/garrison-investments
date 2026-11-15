@@ -99,7 +99,7 @@ async def create_project(pm: User, engineer: User) -> Project:
         session.add_all(
             [
                 ProjectMember(
-                    project_id=project.id, user_id=pm.id, role_in_project="Project Manager"
+                    project_id=project.id, user_id=pm.id, role_in_project="Group Project Manager"
                 ),
                 ProjectMember(
                     project_id=project.id, user_id=engineer.id, role_in_project="Engineer"
@@ -135,9 +135,9 @@ async def seed(
     ``status``/``issued``/``line_reserved`` allow legacy or mid-lifecycle states to be
     reproduced exactly, which is what the accounting invariants must tolerate.
     """
-    store, _ = await create_user("store_keeper")
-    engineer, _ = await create_user("civil_engineer")
-    pm, _ = await create_user("project_manager")
+    store, _ = await create_user("operations_director")
+    engineer, _ = await create_user("quantity_surveyor")
+    pm, _ = await create_user("group_project_manager")
     project = await create_project(pm, engineer)
 
     async with AsyncSessionLocal() as session:
@@ -252,6 +252,7 @@ async def race_with_parent_lock[T, U](
 
 async def seed_actionable_approval(fixture: Fixture, approver: User, *, overdue: bool) -> UUID:
     now = utc_now()
+    escalation_user, _ = await create_user("operations_director")
     async with AsyncSessionLocal() as session:
         approval = Approval(
             request_type="material_request",
@@ -259,7 +260,7 @@ async def seed_actionable_approval(fixture: Fixture, approver: User, *, overdue:
             project_id=fixture.project.id,
             submitter_id=fixture.engineer.id,
             approver_id=approver.id,
-            escalation_user_id=approver.id,
+            escalation_user_id=escalation_user.id,
             title="Stores request",
             status="pending",
             submitted_at=now - timedelta(days=3) if overdue else now,
@@ -294,12 +295,12 @@ async def test_cancel_and_approval_serialize(cancel_first: bool) -> None:
         status="requested",
         stock_reserved=Decimal("2"),
     )
-    approver, _ = await create_user("operation_manager")
+    approver, _ = await create_user("operations_director")
     approval_id = await seed_actionable_approval(fixture, approver, overdue=False)
     request_id = fixture.request.id
 
     async def cancel(session: AsyncSession) -> str:
-        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+        return (await InventoryService(session).cancel_request(request_id, fixture.store)).status
 
     async def approve(session: AsyncSession) -> str:
         return (await ApprovalService(session).approve(approval_id, approver, None)).status
@@ -334,12 +335,12 @@ async def test_cancel_and_overdue_reminder_serialize(cancel_first: bool) -> None
         status="requested",
         stock_reserved=Decimal("2"),
     )
-    approver, _ = await create_user("operation_manager")
+    approver, _ = await create_user("operations_director")
     approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
     request_id = fixture.request.id
 
     async def cancel(session: AsyncSession) -> str:
-        return (await InventoryService(session).cancel_request(request_id, fixture.engineer)).status
+        return (await InventoryService(session).cancel_request(request_id, fixture.store)).status
 
     async def remind(session: AsyncSession) -> str:
         await ApprovalService(session).send_reminders_and_escalations()
@@ -373,13 +374,17 @@ async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
 ) -> None:
     await skip_if_database_unavailable()
     fixture = await seed(on_hand=Decimal("10"), quantity=Decimal("4"), status="requested")
-    approver, _ = await create_user("operation_manager")
+    approver, _ = await create_user("operations_director")
     approval_id = await seed_actionable_approval(fixture, approver, overdue=True)
+    async with AsyncSessionLocal() as session:
+        approval = await session.get_one(Approval, approval_id)
+        escalation_user = await session.get_one(User, approval.escalation_user_id)
     monkeypatch.setattr("app.tasks.email.send_email_notification.delay", lambda _id: None)
     attempts: list[str] = []
 
     def reject_delivery(self: object, *, recipients: list[str], subject: str, body: str) -> int:
-        assert recipients == [approver.email]
+        assert subject == "Approval escalated"
+        assert recipients == [escalation_user.email]
         attempts.append(subject)
         return 0
 
@@ -392,15 +397,21 @@ async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
         deliveries = {notification.title: str(notification.id) for notification in notifications}
     assert deliveries.keys() == {"Approval reminder", "Approval escalated"}
 
+    # Once escalation is committed, an older reminder for the original approver
+    # is stale. The escalation message remains deliverable until cancellation.
+    assert await _send_email_notification(deliveries["Approval reminder"]) == (
+        "notification email skipped"
+    )
+    assert attempts == []
     with pytest.raises(EmailDeliveryError):
-        await _send_email_notification(deliveries["Approval reminder"])
-    assert attempts == ["Approval reminder"]
+        await _send_email_notification(deliveries["Approval escalated"])
+    assert attempts == ["Approval escalated"]
     async with AsyncSessionLocal() as session:
-        await InventoryService(session).cancel_request(fixture.request.id, fixture.engineer)
+        await InventoryService(session).cancel_request(fixture.request.id, fixture.store)
 
     for notification_id in deliveries.values():
         assert await _send_email_notification(notification_id) == "notification email skipped"
-    assert attempts == ["Approval reminder"]
+    assert attempts == ["Approval escalated"]
     async with AsyncSessionLocal() as session:
         email_statuses = await session.scalars(
             select(Notification.email_status).where(Notification.reference_id == approval_id)
@@ -411,7 +422,7 @@ async def test_cancelled_material_approval_suppresses_queued_and_retried_email(
 async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None:
     await skip_if_database_unavailable()
     fixture = await seed(on_hand=Decimal("10"), quantity=Decimal("4"), status="requested")
-    approver, _ = await create_user("operation_manager")
+    approver, _ = await create_user("operations_director")
     async with AsyncSessionLocal() as session:
         approval = Approval(
             request_type="material_request",
@@ -432,10 +443,10 @@ async def test_cancelled_request_cannot_be_revived_by_an_open_approval() -> None
     async with AsyncSessionLocal() as session:
         service = InventoryService(session)
         assert (
-            await service.cancel_request(fixture.request.id, fixture.engineer)
+            await service.cancel_request(fixture.request.id, fixture.store)
         ).status == "cancelled"
         assert (
-            await service.cancel_request(fixture.request.id, fixture.engineer)
+            await service.cancel_request(fixture.request.id, fixture.store)
         ).status == "cancelled"
     async with AsyncSessionLocal() as session:
         cancelled_approval = await session.get(Approval, approval_id)
@@ -784,8 +795,8 @@ async def test_item_responses_mask_price_by_role() -> None:
     """X1: masking belongs to the response, and the database keeps the real price."""
     await skip_if_database_unavailable()
     fx = await seed(on_hand=Decimal("5"), quantity=Decimal("1"))
-    store, store_password = await create_user("store_keeper")
-    admin, admin_password = await create_user("admin")
+    store, store_password = await create_user("site_supervisor")
+    admin, admin_password = await create_user("managing_director")
 
     async with create_test_client() as client:
         store_token = await login_for_token(client, store, store_password)

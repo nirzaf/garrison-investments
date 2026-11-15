@@ -86,12 +86,11 @@ export function FinancePage() {
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold text-theme-text-primary">Invoices and payments</h2>
-        {!creating && (
-          <button type="button" className={submitClass} onClick={() => setCreating(true)}>
-            New invoice
-          </button>
-        )}
       </div>
+      <p className="text-sm text-theme-text-secondary">
+        Finance is read-only under the current role policy. Invoice changes and payments are
+        disabled.
+      </p>
       {currency && <p className="text-sm">Operating currency {currency}</p>}
       {policy.isError && <p role="status">Currency information is unavailable.</p>}
       {creating && (
@@ -451,7 +450,7 @@ function InvoiceDetails({
             setEditing(false);
           }}
         />
-      ) : (
+      ) : actions.length > 0 ? (
         <fieldset disabled={pending} className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {actions.includes('correct') && (
@@ -515,6 +514,8 @@ function InvoiceDetails({
             </form>
           )}
           <div className="flex flex-wrap items-end gap-2">
+            {actions.includes('correct') && (
+              <>
             <label className="block text-sm">
               Invoice attachment (10 MiB)
               <input
@@ -547,6 +548,8 @@ function InvoiceDetails({
             >
               Upload attachment
             </button>
+              </>
+            )}
             {invoice.attachment_key && (
               <button
                 className={actionClass}
@@ -568,7 +571,7 @@ function InvoiceDetails({
             )}
           </div>
         </fieldset>
-      )}
+      ) : null}
       {pending && (
         <p role="status" className="text-sm">
           Processing invoice action…

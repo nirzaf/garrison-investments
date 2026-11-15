@@ -9,6 +9,10 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 type TestAccount = { email: string; password: string; projectId: string };
 type SignedDocument = { url: string; expires_in_seconds: number; superseded_warning: boolean };
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
+const bearerSubject = (authorization: string | undefined) => {
+  const token = authorization?.replace(/^Bearer\s+/, '').split('.')[1];
+  return token ? JSON.parse(Buffer.from(token, 'base64url').toString('utf8')).sub as string : null;
+};
 const jpeg = readFileSync(
   new URL('../../backend/scripts/assets/blockwork_day5.jpg', import.meta.url)
 );
@@ -39,9 +43,10 @@ async function signIn(page: Page, ...seedArgs: string[]) {
     (response) => response.url().endsWith('/api/v1/auth/verify-otp') && response.ok()
   );
   await page.getByRole('button', { name: 'Verify and sign in' }).click();
-  const { access_token }: { access_token: string } = await (await verified).json();
+  const { access_token, user }: { access_token: string; user: { id: string } } =
+    await (await verified).json();
   await expect(page.getByRole('link', { name: 'Documents', exact: true })).toBeVisible();
-  return { account, headers: { Authorization: `Bearer ${access_token}` } };
+  return { account, headers: { Authorization: `Bearer ${access_token}` }, user };
 }
 
 test('document type filtering and replacement preserve the active version', async ({
@@ -49,14 +54,18 @@ test('document type filtering and replacement preserve the active version', asyn
   page,
   request
 }) => {
-  const { account, headers } = await signIn(page);
+  const { account, headers, user: uploaderSessionUser } = await signIn(page);
+  const uploader = await (await request.get('/api/v1/auth/me', { headers })).json();
+  expect(uploaderSessionUser.id).toBe(uploader.id);
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   const typeFilter = page.getByRole('combobox', { name: 'Filter documents by type' });
   const uploadType = page.getByLabel('Upload document type');
   await typeFilter.fill('DRAWING');
   await expect(uploadType).toHaveValue('wir');
   await uploadType.selectOption('drawing');
-  const title = `Versioned plan ${account.projectId.slice(0, 8)}`;
+  // Repeated browser runs share the disposable database; keep each document
+  // title unique so the card locator cannot match an earlier run's document.
+  const title = `Versioned plan ${randomUUID()}`;
   await page.getByLabel('Document title').fill(title);
   await page.getByLabel('Upload document project').selectOption(account.projectId);
   await page.getByLabel('Document file', { exact: true }).setInputFiles(pdfFile('v1.pdf'));
@@ -65,25 +74,61 @@ test('document type filtering and replacement preserve the active version', asyn
   );
   await page.getByRole('button', { name: 'Upload', exact: true }).click();
   const document = await (await created).json();
+  expect(document.uploaded_by).toBe(uploader.id);
+  expect(document.versions[0].uploaded_by).toBe(uploader.id);
   const card = page.getByRole('article').filter({ hasText: title });
+  const approverPage = await browser.newPage();
+  const { headers: approverHeaders, user: approverSessionUser } = await signIn(
+    approverPage,
+    'seed',
+    '--role',
+    'managing_director'
+  );
+  const approver = await (await request.get('/api/v1/auth/me', {
+    headers: approverHeaders
+  })).json();
+  expect(approver.id).not.toBe(uploader.id);
+  expect(approverSessionUser.id).toBe(approver.id);
+  const approverList = approverPage.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/documents' &&
+    response.request().method() === 'GET' && response.ok()
+  );
+  await approverPage.goto('/documents');
+  const firstApproverList = await approverList;
+  expect(bearerSubject(firstApproverList.request().headers().authorization)).toBe(approver.id);
   const approve = async (version: number) => {
-    const completed = page.waitForResponse((response) => {
+    const completed = approverPage.waitForResponse((response) => {
       const path = new URL(response.url()).pathname;
       return response.request().method() === 'POST' &&
         path.startsWith(`/api/v1/documents/${document.id}/versions/`) && path.endsWith('/approve');
     });
-    await card.getByRole('button', { name: `Approve v${version}`, exact: true }).click();
+    const approverCard = approverPage.getByRole('article').filter({ hasText: title });
+    await approverCard.getByRole('button', { name: `Approve v${version}`, exact: true }).click();
     const response = await completed;
     expect(response.status()).toBe(200);
     expect(await response.json()).toMatchObject({ active_version: version });
   };
+  await expect(card.getByRole('button', { name: 'Approve v1', exact: true })).toHaveCount(0);
+  await expect(card.getByText('Awaiting approval by another authorized user')).toBeVisible();
   await approve(1);
+  await page.reload();
   await expect(card.getByText(/Active v1/)).toBeVisible();
 
   await card.getByRole('button', { name: 'Upload replacement' }).click();
   await card.getByLabel(/Replacement file/).setInputFiles(pdfFile('v2.pdf'));
+  const replacement = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/v1/documents/${document.id}/versions`) &&
+    response.request().method() === 'POST' && response.status() === 200
+  );
   await card.getByRole('button', { name: 'Upload for approval' }).click();
-  await expect(card.getByRole('button', { name: 'Approve v2', exact: true })).toBeVisible();
+  const replacementResponse = await replacement;
+  const updatedDocument = await replacementResponse.json();
+  const uploadedReplacement = updatedDocument.versions.find(
+    (version: { version: number }) => version.version === 2
+  );
+  expect(uploadedReplacement.uploaded_by).toBe(uploader.id);
+  await expect(card.getByRole('button', { name: 'Approve v2', exact: true })).toHaveCount(0);
+  await expect(card.getByText('Awaiting approval by another authorized user')).toBeVisible();
   await expect(card.getByText(/Active v1/)).toBeVisible();
 
   const active = await request.get(`/api/v1/documents/${document.id}/download`, { headers });
@@ -105,15 +150,34 @@ test('document type filtering and replacement preserve the active version', asyn
     await refreshBlocked;
     await route.fallback();
   };
-  await page.route('**/api/v1/documents?*', delayRefresh);
+  const refreshedApproverList = approverPage.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/documents' &&
+    response.request().method() === 'GET' && response.ok()
+  );
+  await approverPage.reload();
+  const approverListResponse = await refreshedApproverList;
+  const approverDocuments = await approverListResponse.json();
+  const approvedDocument = approverDocuments.items.find(
+    (item: { id: string }) => item.id === document.id
+  );
+  const pendingVersion = approvedDocument.versions.find(
+    (version: { version: number }) => version.version === 2
+  );
+  expect(pendingVersion.uploaded_by).toBe(uploader.id);
+  expect(pendingVersion.uploaded_by).not.toBe(approver.id);
+  expect(bearerSubject(approverListResponse.request().headers().authorization)).toBe(approver.id);
+  await approverPage.route('**/api/v1/documents?*', delayRefresh);
   try {
     await approve(2);
-    await expect(page.getByText('Document version approved.')).toBeVisible();
-    await expect(card.getByText(/Active v2/)).toBeVisible();
+    const approverCard = approverPage.getByRole('article').filter({ hasText: title });
+    await expect(approverPage.getByText('Document version approved.')).toBeVisible();
+    await expect(approverCard.getByText(/Active v2/)).toBeVisible();
   } finally {
     releaseRefresh();
   }
-  await page.unroute('**/api/v1/documents?*', delayRefresh);
+  await approverPage.unroute('**/api/v1/documents?*', delayRefresh);
+  await page.reload();
+  await expect(card.getByText(/Active v2/)).toBeVisible();
   await page.reload();
   await expect(card.getByText(/Active v2/)).toBeVisible();
   await expect(card.getByText('superseded', { exact: true })).toBeVisible();
@@ -181,11 +245,12 @@ test('document type filtering and replacement preserve the active version', asyn
   expect(await oldFile.body()).toEqual(pdfFile('v1.pdf').buffer);
 
   const other = await browser.newPage();
-  const { headers: unrelated } = await signIn(other, 'seed', '--role', 'project_manager');
+  const { headers: unrelated } = await signIn(other, 'seed', '--role', 'group_project_manager');
   await other.goto(`/documents?documentId=${document.id}`);
   await expect(other.getByRole('alert')).toContainText('Document not found');
   await expect(other.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
   expect((await request.get(downloadPath, { headers: unrelated })).status()).toBe(404);
+  await approverPage.close();
   await other.close();
 });
 
@@ -193,9 +258,9 @@ test('a document reader combines filters, navigates pages and clears the result 
   browser,
   page
 }) => {
-  const admin = await browser.newPage();
-  const { account, headers } = await signIn(admin);
-  const second = await signIn(page, 'seed', '--role', 'accounts');
+  const { account, headers } = await signIn(page);
+  const secondAdmin = await browser.newPage();
+  const second = await signIn(secondAdmin, 'seed', '--role', 'managing_director');
   const marker = `Library${randomUUID().replace(/-/g, '')}`;
   const titles = Array.from({ length: 26 }, (_, index) => `${marker} structural plan ${index}`);
   const fixtures = [
@@ -206,14 +271,13 @@ test('a document reader combines filters, navigates pages and clears the result 
   ];
   for (let offset = 0; offset < fixtures.length; offset += 5) {
     await Promise.all(fixtures.slice(offset, offset + 5).map(async (row) => {
-      const response = await admin.request.post('/api/v1/documents', {
+      const response = await page.request.post('/api/v1/documents', {
         headers,
         multipart: { ...row, file: pdfFile('library-fixture.pdf') }
       });
       expect(response.status()).toBe(201);
     }));
   }
-  await admin.close();
   await page.goto('/documents');
 
   const project = page.getByRole('combobox', { name: 'Filter documents by project' });
@@ -226,10 +290,11 @@ test('a document reader combines filters, navigates pages and clears the result 
   const titlesOnPage = () => cards.getByRole('heading', { level: 3 }).allTextContents();
 
   const projectResponse = await page.request.get(`/api/v1/projects/${account.projectId}`, {
-    headers: second.headers
+    headers
   });
   expect(projectResponse.ok()).toBe(true);
   const { code } = await projectResponse.json();
+  await secondAdmin.close();
   await projectSearch.fill(code);
   await project.selectOption(account.projectId);
   await type.fill('DRAWING');
@@ -348,7 +413,7 @@ test('supervisor selects supported photo formats and retrieves the original HEIC
   expect(rejected.status()).toBe(413);
 });
 
-test('media removal and recovery persist after reload', async ({ page, request }) => {
+test('media removal persists and deleted-media recovery remains unavailable', async ({ page, request }) => {
   const { account, headers } = await signIn(page);
   const report = await request.post('/api/v1/reports', {
     headers,
@@ -389,11 +454,11 @@ test('media removal and recovery persist after reload', async ({ page, request }
   const deleted = await request.get(`/api/v1/photos/${photo.id}/download`, { headers });
   expect(deleted.status()).toBe(404);
 
-  await page.getByRole('checkbox', { name: 'Show deleted files' }).check();
-  await item.getByRole('button', { name: 'Recover', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Recover file' }).click();
-  await expect(item).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Show deleted files' })).toHaveCount(0);
+  const deletedList = await request.get('/api/v1/photos?deleted=true', { headers });
+  expect(deletedList.status()).toBe(403);
+  const recovery = await request.post(`/api/v1/photos/${photo.id}/recover`, { headers });
+  expect(recovery.status()).toBe(403);
   await page.reload();
-  await expect(item).toBeVisible();
-  await expect(item.getByRole('button', { name: 'Preview' })).toBeVisible();
+  await expect(page.getByRole('article').filter({ hasText: originalName })).toHaveCount(0);
 });

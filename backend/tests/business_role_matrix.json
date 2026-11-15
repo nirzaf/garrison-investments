@@ -1,0 +1,52 @@
+{
+  "source": {
+    "matrix_sha256": "14908d4dd6137a7fec539f384cbdbf75604575d94369f445ae87a6da1bc4fdcc",
+    "guide_sha256": "facb5c27a718eeeec8ab9329444f3f9681bc11c2b9f7b9bd47c7a381caad6a3b",
+    "worksheet": "Privilege Matrix.html",
+    "worksheet_coordinates": {
+      "html_header_line": 2,
+      "role_labels_and_named_people": {"first_row": 4, "last_row": 5},
+      "grant_and_denial_decisions": {"first_row": 6, "last_row": 21},
+      "review_status_row": 22,
+      "guide_permissions_and_review_notes": [
+        {"first_row": 5, "last_row": 20},
+        {"first_row": 22, "last_row": 22}
+      ]
+    },
+    "review_status": "Pending review"
+  },
+  "permissions": [
+    "users:manage",
+    "users:read",
+    "projects:manage",
+    "projects:read",
+    "audit:view",
+    "dashboard:company",
+    "dashboard:scoped",
+    "reports:view",
+    "reports:submit",
+    "reports:approve",
+    "inventory:view",
+    "inventory:manage",
+    "suppliers:manage",
+    "documents:view",
+    "documents:manage",
+    "financial:view"
+  ],
+  "roles": {
+    "managing_director": {"label":"Managing Director","person":"PAVITHRAN LUXMEKANTHAN","source_column":"B","decisions":[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]},
+    "operations_director": {"label":"Operations Director","person":"DAMMINTHAN LUXMEKANTHAN","source_column":"C","decisions":[true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true]},
+    "group_project_manager": {"label":"Group Project Manager","person":"MELANKA PERERA","source_column":"D","decisions":[false,true,true,true,false,false,true,true,true,true,true,false,false,true,false,false]},
+    "mep_project_manager": {"label":"MEP Project Manager","person":"PRANEETH KODAGODA","source_column":"E","decisions":[false,true,true,true,false,false,true,true,true,true,true,false,true,true,false,false]},
+    "quantity_surveyor": {"label":"Quantity Surveyor","person":"ISHARA FERNANDO","source_column":"F","decisions":[false,true,false,false,false,false,true,false,true,false,true,false,true,true,false,false]},
+    "senior_site_supervisor": {"label":"Senior Site Supervisor","person":"ACHINTHA SURANGA","source_column":"G","decisions":[false,true,false,true,false,false,true,false,true,false,true,false,false,true,false,false]},
+    "site_supervisor": {"label":"Site Supervisor","person":"SANJAYAN","source_column":"H","decisions":[false,true,false,true,false,false,true,false,true,false,true,false,false,true,false,false]},
+    "hr_manager": {"label":"HR Manager","person":"SAFIYA","source_column":"I","decisions":[true,true,false,false,true,true,true,true,false,true,false,false,false,true,false,false]},
+    "hr_executive": {"label":"HR Executive","person":"SHAMEERA","source_column":"J","decisions":[false,true,false,false,false,false,true,true,false,false,false,false,false,true,false,false]},
+    "administrative_executive": {"label":"Administrative Executive","person":"DANUSHKA LUXMEKANTHAN","source_column":"K","decisions":[false,true,false,false,false,true,true,false,false,false,true,false,true,true,false,false]}
+  },
+  "expected_role_grants": [16,16,9,10,6,6,6,8,4,6],
+  "expected_grants": 87,
+  "expected_denials": 73,
+  "retired_roles": ["admin","general_manager","operation_manager","project_manager","civil_engineer","civil_supervisor","store_keeper","accounts"]
+}

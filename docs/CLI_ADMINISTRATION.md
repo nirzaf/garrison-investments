@@ -18,7 +18,7 @@ python -m scripts.garrisonctl capabilities --json
 Set `GARRISON_API_BASE_URL` to the intended HTTPS origin. The local default is `http://127.0.0.1:8000`. `--base-url` overrides it. Plain HTTP is limited to loopback. `GARRISON_ENVIRONMENT` or `--environment` labels the response and has no effect on permissions or the destination.
 
 ```bash
-python -m scripts.garrisonctl auth login --email admin@example.com
+python -m scripts.garrisonctl auth login --email director@example.com
 python -m scripts.garrisonctl auth whoami --json
 python -m scripts.garrisonctl roles permissions --json
 python -m scripts.garrisonctl auth logout --json
@@ -35,7 +35,7 @@ For automation, provide an already issued short-lived bearer through `GARRISON_A
 | Identity | `auth login`, `auth whoami`, `auth logout`, `roles list`, `roles permissions` | Own session. Role directory and another role's permissions require `users:read` |
 | Users | `users list`, `show`, `create`, `update`, `set-role`, `activate`, `deactivate`, `reset-password` | `users:read` or `users:manage` as shown by capabilities |
 | Projects | `projects list`, `show`, `members list`, `members assign`, `members revoke` | Scoped `projects:read` or `projects:manage` |
-| Policy | `config show`, `config validate`, `config plan`, `config apply`, `config verify`, `finance policy show`, `finance policy validate`, `finance policy reconciliation` | Local validation, authenticated API, Admin reconciliation, or root host operator |
+| Policy | `config show`, `config validate`, `config plan`, `config apply`, `config verify`, `finance policy show`, `finance policy validate`, `finance policy reconciliation` | Local validation, authenticated API, director finance access, or root host operator |
 | Finance | `finance invoices list`, `show`, `finance budget show`, `finance reconcile` | Dataset-specific permissions, including `financial:view` and project scope |
 | Imports | `imports templates`, `preview`, `run`, `batches`, `status` | `users:manage` |
 | Diagnostics | `health check`, `logs search`, `logs tail`, `audit search` | Public readiness or `audit:view` |
@@ -48,10 +48,10 @@ Each command has `--help` and `--json`. Capabilities lists commands, argument re
 ```bash
 python -m scripts.garrisonctl auth whoami --json
 python -m scripts.garrisonctl roles list --json
-python -m scripts.garrisonctl roles permissions --role civil_engineer --json
-python -m scripts.garrisonctl users list --active --role civil_engineer \
+python -m scripts.garrisonctl roles permissions --role quantity_surveyor --json
+python -m scripts.garrisonctl users list --active --role quantity_surveyor \
   --limit 50 --offset 0 --json
-python -m scripts.garrisonctl users show --email engineer@example.com --json
+python -m scripts.garrisonctl users show --email qs@example.com --json
 python -m scripts.garrisonctl projects list --status active --search warehouse --json
 python -m scripts.garrisonctl projects show --project-id "$PROJECT_ID" --json
 python -m scripts.garrisonctl projects members list --project-id "$PROJECT_ID" --json
@@ -62,9 +62,9 @@ Use the IDs returned by these reads as `USER_ID` and `PROJECT_ID` in the example
 ### Account and project changes
 
 ```bash
-python -m scripts.garrisonctl users create --email engineer@example.com \
-  --full-name "Site Engineer" --employee-code ENG-001 --phone 5550100 \
-  --role civil_engineer --designation "Site engineer" --dry-run --json
+python -m scripts.garrisonctl users create --email qs@example.com \
+  --full-name "Quantity Surveyor" --employee-code QS-001 --phone 5550100 \
+  --role quantity_surveyor --designation "Quantity Surveyor" --dry-run --json
 python -m scripts.garrisonctl users update --user-id "$USER_ID" \
   --phone 5550110 --dry-run --json
 python -m scripts.garrisonctl users update --user-id "$USER_ID" \
@@ -72,17 +72,17 @@ python -m scripts.garrisonctl users update --user-id "$USER_ID" \
 python -m scripts.garrisonctl users activate --user-id "$USER_ID" --dry-run --json
 python -m scripts.garrisonctl users deactivate --user-id "$USER_ID" --dry-run --json
 python -m scripts.garrisonctl users reset-password --user-id "$USER_ID" --dry-run --json
-python -m scripts.garrisonctl users set-role --email engineer@example.com \
-  --role civil_engineer --dry-run --json
-python -m scripts.garrisonctl users set-role --email engineer@example.com \
-  --role civil_engineer --apply --expect "$PLAN_SHA256" --json
+python -m scripts.garrisonctl users set-role --email qs@example.com \
+  --role quantity_surveyor --dry-run --json
+python -m scripts.garrisonctl users set-role --email qs@example.com \
+  --role quantity_surveyor --apply --expect "$PLAN_SHA256" --json
 python -m scripts.garrisonctl projects members assign --project-id "$PROJECT_ID" \
-  --user-id "$USER_ID" --role-in-project "Site engineer" --dry-run --json
+  --user-id "$USER_ID" --role-in-project "Quantity Surveyor" --dry-run --json
 python -m scripts.garrisonctl projects members revoke --project-id "$PROJECT_ID" \
   --user-id "$USER_ID" --dry-run --json
 ```
 
-Set `PLAN_SHA256` to the returned hash after reviewing the target, actor, current state and intended change. Repeat the same command with `--apply --expect "$PLAN_SHA256"` only after authorization. User mutations use the current update timestamp and project mutations use the current project revision. The API serializes administrator changes, guards the last usable administrator, and revokes the target's sessions and pending authentication challenges on access changes or administrative password reset. Account resets preserve the existing password workflow. Project revocation preserves membership history.
+Set `PLAN_SHA256` to the returned hash after reviewing the target, actor, current state and intended change. Repeat the same command with `--apply --expect "$PLAN_SHA256"` only after authorization. User mutations use the current update timestamp and project mutations use the current project revision. The API serializes access changes, preserves at least one usable director account, and revokes the target's sessions and pending authentication challenges on access changes or password reset. Account resets preserve the existing password workflow. Project revocation preserves membership history.
 
 Apply uses the same target, identity and arguments as the preview. A stale plan returns exit 4. Read the updated user or membership afterward and keep the write request ID for the audit record. Create and password-reset apply commands prompt for the temporary password at that point.
 
@@ -105,7 +105,7 @@ python -m scripts.garrisonctl config plan --file proposed-business-config.json -
 python -m scripts.garrisonctl finance policy reconciliation --json
 ```
 
-The three values come from the application's environment settings. These are the existing defaults. Supported codes are `USD`, `LKR`, and `QAR`. Deployed environments currently require `USD`. Obtain owner approval and reconcile unlabeled money rows and historical approval labels before enabling another operating currency. The Admin reconciliation view reports counts and stored currency labels. It never converts or rewrites historical amounts.
+The three values come from the application's environment settings. These are the existing defaults. Supported codes are `USD`, `LKR`, and `QAR`. Deployed environments currently require `USD`. Obtain owner approval and reconcile unlabeled money rows and historical approval labels before enabling another operating currency. The director finance access view reports counts and stored currency labels. It never converts or rewrites historical amounts.
 
 The material estimate is routed with a strict greater-than comparison, so exactly `1000.00` follows the existing lower route. The threshold must fit two decimal places and `Numeric(14,2)`. The business timezone uses IANA identifiers. Production Compose supplies the same timezone to backend processes and the frontend build. Database instants and technical events retain UTC. Invoice total is amount plus the entered nonnegative tax amount, subject to the existing two-decimal limit. Confirm the operating currency, threshold, reporting timezone, and accounting conventions with the owner before changing them.
 
@@ -194,7 +194,7 @@ Backup status checks the independent backup receipts using the approved monitor 
 | Task | Terminal procedure |
 | --- | --- |
 | Review CI or deployment | Use `gh run list --branch main` and `gh run view "$RUN_ID"` in the GitHub checkout. Compare the intended commit and run result with `garrisonctl release status` and `health check`. [Production deployment and retry](OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions). |
-| Inspect live services or bootstrap the first administrator | Use the production Compose helper on the authorized host. First-admin bootstrap is for an empty installation. Routine account management uses `garrisonctl users`. [Host setup and maintenance](OPERATIONS_AND_DEPLOYMENT.md#host-bootstrap-and-runner-maintenance) · [Post-deploy verification](OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification). |
+| Inspect live services or bootstrap the first Managing Director | Use the production Compose helper on the authorized host. First-director bootstrap is for an empty installation. Routine account management uses `garrisonctl users`. [Host setup and maintenance](OPERATIONS_AND_DEPLOYMENT.md#host-bootstrap-and-runner-maintenance) · [Post-deploy verification](OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification). |
 | Update mail, ingress, credentials or service settings | Follow the protected host configuration procedure. `garrisonctl config` manages only the three business policy settings. [Environment and configuration](OPERATIONS_AND_DEPLOYMENT.md#environment-and-configuration). |
 | Capture, publish or restore backups | Use the recovery scripts with the approved destination, policy, keys and isolated restore target. Verify artifacts before attempting recovery. [Backup and restore](OPERATIONS_AND_DEPLOYMENT.md#backup-and-restore). |
 | Diagnose historical data or prepare repairs | Use the named report and repair scripts for the specific defect. Reconcile using the relevant business owner's expected values. [Data checks and repairs](OPERATIONS_AND_DEPLOYMENT.md#data-checks-and-repairs). |

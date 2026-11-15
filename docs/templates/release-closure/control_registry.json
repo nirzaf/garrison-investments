@@ -566,133 +566,140 @@
   "uat_role_groups": {
     "UAT-02": [
       [
-        "admin"
+        "managing_director"
       ],
       [
-        "civil_engineer",
-        "civil_supervisor",
-        "project_manager"
+        "mep_project_manager",
+        "quantity_surveyor",
+        "site_supervisor"
       ]
     ],
     "UAT-03": [
       [
-        "admin",
-        "operation_manager"
+        "managing_director",
+        "operations_director"
       ]
     ],
     "UAT-04": [
       [
-        "admin",
-        "general_manager",
-        "operation_manager"
+        "group_project_manager",
+        "managing_director",
+        "mep_project_manager",
+        "operations_director"
       ]
     ],
     "UAT-05": [
       [
-        "admin",
-        "general_manager",
-        "operation_manager"
+        "group_project_manager",
+        "managing_director",
+        "mep_project_manager",
+        "operations_director"
       ]
     ],
     "UAT-06": [
       [
-        "admin",
-        "general_manager",
-        "operation_manager"
+        "group_project_manager",
+        "managing_director",
+        "mep_project_manager",
+        "operations_director"
       ]
     ],
     "UAT-07": [
       [
-        "civil_supervisor"
+        "senior_site_supervisor",
+        "site_supervisor"
       ]
     ],
     "UAT-08": [
       [
-        "civil_engineer"
+        "quantity_surveyor"
       ],
       [
-        "admin",
-        "general_manager",
-        "operation_manager",
-        "project_manager"
+        "group_project_manager",
+        "hr_manager",
+        "managing_director",
+        "mep_project_manager",
+        "operations_director"
       ]
     ],
     "UAT-09": [
       [
-        "admin",
-        "general_manager",
-        "operation_manager",
-        "project_manager"
+        "group_project_manager",
+        "hr_manager",
+        "managing_director",
+        "mep_project_manager",
+        "operations_director"
       ]
     ],
     "UAT-10": [
       [
-        "store_keeper"
+        "managing_director",
+        "operations_director"
       ]
     ],
     "UAT-12": [
       [
-        "store_keeper"
+        "managing_director",
+        "operations_director"
       ]
     ],
     "UAT-13": [
       [
-        "store_keeper"
+        "managing_director",
+        "operations_director"
       ]
     ],
     "UAT-15": [
       [
-        "accounts"
-      ],
-      [
-        "project_manager"
+        "managing_director",
+        "operations_director"
       ]
     ],
     "UAT-16": [
       [
-        "operation_manager"
+        "operations_director"
       ]
     ],
     "UAT-20": [
       [
-        "admin"
+        "managing_director"
       ]
     ],
     "UAT-21": [
       [
-        "civil_engineer",
-        "civil_supervisor"
+        "senior_site_supervisor",
+        "site_supervisor"
       ]
     ],
     "UAT-22": [
       [
-        "civil_engineer",
-        "civil_supervisor"
+        "senior_site_supervisor",
+        "site_supervisor"
       ]
     ],
     "UAT-23": [
       [
-        "civil_engineer"
+        "quantity_surveyor"
       ]
     ],
     "UAT-24": [
       [
-        "civil_engineer"
+        "mep_project_manager"
       ]
     ],
     "UAT-27": [
       [
-        "civil_engineer"
+        "quantity_surveyor"
       ]
     ],
     "UAT-28": [
       [
-        "civil_engineer"
+        "site_supervisor"
       ]
     ],
     "UAT-33": [
       [
-        "admin"
+        "managing_director"
       ]
     ]
   }

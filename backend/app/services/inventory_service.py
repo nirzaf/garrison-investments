@@ -41,22 +41,17 @@ from app.services.notification_service import NotificationService
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
     PERMISSION_INVENTORY_MANAGE,
-    ROLE_ACCOUNTS,
-    ROLE_ADMIN,
-    ROLE_CIVIL_ENGINEER,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_PROJECT_MANAGER,
-    ROLE_STORE_KEEPER,
+    PERMISSION_INVENTORY_VIEW,
+    PROJECT_OPERATIONAL_MANAGER_ROLES,
     ensure_permission,
     has_permission,
+    roles_with_permission,
 )
 
-PRICE_VISIBLE_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_ACCOUNTS}
 STOCK_OUT_TYPES = {"issue", "consume", "wastage", "damaged"}
 MOVEMENT_IDEMPOTENCY_ROUTE = "inventory.movements.create"
-REQUEST_CREATOR_ROLES = {ROLE_ADMIN, ROLE_STORE_KEEPER, ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
 
 
 class InventoryService:
@@ -66,6 +61,7 @@ class InventoryService:
         self.notifications = NotificationService(session)
 
     async def create_location(self, payload: LocationCreateRequest, actor: User) -> StorageLocation:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         location = StorageLocation(**payload.model_dump())
         self.session.add(location)
         await self.session.flush()
@@ -79,18 +75,17 @@ class InventoryService:
         await self.session.commit()
         return location
 
-    async def list_locations(self) -> list[StorageLocation]:
-        return list(
-            (
-                await self.session.scalars(
-                    select(StorageLocation)
-                    .where(StorageLocation.deleted_at.is_(None))
-                    .order_by(StorageLocation.name.asc())
-                )
-            ).all()
-        )
+    async def list_locations(self, actor: User) -> list[StorageLocation]:
+        query = select(StorageLocation).where(StorageLocation.deleted_at.is_(None))
+        project_ids = await self._inventory_project_scope(actor)
+        if project_ids is not None:
+            if not project_ids:
+                return []
+            query = query.where(StorageLocation.project_id.in_(project_ids))
+        return list((await self.session.scalars(query.order_by(StorageLocation.name.asc()))).all())
 
     async def create_item(self, payload: InventoryItemCreateRequest, actor: User) -> InventoryItem:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         if payload.item_type == "asset" and not payload.item_code:
             raise AppException(
                 "Material code is required for tools and asset-tagged items.",
@@ -149,21 +144,29 @@ class InventoryService:
             raise NotFoundException("Inventory item")
         return item
 
-    async def list_stock(self, item_id: UUID) -> list[InventoryLocationStock]:
+    async def list_stock(self, item_id: UUID, actor: User) -> list[InventoryLocationStock]:
+        query = (
+            select(InventoryLocationStock)
+            .join(StorageLocation, StorageLocation.id == InventoryLocationStock.location_id)
+            .where(
+                InventoryLocationStock.item_id == item_id,
+                InventoryLocationStock.deleted_at.is_(None),
+                StorageLocation.deleted_at.is_(None),
+            )
+        )
+        project_ids = await self._inventory_project_scope(actor)
+        if project_ids is not None:
+            if not project_ids:
+                return []
+            query = query.where(StorageLocation.project_id.in_(project_ids))
         return list(
             (
-                await self.session.scalars(
-                    select(InventoryLocationStock)
-                    .where(
-                        InventoryLocationStock.item_id == item_id,
-                        InventoryLocationStock.deleted_at.is_(None),
-                    )
-                    .order_by(InventoryLocationStock.created_at.asc())
-                )
+                await self.session.scalars(query.order_by(InventoryLocationStock.created_at.asc()))
             ).all()
         )
 
     async def create_asset(self, payload: AssetCreateRequest, actor: User) -> InventoryAsset:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         item = await self._get_item(payload.item_id)
         if item.item_type != "asset":
             raise AppException(
@@ -188,15 +191,22 @@ class InventoryService:
         await self.session.commit()
         return asset
 
-    async def list_assets(self) -> list[InventoryAsset]:
+    async def list_assets(self, actor: User) -> list[InventoryAsset]:
+        query = (
+            select(InventoryAsset)
+            .join(StorageLocation, StorageLocation.id == InventoryAsset.current_location_id)
+            .where(
+                InventoryAsset.deleted_at.is_(None),
+                StorageLocation.deleted_at.is_(None),
+            )
+        )
+        project_ids = await self._inventory_project_scope(actor)
+        if project_ids is not None:
+            if not project_ids:
+                return []
+            query = query.where(StorageLocation.project_id.in_(project_ids))
         return list(
-            (
-                await self.session.scalars(
-                    select(InventoryAsset)
-                    .where(InventoryAsset.deleted_at.is_(None))
-                    .order_by(InventoryAsset.asset_tag.asc())
-                )
-            ).all()
+            (await self.session.scalars(query.order_by(InventoryAsset.asset_tag.asc()))).all()
         )
 
     async def create_movement(
@@ -208,6 +218,31 @@ class InventoryService:
         import_row: tuple[UUID, int] | None = None,
         idempotency_key: str | None = None,
     ) -> InventoryMovement:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
+        return await self._create_movement(
+            payload,
+            actor,
+            commit=commit,
+            import_row=import_row,
+            idempotency_key=idempotency_key,
+        )
+
+    async def _create_movement(
+        self,
+        payload: MovementCreateRequest,
+        actor: User,
+        *,
+        commit: bool,
+        import_row: tuple[UUID, int] | None = None,
+        idempotency_key: str | None = None,
+    ) -> InventoryMovement:
+        """Apply a movement after its caller has established the authorization boundary.
+
+        Public inventory commands use :meth:`create_movement`, which requires
+        ``inventory:manage``. The approved-report workflow is the only internal
+        caller that uses this helper directly; its report approval authorization
+        permits the bounded automatic material consumption side effect.
+        """
         if idempotency_key is not None:
             recorded_id = await resolve_or_reserve(
                 self.session,
@@ -273,7 +308,7 @@ class InventoryService:
                 continue
             if not item:
                 continue
-            await self.create_movement(
+            await self._create_movement(
                 MovementCreateRequest(
                     item_id=item.id,
                     movement_type="consume",
@@ -301,6 +336,7 @@ class InventoryService:
     async def list_movements(
         self,
         *,
+        actor: User,
         item_id: UUID | None = None,
         location_id: UUID | None = None,
         project_id: UUID | None = None,
@@ -321,34 +357,44 @@ class InventoryService:
                     InventoryMovement.to_location_id == location_id,
                 )
             )
+        project_ids = await self._inventory_project_scope(actor)
+        if project_ids is not None:
+            if not project_ids:
+                return [], 0
+            query = query.where(InventoryMovement.project_id.in_(project_ids))
         return await self._list_page(
             query.order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc()),
             limit,
             offset,
         )
 
-    async def low_stock(self) -> list[InventoryLocationStock]:
-        return list(
-            (
-                await self.session.scalars(
-                    select(InventoryLocationStock)
-                    .join(InventoryItem, InventoryItem.id == InventoryLocationStock.item_id)
-                    .where(
-                        InventoryLocationStock.deleted_at.is_(None),
-                        InventoryItem.deleted_at.is_(None),
-                        InventoryItem.reorder_level > 0,
-                        InventoryLocationStock.on_hand_qty <= InventoryItem.reorder_level,
-                    )
-                    .order_by(InventoryItem.name.asc())
-                )
-            ).all()
+    async def low_stock(self, actor: User | None = None) -> list[InventoryLocationStock]:
+        query = (
+            select(InventoryLocationStock)
+            .join(InventoryItem, InventoryItem.id == InventoryLocationStock.item_id)
+            .join(StorageLocation, StorageLocation.id == InventoryLocationStock.location_id)
+            .where(
+                InventoryLocationStock.deleted_at.is_(None),
+                InventoryItem.deleted_at.is_(None),
+                StorageLocation.deleted_at.is_(None),
+                InventoryItem.reorder_level > 0,
+                InventoryLocationStock.on_hand_qty <= InventoryItem.reorder_level,
+            )
         )
+        if actor is not None:
+            project_ids = await self._inventory_project_scope(actor)
+            if project_ids is not None:
+                if not project_ids:
+                    return []
+                query = query.where(StorageLocation.project_id.in_(project_ids))
+        return list((await self.session.scalars(query.order_by(InventoryItem.name.asc()))).all())
 
     async def create_material_request(
         self,
         payload: MaterialRequestCreateRequest,
         actor: User,
     ) -> MaterialRequest:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         projects = await self._request_projects_query(actor)
         project = await self.session.scalar(projects.where(Project.id == payload.project_id))
         if project is None:
@@ -417,18 +463,17 @@ class InventoryService:
         )
         request_id = request.id
         await self.session.commit()
-        self.session.expire_all()
         return await self._get_material_request(request_id)
 
     async def _request_projects_query(self, actor: User) -> Select[Project]:
-        if actor.role not in REQUEST_CREATOR_ROLES:
+        if not has_permission(actor, PERMISSION_INVENTORY_VIEW):
             raise AppException(
                 "You cannot create material requests.",
                 status_code=403,
                 error_code="REQUEST_CREATE_FORBIDDEN",
             )
         query = select(Project).where(Project.deleted_at.is_(None), Project.status == "active")
-        if actor.role != ROLE_STORE_KEEPER:
+        if actor.role not in COMPANY_RESOURCE_ROLES:
             ids = await accessible_project_ids(self.session, actor)
             if ids is not None:
                 query = query.where(Project.id.in_(ids))
@@ -449,7 +494,12 @@ class InventoryService:
         return await self._list_page(query.order_by(Project.name, Project.id), limit, offset)
 
     async def list_material_requests(
-        self, *, request_id: UUID | None = None, limit: int | None = None, offset: int = 0
+        self,
+        actor: User,
+        *,
+        request_id: UUID | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[list[MaterialRequest], int]:
         query = (
             select(MaterialRequest)
@@ -459,7 +509,17 @@ class InventoryService:
         )
         if request_id:
             query = query.where(MaterialRequest.id == request_id)
+        project_ids = await self._inventory_project_scope(actor)
+        if project_ids is not None:
+            if not project_ids:
+                return [], 0
+            query = query.where(MaterialRequest.project_id.in_(project_ids))
         return await self._list_page(query, limit, offset)
+
+    async def _inventory_project_scope(self, actor: User) -> list[UUID] | None:
+        if actor.role in COMPANY_RESOURCE_ROLES:
+            return None
+        return await accessible_project_ids(self.session, actor) or []
 
     async def _list_page[T](
         self, query: Select[T], limit: int | None, offset: int
@@ -473,6 +533,7 @@ class InventoryService:
         return list(page_rows), int(total or 0)
 
     async def reserve_request(self, request_id: UUID, actor: User) -> MaterialRequest:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         request = await self._get_material_request(request_id, for_update=True)
         if request.status != "approved":
             raise AppException(
@@ -506,6 +567,7 @@ class InventoryService:
         return request
 
     async def issue_request(self, request_id: UUID, actor: User) -> MaterialRequest:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         request = await self._get_material_request(request_id, for_update=True)
         if request.status not in {"reserved", "partially_issued"}:
             raise AppException(
@@ -555,16 +617,8 @@ class InventoryService:
         return request
 
     async def cancel_request(self, request_id: UUID, actor: User) -> MaterialRequest:
+        ensure_permission(actor, PERMISSION_INVENTORY_MANAGE)
         request = await self._get_material_request(request_id, for_update=True, lock_lines=False)
-        if request.requester_id != actor.id and not has_permission(
-            actor,
-            PERMISSION_INVENTORY_MANAGE,
-        ):
-            raise AppException(
-                "You cannot cancel this material request.",
-                status_code=403,
-                error_code="REQUEST_CANCEL_FORBIDDEN",
-            )
         if request.status == "issued":
             raise AppException(
                 "Material request cannot be cancelled.",
@@ -958,7 +1012,7 @@ class InventoryService:
             (
                 await self.session.scalars(
                     select(User.id).where(
-                        User.role.in_([ROLE_STORE_KEEPER, ROLE_OPERATION_MANAGER]),
+                        User.role.in_(roles_with_permission(PERMISSION_INVENTORY_VIEW)),
                         User.is_active.is_(True),
                         User.deleted_at.is_(None),
                     )
@@ -974,7 +1028,9 @@ class InventoryService:
                         .where(
                             ProjectMember.project_id == project_id,
                             ProjectMember.deleted_at.is_(None),
-                            User.role == ROLE_PROJECT_MANAGER,
+                            User.role.in_(
+                                PROJECT_OPERATIONAL_MANAGER_ROLES - COMPANY_RESOURCE_ROLES
+                            ),
                             User.is_active.is_(True),
                             User.deleted_at.is_(None),
                         )

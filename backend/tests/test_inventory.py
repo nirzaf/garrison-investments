@@ -74,7 +74,7 @@ async def create_project(pm: User, engineer: User) -> Project:
                 ProjectMember(
                     project_id=project.id,
                     user_id=pm.id,
-                    role_in_project="Project Manager",
+                    role_in_project="Group Project Manager",
                 ),
                 ProjectMember(
                     project_id=project.id, user_id=engineer.id, role_in_project="Engineer"
@@ -113,16 +113,17 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
     await skip_if_database_unavailable()
     policy = Settings(app_env="test", business_currency="LKR")
     monkeypatch.setattr("app.services.approval_service.get_settings", lambda: policy)
-    store, store_password = await create_user("store_keeper")
-    engineer, engineer_password = await create_user("civil_engineer")
-    pm, pm_password = await create_user("project_manager")
-    await create_user("operation_manager")
+    store, store_password = await create_user("operations_director")
+    engineer, engineer_password = await create_user("quantity_surveyor")
+    pm, pm_password = await create_user("group_project_manager")
+    requester, requester_password = await create_user("managing_director")
     project = await create_project(pm, engineer)
 
     async with create_test_client() as client:
         store_token = await login_for_token(client, store, store_password)
         engineer_token = await login_for_token(client, engineer, engineer_password)
         pm_token = await login_for_token(client, pm, pm_password)
+        requester_token = await login_for_token(client, requester, requester_password)
 
         location_response = await client.post(
             "/api/v1/inventory/locations",
@@ -258,15 +259,23 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
         )
         assert [row["id"] for row in item_movements.json()] == [receive_response.json()["id"]]
 
+        request_payload = {
+            "project_id": str(project.id),
+            "from_location_id": location["id"],
+            "notes": "Site pour",
+            "lines": [{"item_id": item["id"], "quantity": "3"}],
+        }
+        for token in (engineer_token, pm_token):
+            forbidden = await client.post(
+                "/api/v1/inventory/requests",
+                json=request_payload,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert forbidden.status_code == 403
         request_response = await client.post(
             "/api/v1/inventory/requests",
-            json={
-                "project_id": str(project.id),
-                "from_location_id": location["id"],
-                "notes": "Site pour",
-                "lines": [{"item_id": item["id"], "quantity": "3"}],
-            },
-            headers={"Authorization": f"Bearer {engineer_token}"},
+            json=request_payload,
+            headers={"Authorization": f"Bearer {requester_token}"},
         )
         assert request_response.status_code == 201
         material_request = request_response.json()
@@ -280,7 +289,7 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
 
         approvals = await client.get(
             "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {pm_token}"},
+            headers={"Authorization": f"Bearer {store_token}"},
         )
         assert approvals.status_code == 200
         approval = next(
@@ -289,10 +298,20 @@ async def test_inventory_stock_request_reserve_issue_and_negative_stock_block(
             if item["request_id"] == material_request["id"]
         )
         assert approval["currency"] == "LKR"
+        manager_inbox = await client.get(
+            "/api/v1/approvals", headers={"Authorization": f"Bearer {pm_token}"}
+        )
+        assert all(item["id"] != approval["id"] for item in manager_inbox.json()["items"])
+        manager_decision = await client.post(
+            f"/api/v1/approvals/{approval['id']}/approve",
+            json={"comments": "This role has no inventory approval grant."},
+            headers={"Authorization": f"Bearer {pm_token}"},
+        )
+        assert manager_decision.status_code == 403
         approved = await client.post(
             f"/api/v1/approvals/{approval['id']}/approve",
             json={"comments": "Approved for site work."},
-            headers={"Authorization": f"Bearer {pm_token}"},
+            headers={"Authorization": f"Bearer {store_token}"},
         )
         assert approved.status_code == 200
 
@@ -355,16 +374,15 @@ async def test_reserve_request_concurrency() -> None:
     await skip_if_database_unavailable()
     import asyncio
 
-    store, store_password = await create_user("store_keeper")
-    engineer, engineer_password = await create_user("civil_engineer")
-    pm, pm_password = await create_user("project_manager")
-    await create_user("operation_manager")
-    project = await create_project(pm, engineer)
+    ops_director, ops_director_password = await create_user("operations_director")
+    qs, _ = await create_user("quantity_surveyor")
+    group_pm, _ = await create_user("group_project_manager")
+    requester, requester_password = await create_user("managing_director")
+    project = await create_project(group_pm, qs)
 
     async with create_test_client() as client:
-        store_token = await login_for_token(client, store, store_password)
-        engineer_token = await login_for_token(client, engineer, engineer_password)
-        pm_token = await login_for_token(client, pm, pm_password)
+        ops_director_token = await login_for_token(client, ops_director, ops_director_password)
+        requester_token = await login_for_token(client, requester, requester_password)
 
         location_response = await client.post(
             "/api/v1/inventory/locations",
@@ -374,7 +392,7 @@ async def test_reserve_request_concurrency() -> None:
                 "location_type": "warehouse",
                 "address": "Industrial Area",
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
         location = location_response.json()
 
@@ -394,7 +412,7 @@ async def test_reserve_request_concurrency() -> None:
                 "tds_expiry_date": "2027-05-16",
                 "compliance_status": "compliant",
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
         supplier = supplier_response.json()
 
@@ -411,7 +429,7 @@ async def test_reserve_request_concurrency() -> None:
                 "unit_cost": "12.50",
                 "supplier_id": supplier["id"],
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
         item = item_response.json()
 
@@ -424,7 +442,7 @@ async def test_reserve_request_concurrency() -> None:
                 "to_location_id": location["id"],
                 "notes": "Opening stock",
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
 
         request_response = await client.post(
@@ -435,13 +453,14 @@ async def test_reserve_request_concurrency() -> None:
                 "notes": "Site pour",
                 "lines": [{"item_id": item["id"], "quantity": "5"}],
             },
-            headers={"Authorization": f"Bearer {engineer_token}"},
+            headers={"Authorization": f"Bearer {requester_token}"},
         )
+        assert request_response.status_code == 201, request_response.text
         material_request = request_response.json()
 
         approvals = await client.get(
             "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {pm_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
         approval = next(
             item
@@ -451,14 +470,14 @@ async def test_reserve_request_concurrency() -> None:
         await client.post(
             f"/api/v1/approvals/{approval['id']}/approve",
             json={"comments": "Approved for site work."},
-            headers={"Authorization": f"Bearer {pm_token}"},
+            headers={"Authorization": f"Bearer {ops_director_token}"},
         )
 
         async def make_reserve_request():
             async with create_test_client() as new_client:
                 return await new_client.post(
                     f"/api/v1/inventory/requests/{material_request['id']}/reserve",
-                    headers={"Authorization": f"Bearer {store_token}"},
+                    headers={"Authorization": f"Bearer {ops_director_token}"},
                 )
 
         reserve_responses = await asyncio.gather(*[make_reserve_request() for _ in range(5)])
@@ -472,7 +491,7 @@ async def test_reserve_request_concurrency() -> None:
             async with create_test_client() as new_client:
                 return await new_client.post(
                     f"/api/v1/inventory/requests/{material_request['id']}/issue",
-                    headers={"Authorization": f"Bearer {store_token}"},
+                    headers={"Authorization": f"Bearer {ops_director_token}"},
                 )
 
         issue_responses = await asyncio.gather(*[make_issue_request() for _ in range(5)])
@@ -483,19 +502,24 @@ async def test_reserve_request_concurrency() -> None:
 async def test_request_project_lookup_and_write_share_active_role_and_membership_scope() -> None:
     await skip_if_database_unavailable()
     roles = (
-        "admin",
-        "general_manager",
-        "operation_manager",
-        "project_manager",
-        "civil_engineer",
-        "civil_supervisor",
-        "store_keeper",
-        "accounts",
+        "managing_director",
+        "operations_director",
+        "group_project_manager",
+        "mep_project_manager",
+        "quantity_surveyor",
+        "senior_site_supervisor",
+        "site_supervisor",
+        "hr_manager",
+        "hr_executive",
+        "administrative_executive",
     )
-    accounts = {role: await create_user(role) for role in roles}
-    pm, engineer = accounts["project_manager"][0], accounts["civil_engineer"][0]
+    users_by_role = {role: await create_user(role) for role in roles}
+    pm, engineer = users_by_role["group_project_manager"][0], users_by_role["quantity_surveyor"][0]
     assigned = await create_project(pm, engineer)
-    other = await create_project(accounts["admin"][0], accounts["store_keeper"][0])
+    other_site_supervisor, _ = await create_user("site_supervisor")
+    other = await create_project(
+        users_by_role["managing_director"][0], other_site_supervisor
+    )
     inactive = await create_project(pm, engineer)
     prefix = f"REQ-{uuid4().hex[:8]}"
     async with AsyncSessionLocal() as session:
@@ -507,10 +531,34 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
                 record.status = "completed"
         await session.commit()
 
-    company_creators = {"admin", "store_keeper"}
-    scoped_creators = {"project_manager", "civil_engineer"}
+    company_creators = {"managing_director", "operations_director"}
+    inventory_viewers = {
+        "managing_director",
+        "operations_director",
+        "group_project_manager",
+        "mep_project_manager",
+        "quantity_surveyor",
+        "senior_site_supervisor",
+        "site_supervisor",
+        "administrative_executive",
+    }
+    async with AsyncSessionLocal() as session:
+        session.add_all(
+            ProjectMember(
+                project_id=assigned.id,
+                user_id=users_by_role[role][0].id,
+                role_in_project="inventory viewer",
+            )
+            for role in inventory_viewers
+            - company_creators
+            - {
+                "group_project_manager",
+                "quantity_surveyor",
+            }
+        )
+        await session.commit()
     async with create_test_client() as client:
-        for role, (user, password) in accounts.items():
+        for role, (user, password) in users_by_role.items():
             headers = {"Authorization": f"Bearer {await login_for_token(client, user, password)}"}
             lookup = "/api/v1/inventory/request-projects"
             first = await client.get(lookup, params={"search": prefix, "limit": 1}, headers=headers)
@@ -519,12 +567,14 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
                 if role in company_creators
                 else {str(assigned.id)}
             )
-            if role not in company_creators | scoped_creators:
+            if role not in inventory_viewers:
                 assert first.status_code == 403
                 eligible = set()
             else:
                 assert first.status_code == 200
-                assert first.json()["total"] == len(eligible)
+                assert first.json()["total"] == len(eligible), (
+                    f"unexpected project scope for {role}: {first.json()}"
+                )
                 options = first.json()["items"]
                 if len(eligible) > 1:
                     second = await client.get(
@@ -548,7 +598,7 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
                         "lines": [{"item_id": str(uuid4()), "quantity": "1.000"}],
                     },
                 )
-                if role not in company_creators | scoped_creators:
+                if role not in company_creators:
                     assert result.status_code == 403
                 else:
                     assert result.status_code == 404

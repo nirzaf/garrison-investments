@@ -77,8 +77,8 @@ async def login_for_token(client: httpx.AsyncClient, email: str, password: str) 
 
 async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
     await skip_if_database_unavailable()
-    admin_email, admin_password = await create_user("admin")
-    engineer_email, engineer_password = await create_user("civil_engineer")
+    admin_email, admin_password = await create_user("managing_director")
+    engineer_email, engineer_password = await create_user("quantity_surveyor")
 
     async with AsyncSessionLocal() as session:
         admin = await UserRepository(session).get_by_email(admin_email)
@@ -132,7 +132,7 @@ async def test_admin_can_search_log_events_and_non_admin_cannot() -> None:
 
 async def test_log_event_stream_returns_matching_events() -> None:
     await skip_if_database_unavailable()
-    admin_email, admin_password = await create_user("admin")
+    admin_email, admin_password = await create_user("managing_director")
     action = f"test.stream.{uuid4().hex}"
     timestamp = utc_now()
     event_count = 205
@@ -146,7 +146,7 @@ async def test_log_event_stream_returns_matching_events() -> None:
     async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
         unauthorized = await client.get("/api/v1/log-events/stream")
         assert unauthorized.status_code == 401
-        engineer_email, engineer_password = await create_user("civil_engineer")
+        engineer_email, engineer_password = await create_user("quantity_surveyor")
         engineer_token = await login_for_token(client, engineer_email, engineer_password)
         forbidden = await client.get(
             "/api/v1/log-events/stream", headers={"Authorization": f"Bearer {engineer_token}"}
@@ -239,7 +239,7 @@ async def serve_test_api():
 
 async def test_log_cli_login_and_search() -> None:
     await skip_if_database_unavailable()
-    admin_email, admin_password = await create_user("admin")
+    admin_email, admin_password = await create_user("managing_director")
 
     async with AsyncSessionLocal() as session:
         admin = await UserRepository(session).get_by_email(admin_email)

@@ -69,8 +69,7 @@ async def test_report_submission_and_decision_create_notifications() -> None:
         assert manager_count.json()["unread_count"] >= 1
         first_notification = manager_notifications.json()["items"][0]
         assert (
-            first_notification["body"]
-            == f"{submitted['report_number']} is ready for approval.\n\n"
+            first_notification["body"] == f"{submitted['report_number']} is ready for approval.\n\n"
             "Open approval: https://portal.example.com/approvals?tab=reports&reportId="
             f"{submitted['id']}"
         )
@@ -125,7 +124,7 @@ async def test_notification_email_status_reflects_provider_acceptance(
     monkeypatch, accepted
 ) -> None:
     await skip_if_database_unavailable()
-    user_email, _ = await create_user("project_manager")
+    user_email, _ = await create_user("group_project_manager")
 
     monkeypatch.setattr("app.tasks.email.send_email_notification.delay", lambda _id: None)
 
@@ -174,7 +173,7 @@ def test_send_email_notification_requires_notification_id() -> None:
 @pytest.mark.asyncio
 async def test_cleanup_old_notifications_soft_deletes_stale_items() -> None:
     await skip_if_database_unavailable()
-    user_email, _ = await create_user("project_manager")
+    user_email, _ = await create_user("group_project_manager")
 
     async with AsyncSessionLocal() as session:
         user = await UserRepository(session).get_by_email(user_email)

@@ -1,11 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Header, Query, status
 from fastapi.responses import Response
 
-from app.api.dependencies import CurrentUser, DbSession, require_permission
-from app.models.user import User
+from app.api.dependencies import CurrentUser, DbSession
 from app.schemas.daily_reports import (
     DailyReportCreateRequest,
     DailyReportDecisionRequest,
@@ -14,21 +13,37 @@ from app.schemas.daily_reports import (
     DailyReportResponse,
     DailyReportUpdateRequest,
 )
+from app.schemas.projects import ProjectOption, ProjectOptionListResponse
 from app.schemas.supervisor_updates import SupervisorUpdateResponse
 from app.services.idempotency import validate_key
+from app.services.project_service import ProjectService
 from app.services.report_export_service import PDF_CONTENT_TYPE, ReportExportService
 from app.services.report_service import ReportService
 from app.services.reporting_service import ReportingService
 from app.utils.exceptions import AppException
-from app.utils.permissions import PERMISSION_REPORTS_VIEW
 
 router = APIRouter(prefix="/reports", tags=["Daily Reports"])
-CanViewReports = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_VIEW))]
+
+
+@router.get("/project-options", response_model=ProjectOptionListResponse)
+async def list_report_project_options(
+    current_user: CurrentUser,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ProjectOptionListResponse:
+    projects, total = await ProjectService(session).list_report_project_options(
+        current_user, search=search, limit=limit, offset=offset
+    )
+    return ProjectOptionListResponse(
+        items=[ProjectOption.model_validate(project) for project in projects], total=total
+    )
 
 
 @router.get("", response_model=DailyReportListResponse)
 async def list_reports(
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
     project_id: Annotated[UUID | None, Query()] = None,
     status: Annotated[str | None, Query()] = None,
@@ -83,7 +98,7 @@ async def create_report(
 @router.get("/{report_id}", response_model=DailyReportResponse)
 async def get_report(
     report_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> DailyReportResponse:
     report = await ReportService(session).get_report(report_id, current_user)
@@ -93,7 +108,7 @@ async def get_report(
 @router.get("/{report_id}/pdf")
 async def download_report_pdf(
     report_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> Response:
     export, pdf_bytes = await ReportExportService(session).get_or_create_pdf(
@@ -109,7 +124,7 @@ async def download_report_pdf(
 
 @router.get("/{report_id}/supervisor-updates", response_model=list[SupervisorUpdateResponse])
 async def list_report_supervisor_updates(
-    report_id: UUID, current_user: CanViewReports, session: DbSession
+    report_id: UUID, current_user: CurrentUser, session: DbSession
 ) -> list[SupervisorUpdateResponse]:
     updates = await ReportService(session).list_supervisor_evidence(report_id, current_user)
     return await ReportingService(session).describe_updates(updates)

@@ -1,11 +1,16 @@
 import asyncio
+import json
 from decimal import Decimal
 from io import BytesIO
-from uuid import uuid4
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
+from uuid import UUID, uuid4
 from zipfile import ZipFile
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.models.import_batch import ImportBatch
@@ -19,11 +24,15 @@ from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.import_service import ImportService
-from app.tasks.imports import _run_import_async
+from app.tasks.imports import ImportTask, _run_import_async
 from app.utils.exceptions import AppException
+from app.utils.permissions import ROLE_MANAGING_DIRECTOR
 from tests.password_fixtures import hash_fixture_password
 
 pytestmark = pytest.mark.asyncio
+RETIRED_ROLE_KEYS = json.loads(
+    Path(__file__).with_name("business_role_matrix.json").read_text()
+)["retired_roles"]
 
 
 @pytest.fixture(autouse=True)
@@ -41,11 +50,11 @@ async def skip_if_database_unavailable() -> None:
 async def create_admin(password: str = "Start123!") -> User:
     user = User(
         email=f"import-admin-{uuid4().hex}@example.com",
-        full_name="Import Admin",
-        role="admin",
+        full_name="Import Director",
+        role="managing_director",
         employee_code=f"IMP-{uuid4().hex[:8]}",
         phone="+97455551111",
-        designation="Admin",
+        designation="Managing Director",
         password_hash=hash_fixture_password(password),
         must_change_password=False,
     )
@@ -146,7 +155,7 @@ async def test_xlsx_preview_rejects_missing_shared_string() -> None:
         target.writestr("xl/worksheets/sheet1.xml", sheet)
 
     with pytest.raises(AppException) as error:
-        await ImportService.__new__(ImportService).preview("opening_stock", malformed.getvalue())
+        ImportService.__new__(ImportService)._parse("opening_stock", malformed.getvalue())
     assert error.value.status_code == 422
     assert error.value.error_code == "IMPORT_SHARED_STRING_INVALID"
 
@@ -154,10 +163,110 @@ async def test_xlsx_preview_rejects_missing_shared_string() -> None:
 async def test_xlsx_preview_enforces_expanded_size_limit(monkeypatch) -> None:
     monkeypatch.setattr("app.services.import_service.MAX_XLSX_EXPANDED_BYTES", 1)
     with pytest.raises(AppException) as error:
-        await ImportService.__new__(ImportService).preview(
+        ImportService.__new__(ImportService)._parse(
             "opening_stock", xlsx_bytes(["quantity"], ["5"])
         )
     assert error.value.status_code == 413
+
+
+async def test_import_template_permissions_follow_the_domain_matrix() -> None:
+    ImportService.ensure_template_access(User(role="mep_project_manager"), "suppliers")
+    ImportService.ensure_template_access(User(role="managing_director"), "projects")
+    ImportService.ensure_template_access(User(role="hr_manager"), "users")
+
+    for role, template in (
+        ("group_project_manager", "suppliers"),
+        ("mep_project_manager", "projects"),
+        ("hr_manager", "materials"),
+        ("hr_manager", "documents"),
+        ("hr_manager", "boq"),
+    ):
+        with pytest.raises(AppException) as error:
+            ImportService.ensure_template_access(User(role=role), template)
+        assert error.value.status_code == 403
+
+
+async def test_hr_manager_user_import_cannot_assign_protected_director_roles(monkeypatch) -> None:
+    service = ImportService.__new__(ImportService)
+    monkeypatch.setattr(service, "_validate_rows", lambda _template, _rows: [])
+
+    errors = await service._validate_for_import(
+        "users",
+        [{"role": "managing_director"}, {"role": "hr_manager"}],
+        User(role="hr_manager"),
+    )
+
+    assert [(error.row, error.field) for error in errors] == [(2, "role"), (3, "role")]
+
+
+@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+async def test_user_import_rejects_each_retired_role_target(retired_role: str) -> None:
+    service = ImportService.__new__(ImportService)
+    row = {
+        "email": "candidate@example.com",
+        "full_name": "Role Import Candidate",
+        "role": retired_role,
+        "employee_code": "ROLE-IMPORT",
+        "phone": "+97455550000",
+        "designation": "Candidate",
+        "temporary_password": "Start123!",
+    }
+
+    errors = await service._validate_for_import("users", [row], User(role="managing_director"))
+
+    assert any(error.row == 2 and error.field == "role" for error in errors)
+
+
+@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+async def test_import_worker_rejects_each_retired_actor_before_processing(
+    retired_role: str,
+) -> None:
+    await skip_if_database_unavailable()
+    suffix = uuid4().hex[:8]
+    async with AsyncSessionLocal() as session:
+        actor = User(
+            email=f"retired-import-{suffix}@example.com",
+            full_name="Retired Import Actor",
+            role=retired_role,
+            employee_code=f"OLD-{suffix}",
+            password_hash="synthetic-password-hash",
+            must_change_password=False,
+        )
+        session.add(actor)
+        await session.flush()
+        batch = ImportBatch(
+            template_type="users",
+            file_name="users.csv",
+            status="queued",
+            created_by=actor.id,
+        )
+        session.add(batch)
+        await session.commit()
+        actor_id = actor.id
+        batch_id = batch.id
+
+    result = await _run_import_async(
+        template_type="users",
+        file_name="users.csv",
+        content=csv_bytes(
+            "email,full_name,role,employee_code,phone,designation,temporary_password",
+            f"new-{suffix}@example.com,New User,quantity_surveyor,NEW-{suffix},"
+            "+97455550000,Engineer,Start123!",
+        ),
+        actor_id=str(actor_id),
+        batch_id=str(batch_id),
+    )
+
+    assert result == "import stopped: INVALID_ROLE"
+    async with AsyncSessionLocal() as session:
+        failed_batch = await session.get(ImportBatch, batch_id)
+        assert failed_batch is not None
+        assert failed_batch.status == "failed"
+        assert failed_batch.summary == {"error_code": "INVALID_ROLE"}
+        created_user = await session.scalar(
+            select(User).where(User.email == f"new-{suffix}@example.com")
+        )
+        assert created_user is None
 
 
 async def test_import_templates_create_records_and_opening_stock_transactionally() -> None:
@@ -321,7 +430,7 @@ async def test_preview_and_run_reject_invalid_user_fields_and_missing_references
     async with AsyncSessionLocal() as session:
         service = ImportService(session)
         for template, content, fields in cases:
-            preview = await service.preview(template, content)
+            preview = await service.preview(template, content, actor)
             assert not preview.valid
             assert {error.field for error in preview.errors} == fields
             result = await service.run_import(
@@ -369,8 +478,24 @@ async def test_async_import_marks_existing_batch_failed_on_unexpected_exception(
     async with AsyncSessionLocal() as session:
         failed_batch = await session.get(ImportBatch, batch_id)
         assert failed_batch is not None
+        assert failed_batch.status == "processing"
+
+    # A retryable attempt remains processing; Celery's terminal failure hook is
+    # responsible for marking the batch failed after its retry budget is exhausted.
+    await asyncio.to_thread(
+        ImportTask().on_failure,
+        RuntimeError("storage temporarily unavailable"),
+        "task-id",
+        (),
+        {"batch_id": str(batch_id)},
+        None,
+    )
+
+    async with AsyncSessionLocal() as session:
+        failed_batch = await session.get(ImportBatch, batch_id)
+        assert failed_batch is not None
         assert failed_batch.status == "failed"
-        assert failed_batch.summary == {"error": "storage temporarily unavailable"}
+        assert failed_batch.summary == {"error_code": "IMPORT_EXECUTION_FAILED"}
 
 
 async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
@@ -469,3 +594,55 @@ async def test_opening_stock_row_replay_never_adds_stock_twice() -> None:
         assert len(movements) == 1
         assert movements[0].import_batch_id == batch_id
         assert movements[0].import_row_index == 0
+
+
+@pytest.mark.asyncio
+async def test_user_import_takes_shared_access_lock_before_actor_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    actor = User(
+        id=uuid4(),
+        email="role-lock@example.test",
+        full_name="Role Lock Test",
+        role=ROLE_MANAGING_DIRECTOR,
+        employee_code="ROLE-LOCK",
+        phone="+97455550000",
+        password_hash="synthetic-hash",
+    )
+    actor.access_revision = 1
+    batch_id = uuid4()
+
+    async def access_lock(_: UserRepository) -> None:
+        events.append("access-lock")
+
+    async def actor_lock(_: User) -> User:
+        events.append("actor-row-lock")
+        return actor
+
+    async def reserve(*args: Any, **kwargs: Any) -> Any:
+        return SimpleNamespace(resource_id=batch_id)
+
+    async def get_batch(_: UUID) -> object:
+        return object()
+
+    async def commit() -> None:
+        events.append("transaction-commit")
+
+    service = ImportService(cast(AsyncSession, SimpleNamespace(commit=commit)))
+
+    monkeypatch.setattr(UserRepository, "lock_access_management", access_lock)
+    monkeypatch.setattr(service, "_lock_and_validate_actor", actor_lock)
+    monkeypatch.setattr(service, "_reserve_submission", reserve)
+    monkeypatch.setattr(service, "_get_submitted_batch", get_batch)
+    monkeypatch.setattr(service, "_batch_response", lambda batch: batch)
+
+    await service.run_import(
+        template_type="users",
+        file_name="users.csv",
+        content=b"synthetic",
+        actor=actor,
+        idempotency_key="safe-test-key",
+    )
+
+    assert events == ["access-lock", "actor-row-lock", "transaction-commit"]

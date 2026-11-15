@@ -77,11 +77,11 @@ async def seed_legacy_drift() -> LegacyDrift:
     async with AsyncSessionLocal() as session:
         actor = User(
             email=f"repair-{suffix}@example.com",
-            full_name="Repair Storekeeper",
-            role="storekeeper",
+            full_name="Repair Site Supervisor",
+            role="site_supervisor",
             employee_code=f"REP-{suffix}",
             phone="+97455550555",
-            designation="Storekeeper",
+            designation="Site Supervisor",
             password_hash=hash_fixture_password("Start123!"),
             must_change_password=False,
         )

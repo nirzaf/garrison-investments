@@ -20,7 +20,9 @@ from app.services.user_service import UserService
 from app.utils.permissions import (
     PERMISSION_USERS_MANAGE,
     PERMISSION_USERS_READ,
+    ROLE_LABELS,
     VALID_ROLES,
+    can_assign_user_role,
     permissions_for_role,
 )
 
@@ -66,10 +68,15 @@ async def create_user(
 
 
 @router.get("/roles", response_model=UserRoleListResponse)
-async def list_user_roles(_: CanReadUsers) -> UserRoleListResponse:
+async def list_user_roles(current_user: CanReadUsers) -> UserRoleListResponse:
     return UserRoleListResponse(
         items=[
-            UserRoleResponse(role=role, permissions=permissions_for_role(role))
+            UserRoleResponse(
+                role=role,
+                label=ROLE_LABELS[role],
+                permissions=permissions_for_role(role),
+                assignable=can_assign_user_role(current_user.role, role),
+            )
             for role in sorted(VALID_ROLES)
         ]
     )

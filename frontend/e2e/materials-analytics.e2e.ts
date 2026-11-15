@@ -8,7 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
 type Account = { email: string; password: string; projectId: string };
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
 
-function seed(role: 'admin' | 'store_keeper'): Account {
+function seed(role: 'managing_director' | 'site_supervisor'): Account {
   return JSON.parse(
     execFileSync(
       env.BROWSER_TEST_PYTHON ?? 'python',
@@ -34,330 +34,63 @@ async function signIn(page: Page, account: Account) {
   return { Authorization: `Bearer ${access_token}` };
 }
 
-test('store requester selects company project and fulfills chosen quantities across reload', async ({
-  browser
+test('site supervisors can read price-safe stock but cannot run inventory commands', async ({
+  page,
+  request
 }) => {
-  const storePage = await browser.newPage();
-  const adminPage = await browser.newPage();
-  const admin = seed('admin');
-  const adminHeaders = await signIn(adminPage, admin);
-  const storeHeaders = await signIn(storePage, seed('store_keeper'));
+  const account = seed('site_supervisor');
+  const headers = await signIn(page, account);
+  const before = await request.get('/api/v1/inventory/items', { headers });
+  expect(before.status()).toBe(200);
+  const items = await before.json();
+  expect(items.every((item: { unit_cost: string | null }) => item.unit_cost === null)).toBe(true);
+
   const mark = randomUUID().slice(0, 8);
+  const requests = [
+    request.post('/api/v1/inventory/locations', {
+      headers,
+      data: { name: `Denied location ${mark}`, code: `DEN-${mark}`, location_type: 'warehouse' }
+    }),
+    request.post('/api/v1/inventory/items', {
+      headers,
+      data: {
+        name: `Denied item ${mark}`,
+        item_code: `DEN-${mark}`,
+        category: 'Fixture',
+        item_type: 'consumable',
+        unit: 'KG',
+        supplier_id: randomUUID()
+      }
+    }),
+    request.post('/api/v1/inventory/movements', {
+      headers,
+      data: { item_id: randomUUID(), movement_type: 'receive', quantity: '1', to_location_id: randomUUID() }
+    }),
+    request.post('/api/v1/inventory/requests', {
+      headers,
+      data: {
+        project_id: account.projectId,
+        from_location_id: randomUUID(),
+        lines: [{ item_id: randomUUID(), quantity: '1' }]
+      }
+    }),
+    request.post(`/api/v1/inventory/requests/${randomUUID()}/reserve`, { headers }),
+    request.post(`/api/v1/inventory/requests/${randomUUID()}/issue`, { headers })
+  ];
+  const responses = await Promise.all(requests);
+  expect(responses.map((response) => response.status())).toEqual([403, 403, 403, 403, 403, 403]);
 
-  const create = async (path: string, data: object) => {
-    const response = await adminPage.request.post(`/api/v1${path}`, {
-      headers: adminHeaders,
-      data
-    });
-    expect(response.ok()).toBe(true);
-    return response.json();
-  };
-  const supplier = await create('/suppliers', {
-    name: `Stores ${mark}`,
-    category: 'Civil',
-    rating: 'A',
-    payment_terms: '30 days',
-    contact_person: 'Test contact',
-    phone: '1234567',
-    email: `${mark}@example.com`,
-    address: 'Test warehouse',
-    tax_registration_number: `TAX-${mark}`,
-    compliance_status: 'compliant'
-  });
-  const location = await create('/inventory/locations', {
-    name: `Receipt ${mark}`,
-    code: `R-${mark}`,
-    location_type: 'warehouse'
-  });
-  const otherLocation = await create('/inventory/locations', {
-    name: `Second store ${mark}`,
-    code: `S-${mark}`,
-    location_type: 'warehouse'
-  });
-  const items = [];
-  for (const label of ['Cement', 'Sand']) {
-    const item = await create('/inventory/items', {
-      name: `${label} ${mark}`,
-      item_code: `${label}-${mark}`,
-      category: 'Civil',
-      item_type: 'consumable',
-      unit: 'KG',
-      supplier_id: supplier.id,
-      unit_cost: '10.00'
-    });
-    items.push(item);
-    await create('/inventory/movements', {
-      item_id: item.id,
-      movement_type: 'receive',
-      quantity: '12',
-      to_location_id: location.id
-    });
-  }
-
-  const project = await adminPage.request.get(`/api/v1/projects/${admin.projectId}`, {
-    headers: adminHeaders
-  });
-  expect(project.ok()).toBe(true);
-  const { code: projectCode } = await project.json();
-  await storePage.goto('/materials');
-  await storePage.getByRole('textbox', { name: 'Search inventory' }).fill(items[0].name);
-  await storePage.getByRole('button', { name: new RegExp(items[0].name) }).click();
-  const receive = storePage.getByRole('form', { name: 'Receive stock' });
-  const destination = receive.getByRole('combobox', { name: 'Receipt destination' });
-  const quantity = receive.getByPlaceholder('Quantity');
-  const notes = receive.getByPlaceholder('Notes');
-  const receiveButton = receive.getByRole('button', { name: 'Receive stock' });
-  await expect(destination).toHaveValue('');
-  await quantity.fill('0.0001');
-  await notes.fill('Browser receipt');
-  await receiveButton.click();
-  expect(
-    await destination.evaluate((select: HTMLSelectElement) => select.validity.valueMissing)
-  ).toBe(true);
-
-  await destination.selectOption(otherLocation.id);
-  await receiveButton.click();
-  await expect(receive.getByRole('alert')).toContainText(/3 decimal places/);
-  await expect(destination).toHaveValue(otherLocation.id);
-  await expect(quantity).toHaveValue('0.0001');
-  await expect(notes).toHaveValue('Browser receipt');
-
-  await quantity.fill('2.125');
-  const receiptAttempts: { key: string; body: unknown }[] = [];
-  let firstReceiptId: string | undefined;
-  await storePage.route('**/inventory/movements', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
-    receiptAttempts.push({
-      key: route.request().headers()['idempotency-key'],
-      body: route.request().postDataJSON()
-    });
-    if (receiptAttempts.length > 1) return route.continue();
-    const original = await route.fetch();
-    expect(original.status()).toBe(201);
-    firstReceiptId = (await original.json()).id;
-    return route.abort();
-  });
-  await receiveButton.click();
-  await expect(receive.getByRole('alert')).toContainText('Retry this movement');
-  await expect(destination).toHaveValue(otherLocation.id);
-  await expect(quantity).toBeDisabled();
-  const received = storePage.waitForResponse(
-    (reply) => reply.url().endsWith('/inventory/movements') && reply.request().method() === 'POST'
-  );
-  await receive.getByRole('button', { name: 'Retry receipt' }).click();
-  const receipt = await received;
-  expect(receipt.status()).toBe(201);
-  expect(receiptAttempts[0].key).toBeTruthy();
-  expect(receiptAttempts).toHaveLength(2);
-  expect(receiptAttempts[0]).toEqual(receiptAttempts[1]);
-  expect(await receipt.json()).toMatchObject({
-    id: firstReceiptId,
-    item_id: items[0].id,
-    to_location_id: otherLocation.id,
-    quantity: '2.125'
-  });
-  await expect(destination).toHaveValue('');
-  await expect(quantity).toHaveValue('');
-  const receivedRow = storePage.getByRole('row').filter({
-    has: storePage.getByRole('rowheader', { name: otherLocation.name })
-  });
-  await expect(receivedRow.getByRole('cell')).toHaveText(['2.125', '0.000', '2.125']);
-  await storePage.getByRole('combobox', { name: 'Filter by location' }).selectOption(location.id);
-  await expect(receivedRow).toHaveCount(0);
-  const sourceRow = storePage.getByRole('row').filter({
-    has: storePage.getByRole('rowheader', { name: location.name, exact: true })
-  });
-  await expect(sourceRow.getByRole('cell')).toHaveText(['12.000', '0.000', '12.000']);
-
-  await storePage.getByLabel('Search eligible projects').fill(projectCode);
-  await expect(
-    storePage
-      .getByRole('combobox', { name: 'Request project' })
-      .locator(`option[value="${admin.projectId}"]`)
-  ).toHaveCount(1);
-  await storePage.getByRole('combobox', { name: 'Request project' }).selectOption(admin.projectId);
-  await storePage.getByRole('combobox', { name: 'Source location' }).selectOption(location.id);
-  await storePage.getByRole('combobox', { name: 'Item 1' }).selectOption(items[0].id);
-  await storePage.getByRole('spinbutton', { name: 'Quantity 1' }).fill('10');
-  await storePage.getByRole('button', { name: 'Add line' }).click();
-  await storePage.getByRole('combobox', { name: 'Item 2' }).selectOption(items[1].id);
-  await storePage.getByRole('spinbutton', { name: 'Quantity 2' }).fill('2');
-  const created = storePage.waitForResponse(
-    (reply) => reply.url().endsWith('/inventory/requests') && reply.request().method() === 'POST'
-  );
-  await storePage.getByRole('button', { name: 'Create request' }).click();
-  const response = await created;
-  expect(response.status()).toBe(201);
-  const request = await response.json();
-  const projectDetail = await storePage.request.get(`/api/v1/projects/${admin.projectId}`, {
-    headers: storeHeaders
-  });
-  expect(projectDetail.status()).toBe(403);
-
-  await storePage.goto('/approvals');
-  await expect(storePage.getByText(request.request_number, { exact: true })).toBeVisible();
-  await expect(storePage.getByRole('button', { name: 'Report approvals' })).toHaveCount(0);
-  const outbox = await storePage.request.get('/api/v1/approvals?box=outbox', {
-    headers: storeHeaders
-  });
-  const approval = (await outbox.json()).items.find(
-    (item: { request_id: string }) => item.request_id === request.id
-  );
-  const workflowLink = `/approvals?tab=workflow&approvalId=${approval.id}`;
-  await adminPage.goto(workflowLink);
-  const workflow = adminPage.getByRole('article').filter({ hasText: request.request_number });
-  await workflow.getByPlaceholder('Override reason').fill('Isolated browser verification');
-  await workflow.getByRole('button', { name: 'Override', exact: true }).click();
-  await expect(workflow).toContainText('override_approved');
-  await adminPage.reload();
-  await expect(workflow).toContainText('override_approved');
-  await expect(workflow.getByRole('button', { name: 'Override', exact: true })).toHaveCount(0);
-
-  await storePage.goto(`/materials?materialRequestId=${request.id}`);
-  const card = storePage.locator('article').filter({ hasText: request.request_number });
-  await card.getByText('Request lines', { exact: true }).click();
-  const cement = card.getByLabel(`Quantity for ${items[0].name}`);
-  const reserveAttempts: { key?: string; body: unknown }[] = [];
-  await storePage.route(`**/inventory/requests/${request.id}/reserve`, async (route) => {
-    const sent = route.request();
-    reserveAttempts.push({ key: sent.headers()['idempotency-key'], body: sent.postDataJSON() });
-    if (reserveAttempts.length === 1) {
-      expect((await route.fetch()).ok()).toBe(true);
-      return route.abort();
-    }
-    return route.continue();
-  });
-  await cement.fill('4');
-  await card.getByRole('button', { name: 'Reserve selected' }).click();
-  await expect(card.getByRole('alert')).toContainText('Retry the same quantities');
-  await expect(cement).toHaveValue('4');
-  await card.getByRole('button', { name: 'Reserve selected' }).click();
-  await expect.poll(() => reserveAttempts.length).toBe(2);
-  expect(reserveAttempts[0].key).toBeTruthy();
-  expect(reserveAttempts[0]).toEqual(reserveAttempts[1]);
-  await expect(card).toContainText('partially_reserved');
-  await cement.fill('3');
-  await card.getByRole('button', { name: 'Issue selected' }).click();
-  await expect(card).toContainText('partially_issued');
-  await storePage.reload();
-  await card.getByText('Request lines', { exact: true }).click();
-  await expect(card).toContainText('7.000 outstanding');
-  await expect(card).toContainText('3.000 issued');
-  const balances = await storePage.request.get(`/api/v1/inventory/items/${items[0].id}/stock`, {
-    headers: storeHeaders
-  });
-  expect(
-    (await balances.json()).find((row: { location_id: string }) => row.location_id === location.id)
-  ).toMatchObject({ on_hand_qty: '9.000', reserved_qty: '1.000', available_qty: '8.000' });
-  await card.getByRole('button', { name: 'Cancel request' }).click();
-  await expect(card).toContainText('cancelled');
-  await expect(card.getByRole('button', { name: 'Issue selected' })).toHaveCount(0);
-  const remainingStock = await storePage.request.get(
-    `/api/v1/inventory/items/${items[0].id}/stock`,
-    { headers: storeHeaders }
-  );
-  expect(
-    (await remainingStock.json()).find(
-      (row: { location_id: string }) => row.location_id === location.id
-    )
-  ).toMatchObject({ on_hand_qty: '9.000', reserved_qty: '0.000', available_qty: '9.000' });
-  const movementForm = storePage.getByRole('form', { name: 'Record stock movement' });
-  await movementForm.getByRole('combobox', { name: 'Movement type' }).selectOption('issue');
-  await movementForm.getByRole('combobox', { name: 'Movement item' }).selectOption(items[0].id);
-  await movementForm.getByRole('combobox', { name: 'From' }).selectOption(location.id);
-  const movementQuantity = movementForm.getByPlaceholder('Quantity');
-  await movementQuantity.fill('999');
-  await movementForm.getByRole('button', { name: 'Record movement' }).click();
-  await expect(movementForm.getByRole('alert')).toContainText('Insufficient stock');
-  await expect(movementQuantity).toHaveValue('999');
-  await expect(movementQuantity).toBeEnabled();
-  await movementQuantity.fill('1');
-  const corrected = storePage.waitForResponse(
-    (reply) => reply.url().endsWith('/inventory/movements') && reply.request().method() === 'POST'
-  );
-  await movementForm.getByRole('button', { name: 'Record movement' }).click();
-  expect((await corrected).status()).toBe(201);
-  await expect(movementQuantity).toHaveValue('');
-
-  const pendingRequestResponse = await storePage.request.post('/api/v1/inventory/requests', {
-    headers: storeHeaders,
-    data: {
-      project_id: admin.projectId,
-      from_location_id: location.id,
-      lines: [{ item_id: items[0].id, quantity: '2' }]
-    }
-  });
-  expect(pendingRequestResponse.status()).toBe(201);
-  const pendingRequest = await pendingRequestResponse.json();
-  expect(pendingRequest.status).toBe('requested');
-  const pendingOutbox = await storePage.request.get('/api/v1/approvals?box=outbox', {
-    headers: storeHeaders
-  });
-  expect(pendingOutbox.ok()).toBe(true);
-  const pendingApproval = (await pendingOutbox.json()).items.find(
-    (item: { request_id: string }) => item.request_id === pendingRequest.id
-  );
-  expect(pendingApproval.status).toBe('pending');
-  await adminPage.goto(`/approvals?tab=workflow&approvalId=${pendingApproval.id}`);
-  await storePage.goto(`/materials?materialRequestId=${pendingRequest.id}`);
-  const staleApproval = adminPage
-    .getByRole('article')
-    .filter({ hasText: pendingRequest.request_number });
-  const pendingCard = storePage
-    .getByRole('article')
-    .filter({ hasText: pendingRequest.request_number });
-  const overrideUrl = `**/api/v1/approvals/${pendingApproval.id}/override`;
-  let releaseDecision!: () => void;
-  const cancellationCommitted = new Promise<void>((resolve) => {
-    releaseDecision = resolve;
-  });
-  await adminPage.route(
-    overrideUrl,
-    async (route) => {
-      await cancellationCommitted;
-      await route.continue();
-    },
-    { times: 1 }
-  );
-  await staleApproval.getByPlaceholder('Override reason').fill('Stale approval after cancellation');
-  const submitted = adminPage.waitForRequest(overrideUrl);
-  const decision = adminPage.waitForResponse(overrideUrl);
-  try {
-    await staleApproval.getByRole('button', { name: 'Override', exact: true }).click();
-    await submitted;
-    await pendingCard.getByRole('button', { name: 'Cancel request' }).click();
-    await expect(pendingCard).toContainText('cancelled');
-  } finally {
-    releaseDecision();
-  }
-  const rejectedDecision = await decision;
-  expect(rejectedDecision.status()).toBe(409);
-  expect(await rejectedDecision.json()).toMatchObject({ error_code: 'APPROVAL_FINAL' });
-  await expect(adminPage.getByRole('alert')).toContainText(
-    'The approval changed while this page was open.'
-  );
-  await expect(staleApproval).toContainText('cancelled');
-  await expect(staleApproval.getByRole('button', { name: 'Override', exact: true })).toHaveCount(0);
-  await storePage.reload();
-  await expect(pendingCard).toContainText('cancelled');
-  const stockAfterConflict = await storePage.request.get(
-    `/api/v1/inventory/items/${items[0].id}/stock`,
-    { headers: storeHeaders }
-  );
-  expect(stockAfterConflict.ok()).toBe(true);
-  expect(
-    (await stockAfterConflict.json()).find(
-      (row: { location_id: string }) => row.location_id === location.id
-    )
-  ).toMatchObject({ on_hand_qty: '8.000', reserved_qty: '0.000', available_qty: '8.000' });
-  await storePage.close();
-  await adminPage.close();
+  await page.goto('/materials');
+  await expect(page.getByRole('button', { name: 'Add item', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record movement', exact: true })).toHaveCount(0);
+  const after = await request.get('/api/v1/inventory/items', { headers });
+  expect(await after.json()).toEqual(items);
 });
 
-test('store keeper transfers a tagged asset and preserves reserved stock', async ({ browser, page }) => {
-  const headers = await signIn(page, seed('store_keeper'));
+test('a Managing Director transfers a tagged asset and preserves reserved stock', async ({ browser, page }) => {
+  const headers = await signIn(page, seed('managing_director'));
   const admin = await browser.newPage();
-  const adminHeaders = await signIn(admin, seed('admin'));
+  const adminHeaders = await signIn(admin, seed('managing_director'));
   const mark = randomUUID().slice(0, 8);
   const supplierResponse = await admin.request.post('/api/v1/suppliers', {
     headers: adminHeaders,
@@ -495,8 +228,8 @@ test('store keeper transfers a tagged asset and preserves reserved stock', async
     .toEqual([expect.objectContaining({ id: moved.id })]);
 });
 
-test('analytics downloads match the filtered project and material control totals', async ({ browser, page }) => {
-  const account = seed('admin');
+test('analytics downloads match the filtered project and material control totals', async ({ page }) => {
+  const account = seed('managing_director');
   const headers = await signIn(page, account);
   const suffix = account.projectId.slice(0, 8);
   const location = `Analytics yard ${suffix}`;
@@ -533,24 +266,17 @@ test('analytics downloads match the filtered project and material control totals
       project_id: account.projectId
     });
   }
-  const invoice = await post('/finance/invoices', {
-    invoice_number: `AN-${suffix}-1`, project_id: account.projectId, amount: '100.00',
-    tax_amount: '7.25', invoice_date: '2024-01-01', due_date: '2024-01-31'
-  });
-  await post('/finance/invoices', {
-    invoice_number: `AN-${suffix}-2`, project_id: account.projectId, amount: '100.00',
-    tax_amount: '7.25', invoice_date: '2024-01-01', due_date: '2024-01-31'
-  });
-  const approver = await browser.newPage();
-  const approvalHeaders = await signIn(approver, seed('admin'));
-  const approval = await approver.request.patch(`/api/v1/finance/invoices/${invoice.id}`, {
-    headers: approvalHeaders, data: { status: 'approved', expected_revision: invoice.revision }
-  });
-  expect(approval.ok()).toBe(true);
-  await post(`/finance/invoices/${invoice.id}/payments`, {
-    amount: '42.15', payment_date: '2024-01-15', method: 'bank transfer'
-  });
-  await approver.close();
+  execFileSync(
+    env.BROWSER_TEST_PYTHON ?? 'python',
+    [
+      '-m',
+      'tests.browser_fixtures',
+      'seed-analytics-finance',
+      '--project-id',
+      account.projectId
+    ],
+    { cwd: backendDirectory, encoding: 'utf8' }
+  );
 
   await page.goto('/analytics');
   await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(account.projectId);
@@ -628,7 +354,7 @@ test('analytics preserves labelled results and filters through a failed refresh'
     await chartGate;
     await route.continue();
   });
-  const account = seed('admin');
+  const account = seed('managing_director');
   const headers = await signIn(page, account);
   await expect(page.getByRole('heading', { name: 'Launch Operations' })).toBeVisible();
   expect(chartRequests).toBe(0);

@@ -15,7 +15,7 @@ import {
 } from '../../api/documents';
 import { formatApiError } from '../../api/errors';
 import { PDF_IMAGE_ACCEPT, validateDocumentFile } from '../../api/fileValidation';
-import { listProjects, type ProjectRecord } from '../../api/projects';
+import { listDocumentProjectOptions, type ProjectOption } from '../../api/projects';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
@@ -38,7 +38,7 @@ export function DocumentsPage() {
   const focusedDocumentId = searchParams.get('documentId');
   const focusedVersionId = searchParams.get('versionId');
   const [projectSearch, setProjectSearch] = useState('');
-  const [projectOptions, setProjectOptions] = useState<ProjectRecord[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [search, setSearch] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -68,10 +68,10 @@ export function DocumentsPage() {
   const previewRequest = useRef(0);
   const documentRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageDocuments = user?.permissions?.includes('documents:manage') ?? false;
-  const canUseCompanyScope = ['admin', 'general_manager', 'operation_manager', 'accounts'].includes(user?.role ?? '');
+  const canUseCompanyScope = ['managing_director', 'operations_director'].includes(user?.role ?? '');
   const projectsQuery = useQuery({
     queryKey: ['documents', 'project-options', projectSearch],
-    queryFn: () => listProjects({ search: projectSearch || undefined })
+    queryFn: () => listDocumentProjectOptions({ search: projectSearch || undefined, limit: 100 })
   });
   const projects = [...(projectsQuery.data?.items ?? []), ...projectOptions.filter(
     (option) => !projectsQuery.data?.items.some((item) => item.id === option.id)
@@ -405,10 +405,7 @@ export function DocumentsPage() {
       ) : (
         <div className="grid gap-4">
           {documents.map((document) => {
-            const canApprove = canManageDocuments && document.status !== 'archived' && (
-              user?.role === 'admin' || user?.role === 'operation_manager' ||
-              (user?.role === 'project_manager' && Boolean(document.project_id))
-            );
+            const canApprove = canManageDocuments && document.status !== 'archived';
             const outsideResults = document.id === focusedDocumentId &&
               !documentList.data?.items.some((item) => item.id === document.id);
             const active = document.versions.find(
@@ -532,7 +529,8 @@ export function DocumentsPage() {
                         >
                           Download v{version.version}
                         </button>
-                        {canApprove && version.status === 'pending_approval' ? (
+                        {canApprove && version.status === 'pending_approval' &&
+                        version.uploaded_by !== user?.id ? (
                           <button
                             className="form-field"
                             disabled={pending}
@@ -541,6 +539,12 @@ export function DocumentsPage() {
                           >
                             Approve v{version.version}
                           </button>
+                        ) : null}
+                        {canApprove && version.status === 'pending_approval' &&
+                        version.uploaded_by === user?.id ? (
+                          <span className="text-sm text-theme-text-muted">
+                            Awaiting approval by another authorized user
+                          </span>
                         ) : null}
                       </div>
                     </div>

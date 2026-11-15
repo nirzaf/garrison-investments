@@ -23,6 +23,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.activity_log import ActivityLog
+from app.models.user import User
 from app.observability.context import get_log_context
 from app.services.audit_retention_policy import (
     AuditRetentionPolicyError,
@@ -30,6 +31,7 @@ from app.services.audit_retention_policy import (
     audit_writer_policy,
     load_audit_retention_policy,
 )
+from app.utils.permissions import ROLE_HR_MANAGER
 from app.utils.redaction import redact_payload, redact_text
 from app.utils.security import utc_now
 
@@ -122,6 +124,7 @@ class AuditService:
     async def list_logs(
         self,
         *,
+        actor: User | None = None,
         event_type: str | None = None,
         severity: str | None = None,
         action: str | None = None,
@@ -178,18 +181,23 @@ class AuditService:
         if search:
             normalized_search = search.strip()
             pattern = f"%{normalized_search}%"
-            search_document = func.concat_ws(
-                " ",
-                ActivityLog.event_type,
-                ActivityLog.severity,
-                ActivityLog.action,
-                ActivityLog.entity_type,
-                ActivityLog.endpoint,
-                ActivityLog.comments,
-                cast(ActivityLog.context_payload, Text),
-                cast(ActivityLog.old_values, Text),
-                cast(ActivityLog.new_values, Text),
-            )
+            searchable_fields = [
+                cast(ActivityLog.event_type, Text),
+                cast(ActivityLog.severity, Text),
+                cast(ActivityLog.action, Text),
+                cast(ActivityLog.entity_type, Text),
+                cast(ActivityLog.endpoint, Text),
+            ]
+            if actor is None or actor.role != ROLE_HR_MANAGER:
+                searchable_fields.extend(
+                    [
+                        cast(ActivityLog.comments, Text),
+                        cast(ActivityLog.context_payload, Text),
+                        cast(ActivityLog.old_values, Text),
+                        cast(ActivityLog.new_values, Text),
+                    ]
+                )
+            search_document = func.concat_ws(" ", *searchable_fields)
             filters.append(
                 or_(
                     func.to_tsvector("simple", search_document).op("@@")(

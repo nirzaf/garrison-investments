@@ -9,8 +9,8 @@ class ProjectAnalyticsRow(BaseModel):
     project_name: str
     progress_percentage: Decimal
     report_count: int
-    invoice_total: Decimal
-    paid_total: Decimal
+    invoice_total: Decimal | None
+    paid_total: Decimal | None
 
 
 class MaterialUsageRow(BaseModel):

@@ -8,12 +8,12 @@ The portal connects daily site reporting with project oversight, document contro
 
 | Area | What the portal supports |
 | --- | --- |
-| Identity and account management | Password and emailed one-time code sign-in (with code restart and offline-storage prechecks before consuming an OTP), password reset and change, session refresh and logout, a read-only user profile, and administrator controls for creating, deactivating, resetting, and changing the roles of other active users. |
+| Identity and account management | Password and emailed one-time code sign-in (with code restart and offline-storage prechecks before consuming an OTP), password reset and change, session refresh and logout, a read-only user profile, and authorized account controls for creating, deactivating, resetting, and changing the roles of other active users. |
 | Dashboards and projects | Company-wide or scoped dashboards, recent activity, searchable projects, multi-row bill of quantities (BOQ) and milestone setup, project editing and team assignments, and task timelines with an accessible Gantt view. |
 | Supervisor site updates | Capture attendance, overtime, work location, progress, delays, notes, and files. Supervisors can save, reopen, update, preview or download uploaded draft files (including original-only HEIC files), and submit drafts. |
 | Engineer daily reports | Capture work completed, next-day plans, progress, safety and inspections, manpower, equipment, materials, and media. Report submission verifies linked supervisor updates. Returned reports retain their verified evidence and report number. Engineers can reopen returned reports with reviewer feedback, revise them, and resubmit. Reviewers can approve or return reports, inspect approval history, and download approved report PDFs. |
 | Approvals | A report approval inbox, a workflow inbox for material requests and invoices, and an outbox for the current user’s submissions. Eligible approvers can approve, reject with a reason, delegate, or override where the workflow permits. Reminders and notifications track pending work. |
-| Documents and photos | Searchable document library with matching filter counts, replacement versions with explicit approval, authorized previews with in-dialog link refresh and downloads, photo and attachment uploads, and Admin recovery of eligible deleted media. HEIC files are available as originals. File access uses time-limited signed URLs. |
+| Documents and photos | Searchable document library with matching filter counts, replacement versions with explicit approval, authorized previews with in-dialog link refresh and downloads, photo and attachment uploads, and director recovery of eligible deleted media. HEIC files are available as originals. File access uses time-limited signed URLs. |
 | Inventory and stores | Warehouses and project stores, consumables and asset-tagged equipment, stock by location, receipts, transfers, returns, adjustments, and movement history. Multi-line material requests support approval, quantity-selected partial reservation and issue, and cancellation of unissued stock. Low-stock alerts and report-linked material consumption support reconciliation. |
 | Suppliers | Supplier register and compliance edits, deactivation that preserves history, technical data sheet (TDS) maintenance, and expiry reminders. |
 | Finance | Invoice details and attachments, a restricted supplier lookup, correction and resubmission for unpaid rejected invoices, project budget comparisons, and payments against approved invoices. The system tracks partial and full payment and checks the outstanding balance. |
@@ -29,14 +29,16 @@ Each account has one role. Route permissions, project membership, record ownersh
 
 | Role | Main responsibilities |
 | --- | --- |
-| Admin | User and role administration, imports, security and audit, company oversight, and authorized workflow overrides. |
-| General Manager | Company dashboards, cross-project oversight, approvals, analytics, and management reporting. |
-| Operation Manager | Company operations, project setup and oversight, workflow review, and coordination across reports, stores, and finance. |
-| Project Manager | Manage assigned projects and review their reports, documents, and workflow requests. |
-| Civil Engineer | Prepare official daily reports for assigned projects, attach site evidence, and correct returned reports. |
-| Civil Supervisor | Record and submit daily site updates and supporting evidence. |
-| Store Keeper | Manage stock and assets, material requests, issuance, transfers, and supplier information within the assigned permissions. |
-| Accounts | Work with invoices, attachments, payments, and finance reporting within the assigned permissions. |
+| Managing Director | Company-wide user, project, reporting, inventory, supplier, document, finance, audit, and dashboard privileges. |
+| Operations Director | Company-wide user, project, reporting, inventory, supplier, document, finance, audit, and dashboard privileges. |
+| Group Project Manager | Project management, scoped dashboards, report review and approval, inventory visibility, and document viewing. |
+| MEP Project Manager | Project management, scoped dashboards, report review and approval, inventory visibility, supplier management, and document viewing. |
+| Quantity Surveyor | Scoped dashboard, report submission, inventory viewing, supplier management, and document viewing. |
+| Senior Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
+| Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
+| HR Manager | User administration within role-assignment safeguards, audit access, company/scoped dashboards, report viewing and approval, and document viewing. |
+| HR Executive | User-directory reading, scoped dashboard, report viewing, and document viewing. |
+| Administrative Executive | User-directory reading, company/scoped dashboards, inventory viewing, supplier management, and document viewing. |
 
 ## Architecture
 
@@ -143,7 +145,7 @@ To load sample projects and accounts for a local walkthrough, set `SEED_DEFAULT_
 docker compose exec backend python scripts/seed.py
 ```
 
-The seed command prints the local administrator email. The development configuration can display the OTP in the sign-in form. Production uses the [first-administrator bootstrap](docs/OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification), private signing keys, and a configured mail provider. Use sample data only in isolated development or test environments.
+The seed command prints the local Managing Director demo email. The development configuration can display the OTP in the sign-in form. Production uses the [first-Managing-Director bootstrap](docs/OPERATIONS_AND_DEPLOYMENT.md#post-deploy-verification), private signing keys, and a configured mail provider. Use sample data only in isolated development or test environments.
 
 For native frontend and backend development, run PostgreSQL, Redis, and object storage in Compose. Keep ports 3000 and 8000 free for the native app processes. From the repository root:
 
@@ -194,7 +196,7 @@ npm test
 npm run build
 ```
 
-The Chromium suite uses synthetic accounts, a separate `garrison_browser_test` database, and its own Redis database and object bucket. It exercises offline report recovery, supervisor draft submission, and administrator role changes and auditing. With the disposable services running, prepare its database once and run the suite from the repository root:
+The Google Chrome suite uses synthetic accounts, a separate `garrison_browser_test` database, and its own Redis database and object bucket. It exercises offline report recovery, supervisor draft submission, and authorized role changes and auditing. With the disposable services running, prepare its database once and run the suite from the repository root:
 
 ```bash
 docker compose exec postgres createdb -U garrison garrison_browser_test

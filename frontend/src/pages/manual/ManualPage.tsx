@@ -14,29 +14,76 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
-import {
-  COMMON_SECTIONS,
-  accountsManual,
-  adminManual,
-  civilEngineerManual,
-  civilSupervisorManual,
-  generalManagerManual,
-  operationManagerManual,
-  projectManagerManual,
-  storeKeeperManual
-} from './manuals';
+import { COMMON_SECTIONS } from './manuals/common';
 import type { Manual, ManualSection } from './manuals';
 
-const MANUALS: Record<string, Manual> = {
-  admin: adminManual,
-  general_manager: generalManagerManual,
-  operation_manager: operationManagerManual,
-  project_manager: projectManagerManual,
-  civil_engineer: civilEngineerManual,
-  civil_supervisor: civilSupervisorManual,
-  store_keeper: storeKeeperManual,
-  accounts: accountsManual
+const ROLE_LABELS: Record<string, string> = {
+  managing_director: 'Managing Director',
+  operations_director: 'Operations Director',
+  group_project_manager: 'Group Project Manager',
+  mep_project_manager: 'MEP Project Manager',
+  quantity_surveyor: 'Quantity Surveyor',
+  senior_site_supervisor: 'Senior Site Supervisor',
+  site_supervisor: 'Site Supervisor',
+  hr_manager: 'HR Manager',
+  hr_executive: 'HR Executive',
+  administrative_executive: 'Administrative Executive'
 };
+const PERMISSION_LABELS: Record<string, string> = {
+  'users:manage': 'Manage users',
+  'users:read': 'Read users',
+  'projects:manage': 'Manage projects',
+  'projects:read': 'Read projects',
+  'audit:view': 'View audit records',
+  'dashboard:company': 'Company dashboard',
+  'dashboard:scoped': 'Scoped dashboard',
+  'reports:view': 'View reports',
+  'reports:submit': 'Submit reports',
+  'reports:approve': 'Approve reports',
+  'inventory:view': 'View inventory',
+  'inventory:manage': 'Manage inventory',
+  'suppliers:manage': 'Manage suppliers',
+  'documents:view': 'View documents',
+  'documents:manage': 'Manage documents',
+  'financial:view': 'View financial information'
+};
+
+const ALL_PERMISSION_KEYS = Object.keys(PERMISSION_LABELS);
+
+function manualFor(role: string, permissions: string[]): Manual | undefined {
+  const roleLabel = ROLE_LABELS[role];
+  if (!roleLabel) return undefined;
+  const granted = new Set(permissions);
+  const enabled = permissions.filter((permission) => PERMISSION_LABELS[permission]);
+  const missing = ALL_PERMISSION_KEYS.filter((permission) => !granted.has(permission));
+  const sections: ManualSection[] = [
+    ...COMMON_SECTIONS,
+    {
+      id: 'role-workflows',
+      title: 'Your available workflows',
+      icon: '🧭',
+      content:
+        'Use the portal navigation to open the areas enabled for your account. Each workflow also checks record ownership, project membership, current status, and your current role on the server.'
+    },
+    {
+      id: 'role-boundaries',
+      title: 'Access boundaries',
+      icon: '🔒',
+      content:
+        'A permission does not provide access to every record. Project, report, document, and evidence access is limited by the applicable business scope. HR Manager and HR Executive are role labels; no separate HR module is available in this portal.'
+    }
+  ];
+  return {
+    roleKey: role,
+    roleLabel,
+    tagline: `Portal guidance for the ${roleLabel} role.`,
+    overview:
+      'Your account can use the features listed below. Available actions remain subject to record ownership, workflow state, and project scope.',
+    permissions: enabled.map((permission) => PERMISSION_LABELS[permission]),
+    limitations: missing.map((permission) => `Does not have the ${PERMISSION_LABELS[permission]} permission`),
+    sections
+  };
+}
 
 function Diagram({ text }: { text: string }) {
   return (
@@ -120,7 +167,7 @@ function PermissionPills({ permissions }: { permissions: string[] }) {
   if (permissions.length === 0) {
     return (
       <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="text-sm font-semibold text-green-700">Full access — no limitations.</p>
+        <p className="text-sm font-semibold text-green-700">All listed permissions are granted.</p>
       </div>
     );
   }
@@ -143,7 +190,7 @@ function LimitationPills({ limitations }: { limitations: string[] }) {
   if (limitations.length === 0) {
     return (
       <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="text-sm text-green-700">✓ No limitations — full platform access.</p>
+        <p className="text-sm text-green-700">✓ All permissions in the current matrix are granted.</p>
       </div>
     );
   }
@@ -197,7 +244,7 @@ type Tab = 'manual' | 'permissions' | 'common';
 export function ManualPage() {
   const { user } = useAuth();
   const role = user?.role ?? '';
-  const manual = MANUALS[role];
+  const manual = manualFor(role, user?.permissions ?? []);
   const [activeTab, setActiveTab] = useState<Tab>('manual');
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 

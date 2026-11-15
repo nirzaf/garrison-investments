@@ -23,13 +23,24 @@ from app.models.inventory import InventoryItem, InventoryMovement, StorageLocati
 from app.models.project import Project
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.repositories.user_repository import UserRepository
 from app.schemas.imports import ImportErrorItem, ImportPreviewResponse, ImportRunResponse
 from app.schemas.inventory import MovementCreateRequest
 from app.services.audit_service import AuditService
 from app.services.idempotency import resolve_or_reserve
 from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException, NotFoundException
-from app.utils.permissions import validate_role
+from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_INVENTORY_MANAGE,
+    PERMISSION_PROJECTS_MANAGE,
+    PERMISSION_SUPPLIERS_MANAGE,
+    PERMISSION_USERS_MANAGE,
+    can_assign_user_role,
+    ensure_permission,
+    validate_role,
+)
 from app.utils.security import hash_password, validate_password_policy
 
 XLSX_NAMESPACE = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -107,8 +118,9 @@ class ImportService:
         self.session = session
         self.audit = AuditService(session)
 
-    def template_path(self, template_type: str) -> Path:
+    def template_path(self, template_type: str, actor: User) -> Path:
         self._ensure_template(template_type)
+        self.ensure_template_access(actor, template_type)
         return (
             Path(__file__).resolve().parents[3]
             / "docs"
@@ -116,9 +128,16 @@ class ImportService:
             / f"{template_type}.csv"
         )
 
-    async def preview(self, template_type: str, content: bytes) -> ImportPreviewResponse:
+    async def preview(
+        self, template_type: str, content: bytes, actor: User
+    ) -> ImportPreviewResponse:
+        # Preview is read-only. A row lock held until request teardown can block the
+        # separate request-audit transaction on the users foreign key. The actual
+        # import path repeats this check under a lock before it writes anything.
+        actor = await self._lock_and_validate_actor(actor, lock=False)
+        self.ensure_template_access(actor, template_type)
         rows = self._parse(template_type, content)
-        errors = await self._validate_for_import(template_type, rows)
+        errors = await self._validate_for_import(template_type, rows, actor)
         return ImportPreviewResponse(
             template_type=template_type,
             row_count=len(rows),
@@ -136,13 +155,24 @@ class ImportService:
         batch_id: UUID | None = None,
         idempotency_key: str | None = None,
     ) -> ImportRunResponse:
+        # User imports and interactive account changes share the same lock as
+        # the one-time role cutover. Acquire it before locking the actor row so
+        # all user-writing paths use the same lock order.
+        if template_type == "users":
+            await UserRepository(self.session).lock_access_management()
+        actor = await self._lock_and_validate_actor(actor)
+        self.ensure_template_access(actor, template_type)
         submission = None
         if batch_id is None:
             submission = await self._reserve_submission(
                 template_type, file_name, content, actor.id, idempotency_key
             )
             if submission is not None and submission.resource_id is not None:
-                return self._batch_response(await self._get_submitted_batch(submission.resource_id))
+                replay = await self._get_submitted_batch(submission.resource_id)
+                # Release the actor row lock before request-audit middleware writes
+                # its separate event with a foreign key to this user.
+                await self.session.commit()
+                return self._batch_response(replay)
             batch = ImportBatch(
                 template_type=template_type,
                 file_name=file_name,
@@ -154,11 +184,17 @@ class ImportService:
             existing_batch = await self.session.get(ImportBatch, batch_id, with_for_update=True)
             if existing_batch is None or existing_batch.deleted_at is not None:
                 raise NotFoundException("Import batch")
+            if (
+                existing_batch.created_by != actor.id
+                or existing_batch.template_type != template_type
+            ):
+                raise NotFoundException("Import batch")
             batch = existing_batch
             if batch.status == "completed":
+                await self.session.commit()
                 return self._batch_response(batch)
         rows = self._parse(template_type, content)
-        errors = await self._validate_for_import(template_type, rows)
+        errors = await self._validate_for_import(template_type, rows, actor)
         batch.status = "failed" if errors else "completed"
         batch.row_count = len(rows)
         batch.error_count = len(errors)
@@ -199,12 +235,16 @@ class ImportService:
         actor: User,
         idempotency_key: str | None,
     ) -> ImportRunResponse:
+        actor = await self._lock_and_validate_actor(actor)
+        self.ensure_template_access(actor, template_type)
         self._ensure_template(template_type)
         submission = await self._reserve_submission(
             template_type, file_name, content, actor.id, idempotency_key
         )
         if submission is not None and submission.resource_id is not None:
-            return self._batch_response(await self._get_submitted_batch(submission.resource_id))
+            replay = await self._get_submitted_batch(submission.resource_id)
+            await self.session.commit()
+            return self._batch_response(replay)
         batch = ImportBatch(
             template_type=template_type,
             file_name=file_name,
@@ -282,7 +322,7 @@ class ImportService:
         batch_id: UUID,
     ) -> int:
         if template_type == "users":
-            return await self._import_users(rows)
+            return await self._import_users(rows, actor)
         if template_type == "projects":
             return await self._import_projects(rows, actor)
         if template_type == "suppliers":
@@ -297,9 +337,16 @@ class ImportService:
             return await self._import_opening_stock(rows, actor, batch_id)
         raise AppException("Unknown import template.", status_code=404, error_code="IMPORT_UNKNOWN")
 
-    async def _import_users(self, rows: list[dict[str, str]]) -> int:
+    async def _import_users(self, rows: list[dict[str, str]], actor: User) -> int:
         created = 0
         for row in rows:
+            role = validate_role(row["role"])
+            if not can_assign_user_role(actor.role, role):
+                raise AppException(
+                    "Your role cannot assign one or more requested user roles.",
+                    status_code=403,
+                    error_code="USER_ROLE_ASSIGNMENT_FORBIDDEN",
+                )
             email = row["email"].strip().lower()
             existing = await self.session.scalar(
                 select(User).where(User.email == email, User.deleted_at.is_(None))
@@ -310,7 +357,7 @@ class ImportService:
                 User(
                     email=email,
                     full_name=row["full_name"].strip(),
-                    role=validate_role(row["role"]),
+                    role=role,
                     employee_code=row["employee_code"].strip(),
                     phone=row["phone"].strip(),
                     designation=row.get("designation") or None,
@@ -674,10 +721,69 @@ class ImportService:
         return index - 1
 
     async def _validate_for_import(
-        self, template_type: str, rows: list[dict[str, str]]
+        self, template_type: str, rows: list[dict[str, str]], actor: User
     ) -> list[ImportErrorItem]:
         errors = self._validate_rows(template_type, rows)
+        if template_type == "users":
+            for index, row in enumerate(rows, start=2):
+                if not row.get("role"):
+                    continue
+                try:
+                    role = validate_role(row["role"])
+                except AppException:
+                    continue
+                if not can_assign_user_role(actor.role, role):
+                    errors.append(
+                        ImportErrorItem(
+                            row=index,
+                            field="role",
+                            message="Your role cannot assign this role.",
+                        )
+                    )
         return errors or await self._validate_references(template_type, rows)
+
+    @staticmethod
+    def ensure_template_access(actor: User, template_type: str) -> None:
+        permission_by_template = {
+            "users": PERMISSION_USERS_MANAGE,
+            "suppliers": PERMISSION_SUPPLIERS_MANAGE,
+            "materials": PERMISSION_INVENTORY_MANAGE,
+            "opening_stock": PERMISSION_INVENTORY_MANAGE,
+            "documents": PERMISSION_DOCUMENTS_MANAGE,
+            "projects": PERMISSION_PROJECTS_MANAGE,
+            "boq": PERMISSION_PROJECTS_MANAGE,
+        }
+        permission = permission_by_template.get(template_type)
+        if permission is None:
+            raise AppException(
+                "Unknown import template.", status_code=404, error_code="IMPORT_UNKNOWN"
+            )
+        ensure_permission(actor, permission)
+        # New project and priced BOQ imports require company resource and financial scope.
+        # The source permission matrix does not grant financial reads to project managers.
+        if template_type in {"projects", "boq"} and actor.role not in COMPANY_RESOURCE_ROLES:
+            raise AppException(
+                "Project and priced BOQ imports are restricted to directors.",
+                status_code=403,
+                error_code="IMPORT_SCOPE_FORBIDDEN",
+            )
+
+    async def _lock_and_validate_actor(self, actor: User, *, lock: bool = True) -> User:
+        query = select(User).where(User.id == actor.id, User.deleted_at.is_(None))
+        if lock:
+            query = query.with_for_update()
+        current_actor = await self.session.scalar(query.execution_options(populate_existing=True))
+        if (
+            current_actor is None
+            or not current_actor.is_active
+            or current_actor.access_revision != actor.access_revision
+        ):
+            raise AppException(
+                "Import access changed. Reload your session before continuing.",
+                status_code=403,
+                error_code="IMPORT_ACTOR_ACCESS_REVOKED",
+            )
+        return current_actor
 
     def _validate_rows(
         self, template_type: str, rows: list[dict[str, str]]

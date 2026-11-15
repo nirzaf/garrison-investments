@@ -8,12 +8,13 @@ export function RequirePermission({
   permission,
   children
 }: {
-  permission: string;
+  permission: string | string[];
   children: ReactElement;
 }) {
   const { user } = useAuth();
 
-  if (!user?.permissions?.includes(permission)) {
+  const requiredPermissions = Array.isArray(permission) ? permission : [permission];
+  if (!requiredPermissions.some((required) => user?.permissions?.includes(required))) {
     return <Navigate to="/dashboard" replace />;
   }
 

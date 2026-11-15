@@ -56,11 +56,7 @@ export function InventoryPage() {
   const materialRequestRefs = useRef<Record<string, HTMLElement | null>>({});
   const canManageInventory = user?.permissions?.includes('inventory:manage') ?? false;
   const { data: businessPolicy } = useBusinessPolicy();
-  const canCreateMaterialRequest =
-    user?.role === 'admin' ||
-    user?.role === 'project_manager' ||
-    user?.role === 'civil_engineer' ||
-    user?.role === 'store_keeper';
+  const canCreateMaterialRequest = user?.permissions?.includes('inventory:manage') ?? false;
   const locations = useQuery({ queryKey: ['inventory-locations'], queryFn: listLocations });
   const suppliers = useQuery({
     queryKey: ['suppliers'],
@@ -672,7 +668,7 @@ export function InventoryPage() {
                     canManage={canManageInventory && !cancelRequestMutation.isPending}
                     onSuccess={refreshInventory}
                   />
-                  {(canManageInventory || request.requester_id === user?.id) &&
+                  {canManageInventory &&
                     !['cancelled', 'issued'].includes(request.status) && (
                       <button
                         className="mt-2 text-sm text-[var(--status-error-text)] underline"

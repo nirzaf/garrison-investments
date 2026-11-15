@@ -120,7 +120,7 @@ def test_hardened_env_with_real_keys_starts_and_signs(
 
     validate_signing_keys()
     user_id = uuid4()
-    token, _ = create_access_token(user_id, "admin")
+    token, _ = create_access_token(user_id, "managing_director")
     assert decode_access_token(token)["sub"] == str(user_id)
 
 
@@ -132,7 +132,7 @@ def test_dev_env_without_keys_uses_the_embedded_fallback(
 
     validate_signing_keys()
     user_id = uuid4()
-    token, _ = create_access_token(user_id, "project_manager")
+    token, _ = create_access_token(user_id, "group_project_manager")
     assert decode_access_token(token)["sub"] == str(user_id)
 
 
@@ -149,7 +149,7 @@ def test_dev_env_with_unreadable_key_path_still_falls_back(
     )
 
     validate_signing_keys()
-    token, _ = create_access_token(uuid4(), "admin")
+    token, _ = create_access_token(uuid4(), "managing_director")
     assert decode_access_token(token)["type"] == "access"
 
 
@@ -170,11 +170,11 @@ def test_hardened_env_never_falls_back_after_key_files_disappear(
     )
 
     validate_signing_keys()
-    token, _ = create_access_token(uuid4(), "project_manager")
+    token, _ = create_access_token(uuid4(), "group_project_manager")
     private_path.unlink()
     public_path.unlink()
 
     with pytest.raises(RuntimeError, match="JWT_PRIVATE_KEY_PATH"):
-        create_access_token(uuid4(), "project_manager")
+        create_access_token(uuid4(), "group_project_manager")
     with pytest.raises(RuntimeError, match="JWT_PUBLIC_KEY_PATH"):
         decode_access_token(token)

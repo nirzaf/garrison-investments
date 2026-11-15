@@ -308,7 +308,7 @@ def test_finance_access_rejects_non_finance_roles() -> None:
     service = FinanceService.__new__(FinanceService)
 
     with pytest.raises(AppException) as exc_info:
-        service.ensure_finance_access(User(role="civil_engineer"))
+        service.ensure_finance_access(User(role="quantity_surveyor"))
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.error_code == "FINANCE_FORBIDDEN"
@@ -316,7 +316,7 @@ def test_finance_access_rejects_non_finance_roles() -> None:
 
 @pytest.mark.parametrize(
     "role",
-    ["admin", "accounts", "operation_manager", "general_manager", "project_manager"],
+    ["managing_director", "operations_director"],
 )
 def test_finance_access_allows_finance_roles(role: str) -> None:
     service = FinanceService.__new__(FinanceService)

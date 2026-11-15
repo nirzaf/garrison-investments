@@ -160,20 +160,27 @@ async def delegate(token: str, approval_id: UUID, target: UUID) -> httpx.Respons
         )
 
 
-async def candidates(token: str, approval_id: UUID) -> httpx.Response:
+async def candidates(
+    token: str, approval_id: UUID, params: dict[str, str | int] | None = None
+) -> httpx.Response:
     async with create_test_client() as client:
         return await client.get(
             f"/api/v1/approvals/{approval_id}/delegates",
             headers={"Authorization": f"Bearer {token}"},
+            params=params,
         )
 
 
 async def test_delegating_to_the_submitter_is_rejected() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    engineer = await create_user("civil_engineer")
+    manager = await create_user("operations_director")
+    engineer = await create_user("quantity_surveyor")
+    project = await create_project([manager, engineer])
     approval = await create_approval(
-        request_type="project_change", approver=manager, submitter=engineer
+        request_type="material_request",
+        approver=manager,
+        submitter=engineer,
+        project_id=project.id,
     )
     token = await login(manager)
 
@@ -185,8 +192,11 @@ async def test_delegating_to_the_submitter_is_rejected() -> None:
 
 async def test_self_delegation_is_rejected() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    approval = await create_approval(request_type="project_change", approver=manager)
+    manager = await create_user("operations_director")
+    project = await create_project([manager])
+    approval = await create_approval(
+        request_type="material_request", approver=manager, project_id=project.id
+    )
     token = await login(manager)
 
     response = await delegate(token, approval.id, manager.id)
@@ -196,11 +206,18 @@ async def test_self_delegation_is_rejected() -> None:
 
 
 @pytest.mark.parametrize(
-    "role", ["civil_engineer", "civil_supervisor", "store_keeper", "accounts", "project_manager"]
+    "role",
+    [
+        "quantity_surveyor",
+        "site_supervisor",
+        "senior_site_supervisor",
+        "administrative_executive",
+        "group_project_manager",
+    ],
 )
-async def test_invoice_delegation_requires_an_invoice_approver_role(role: str) -> None:
+async def test_invoice_delegation_is_disabled_for_every_target_role(role: str) -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
+    manager = await create_user("operations_director")
     outsider = await create_user(role)
     approval = await create_approval(request_type="invoice", approver=manager)
     token = await login(manager)
@@ -208,13 +225,13 @@ async def test_invoice_delegation_requires_an_invoice_approver_role(role: str) -
     response = await delegate(token, approval.id, outsider.id)
 
     assert response.status_code == 403
-    assert response.json()["error_code"] == "DELEGATION_ROLE_FORBIDDEN"
+    assert response.json()["error_code"] == "APPROVAL_FORBIDDEN"
 
 
-async def test_invoice_delegation_to_another_operation_manager_succeeds() -> None:
+async def test_invoice_delegation_is_disabled_even_for_another_director() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    peer = await create_user("operation_manager")
+    manager = await create_user("operations_director")
+    peer = await create_user("operations_director")
     project = await create_project([manager, peer])
     invoice = await add_invoice(project, Decimal("100"), status="submitted")
     approval = await create_approval(
@@ -224,25 +241,23 @@ async def test_invoice_delegation_to_another_operation_manager_succeeds() -> Non
 
     response = await delegate(token, approval.id, peer.id)
 
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "delegated"
-    assert response.json()["delegated_to_id"] == str(peer.id)
-    # The delegate can now decide, which is the whole point of a qualified delegation.
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "APPROVAL_FORBIDDEN"
     peer_token = await login(peer)
     async with create_test_client() as client:
         decided = await client.post(
             f"/api/v1/approvals/{approval.id}/approve",
             headers={"Authorization": f"Bearer {peer_token}"},
-            json={"comments": "Approved on behalf of the Operation Manager."},
+            json={"comments": "Approved on behalf of the Operations Director."},
         )
-    assert decided.status_code == 200, decided.text
-    assert decided.json()["status"] == "approved"
+    assert decided.status_code == 403
+    assert decided.json()["error_code"] == "APPROVAL_FORBIDDEN"
 
 
 async def test_daily_report_approval_requires_its_own_workflow() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    general = await create_user("general_manager")
+    manager = await create_user("operations_director")
+    general = await create_user("operations_director")
     approval = await create_approval(request_type="daily_report", approver=manager)
     token = await login(manager)
 
@@ -252,11 +267,11 @@ async def test_daily_report_approval_requires_its_own_workflow() -> None:
     assert response.json()["error_code"] == "APPROVAL_REQUIRES_OWNING_WORKFLOW"
 
 
-async def test_project_manager_delegate_must_belong_to_the_project() -> None:
+async def test_project_managers_cannot_receive_material_fulfillment_authority() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    member_pm = await create_user("project_manager")
-    foreign_pm = await create_user("project_manager")
+    manager = await create_user("operations_director")
+    member_pm = await create_user("group_project_manager")
+    foreign_pm = await create_user("group_project_manager")
     project = await create_project([manager, member_pm])
     approval = await create_approval(
         request_type="material_request", approver=manager, project_id=project.id
@@ -264,31 +279,35 @@ async def test_project_manager_delegate_must_belong_to_the_project() -> None:
     token = await login(manager)
 
     rejected = await delegate(token, approval.id, foreign_pm.id)
-    accepted = await delegate(token, approval.id, member_pm.id)
+    member = await delegate(token, approval.id, member_pm.id)
 
     assert rejected.status_code == 403
-    assert rejected.json()["error_code"] == "DELEGATION_PROJECT_FORBIDDEN"
-    assert accepted.status_code == 200, accepted.text
+    assert rejected.json()["error_code"] == "DELEGATION_ROLE_FORBIDDEN"
+    assert member.status_code == 403
+    assert member.json()["error_code"] == "DELEGATION_ROLE_FORBIDDEN"
 
 
-async def test_unscoped_approval_cannot_be_delegated_to_a_project_manager() -> None:
+async def test_generic_approval_cannot_be_delegated() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    project_manager = await create_user("project_manager")
+    manager = await create_user("operations_director")
+    group_pm = await create_user("group_project_manager")
     approval = await create_approval(request_type="project_change", approver=manager)
     token = await login(manager)
 
-    response = await delegate(token, approval.id, project_manager.id)
+    response = await delegate(token, approval.id, group_pm.id)
 
     assert response.status_code == 403
-    assert response.json()["error_code"] == "DELEGATION_PROJECT_FORBIDDEN"
+    assert response.json()["error_code"] == "APPROVAL_FORBIDDEN"
 
 
 async def test_inactive_delegate_is_not_found() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    inactive = await create_user("operation_manager", active=False)
-    approval = await create_approval(request_type="invoice", approver=manager)
+    manager = await create_user("operations_director")
+    inactive = await create_user("operations_director", active=False)
+    project = await create_project([manager])
+    approval = await create_approval(
+        request_type="material_request", approver=manager, project_id=project.id
+    )
     token = await login(manager)
 
     response = await delegate(token, approval.id, inactive.id)
@@ -298,12 +317,12 @@ async def test_inactive_delegate_is_not_found() -> None:
 
 async def test_candidate_list_matches_the_delegation_guard() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    peer = await create_user("operation_manager")
-    admin = await create_user("admin")
-    member_pm = await create_user("project_manager")
-    foreign_pm = await create_user("project_manager")
-    engineer = await create_user("civil_engineer")
+    manager = await create_user("operations_director")
+    peer = await create_user("operations_director")
+    managing_director = await create_user("managing_director")
+    member_pm = await create_user("group_project_manager")
+    foreign_pm = await create_user("group_project_manager")
+    engineer = await create_user("quantity_surveyor")
     project = await create_project([manager, member_pm, engineer])
     approval = await create_approval(
         request_type="material_request",
@@ -318,29 +337,38 @@ async def test_candidate_list_matches_the_delegation_guard() -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     returned = {item["id"] for item in body["items"]}
-    assert body["total"] == len(body["items"])
-    # Project Managers are narrowed to this project's members, so that slice is exact.
-    assert str(member_pm.id) in returned
+    assert body["total"] >= len(body["items"])
+    # Only users with inventory:manage are selectable for material approvals.
+    assert str(member_pm.id) not in returned
     assert str(foreign_pm.id) not in returned
-    # Members rank first so a large company directory cannot crowd them out of the cap.
-    assert body["items"][0]["id"] == str(member_pm.id)
     # The acting approver, the submitter and ineligible roles are never offered.
     assert str(manager.id) not in returned
     assert str(engineer.id) not in returned
     assert {item["role"] for item in body["items"]} <= {
-        "admin",
-        "operation_manager",
-        "project_manager",
+        "managing_director",
+        "operations_director",
     }
-    # No false offers: every candidate the picker shows must pass the delegation guard.
-    for item in body["items"]:
-        fresh = await create_approval(
-            request_type="material_request", approver=manager, project_id=project.id
+    page = await candidates(token, approval.id, params={"limit": 1})
+    assert page.status_code == 200
+    assert len(page.json()["items"]) == 1
+    assert page.json()["total"] == body["total"]
+    if page.json()["total"] > 1:
+        next_page = await candidates(token, approval.id, params={"limit": 1, "offset": 1})
+        assert next_page.status_code == 200
+        assert next_page.json()["items"][0]["id"] != page.json()["items"][0]["id"]
+
+    # Both eligible company roles remain discoverable by server-side search beyond page 1.
+    for company_wide in (peer, managing_director):
+        filtered = await candidates(
+            token,
+            approval.id,
+            params={"search": company_wide.full_name, "limit": 10},
         )
-        accepted = await delegate(token, fresh.id, UUID(item["id"]))
-        assert accepted.status_code == 200, accepted.text
-    # Company-wide peers stay eligible even when the capped list does not surface them.
-    for company_wide in (peer, admin):
+        assert filtered.status_code == 200
+        assert filtered.json()["total"] == 1
+        assert {candidate["id"] for candidate in filtered.json()["items"]} == {
+            str(company_wide.id)
+        }
         fresh = await create_approval(
             request_type="material_request", approver=manager, project_id=project.id
         )
@@ -348,23 +376,23 @@ async def test_candidate_list_matches_the_delegation_guard() -> None:
         assert accepted.status_code == 200, accepted.text
 
 
-async def test_unscoped_invoice_candidates_exclude_project_managers() -> None:
+async def test_invoice_delegation_candidate_list_is_disabled() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    await create_user("project_manager")
+    manager = await create_user("operations_director")
+    await create_user("group_project_manager")
     approval = await create_approval(request_type="invoice", approver=manager)
     token = await login(manager)
 
     response = await candidates(token, approval.id)
 
-    assert response.status_code == 200
-    assert {item["role"] for item in response.json()["items"]} <= {"admin", "operation_manager"}
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "APPROVAL_FORBIDDEN"
 
 
 async def test_candidate_list_requires_acting_rights() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    bystander = await create_user("operation_manager")
+    manager = await create_user("operations_director")
+    bystander = await create_user("operations_director")
     approval = await create_approval(request_type="invoice", approver=manager)
     token = await login(bystander)
 
@@ -376,12 +404,16 @@ async def test_candidate_list_requires_acting_rights() -> None:
 
 async def test_outbox_and_escalation_visibility_do_not_grant_decision_rights() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    oversight = await create_user("general_manager")
-    submitter = await create_user("store_keeper")
-    stranger = await create_user("store_keeper")
+    manager = await create_user("operations_director")
+    oversight = await create_user("operations_director")
+    submitter = await create_user("site_supervisor")
+    stranger = await create_user("site_supervisor")
+    project = await create_project([manager, submitter])
     approval = await create_approval(
-        request_type="project_change", approver=manager, submitter=submitter
+        request_type="material_request",
+        approver=manager,
+        submitter=submitter,
+        project_id=project.id,
     )
     async with AsyncSessionLocal() as session:
         row = await session.get(Approval, approval.id)

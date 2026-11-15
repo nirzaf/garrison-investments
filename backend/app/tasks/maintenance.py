@@ -17,7 +17,12 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
-from app.utils.permissions import ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
+from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_SUPPLIERS_MANAGE,
+    REPORT_APPROVER_ROLES,
+    roles_with_permission,
+)
 from app.utils.security import utc_now
 from app.utils.time import business_now, business_today
 
@@ -263,31 +268,31 @@ async def _check_supplier_tds_expiry() -> str:
 
 
 async def _late_report_recipients(session, project_id) -> set:
-    operation_managers = await session.scalars(
+    company_directors = await session.scalars(
         select(User.id).where(
-            User.role == ROLE_OPERATION_MANAGER,
+            User.role.in_(COMPANY_RESOURCE_ROLES),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
         )
     )
-    project_managers = await session.scalars(
+    scoped_approvers = await session.scalars(
         select(User.id)
         .join(ProjectMember, ProjectMember.user_id == User.id)
         .where(
             ProjectMember.project_id == project_id,
             ProjectMember.deleted_at.is_(None),
-            User.role == ROLE_PROJECT_MANAGER,
+            User.role.in_(REPORT_APPROVER_ROLES - COMPANY_RESOURCE_ROLES),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
         )
     )
-    return {*operation_managers.all(), *project_managers.all()}
+    return {*company_directors.all(), *scoped_approvers.all()}
 
 
 async def _supplier_compliance_recipients(session) -> set:
     users = await session.scalars(
         select(User.id).where(
-            User.role.in_({ROLE_ACCOUNTS, ROLE_OPERATION_MANAGER}),
+            User.role.in_(roles_with_permission(PERMISSION_SUPPLIERS_MANAGE)),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
         )

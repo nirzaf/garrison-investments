@@ -8,6 +8,8 @@ export type ProjectUpdatePayload = components['schemas']['ProjectUpdateRequest']
 export type ProjectMember = components['schemas']['ProjectMemberResponse'];
 export type ProjectMemberPayload = components['schemas']['ProjectMemberCreateRequest'];
 export type ProjectListResponse = components['schemas']['ProjectListResponse'];
+export type ProjectOption = components['schemas']['ProjectOption'];
+export type ProjectOptionListResponse = components['schemas']['ProjectOptionListResponse'];
 export type ProjectTimelineResponse = components['schemas']['ProjectTimelineResponse'];
 export type ProjectTaskPayload = components['schemas']['ProjectTaskCreateRequest'];
 export type ProjectTaskRecord = components['schemas']['ProjectTaskResponse'];
@@ -20,6 +22,28 @@ export async function listProjects(params: {
   offset?: number;
 }): Promise<ProjectListResponse> {
   const response = await apiClient.get<ProjectListResponse>('/projects', { params });
+  return response.data;
+}
+
+export async function listReportProjectOptions(params: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ProjectOptionListResponse> {
+  const response = await apiClient.get<ProjectOptionListResponse>('/reports/project-options', {
+    params
+  });
+  return response.data;
+}
+
+export async function listDocumentProjectOptions(params: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ProjectOptionListResponse> {
+  const response = await apiClient.get<ProjectOptionListResponse>('/documents/project-options', {
+    params
+  });
   return response.data;
 }
 

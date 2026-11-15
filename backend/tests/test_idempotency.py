@@ -106,9 +106,7 @@ async def test_concurrent_same_key_creates_one_report() -> None:
     async def create(session):
         actor = await session.get(User, engineer_id)
         assert actor is not None
-        report = await ReportService(session).create_report(
-            payload, actor, idempotency_key=key
-        )
+        report = await ReportService(session).create_report(payload, actor, idempotency_key=key)
         return report.id
 
     results = await race_sessions(create, create, create)
@@ -119,9 +117,7 @@ async def test_concurrent_same_key_creates_one_report() -> None:
 
     async with AsyncSessionLocal() as session:
         records = (
-            await session.scalars(
-                select(IdempotencyRecord).where(IdempotencyRecord.key == key)
-            )
+            await session.scalars(select(IdempotencyRecord).where(IdempotencyRecord.key == key))
         ).all()
         assert len(records) == 1
         assert records[0].resource_id == results[0]
@@ -155,14 +151,14 @@ async def test_key_is_scoped_to_the_user() -> None:
     async with create_test_client() as client:
         setup = await setup_project_team(client)
         # The operation manager is not an engineer, so use a second engineer on the project.
-        email, password = await create_report_user("civil_engineer")
+        email, password = await create_report_user("quantity_surveyor")
         token = await report_login(client, email, password)
         second = (
             await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         ).json()
         await client.post(
             f"/api/v1/projects/{setup['project_id']}/members",
-            json={"user_id": second["id"], "role_in_project": "civil_engineer"},
+            json={"user_id": second["id"], "role_in_project": "quantity_surveyor"},
             headers={"Authorization": f"Bearer {setup['op_token']}"},
         )
         first = await client.post(
@@ -261,7 +257,19 @@ async def test_photo_replay_checks_current_project_membership() -> None:
         actor = await client.get("/api/v1/auth/me", headers=headers)
         project_id = UUID(setup["project_id"])
         user_id = UUID(actor.json()["id"])
-        data = {"entity_type": "project", "entity_id": str(project_id), "kind": "photo"}
+        report_response = await client.post(
+            "/api/v1/reports",
+            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert report_response.status_code == 201, report_response.text
+        report = report_response.json()
+        data = {
+            "entity_type": "daily_report",
+            "entity_id": report["id"],
+            "kind": "photo",
+            "expected_report_revision": str(report["revision"]),
+        }
         files = {"files": ("site.png", _png_bytes(), "image/png")}
 
         first = await client.post("/api/v1/photos/upload", data=data, files=files, headers=headers)
@@ -275,4 +283,4 @@ async def test_photo_replay_checks_current_project_membership() -> None:
             await session.commit()
 
         replay = await client.post("/api/v1/photos/upload", data=data, files=files, headers=headers)
-        assert replay.status_code == 403, replay.text
+        assert replay.status_code == 404, replay.text

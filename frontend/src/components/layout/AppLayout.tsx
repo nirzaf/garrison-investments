@@ -33,7 +33,7 @@ import { StatusBadge } from '../shared/StatusBadge';
 type NavItem = {
   label: string;
   to: string;
-  permission?: string;
+  permission?: string | string[];
   icon: typeof Home;
   mobile?: boolean;
 };
@@ -50,14 +50,14 @@ const navItems: NavItem[] = [
   {
     label: 'Reports',
     to: '/reports',
-    permission: 'reports:view',
+    permission: ['reports:view', 'reports:submit'],
     icon: ClipboardList,
     mobile: true
   },
   {
     label: 'Supervisor updates',
     to: '/reports/supervisor-update',
-    permission: 'reports:view',
+    permission: ['reports:view', 'reports:submit'],
     icon: ClipboardList
   },
   {
@@ -79,11 +79,13 @@ const navItems: NavItem[] = [
   { label: 'User Manual', to: '/manual', icon: BookOpen },
   { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
   { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
-  { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog }
+  { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog },
 ];
 
 function canAccess(item: NavItem, permissions: string[]) {
-  return !item.permission || permissions.includes(item.permission);
+  return !item.permission || (Array.isArray(item.permission)
+    ? item.permission.some((permission) => permissions.includes(permission))
+    : permissions.includes(item.permission));
 }
 
 function labelFromPath(pathname: string) {
@@ -112,13 +114,23 @@ export function AppLayout() {
     () =>
       navItems
         .filter((item) => canAccess(item, user?.permissions ?? []))
-        .filter((item) => user?.role !== 'civil_supervisor' || item.label !== 'Supervisor updates')
+        .filter(
+          (item) =>
+            !['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ||
+            item.label !== 'Supervisor updates'
+        )
+        .filter(
+          (item) =>
+            item.label !== 'Supervisor updates' ||
+            ['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ||
+            user?.permissions?.includes('reports:view')
+        )
         .map((item) =>
           item.label === 'Reports'
             ? {
                 ...item,
                 to:
-                  user?.role === 'civil_supervisor'
+                  ['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '')
                     ? '/reports/supervisor-update'
                     : '/reports/daily'
               }

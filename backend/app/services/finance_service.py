@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
@@ -40,29 +41,20 @@ from app.services.approval_service import (
     ApprovalService,
 )
 from app.services.audit_service import AuditService
-from app.services.authorization import accessible_project_ids, ensure_project_access
+from app.services.authorization import ensure_project_access
 from app.services.idempotency import bind, resolve_or_reserve
 from app.services.storage_service import minio_client, minio_signed_url_client
 from app.services.supplier_service import SupplierService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
-    ROLE_ACCOUNTS,
-    ROLE_ADMIN,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_PROJECT_MANAGER,
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_FINANCIAL_VIEW,
+    ensure_permission,
 )
-from app.utils.security import utc_now
 
 logger = logging.getLogger(__name__)
 
-FINANCE_ROLES = {
-    ROLE_ADMIN,
-    ROLE_ACCOUNTS,
-    ROLE_OPERATION_MANAGER,
-    ROLE_GENERAL_MANAGER,
-    ROLE_PROJECT_MANAGER,
-}
+FINANCE_ROLES = COMPANY_RESOURCE_ROLES
 PAYMENT_IDEMPOTENCY_ROUTE = "finance.payments.create"
 MAX_INVOICE_FILE_SIZE = 10 * 1024 * 1024
 SIGNED_URL_SECONDS = 300
@@ -81,8 +73,7 @@ INVOICE_STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
     "approved": frozenset({"rejected"}),
     "rejected": frozenset({"submitted"}),
 }
-INVOICE_APPROVERS = {ROLE_ADMIN, ROLE_OPERATION_MANAGER}
-INVOICE_REJECTORS = INVOICE_APPROVERS | {ROLE_ACCOUNTS}
+INVOICE_APPROVERS: set[str] = set()
 INVOICE_CORRECTION_FIELDS = {
     "invoice_number",
     "supplier_id",
@@ -100,20 +91,27 @@ class FinanceService:
         self.audit = AuditService(session)
 
     def ensure_finance_access(self, actor: User) -> None:
-        if actor.role not in FINANCE_ROLES:
+        try:
+            ensure_permission(actor, PERMISSION_FINANCIAL_VIEW)
+        except AppException as exc:
+            if exc.status_code != 403:
+                raise
             raise AppException(
                 "Financial records are restricted.",
                 status_code=403,
                 error_code="FINANCE_FORBIDDEN",
-            )
+            ) from exc
+
+    @staticmethod
+    def _deny_finance_write() -> NoReturn:
+        raise AppException(
+            "Financial writes are not authorized by the active role policy.",
+            status_code=403,
+            error_code="FINANCE_WRITE_FORBIDDEN",
+        )
 
     async def currency_reconciliation(self, actor: User) -> CurrencyReconciliationResponse:
-        if actor.role != ROLE_ADMIN:
-            raise AppException(
-                "Currency reconciliation requires an administrator.",
-                status_code=403,
-                error_code="FINANCE_FORBIDDEN",
-            )
+        self.ensure_finance_access(actor)
         # Include soft-deleted records: their currency semantics matter during a migration.
         unlabelled = {
             "invoices": select(func.count()).select_from(Invoice),
@@ -129,10 +127,16 @@ class FinanceService:
             ),
         }
         counts = (
-            await self.session.execute(
-                select(*(query.scalar_subquery().label(name) for name, query in unlabelled.items()))
+            (
+                await self.session.execute(
+                    select(
+                        *(query.scalar_subquery().label(name) for name, query in unlabelled.items())
+                    )
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         approvals = await self.session.execute(
             select(Approval.request_type, Approval.currency, func.count())
             .where(Approval.request_type.in_(OPERATING_CURRENCY_APPROVAL_TYPES))
@@ -149,7 +153,7 @@ class FinanceService:
         )
 
     async def create_invoice(self, payload: InvoiceCreateRequest, actor: User) -> Invoice:
-        self.ensure_finance_access(actor)
+        self._deny_finance_write()
         await self._ensure_project_scope(payload.project_id, actor)
         project = await self.session.scalar(
             select(Project.id).where(Project.id == payload.project_id, Project.deleted_at.is_(None))
@@ -223,11 +227,6 @@ class FinanceService:
             .where(Invoice.deleted_at.is_(None))
             .options(selectinload(Invoice.payments))
         )
-        if actor.role == ROLE_PROJECT_MANAGER:
-            project_ids = await self._project_ids_for_manager(actor)
-            if project_id:
-                await ensure_project_access(self.session, project_id, actor)
-            query = query.where(Invoice.project_id.in_(project_ids or [UUID(int=0)]))
         if project_id:
             query = query.where(Invoice.project_id == project_id)
         if status:
@@ -313,33 +312,9 @@ class FinanceService:
     def _invoice_actions(
         invoice: Invoice, actor: User, *, has_payments: bool, own_approval: bool
     ) -> list[InvoiceAction]:
-        actions: list[InvoiceAction] = []
-        if invoice.status == "rejected" and not has_payments:
-            actions.extend(("correct", "resubmit"))
-        if (
-            invoice.status == "submitted"
-            and actor.role in INVOICE_APPROVERS
-            and actor.id != invoice.created_by
-            and not own_approval
-        ):
-            actions.append("approve")
-        if (
-            invoice.status in {"submitted", "approved"}
-            and actor.role in INVOICE_REJECTORS
-            and not has_payments
-        ):
-            actions.append("reject")
-        paid = sum(
-            (payment.amount for payment in invoice.payments if payment.deleted_at is None),
-            Decimal("0.00"),
-        )
-        if (
-            invoice.status == "approved"
-            and invoice.payment_status != "paid"
-            and paid < invoice.total_amount
-        ):
-            actions.append("record_payment")
-        return actions
+        # The supplied role contract grants financial reads only. No target role
+        # receives invoice correction, approval or payment authority.
+        return []
 
     async def _own_open_approvals(self, invoice_ids: set[UUID], actor: User) -> set[UUID]:
         if actor.role not in INVOICE_APPROVERS:
@@ -362,114 +337,7 @@ class FinanceService:
         payload: InvoiceUpdateRequest,
         actor: User,
     ) -> Invoice:
-        invoice = await self._get_invoice_for_update(invoice_id, actor)
-        if payload.expected_revision is not None and payload.expected_revision != invoice.revision:
-            raise AppException(
-                "This invoice changed. Compare your edits with the saved record.",
-                status_code=409,
-                error_code="INVOICE_REVISION_CONFLICT",
-            )
-        proposed = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
-        new_status = payload.status
-        if new_status is None:
-            proposed.pop("status", None)
-        if new_status == "approved":
-            if actor.role not in INVOICE_APPROVERS:
-                raise AppException(
-                    "Operation Manager approval is required before invoices are approved.",
-                    status_code=403,
-                    error_code="INVOICE_OPERATION_MANAGER_APPROVAL_REQUIRED",
-                )
-            if actor.id == invoice.created_by or await self._own_open_approvals(
-                {invoice.id}, actor
-            ):
-                raise AppException(
-                    "Invoice submitters cannot approve their own invoice.",
-                    status_code=403,
-                    error_code="INVOICE_SELF_APPROVAL_FORBIDDEN",
-                )
-        if new_status == "rejected" and actor.role not in INVOICE_REJECTORS:
-            raise AppException(
-                "You cannot reject invoices.",
-                status_code=403,
-                error_code="INVOICE_REJECTION_FORBIDDEN",
-            )
-        if new_status is not None and new_status not in INVOICE_STATUS_TRANSITIONS.get(
-            invoice.status, frozenset()
-        ):
-            raise AppException(
-                f"An invoice cannot move from {invoice.status} to {new_status}.",
-                status_code=409,
-                error_code="INVOICE_STATUS_TRANSITION_INVALID",
-            )
-        changes = {key: value for key, value in proposed.items() if getattr(invoice, key) != value}
-        if not changes:
-            return invoice
-        correcting = bool(set(changes) & INVOICE_CORRECTION_FIELDS)
-        has_payments = any(payment.deleted_at is None for payment in invoice.payments)
-        if correcting and invoice.status != "rejected":
-            raise AppException(
-                "Only rejected invoices can be corrected.",
-                status_code=409,
-                error_code="INVOICE_CORRECTION_REQUIRES_REJECTION",
-            )
-        if has_payments and (correcting or new_status in {"rejected", "submitted"}):
-            raise AppException(
-                "This invoice has recorded payments and requires an accounting reversal.",
-                status_code=409,
-                error_code="INVOICE_HAS_PAYMENTS",
-            )
-        if correcting and payload.expected_revision is None:
-            raise AppException(
-                "Reload the invoice before correcting it.",
-                status_code=409,
-                error_code="INVOICE_REVISION_REQUIRED",
-            )
-        if "supplier_id" in changes:
-            await self._validate_supplier(changes["supplier_id"])
-        if "invoice_date" in changes or "due_date" in changes:
-            self._validate_dates(
-                changes.get("invoice_date", invoice.invoice_date),
-                changes.get("due_date", invoice.due_date),
-            )
-        if "amount" in changes or "tax_amount" in changes:
-            changes["total_amount"] = self._invoice_total(
-                changes.get("amount", invoice.amount), changes.get("tax_amount", invoice.tax_amount)
-            )
-        if new_status == "approved":
-            changes.update(approved_by=actor.id, approved_at=utc_now())
-        elif new_status == "submitted":
-            changes.update(approved_by=None, approved_at=None)
-        fields = set(changes) | {"revision"}
-        old_values = InvoiceResponse.model_validate(invoice).model_dump(mode="json", include=fields)
-        for key, value in changes.items():
-            setattr(invoice, key, value)
-        invoice.revision += 1
-        await self._flush_invoice()
-        if new_status == "approved" or new_status == "rejected":
-            # The invoice and its approval must agree: leaving the approval pending would
-            # let a second decision from the inbox overwrite this one.
-            await ApprovalService(self.session).resolve_for_entity(
-                request_type="invoice",
-                request_id=invoice.id,
-                decision=new_status,
-                actor=actor,
-                comments=payload.notes,
-            )
-        elif new_status == "submitted":
-            await self._create_invoice_approval(invoice, actor)
-        await self.audit.record(
-            action="finance.invoices.updated",
-            user_id=actor.id,
-            entity_type="invoices",
-            entity_id=invoice.id,
-            old_values=old_values,
-            new_values=InvoiceResponse.model_validate(invoice).model_dump(
-                mode="json", include=fields
-            ),
-        )
-        await self.session.commit()
-        return invoice
+        self._deny_finance_write()
 
     async def _get_invoice_for_update(self, invoice_id: UUID, actor: User) -> Invoice:
         self.ensure_finance_access(actor)
@@ -490,6 +358,7 @@ class FinanceService:
         file: UploadFile,
         actor: User,
     ) -> Invoice:
+        self._deny_finance_write()
         invoice = await self._get_invoice_for_update(invoice_id, actor)
         data = await file.read()
         mime_type = self._validate_file(file.filename or "invoice-attachment", data)
@@ -558,6 +427,7 @@ class FinanceService:
         *,
         idempotency_key: str | None = None,
     ) -> Invoice:
+        self._deny_finance_write()
         invoice = await self._get_invoice_for_update(invoice_id, actor)
         values = payload.model_dump()
         if idempotency_key is not None:
@@ -652,8 +522,6 @@ class FinanceService:
 
     async def budget_summary(self, project_id: UUID, actor: User) -> dict[str, Decimal | UUID]:
         self.ensure_finance_access(actor)
-        if actor.role == ROLE_PROJECT_MANAGER:
-            await self._ensure_project_scope(project_id, actor)
         project = await self.session.scalar(
             select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
         )
@@ -767,11 +635,8 @@ class FinanceService:
         self._client().remove_object(self.settings.minio_bucket, object_key)
 
     async def _ensure_invoice_scope(self, invoice: Invoice, actor: User) -> None:
-        if actor.role == ROLE_PROJECT_MANAGER:
-            await self._ensure_project_scope(invoice.project_id, actor)
+        self.ensure_finance_access(actor)
+        await self._ensure_project_scope(invoice.project_id, actor)
 
     async def _ensure_project_scope(self, project_id: UUID, actor: User) -> None:
         await ensure_project_access(self.session, project_id, actor)
-
-    async def _project_ids_for_manager(self, actor: User) -> list[UUID]:
-        return await accessible_project_ids(self.session, actor) or []

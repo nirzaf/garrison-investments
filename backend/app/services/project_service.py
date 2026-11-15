@@ -18,6 +18,7 @@ from app.schemas.projects import (
     BoqItemCreateRequest,
     ProjectCreateRequest,
     ProjectMemberCreateRequest,
+    ProjectOption,
     ProjectResponse,
     ProjectTaskCreateRequest,
     ProjectTaskResponse,
@@ -32,24 +33,22 @@ from app.utils.exceptions import (
     PermissionDeniedException,
 )
 from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_DOCUMENTS_VIEW,
+    PERMISSION_FINANCIAL_VIEW,
     PERMISSION_PROJECTS_MANAGE,
-    ROLE_ACCOUNTS,
-    ROLE_ADMIN,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
+    PERMISSION_PROJECTS_READ,
+    PERMISSION_REPORTS_SUBMIT,
+    PERMISSION_REPORTS_VIEW,
     ensure_permission,
+    has_permission,
 )
 from app.utils.security import utc_now
 
 PROJECT_STATUSES = {"planning", "active", "on_hold", "completed", "cancelled"}
 PROJECT_TASK_STATUSES = {"not_started", "in_progress", "blocked", "completed", "cancelled"}
 READ_ONLY_STATUSES = {"completed", "cancelled"}
-UNRESTRICTED_PROJECT_ROLES = {
-    ROLE_ADMIN,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_ACCOUNTS,
-}
+UNRESTRICTED_PROJECT_ROLES = COMPANY_RESOURCE_ROLES
 
 
 class ProjectService:
@@ -68,6 +67,7 @@ class ProjectService:
         limit: int,
         offset: int,
     ) -> tuple[list[Project], int]:
+        ensure_permission(current_user, PERMISSION_PROJECTS_READ)
         self._validate_status(status)
         return await self.projects.list_projects(
             current_user_id=current_user.id,
@@ -78,7 +78,37 @@ class ProjectService:
             offset=max(offset, 0),
         )
 
+    async def list_report_project_options(
+        self, actor: User, *, search: str | None, limit: int, offset: int
+    ) -> tuple[list[ProjectOption], int]:
+        if not (
+            has_permission(actor, PERMISSION_REPORTS_SUBMIT)
+            or has_permission(actor, PERMISSION_REPORTS_VIEW)
+        ):
+            raise PermissionDeniedException(PERMISSION_REPORTS_VIEW)
+        return await self._list_project_options(actor, search=search, limit=limit, offset=offset)
+
+    async def list_document_project_options(
+        self, actor: User, *, search: str | None, limit: int, offset: int
+    ) -> tuple[list[ProjectOption], int]:
+        ensure_permission(actor, PERMISSION_DOCUMENTS_VIEW)
+        return await self._list_project_options(actor, search=search, limit=limit, offset=offset)
+
+    async def _list_project_options(
+        self, actor: User, *, search: str | None, limit: int, offset: int
+    ) -> tuple[list[ProjectOption], int]:
+        projects, total = await self.projects.list_projects(
+            current_user_id=actor.id,
+            unrestricted=actor.role in COMPANY_RESOURCE_ROLES,
+            status=None,
+            search=search,
+            limit=min(limit, 100),
+            offset=max(offset, 0),
+        )
+        return [ProjectOption.model_validate(project) for project in projects], total
+
     async def get_project_detail(self, project_id: UUID, current_user: User):
+        ensure_permission(current_user, PERMISSION_PROJECTS_READ)
         project = await self._get_authorized_project(project_id, current_user)
         members = await self.projects.list_members(project.id)
         milestones = await self.projects.list_milestones(project.id)
@@ -87,6 +117,8 @@ class ProjectService:
 
     async def create_project(self, payload: ProjectCreateRequest, actor: User) -> Project:
         ensure_permission(actor, PERMISSION_PROJECTS_MANAGE)
+        if actor.role not in COMPANY_RESOURCE_ROLES:
+            raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
         self._validate_status(payload.status)
         self._validate_dates(payload.start_date, payload.target_end_date, "target_end_date")
         amounts = self._validate_setup(payload)
@@ -140,6 +172,8 @@ class ProjectService:
         if not changes:
             return project
         self._validate_status(changes.get("status"))
+        if "budget_amount" in changes and not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+            raise PermissionDeniedException(PERMISSION_FINANCIAL_VIEW)
         start = changes.get("start_date", project.start_date)
         if "start_date" in changes or "target_end_date" in changes:
             self._validate_dates(
@@ -254,10 +288,12 @@ class ProjectService:
         return users
 
     async def list_members(self, project_id: UUID, current_user: User) -> list[ProjectMember]:
+        ensure_permission(current_user, PERMISSION_PROJECTS_READ)
         project = await self._get_authorized_project(project_id, current_user)
         return await self.projects.list_members(project.id)
 
     async def list_timeline(self, project_id: UUID, current_user: User):
+        ensure_permission(current_user, PERMISSION_PROJECTS_READ)
         project = await self._get_authorized_project(project_id, current_user)
         milestones = await self.projects.list_milestones(project.id)
         tasks = await self.projects.list_tasks(project.id)

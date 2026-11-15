@@ -55,8 +55,8 @@ const companyLinks: GuardedLink[] = [
 ];
 const cases: RoleCase[] = [
   {
-    role: 'admin',
-    label: 'Admin',
+    role: 'managing_director',
+    label: 'Managing Director',
     links: [...companyLinks, 'Security', 'Audit', 'Imports'],
     inbox: true,
     feature: 'Users',
@@ -65,93 +65,111 @@ const cases: RoleCase[] = [
     canAct: true
   },
   {
-    role: 'general_manager',
-    label: 'General Manager',
-    links: companyLinks,
+    role: 'operations_director',
+    label: 'Operations Director',
+    links: [...companyLinks, 'Security', 'Audit', 'Imports'],
     inbox: true,
     feature: 'Users',
     heading: 'Users',
     action: 'Create user',
-    canAct: false,
-    denied: { route: '/admin/audit-logs', api: '/api/v1/audit-logs' }
+    canAct: true
   },
   {
-    role: 'operation_manager',
-    label: 'Operation Manager',
-    links: companyLinks,
+    role: 'group_project_manager',
+    label: 'Group Project Manager',
+    links: ['Projects', 'Reports', 'Supervisor updates', 'Materials', 'Documents', 'Photos', 'Users'],
     inbox: true,
     feature: 'Projects',
     heading: 'Projects',
     action: 'New project',
-    canAct: true,
-    denied: { route: '/admin/imports', api: '/api/v1/imports/batches' }
+    canAct: false,
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
   },
   {
-    role: 'project_manager',
-    label: 'Project Manager',
+    role: 'mep_project_manager',
+    label: 'MEP Project Manager',
     links: [
       'Projects',
       'Reports',
       'Supervisor updates',
       'Materials',
-      'Finance',
+      'Suppliers',
       'Documents',
-      'Photos'
+      'Photos',
+      'Users'
     ],
     inbox: true,
-    feature: 'Projects',
-    heading: 'Projects',
-    action: 'New project',
-    canAct: false,
-    denied: { route: '/suppliers', api: '/api/v1/suppliers' }
-  },
-  {
-    role: 'civil_engineer',
-    label: 'Civil Engineer',
-    links: ['Projects', 'Reports', 'Supervisor updates', 'Materials', 'Documents', 'Photos'],
-    inbox: false,
-    feature: 'Reports',
-    heading: 'Engineer Daily Report',
-    action: 'Submit report',
+    feature: 'Suppliers',
+    heading: 'Suppliers And Compliance',
+    action: 'New supplier',
     canAct: true,
     denied: { route: '/finance', api: '/api/v1/finance/invoices' }
   },
   {
-    role: 'civil_supervisor',
-    label: 'Civil Supervisor',
-    links: ['Projects', 'Reports', 'Documents', 'Photos'],
+    role: 'quantity_surveyor',
+    label: 'Quantity Surveyor',
+    links: ['Reports', 'Materials', 'Suppliers', 'Documents', 'Users'],
     inbox: false,
-    feature: 'Reports',
-    heading: 'Supervisor Site Update',
-    action: 'Submit update',
-    canAct: true,
-    denied: {
-      route: '/reports/daily',
-      api: '/api/v1/reports',
-      landing: '/reports/supervisor-update'
-    }
+    feature: 'Documents',
+    heading: 'Document Library',
+    action: 'Upload',
+    canAct: false,
+    denied: { route: '/projects', api: '/api/v1/projects' }
   },
   {
-    role: 'store_keeper',
-    label: 'Store Keeper',
-    links: ['Materials', 'Suppliers'],
+    role: 'senior_site_supervisor',
+    label: 'Senior Site Supervisor',
+    links: ['Projects', 'Reports', 'Materials', 'Documents', 'Users'],
     inbox: false,
     feature: 'Materials',
     heading: 'Inventory And Stores',
     action: 'Add item',
+    canAct: false,
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
+  },
+  {
+    role: 'site_supervisor',
+    label: 'Site Supervisor',
+    links: ['Projects', 'Reports', 'Materials', 'Documents', 'Users'],
+    inbox: false,
+    feature: 'Materials',
+    heading: 'Inventory And Stores',
+    action: 'Add item',
+    canAct: false,
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
+  },
+  {
+    role: 'hr_manager',
+    label: 'HR Manager',
+    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Analytics', 'Launch readiness', 'Security', 'Audit', 'Imports', 'Users'],
+    inbox: true,
+    feature: 'Users',
+    heading: 'Users',
+    action: 'Create user',
     canAct: true,
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
+  },
+  {
+    role: 'hr_executive',
+    label: 'HR Executive',
+    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Users'],
+    inbox: false,
+    feature: 'Documents',
+    heading: 'Document Library',
+    action: 'Upload',
+    canAct: false,
     denied: { route: '/projects', api: '/api/v1/projects' }
   },
   {
-    role: 'accounts',
-    label: 'Accounts',
-    links: ['Projects', 'Reports', 'Supervisor updates', 'Finance', 'Documents', 'Photos'],
+    role: 'administrative_executive',
+    label: 'Administrative Executive',
+    links: ['Materials', 'Suppliers', 'Analytics', 'Documents', 'Launch readiness', 'Users'],
     inbox: false,
-    feature: 'Finance',
-    heading: 'Invoices and payments',
-    action: 'New invoice',
-    canAct: true,
-    denied: { route: '/materials', api: '/api/v1/inventory/items' }
+    feature: 'Materials',
+    heading: 'Inventory And Stores',
+    action: 'Add item',
+    canAct: false,
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
   }
 ];
 
@@ -191,7 +209,7 @@ test('an expired login code requires a new challenge before a session is restore
   context,
   request
 }) => {
-  const account = seedAccount('project_manager');
+  const account = seedAccount('group_project_manager');
   const submitPassword = async () => {
     await page.getByLabel('Password', { exact: true }).fill(account.password);
     const login = page.waitForResponse(
@@ -238,7 +256,7 @@ test('an expired login code requires a new challenge before a session is restore
   await expect(page.getByLabel('Verification code')).toHaveValue('');
   await expect(page.getByLabel('Verification code')).toBeFocused();
   const verified = await (await submitCode(fresh.dev_otp, 200)).json();
-  expect(verified.user).toMatchObject({ email: account.email, role: 'project_manager' });
+  expect(verified.user).toMatchObject({ email: account.email, role: 'group_project_manager' });
   await expect(page).toHaveURL('/dashboard');
 
   const refresh = page.waitForResponse(
@@ -246,7 +264,7 @@ test('an expired login code requires a new challenge before a session is restore
   );
   await page.reload();
   const restored = await (await refresh).json();
-  expect(restored.user).toMatchObject({ id: verified.user.id, role: 'project_manager' });
+  expect(restored.user).toMatchObject({ id: verified.user.id, role: 'group_project_manager' });
   await expect(page).toHaveURL('/dashboard');
   await expect((await sidebar(page)).getByRole('link', { name: 'Projects', exact: true })).toBeVisible();
 });
@@ -264,9 +282,26 @@ for (const roleCase of cases) {
     page,
     request
   }) => {
-    if (roleCase.role === 'store_keeper') await page.setViewportSize({ width: 390, height: 844 });
+    if (roleCase.role === 'site_supervisor') await page.setViewportSize({ width: 390, height: 844 });
     const token = await signIn(page, roleCase.role);
     await expect(page).toHaveURL('/dashboard');
+
+    const roleOptions = await request.get('/api/v1/users/roles', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    expect(roleOptions.ok()).toBe(true);
+    expect((await roleOptions.json()).items.map((item: { role: string }) => item.role)).toEqual([
+      'administrative_executive',
+      'group_project_manager',
+      'hr_executive',
+      'hr_manager',
+      'managing_director',
+      'mep_project_manager',
+      'operations_director',
+      'quantity_surveyor',
+      'senior_site_supervisor',
+      'site_supervisor'
+    ]);
 
     const nav = await sidebar(page);
     await expect(nav.getByRole('link')).toHaveCount(
@@ -280,7 +315,7 @@ for (const roleCase of cases) {
     }
     for (const label of roleCase.links) {
       const path =
-        label === 'Reports' && roleCase.role === 'civil_supervisor'
+        label === 'Reports' && ['senior_site_supervisor', 'site_supervisor'].includes(roleCase.role)
           ? guardedLinks['Supervisor updates']
           : guardedLinks[label];
       await expect(nav.getByRole('link', { name: label, exact: true })).toHaveAttribute(

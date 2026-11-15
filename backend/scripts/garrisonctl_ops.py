@@ -190,7 +190,7 @@ def config_plan(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
         current = _effective_remote_policy(ctx)
         plan = _policy_plan(args, ctx, proposal, current)
         if plan["requires_currency_reconciliation"]:
-            plan["reconciliation"] = "finance policy reconciliation (administrator access)"
+            plan["reconciliation"] = "finance policy reconciliation (director finance access)"
         return plan
     state = _host_state(args.host_state)
     try:

@@ -5,28 +5,20 @@ import {
   createUser,
   deactivateUser,
   listUsers,
+  listUserRoles,
   updateUserRole,
   type CreateUserPayload,
-  type UserRecord
+  type UserRecord,
+  type UserRoleOption
 } from '../../api/users';
+import { formatApiError } from '../../api/errors';
 import { useAuth } from '../../context/useAuth';
 import { useDebouncedSearch } from '../../useDebouncedSearch';
-
-const roles = [
-  'admin',
-  'general_manager',
-  'operation_manager',
-  'project_manager',
-  'civil_engineer',
-  'civil_supervisor',
-  'store_keeper',
-  'accounts'
-];
 
 const initialForm: CreateUserPayload = {
   email: '',
   full_name: '',
-  role: 'civil_engineer',
+  role: '',
   employee_code: '',
   phone: '',
   designation: '',
@@ -43,6 +35,7 @@ function roleLabel(role: string) {
 export function UserManagementPage() {
   const { user: currentUser } = useAuth();
   const canManage = currentUser?.permissions?.includes('users:manage') ?? false;
+  const [roleOptions, setRoleOptions] = useState<UserRoleOption[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [activeFilter, setActiveFilter] = useState('active');
@@ -52,6 +45,8 @@ export function UserManagementPage() {
   const [form, setForm] = useState<CreateUserPayload>(initialForm);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [deactivatingUserId, setDeactivatingUserId] = useState<string | null>(null);
   const [roleEdit, setRoleEdit] = useState<{ userId: string; role: string } | null>(null);
   const [isSavingRole, setIsSavingRole] = useState(false);
   const [roleNotice, setRoleNotice] = useState<string | null>(null);
@@ -87,27 +82,52 @@ export function UserManagementPage() {
     void loadUsers();
   }, [loadUsers]);
 
+  useEffect(() => {
+    let current = true;
+    void listUserRoles()
+      .then((options) => {
+        if (current) setRoleOptions(options);
+      })
+      .catch(() => {
+        if (current) setError('Unable to load supported roles.');
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  const assignableRoles = roleOptions.filter((option) => option.assignable);
+  const roleByKey = new Map(roleOptions.map((option) => [option.role, option]));
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isCreating || !form.role) return;
     setError(null);
+    setIsCreating(true);
     try {
       await createUser(form);
       setForm(initialForm);
       await loadUsers();
-    } catch {
-      setError('Unable to create user.');
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to create user.'));
+    } finally {
+      setIsCreating(false);
     }
   }
 
   async function handleDeactivate(user: UserRecord) {
+    if (deactivatingUserId) return;
     const confirmed = window.confirm(`Deactivate ${user.full_name}?`);
     if (!confirmed) return;
     setError(null);
+    setDeactivatingUserId(user.id);
     try {
-      await deactivateUser(user.id);
+      await deactivateUser(user.id, user.updated_at);
       await loadUsers();
-    } catch {
-      setError('Unable to deactivate user.');
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to deactivate user.'));
+    } finally {
+      setDeactivatingUserId(null);
     }
   }
 
@@ -119,12 +139,12 @@ export function UserManagementPage() {
     setError(null);
     setIsSavingRole(true);
     try {
-      const updated = await updateUserRole(user.id, roleEdit.role);
+      const updated = await updateUserRole(user.id, roleEdit.role, user.updated_at);
       setRoleEdit(null);
       setRoleNotice(`Role updated for ${updated.full_name}.`);
       await loadUsers();
-    } catch {
-      setError('Unable to change the user role.');
+    } catch (failure) {
+      setError(formatApiError(failure, 'Unable to change the user role.'));
     } finally {
       setIsSavingRole(false);
     }
@@ -142,11 +162,13 @@ export function UserManagementPage() {
     setResetError(null);
     setIsResetting(true);
     try {
-      await adminResetPassword(resetTarget.id, resetPassword);
+      await adminResetPassword(resetTarget.id, resetPassword, resetTarget.updated_at);
       setResetTarget(null);
       setResetPassword('');
-    } catch {
-      setResetError('Unable to reset password. Ensure it meets the password policy.');
+    } catch (failure) {
+      setResetError(
+        formatApiError(failure, 'Unable to reset password. Ensure it meets the password policy.')
+      );
     } finally {
       setIsResetting(false);
     }
@@ -172,9 +194,9 @@ export function UserManagementPage() {
             value={roleFilter}
           >
             <option value="">All roles</option>
-            {roles.map((role) => (
-              <option key={role} value={role}>
-                {roleLabel(role)}
+            {roleOptions.map((role) => (
+              <option key={role.role} value={role.role}>
+                {role.label}
               </option>
             ))}
           </select>
@@ -200,6 +222,7 @@ export function UserManagementPage() {
       {canManage ? (
         <section className="rounded-lg border border-theme-border bg-theme-card p-4 shadow-xs">
           <form className="grid gap-3 lg:grid-cols-4" onSubmit={handleCreate}>
+            <fieldset className="contents" disabled={isCreating}>
             <input
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, full_name: event.target.value })}
@@ -218,11 +241,15 @@ export function UserManagementPage() {
             <select
               className="rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
               onChange={(event) => setForm({ ...form, role: event.target.value })}
+              required
               value={form.role}
             >
-              {roles.map((role) => (
-                <option key={role} value={role}>
-                  {roleLabel(role)}
+              <option value="" disabled>
+                Select a role
+              </option>
+              {assignableRoles.map((role) => (
+                <option key={role.role} value={role.role}>
+                  {role.label}
                 </option>
               ))}
             </select>
@@ -256,10 +283,12 @@ export function UserManagementPage() {
             />
             <button
               className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              disabled={isCreating || !form.role || roleOptions.length === 0}
               type="submit"
             >
-              Create user
+              {isCreating ? 'Creating…' : 'Create user'}
             </button>
+            </fieldset>
           </form>
         </section>
       ) : null}
@@ -302,9 +331,9 @@ export function UserManagementPage() {
                           }
                           value={roleEdit.role}
                         >
-                          {roles.map((role) => (
-                            <option key={role} value={role}>
-                              {roleLabel(role)}
+                          {assignableRoles.map((role) => (
+                            <option key={role.role} value={role.role}>
+                              {role.label}
                             </option>
                           ))}
                         </select>
@@ -327,7 +356,10 @@ export function UserManagementPage() {
                     ) : (
                       <>
                         <span>{roleLabel(user.role)}</span>
-                        {canManage && user.id !== currentUser?.id && user.is_active ? (
+                        {canManage &&
+                        roleByKey.get(user.role)?.assignable &&
+                        user.id !== currentUser?.id &&
+                        user.is_active ? (
                           <button
                             className="ml-2 font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50"
                             disabled={roleEdit !== null}
@@ -357,7 +389,10 @@ export function UserManagementPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {canManage && user.is_active && user.id !== currentUser?.id ? (
+                    {canManage &&
+                    roleByKey.get(user.role)?.assignable &&
+                    user.is_active &&
+                    user.id !== currentUser?.id ? (
                       <div className="flex items-center justify-end gap-3">
                         <button
                           className="text-sm font-medium text-brand-600 hover:text-brand-700"
@@ -368,10 +403,11 @@ export function UserManagementPage() {
                         </button>
                         <button
                           className="text-sm font-medium text-[var(--status-error-text)] hover:opacity-80"
+                          disabled={deactivatingUserId !== null}
                           onClick={() => void handleDeactivate(user)}
                           type="button"
                         >
-                          Deactivate
+                          {deactivatingUserId === user.id ? 'Deactivating…' : 'Deactivate'}
                         </button>
                       </div>
                     ) : null}

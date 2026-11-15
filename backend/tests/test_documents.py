@@ -15,6 +15,8 @@ from app.services.storage_service import minio_client
 from tests.concurrency_helpers import race_sessions, status_counts
 from tests.test_daily_reports import (
     create_test_client,
+    create_user,
+    login_for_token,
     setup_project_team,
     skip_if_database_unavailable,
 )
@@ -46,6 +48,10 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
+        approver_email, approver_password = await create_user("managing_director")
+        approver_token = await login_for_token(client, approver_email, approver_password)
+        approver_headers = {"Authorization": f"Bearer {approver_token}"}
+        uploader_headers = {"Authorization": f"Bearer {setup['op_token']}"}
         upload_response = await client.post(
             "/api/v1/documents",
             data={
@@ -54,7 +60,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
                 "project_id": setup["project_id"],
             },
             files={"file": ("wir.pdf", pdf_bytes("v1"), "application/pdf")},
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers=uploader_headers,
         )
 
         assert upload_response.status_code == 201
@@ -67,7 +73,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
                 "/api/v1/documents",
                 data={"title": title, "document_type": "wir", "project_id": setup["project_id"]},
                 files={"file": ("wir.pdf", pdf_bytes(title), "application/pdf")},
-                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+                headers=uploader_headers,
             )
             assert uploaded.status_code == 201
         for offset, expected_title in enumerate(("WIR Zone C", "WIR Zone B", "WIR Zone A")):
@@ -82,7 +88,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
 
         engineer_notifications = await client.get(
             "/api/v1/notifications",
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers=uploader_headers,
         )
         assert any(
             item["title"] == "Document uploaded"
@@ -96,7 +102,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         approve_response = await client.post(
             f"/api/v1/documents/{document['id']}/versions/{first_version['id']}/approve",
             json={"comments": "Approved"},
-            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+            headers=approver_headers,
         )
 
         assert approve_response.status_code == 200
@@ -107,13 +113,13 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
         version_response = await client.post(
             f"/api/v1/documents/{document['id']}/versions",
             files={"file": ("wir-rev2.pdf", pdf_bytes("v2"), "application/pdf")},
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers=uploader_headers,
         )
         second_version = max(version_response.json()["versions"], key=lambda item: item["version"])
         second_approve_response = await client.post(
             f"/api/v1/documents/{document['id']}/versions/{second_version['id']}/approve",
             json={"comments": "Revision approved"},
-            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+            headers=approver_headers,
         )
 
         assert second_approve_response.status_code == 200
@@ -123,7 +129,7 @@ async def test_document_upload_approval_versioning_and_superseded_download() -> 
 
         engineer_notifications_after_approval = await client.get(
             "/api/v1/notifications",
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers=uploader_headers,
         )
         assert any(
             item["title"] == "Document version approved"
@@ -175,7 +181,7 @@ async def test_document_search_finds_uploaded_metadata() -> None:
                 "project_id": setup["project_id"],
             },
             files={"file": ("delivery.pdf", pdf_bytes("delivery"), "application/pdf")},
-            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            headers={"Authorization": f"Bearer {setup['op_token']}"},
         )
 
         response = await client.get(
@@ -192,8 +198,10 @@ async def test_document_replacements_serialize_and_keep_active_version() -> None
     await skip_if_database_unavailable()
     async with create_test_client() as client:
         team = await setup_project_team(client)
-        uploader = {"Authorization": f"Bearer {team['engineer_token']}"}
-        approver = {"Authorization": f"Bearer {team['op_token']}"}
+        approver_email, approver_password = await create_user("managing_director")
+        approver_token = await login_for_token(client, approver_email, approver_password)
+        uploader = {"Authorization": f"Bearer {team['op_token']}"}
+        approver = {"Authorization": f"Bearer {approver_token}"}
         response = await client.post(
             "/api/v1/documents",
             data={
@@ -256,6 +264,7 @@ async def test_document_replacements_serialize_and_keep_active_version() -> None
             f"{path}/versions/{selected['id']}/approve", json={}, headers=uploader
         )
         assert forbidden.status_code == 403
+        assert forbidden.json()["error_code"] == "DOCUMENT_SELF_APPROVAL_FORBIDDEN"
         approved = await client.post(
             f"{path}/versions/{selected['id']}/approve", json={}, headers=approver
         )
@@ -268,7 +277,10 @@ async def test_replacement_failure_discards_only_the_new_object(monkeypatch) -> 
     await skip_if_database_unavailable()
     async with create_test_client() as client:
         team = await setup_project_team(client)
+        approver_email, approver_password = await create_user("managing_director")
+        approver_token = await login_for_token(client, approver_email, approver_password)
         actor = {"Authorization": f"Bearer {team['op_token']}"}
+        approver = {"Authorization": f"Bearer {approver_token}"}
         response = await client.post(
             "/api/v1/documents",
             data={
@@ -284,7 +296,7 @@ async def test_replacement_failure_discards_only_the_new_object(monkeypatch) -> 
         path = f"/api/v1/documents/{document['id']}"
         version = document["versions"][0]
         approved = await client.post(
-            f"{path}/versions/{version['id']}/approve", json={}, headers=actor
+            f"{path}/versions/{version['id']}/approve", json={}, headers=approver
         )
         assert approved.status_code == 200
 

@@ -1,17 +1,25 @@
+import json
+from datetime import timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.auth import AuthOtpChallenge, AuthRefreshToken
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailDeliveryError
-from app.utils.security import hash_password
+from app.utils.security import create_access_token, hash_password, hash_secret, utc_now
 
 pytestmark = pytest.mark.asyncio
+RETIRED_ROLE_KEYS = json.loads(
+    Path(__file__).with_name("business_role_matrix.json").read_text()
+)["retired_roles"]
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +37,7 @@ async def skip_if_database_unavailable() -> None:
 async def create_test_user(
     *,
     email: str,
+    role: str = "managing_director",
     password: str = "Start123!",
     must_change_password: bool = True,
 ) -> None:
@@ -38,7 +47,7 @@ async def create_test_user(
             User(
                 email=email,
                 full_name="Auth Test User",
-                role="admin",
+                role=role,
                 employee_code=f"TEST-{uuid4().hex[:8]}",
                 password_hash=hash_password(password),
                 must_change_password=must_change_password,
@@ -113,6 +122,82 @@ async def test_login_otp_me_refresh_and_logout_flow() -> None:
 
         assert logout_response.status_code == 200
         assert not client.cookies.get("refresh_token")
+
+
+@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+async def test_retired_role_cannot_login_or_receive_password_reset_challenge(
+    retired_role: str,
+) -> None:
+    await skip_if_database_unavailable()
+    email = f"retired-role-{retired_role}-{uuid4().hex}@example.com"
+    password = "Start123!"
+    await create_test_user(email=email, role=retired_role, password=password)
+
+    legacy_refresh = f"pre-cutover-refresh-{uuid4().hex}"
+    legacy_otp = "246810"
+    async with AsyncSessionLocal() as session:
+        user_id = await session.scalar(select(User.id).where(User.email == email))
+        assert user_id is not None
+        challenge = AuthOtpChallenge(
+            user_id=user_id,
+            purpose="login",
+            otp_hash=hash_secret(legacy_otp),
+            expires_at=utc_now() + timedelta(minutes=5),
+        )
+        session.add(challenge)
+        session.add(
+            AuthRefreshToken(
+                user_id=user_id,
+                token_hash=hash_secret(legacy_refresh),
+                expires_at=utc_now() + timedelta(minutes=5),
+            )
+        )
+        await session.commit()
+    # A stale role claim must not substitute for the rejected database role.
+    legacy_access, _ = create_access_token(user_id, "managing_director")
+
+    async with create_test_client() as client:
+        login = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+        reset = await client.post("/api/v1/auth/password-reset/request", json={"email": email})
+        otp_login = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={"challenge_id": str(challenge.id), "otp": legacy_otp},
+        )
+        refresh = await client.post(
+            "/api/v1/auth/refresh",
+            cookies={"refresh_token": legacy_refresh},
+        )
+        authenticated = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {legacy_access}"},
+        )
+
+    assert login.status_code == 401
+    assert login.json()["error_code"] == "LOGIN_FAILED"
+    assert reset.status_code == 200
+    assert reset.json()["challenge_id"] is None
+    assert otp_login.status_code == 401
+    assert otp_login.json()["error_code"] == "OTP_FAILED"
+    assert "refresh_token=" not in otp_login.headers.get("set-cookie", "")
+    assert refresh.status_code == 401
+    assert refresh.json()["error_code"] == "REFRESH_TOKEN_INVALID"
+    assert authenticated.status_code == 401
+    assert authenticated.json()["error_code"] == "INVALID_TOKEN"
+    async with AsyncSessionLocal() as session:
+        challenge = await session.scalar(
+            select(AuthOtpChallenge.id).where(
+                AuthOtpChallenge.user_id == user_id,
+                AuthOtpChallenge.purpose == "password_reset",
+            )
+        )
+        assert challenge is None
+        assert await session.scalar(
+            select(AuthRefreshToken.id).where(
+                AuthRefreshToken.user_id == user_id,
+                AuthRefreshToken.token_hash == hash_secret(legacy_refresh),
+                AuthRefreshToken.revoked_at.is_(None),
+            )
+        ) is not None
 
 
 async def test_failed_logins_temporarily_lock_account() -> None:

@@ -3,19 +3,13 @@ from pathlib import Path
 
 import pytest
 
+from app.main import app
 from app.models.user import User
 from app.utils.exceptions import AppException, PermissionDeniedException
 from app.utils.permissions import (
     ALL_PERMISSIONS,
-    ROLE_ACCOUNTS,
-    ROLE_ADMIN,
-    ROLE_CIVIL_ENGINEER,
-    ROLE_CIVIL_SUPERVISOR,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
+    ROLE_LABELS,
     ROLE_PERMISSIONS,
-    ROLE_PROJECT_MANAGER,
-    ROLE_STORE_KEEPER,
     VALID_ROLES,
     ensure_permission,
     has_permission,
@@ -23,165 +17,107 @@ from app.utils.permissions import (
     validate_role,
 )
 
-
-def test_accounts_permissions_match_finance_scope() -> None:
-    permissions = set(permissions_for_role("accounts"))
-
-    assert {
-        "dashboard:scoped",
-        "projects:read",
-        "reports:view",
-        "documents:view",
-        "documents:manage",
-        "financial:view",
-    }.issubset(permissions)
-    assert "dashboard:company" not in permissions
-    assert "inventory:view" not in permissions
-    assert "inventory:manage" not in permissions
-    assert "suppliers:manage" not in permissions
-
-
-def test_permission_matrix_covers_every_valid_role() -> None:
-    missing_roles = VALID_ROLES.difference(ROLE_PERMISSIONS)
-
-    assert not missing_roles, f"Every valid role must have a permission entry: {missing_roles}"
-
-
-def test_frontend_permission_matrix_matches_backend() -> None:
-    fixture = Path(__file__).resolve().parents[2] / "frontend/src/pages/roles/rolePermissions.json"
-    matrix = json.loads(fixture.read_text())
-    assert len(matrix["permissions"]) == len(ALL_PERMISSIONS)
-    assert set(matrix["permissions"]) == ALL_PERMISSIONS
-    assert {role: set(grants) for role, grants in matrix["roles"].items()} == ROLE_PERMISSIONS
-
-
-def test_permission_matrix_does_not_grant_unknown_permissions() -> None:
-    unexpected_by_role = {
-        role: sorted(permissions.difference(ALL_PERMISSIONS))
-        for role, permissions in ROLE_PERMISSIONS.items()
-        if permissions.difference(ALL_PERMISSIONS)
-    }
-
-    assert not unexpected_by_role, (
-        "Role permission sets must only contain declared permissions; "
-        f"unexpected values: {unexpected_by_role}"
-    )
-
-
-@pytest.mark.parametrize(
-    ("role", "expected_permissions", "forbidden_permissions"),
-    [
-        (ROLE_ADMIN, ALL_PERMISSIONS, set()),
-        (
-            ROLE_GENERAL_MANAGER,
-            {
-                "dashboard:company",
-                "documents:manage",
-                "financial:view",
-                "inventory:view",
-                "projects:manage",
-                "reports:approve",
-                "suppliers:manage",
-                "users:read",
-            },
-            {"audit:view", "inventory:manage", "users:manage"},
-        ),
-        (
-            ROLE_OPERATION_MANAGER,
-            {
-                "dashboard:company",
-                "documents:manage",
-                "financial:view",
-                "inventory:view",
-                "projects:manage",
-                "reports:approve",
-                "suppliers:manage",
-                "users:read",
-            },
-            {"audit:view", "inventory:manage", "users:manage"},
-        ),
-        (
-            ROLE_PROJECT_MANAGER,
-            {
-                "dashboard:scoped",
-                "documents:manage",
-                "financial:view",
-                "inventory:view",
-                "projects:read",
-                "reports:approve",
-            },
-            {"dashboard:company", "projects:manage", "suppliers:manage", "users:read"},
-        ),
-        (
-            ROLE_CIVIL_ENGINEER,
-            {
-                "dashboard:scoped",
-                "documents:manage",
-                "inventory:view",
-                "projects:read",
-                "reports:submit",
-                "reports:view",
-            },
-            {"financial:view", "reports:approve", "users:read"},
-        ),
-        (
-            ROLE_CIVIL_SUPERVISOR,
-            {"dashboard:scoped", "documents:view", "projects:read", "reports:submit"},
-            {"documents:manage", "financial:view", "inventory:view", "reports:approve"},
-        ),
-        (
-            ROLE_STORE_KEEPER,
-            {"dashboard:scoped", "inventory:manage", "inventory:view", "suppliers:manage"},
-            {"documents:view", "financial:view", "reports:view", "users:read"},
-        ),
-        (
-            ROLE_ACCOUNTS,
-            {"dashboard:scoped", "documents:manage", "financial:view", "projects:read"},
-            {"dashboard:company", "inventory:view", "suppliers:manage", "users:read"},
-        ),
-    ],
+FIXTURE_PATH = Path(__file__).with_name("business_role_matrix.json")
+FRONTEND_MATRIX_PATH = (
+    Path(__file__).resolve().parents[2] / "frontend/src/pages/roles/rolePermissions.json"
 )
-def test_role_permission_boundaries(
-    role: str,
-    expected_permissions: set[str],
-    forbidden_permissions: set[str],
-) -> None:
-    permissions = set(permissions_for_role(role))
+MATRIX = json.loads(FIXTURE_PATH.read_text())
+PERMISSIONS = MATRIX["permissions"]
+EXPECTED_GRANTS = {
+    role: {
+        permission
+        for permission, granted in zip(PERMISSIONS, metadata["decisions"], strict=True)
+        if granted
+    }
+    for role, metadata in MATRIX["roles"].items()
+}
 
-    assert expected_permissions.issubset(permissions), (
-        f"{role} is missing expected permissions: {sorted(expected_permissions - permissions)}"
+
+def test_exact_role_and_permission_catalogues_match_independent_matrix() -> None:
+    assert set(VALID_ROLES) == set(MATRIX["roles"])
+    assert set(ROLE_PERMISSIONS) == set(MATRIX["roles"])
+    assert set(ROLE_LABELS) == set(MATRIX["roles"])
+    assert ALL_PERMISSIONS == set(PERMISSIONS)
+    assert len(VALID_ROLES) == 10
+    assert len(ALL_PERMISSIONS) == 16
+
+
+def test_independent_matrix_retains_source_hashes_and_coordinates() -> None:
+    source = MATRIX["source"]
+    coordinates = source["worksheet_coordinates"]
+
+    assert len(source["matrix_sha256"]) == 64
+    assert len(source["guide_sha256"]) == 64
+    assert source["review_status"] == "Pending review"
+    assert coordinates["html_header_line"] == 2
+    assert coordinates["role_labels_and_named_people"] == {"first_row": 4, "last_row": 5}
+    assert coordinates["grant_and_denial_decisions"] == {"first_row": 6, "last_row": 21}
+    assert coordinates["review_status_row"] == 22
+    assert coordinates["guide_permissions_and_review_notes"] == [
+        {"first_row": 5, "last_row": 20},
+        {"first_row": 22, "last_row": 22},
+    ]
+    assert all(role["label"] and role["person"] for role in MATRIX["roles"].values())
+
+
+def test_all_160_source_decisions_and_role_totals_match() -> None:
+    assert sum(len(metadata["decisions"]) for metadata in MATRIX["roles"].values()) == 160
+    assert sum(sum(metadata["decisions"]) for metadata in MATRIX["roles"].values()) == 87
+    assert (
+        sum(len(PERMISSIONS) - sum(metadata["decisions"]) for metadata in MATRIX["roles"].values())
+        == 73
     )
-    assert forbidden_permissions.isdisjoint(permissions), (
-        f"{role} unexpectedly grants restricted permissions: "
-        f"{sorted(forbidden_permissions & permissions)}"
-    )
+    role_totals = [sum(metadata["decisions"]) for metadata in MATRIX["roles"].values()]
+    assert role_totals == MATRIX["expected_role_grants"]
+    assert ROLE_PERMISSIONS == EXPECTED_GRANTS
+    assert sum(len(grants) for grants in ROLE_PERMISSIONS.values()) == MATRIX["expected_grants"]
 
 
-def test_unknown_role_gets_no_permissions() -> None:
-    assert permissions_for_role("unknown") == [], "Unknown roles must not inherit permissions"
+def test_frontend_matrix_matches_source_and_backend() -> None:
+    frontend = json.loads(FRONTEND_MATRIX_PATH.read_text())
+    assert frontend["permissions"] == PERMISSIONS
+    assert set(frontend["roles"]) == set(ROLE_PERMISSIONS)
+    assert {role: set(grants) for role, grants in frontend["roles"].items()} == ROLE_PERMISSIONS
 
 
-def test_validate_role_normalizes_whitespace_and_case() -> None:
-    assert validate_role("  PROJECT_MANAGER  ") == ROLE_PROJECT_MANAGER
-
-
-def test_validate_role_rejects_unknown_role_with_actionable_error() -> None:
+@pytest.mark.parametrize("role", MATRIX["retired_roles"])
+def test_retired_roles_are_rejected_and_have_no_permissions(role: str) -> None:
+    assert permissions_for_role(role) == []
+    assert not has_permission(User(role=role), "users:manage")
     with pytest.raises(AppException) as exc_info:
-        validate_role("owner")
-
+        validate_role(role)
     assert exc_info.value.status_code == 422
     assert exc_info.value.error_code == "INVALID_ROLE"
+    with pytest.raises(AppException):
+        validate_role(f"  {role.upper()}  ")
 
 
-def test_ensure_permission_raises_for_missing_permission() -> None:
-    user = User(role=ROLE_CIVIL_SUPERVISOR)
+@pytest.mark.parametrize("role", sorted(VALID_ROLES))
+def test_every_target_role_validates_and_has_exact_permissions(role: str) -> None:
+    assert validate_role(role) == role
+    assert set(permissions_for_role(role)) == EXPECTED_GRANTS[role]
 
+
+def test_permission_helpers_fail_closed_for_unknown_role_and_future_permission() -> None:
+    assert permissions_for_role("unknown") == []
+    assert has_permission(User(role="unknown"), "users:manage") is False
+    director = User(role="managing_director")
+    assert has_permission(director, "future:permission") is False
+    assert has_permission(director, "hr:employees:read") is False
+    assert all("hr:employees:read" not in permissions for permissions in ROLE_PERMISSIONS.values())
     with pytest.raises(PermissionDeniedException) as exc_info:
-        ensure_permission(user, "financial:view")
-
+        ensure_permission(director, "future:permission")
     assert exc_info.value.status_code == 403
     assert exc_info.value.error_code == "PERMISSION_DENIED"
 
 
-def test_has_permission_returns_false_for_unknown_role() -> None:
-    assert has_permission(User(role="unknown"), "users:manage") is False
+def test_role_replacement_does_not_mount_an_unapproved_hr_module() -> None:
+    paths = app.openapi()["paths"]
+    assert not any(path.startswith("/api/v1/hr/") for path in paths)
+
+
+def test_every_feature_permission_denial_is_explicit_for_each_role() -> None:
+    for role, grants in EXPECTED_GRANTS.items():
+        actor = User(role=role)
+        for permission in PERMISSIONS:
+            assert has_permission(actor, permission) is (permission in grants)

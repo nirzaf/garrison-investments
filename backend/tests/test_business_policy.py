@@ -64,13 +64,13 @@ def test_deployed_settings_require_currency_migration(
 @pytest.mark.parametrize(
     ("threshold", "amount", "actor_role", "expected"),
     [
-        ("0", "0", "civil_engineer", "project_manager"),
-        ("0", "0.01", "civil_engineer", "operation_manager"),
-        ("250.00", "249.99", "civil_engineer", "project_manager"),
-        ("250.00", "250.00", "civil_engineer", "project_manager"),
-        ("250.00", "250.01", "civil_engineer", "operation_manager"),
-        ("250.00", "50.00", "project_manager", "operation_manager"),
-        ("999999999999.99", "999999999999.99", "civil_engineer", "project_manager"),
+        ("0", "0", "quantity_surveyor", "operations_director"),
+        ("0", "0.01", "quantity_surveyor", "operations_director"),
+        ("250.00", "249.99", "quantity_surveyor", "operations_director"),
+        ("250.00", "250.00", "quantity_surveyor", "operations_director"),
+        ("250.00", "250.01", "quantity_surveyor", "operations_director"),
+        ("250.00", "50.00", "group_project_manager", "operations_director"),
+        ("999999999999.99", "999999999999.99", "quantity_surveyor", "operations_director"),
     ],
 )
 async def test_material_routing_keeps_strict_boundary_and_project_manager_rule(
@@ -80,11 +80,10 @@ async def test_material_routing_keeps_strict_boundary_and_project_manager_rule(
         "app.services.approval_service.get_settings",
         lambda: SimpleNamespace(material_approval_threshold=Decimal(threshold)),
     )
-    project_manager = User(id=uuid4(), role="project_manager")
-    operations_manager = User(id=uuid4(), role="operation_manager")
-    service = ApprovalService(Mock(scalar=AsyncMock(return_value=project_manager)))
+    operations_director = User(id=uuid4(), role="operations_director")
+    service = ApprovalService(Mock(scalar=AsyncMock(return_value=operations_director)))
     monkeypatch.setattr(
-        service, "_first_active_role_user", AsyncMock(return_value=operations_manager)
+        service, "_first_active_role_user", AsyncMock(return_value=operations_director)
     )
     approval = ApprovalCreateRequest(
         request_type="material_request",

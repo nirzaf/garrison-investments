@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
 
-from app.api.dependencies import DbSession, require_permission
+from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.models.user import User
 from app.schemas.documents import (
     DocumentDecisionRequest,
@@ -13,13 +13,31 @@ from app.schemas.documents import (
     DocumentResponse,
     DocumentVersionResponse,
 )
+from app.schemas.projects import ProjectOption, ProjectOptionListResponse
 from app.services.document_service import SIGNED_URL_SECONDS, DocumentService
 from app.services.idempotency import validate_key
+from app.services.project_service import ProjectService
 from app.utils.permissions import PERMISSION_DOCUMENTS_MANAGE, PERMISSION_DOCUMENTS_VIEW
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 CanManageDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_MANAGE))]
 CanViewDocuments = Annotated[User, Depends(require_permission(PERMISSION_DOCUMENTS_VIEW))]
+
+
+@router.get("/project-options", response_model=ProjectOptionListResponse)
+async def list_document_project_options(
+    current_user: CurrentUser,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ProjectOptionListResponse:
+    projects, total = await ProjectService(session).list_document_project_options(
+        current_user, search=search, limit=limit, offset=offset
+    )
+    return ProjectOptionListResponse(
+        items=[ProjectOption.model_validate(project) for project in projects], total=total
+    )
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -94,7 +112,7 @@ async def upload_document_version(
 @router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])
 async def list_document_versions(
     document_id: UUID,
-    current_user: CanManageDocuments,
+    current_user: CanViewDocuments,
     session: DbSession,
 ) -> list[DocumentVersionResponse]:
     versions = await DocumentService(session).list_document_versions(document_id, current_user)

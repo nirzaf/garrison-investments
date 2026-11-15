@@ -38,28 +38,6 @@ async function signIn(page: Page, account: Account): Promise<string> {
   return ((await (await verification).json()) as { access_token: string }).access_token;
 }
 
-async function createAccount(
-  request: APIRequestContext,
-  headers: Record<string, string>,
-  role: string,
-  suffix: string
-) {
-  const account = { email: `${role}-${suffix}@example.com`, password: 'BrowserFixture!2027' };
-  const created = await request.post('/api/v1/users', {
-    headers,
-    data: {
-      email: account.email,
-      temporary_password: account.password,
-      full_name: `Finance tester ${role} ${suffix}`,
-      role,
-      employee_code: `${role}-${suffix}`,
-      phone: '5550124'
-    }
-  });
-  expect(created.status()).toBe(201);
-  return { ...account, id: ((await created.json()) as { id: string }).id };
-}
-
 async function createSupplier(
   request: APIRequestContext,
   headers: Record<string, string>,
@@ -82,223 +60,39 @@ async function createSupplier(
   return { ...supplier, id: ((await created.json()) as { id: string }).id };
 }
 
-async function submitInvoice(
-  page: Page,
-  projectId: string,
-  projectName: string,
-  invoiceNumber: string,
-  supplierName: string
-) {
-  await page.goto('/finance');
-  await page.getByRole('button', { name: 'New invoice', exact: true }).click();
-  await page.getByLabel('Invoice number', { exact: true }).fill(invoiceNumber);
-  await page.getByLabel('Search invoice project options').fill(projectName);
-  await page.getByLabel('Invoice project', { exact: true }).selectOption(projectId);
-  await page.getByLabel('Search supplier options').fill(supplierName);
-  await page.getByLabel('Supplier', { exact: true }).selectOption({ label: supplierName });
-  await page.getByLabel('Invoice date', { exact: true }).fill('2027-01-02');
-  await page.getByLabel('Due date', { exact: true }).fill('2027-01-01');
-  await page.getByLabel('Amount', { exact: true }).fill('125.50');
-  const button = page.getByRole('button', { name: 'Submit invoice', exact: true });
-  await button.click();
-  await expect(page.getByText('Due date must be on or after the invoice date.')).toBeVisible();
-  await expect(page.getByLabel('Invoice number', { exact: true })).toHaveValue(invoiceNumber);
-  await page.getByLabel('Due date', { exact: true }).fill('2027-02-01');
-  const response = page.waitForResponse(
-    (result) => result.url().endsWith('/api/v1/finance/invoices') && result.status() === 201
-  );
-  await button.click();
-  return (await (await response).json()) as { id: string; supplier_name: string };
-}
-
-test('Accounts and assigned Project Manager correct, retry, and race invoice payments without overpaying', async ({
+test('directors can read finance while invoice mutations remain unavailable', async ({
   page,
-  browser,
-  request,
-  baseURL
+  request
 }) => {
-  test.setTimeout(65_000);
-  const admin = seedAdmin();
-  const adminToken = await signIn(page, admin);
-  const headers = { Authorization: `Bearer ${adminToken}` };
-  const suffix = randomUUID().slice(0, 8);
-  const project = await request.get(`/api/v1/projects/${admin.projectId}`, { headers });
-  expect(project.ok()).toBe(true);
-  const projectName = ((await project.json()) as { name: string }).name;
-  const accounts = await createAccount(request, headers, 'accounts', suffix);
-  const manager = await createAccount(request, headers, 'project_manager', suffix);
-  const operations = await createAccount(request, headers, 'operation_manager', suffix);
-  const supplier = await createSupplier(request, headers, suffix);
-  const membership = await request.post(`/api/v1/projects/${admin.projectId}/members`, {
+  const director = seedAdmin();
+  const token = await signIn(page, director);
+  const headers = { Authorization: `Bearer ${token}` };
+  const invoiceNumber = `DENIED-${randomUUID().slice(0, 8)}`;
+  const before = await request.get('/api/v1/finance/invoices', { headers });
+  expect(before.status()).toBe(200);
+
+  await page.goto('/finance');
+  await expect(page.getByText(/Finance is read-only under the current role policy/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New invoice', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record payment', exact: true })).toHaveCount(0);
+
+  const attempted = await request.post('/api/v1/finance/invoices', {
     headers,
-    data: { user_id: manager.id }
+    data: {
+      invoice_number: invoiceNumber,
+      project_id: director.projectId,
+      supplier_id: null,
+      invoice_date: '2026-11-14',
+      due_date: '2026-12-14',
+      amount: '125.50',
+      tax_amount: '0.00'
+    }
   });
-  expect(membership.status()).toBe(201);
+  expect(attempted.status()).toBe(403);
 
-  const accountsPage = await browser.newPage({ baseURL });
-  const managerPage = await browser.newPage({ baseURL });
-  const operationsPage = await browser.newPage({ baseURL });
-  try {
-    const accountsToken = await signIn(accountsPage, accounts);
-    const managerToken = await signIn(managerPage, manager);
-    for (const token of [accountsToken, managerToken]) {
-      const directory = await request.get('/api/v1/suppliers', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      expect(directory.status()).toBe(403);
-    }
-    const invoice = await submitInvoice(
-      accountsPage,
-      admin.projectId,
-      projectName,
-      `ACC-${suffix}`,
-      supplier.name
-    );
-    const scoped = await submitInvoice(
-      managerPage,
-      admin.projectId,
-      projectName,
-      `PM-${suffix}`,
-      supplier.name
-    );
-    expect(invoice.supplier_name).toBe(supplier.name);
-    expect(scoped.supplier_name).toBe(supplier.name);
-    await signIn(operationsPage, operations);
-    const path = `/finance?invoiceId=${invoice.id}`;
-    await operationsPage.goto(path);
-    const operationsDetails = operationsPage.getByRole('region', {
-      name: 'Invoice details',
-      exact: true
-    });
-    await operationsDetails.getByRole('button', { name: 'Reject invoice', exact: true }).click();
-    await operationsDetails.getByLabel('Rejection notes').fill('Correct the invoice amount.');
-    await operationsDetails.getByRole('button', { name: 'Confirm rejection' }).click();
-    await expect(operationsDetails.getByText('rejected', { exact: true })).toBeVisible();
-
-    await accountsPage.goto(path);
-    const details = accountsPage.getByRole('region', { name: 'Invoice details', exact: true });
-    await details.getByRole('button', { name: 'Correct invoice', exact: true }).click();
-    await details.getByLabel('Amount', { exact: true }).fill('140.75');
-    await details.getByLabel('Tax amount', { exact: true }).fill('4.25');
-    await details.getByLabel('Supplier', { exact: true }).selectOption('');
-    await details.getByRole('button', { name: 'Save corrections', exact: true }).click();
-    await expect(details.getByText('USD 145.00', { exact: true })).toHaveCount(2);
-    await details.getByRole('button', { name: 'Resubmit invoice', exact: true }).click();
-    await expect(details.getByText('submitted', { exact: true })).toBeVisible();
-    await expect(details.getByRole('button', { name: 'Approve invoice', exact: true })).toHaveCount(
-      0
-    );
-    await operationsPage.reload();
-    await operationsDetails.getByRole('button', { name: 'Approve invoice', exact: true }).click();
-    await expect(operationsDetails.getByText('approved', { exact: true })).toBeVisible();
-
-    await accountsPage.reload();
-    const paymentUrl = `**/api/v1/finance/invoices/${invoice.id}/payments`;
-    let firstKey: string | undefined;
-    let firstBody: string | null = null;
-    await accountsPage.route(paymentUrl, async (route) => {
-      const outgoing = route.request();
-      const key = outgoing.headers()['idempotency-key'];
-      if (firstKey === undefined) {
-        expect(key).toBeTruthy();
-        firstKey = key;
-        firstBody = outgoing.postData();
-        const committed = await route.fetch();
-        expect(committed.ok()).toBe(true);
-        await route.abort('failed');
-      } else {
-        expect(key).toBe(firstKey);
-        expect(outgoing.postData()).toBe(firstBody);
-        await route.continue();
-      }
-    });
-    await details.getByLabel('Payment amount', { exact: true }).fill('40.10');
-    await details.getByRole('button', { name: 'Record payment', exact: true }).click();
-    await expect(
-      details.getByText('The payment result could not be confirmed.', { exact: false })
-    ).toBeVisible();
-    await expect(details.getByLabel('Payment amount', { exact: true })).toHaveValue('40.10');
-    await details.getByRole('button', { name: 'Retry payment', exact: true }).click();
-    await expect(details.getByText('partial', { exact: true })).toBeVisible();
-    await expect(details.getByLabel('Payment amount', { exact: true })).toHaveValue('104.90');
-    await expect(
-      details.getByRole('table', { name: 'Payment history' }).getByRole('row')
-    ).toHaveCount(2);
-    await accountsPage.unroute(paymentUrl);
-
-    await managerPage.goto(path);
-    const paymentSessions = [accountsPage, managerPage].map((payerPage) => ({
-      page: payerPage,
-      invoice: payerPage.getByRole('region', { name: 'Invoice details', exact: true })
-    }));
-    let releasePayments!: () => void;
-    const bothPaymentsReady = new Promise<void>((resolve) => {
-      releasePayments = resolve;
-    });
-    const paymentKeys: (string | undefined)[] = [];
-    for (const session of paymentSessions) {
-      const amount = session.invoice.getByLabel('Payment amount', { exact: true });
-      await expect(amount).toHaveValue('104.90');
-      await amount.fill('75.00');
-      await session.page.route(
-        paymentUrl,
-        async (route) => {
-          paymentKeys.push(route.request().headers()['idempotency-key']);
-          if (paymentKeys.length === paymentSessions.length) releasePayments();
-          await bothPaymentsReady;
-          await route.continue();
-        },
-        { times: 1 }
-      );
-    }
-    const competingPayments = await Promise.all(
-      paymentSessions.map(async (session) => {
-        const [response] = await Promise.all([
-          session.page.waitForResponse(
-            (result) =>
-              result.request().method() === 'POST' &&
-              new URL(result.url()).pathname === `/api/v1/finance/invoices/${invoice.id}/payments`
-          ),
-          session.invoice.getByRole('button', { name: 'Record payment', exact: true }).click()
-        ]);
-        return { response, invoice: session.invoice };
-      })
-    );
-    expect(paymentKeys).toEqual([expect.any(String), expect.any(String)]);
-    expect(new Set([firstKey, ...paymentKeys]).size).toBe(3);
-    expect(competingPayments.map(({ response }) => response.status()).sort()).toEqual([200, 409]);
-    const conflict = competingPayments.find(({ response }) => response.status() === 409)!;
-    expect(await conflict.response.json()).toMatchObject({ error_code: 'PAYMENT_EXCEEDS_BALANCE' });
-    await expect(conflict.invoice.getByRole('alert')).toContainText(
-      'Payment exceeds the outstanding balance of 29.90.'
-    );
-    const conflictedAmount = conflict.invoice.getByLabel('Payment amount', { exact: true });
-    await expect(conflictedAmount).toHaveValue('75.00');
-    await conflict.invoice.getByRole('button', { name: 'Refresh invoice' }).click();
-    await expect(conflict.invoice.getByText('USD 29.90', { exact: true })).toBeVisible();
-    await conflictedAmount.fill('29.90');
-    await conflict.invoice.getByRole('button', { name: 'Record payment', exact: true }).click();
-    await expect(conflict.invoice.getByText('paid', { exact: true })).toBeVisible();
-
-    await accountsPage.reload();
-    const history = details.getByRole('table', { name: 'Payment history' });
-    await expect(history.getByRole('row')).toHaveCount(4);
-    for (const amount of ['USD 40.10', 'USD 75.00', 'USD 29.90']) {
-      await expect(history.getByRole('cell', { name: amount, exact: true })).toHaveCount(1);
-    }
-    await expect(details.getByRole('button', { name: 'Record payment', exact: true })).toHaveCount(
-      0
-    );
-    await expect(details.getByText('USD 0.00', { exact: true })).toBeVisible();
-    await accountsPage.getByLabel('Search project filter options').fill(projectName);
-    await accountsPage.getByLabel('Project filter', { exact: true }).selectOption(admin.projectId);
-    await expect(accountsPage.getByText('USD 270.50', { exact: true })).toBeVisible();
-    await expect(
-      accountsPage.getByText('Recorded payments', { exact: true }).locator('..')
-    ).toHaveText('Recorded paymentsUSD 145.00');
-  } finally {
-    await Promise.all([accountsPage.close(), managerPage.close(), operationsPage.close()]);
-  }
+  const after = await request.get('/api/v1/finance/invoices', { headers });
+  expect(after.status()).toBe(200);
+  expect(await after.json()).toEqual(await before.json());
 });
 
 test('supplier manager edits expiry, replaces evidence, and deactivates a supplier with history retained', async ({

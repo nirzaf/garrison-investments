@@ -8,7 +8,7 @@ from minio import Minio
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
-from sqlalchemy import func, select
+from sqlalchemy import Numeric, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -19,11 +19,16 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.analytics import AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow
 from app.services.authorization import accessible_project_ids, ensure_project_access
-from app.services.finance_service import FINANCE_ROLES, NON_BILLABLE_INVOICE_STATUSES
+from app.services.finance_service import NON_BILLABLE_INVOICE_STATUSES
 from app.utils.exceptions import AppException
-from app.utils.permissions import ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER
-
-MANAGEMENT_ROLES = {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}
+from app.utils.permissions import (
+    PERMISSION_DASHBOARD_COMPANY,
+    PERMISSION_DASHBOARD_SCOPED,
+    PERMISSION_FINANCIAL_VIEW,
+    PERMISSION_INVENTORY_VIEW,
+    PERMISSION_PROJECTS_READ,
+    has_permission,
+)
 
 
 class AnalyticsService:
@@ -32,7 +37,14 @@ class AnalyticsService:
         self.settings = get_settings()
 
     def ensure_management_access(self, actor: User) -> None:
-        if actor.role not in MANAGEMENT_ROLES and actor.role not in FINANCE_ROLES:
+        if not any(
+            has_permission(actor, permission)
+            for permission in (
+                PERMISSION_DASHBOARD_COMPANY,
+                PERMISSION_DASHBOARD_SCOPED,
+                PERMISSION_FINANCIAL_VIEW,
+            )
+        ):
             raise AppException(
                 "Management analytics are restricted.",
                 status_code=403,
@@ -51,8 +63,24 @@ class AnalyticsService:
     ) -> AnalyticsSummaryResponse:
         project_scope = await self._project_scope(actor, project_id)
         self._validate_date_range(date_from, date_to)
-        projects = await self._project_rows(project_scope, date_from, date_to, location, department)
-        usage = await self._material_rows(project_scope, date_from, date_to, department)
+        projects = (
+            await self._project_rows(
+                project_scope,
+                date_from,
+                date_to,
+                location,
+                department,
+                include_financial=has_permission(actor, PERMISSION_FINANCIAL_VIEW),
+            )
+            if has_permission(actor, PERMISSION_PROJECTS_READ)
+            or has_permission(actor, PERMISSION_DASHBOARD_COMPANY)
+            else []
+        )
+        usage = (
+            await self._material_rows(project_scope, date_from, date_to, department)
+            if has_permission(actor, PERMISSION_INVENTORY_VIEW)
+            else []
+        )
         return AnalyticsSummaryResponse(projects=projects, material_usage=usage)
 
     async def project_progress_export(
@@ -67,25 +95,39 @@ class AnalyticsService:
     ) -> bytes:
         project_scope = await self._project_scope(actor, project_id)
         self._validate_date_range(date_from, date_to)
-        rows = await self._project_rows(project_scope, date_from, date_to, location, department)
+        include_financial = has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+        rows = (
+            await self._project_rows(
+                project_scope,
+                date_from,
+                date_to,
+                location,
+                department,
+                include_financial=include_financial,
+            )
+            if has_permission(actor, PERMISSION_PROJECTS_READ)
+            or has_permission(actor, PERMISSION_DASHBOARD_COMPANY)
+            else []
+        )
         currency = self.settings.business_currency
-        headings = [
-            "Project", "Progress %", "Reports", f"Invoice Total ({currency})", f"Paid ({currency})"
-        ]
+        headings = ["Project", "Progress %", "Reports"]
+        if include_financial:
+            headings.extend([f"Invoice Total ({currency})", f"Paid ({currency})"])
+        data_rows = []
+        for row in rows:
+            values = [row.project_name, str(row.progress_percentage), str(row.report_count)]
+            if include_financial:
+                values.extend([str(row.invoice_total or 0), str(row.paid_total or 0)])
+            data_rows.append(values)
         return build_xlsx(
             "Project Progress",
-            [headings]
-            + [
-                [
-                    row.project_name,
-                    str(row.progress_percentage),
-                    str(row.report_count),
-                    str(row.invoice_total),
-                    str(row.paid_total),
-                ]
-                for row in rows
-            ],
-            context=self._filter_context(project_id, date_from, date_to, location, department),
+            [headings] + data_rows,
+            context=(
+                self._filter_context(project_id, date_from, date_to, location, department)
+                if include_financial
+                else self._filter_context(project_id, date_from, date_to, location, department)
+                + " | Financial totals withheld for this role."
+            ),
         )
 
     async def material_usage_export(
@@ -99,6 +141,12 @@ class AnalyticsService:
     ) -> bytes:
         project_scope = await self._project_scope(actor, project_id)
         self._validate_date_range(date_from, date_to)
+        if not has_permission(actor, PERMISSION_INVENTORY_VIEW):
+            raise AppException(
+                "Inventory analytics are restricted.",
+                status_code=403,
+                error_code="INVENTORY_ANALYTICS_FORBIDDEN",
+            )
         rows = await self._material_rows(project_scope, date_from, date_to, department)
         return build_xlsx(
             "Material Usage",
@@ -130,43 +178,49 @@ class AnalyticsService:
             location=location,
             department=department,
         )
+        include_financial = has_permission(actor, PERMISSION_FINANCIAL_VIEW)
         currency = self.settings.business_currency
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
         styles = getSampleStyleSheet()
+        project_headings = ["Project", "Progress", "Reports"]
+        if include_financial:
+            project_headings.extend([f"Invoiced ({currency})", f"Paid ({currency})"])
+        project_rows = []
+        for row in summary.projects:
+            values = [row.project_name, f"{row.progress_percentage}%", str(row.report_count)]
+            if include_financial:
+                values.extend([str(row.invoice_total or 0), str(row.paid_total or 0)])
+            project_rows.append(values)
         story = [
             Paragraph("Garrisons Investments - Management Summary", styles["Title"]),
             Spacer(1, 12),
             Paragraph(
                 escape_xml(
                     self._filter_context(project_id, date_from, date_to, location, department)
+                    if include_financial
+                    else self._filter_context(project_id, date_from, date_to, location, department)
+                    + " | Financial totals withheld for this role."
                 ),
                 styles["BodyText"],
             ),
             Paragraph("Project Progress", styles["Heading2"]),
-            Table(
-                [["Project", "Progress", "Reports", f"Invoiced ({currency})", f"Paid ({currency})"]]
-                + [
-                    [
-                        row.project_name,
-                        f"{row.progress_percentage}%",
-                        str(row.report_count),
-                        str(row.invoice_total),
-                        str(row.paid_total),
-                    ]
-                    for row in summary.projects
-                ]
-            ),
-            Spacer(1, 12),
-            Paragraph("Material Usage", styles["Heading2"]),
-            Table(
-                [["Item", "Issued", "Consumed"]]
-                + [
-                    [row.item_name, str(row.issued_quantity), str(row.consumed_quantity)]
-                    for row in summary.material_usage
-                ]
-            ),
+            Table([project_headings] + project_rows),
         ]
+        if has_permission(actor, PERMISSION_INVENTORY_VIEW):
+            story.extend(
+                [
+                    Spacer(1, 12),
+                    Paragraph("Material Usage", styles["Heading2"]),
+                    Table(
+                        [["Item", "Issued", "Consumed"]]
+                        + [
+                            [row.item_name, str(row.issued_quantity), str(row.consumed_quantity)]
+                            for row in summary.material_usage
+                        ]
+                    ),
+                ]
+            )
         doc.build(story)
         return buffer.getvalue()
 
@@ -187,8 +241,18 @@ class AnalyticsService:
     async def _project_scope(self, actor: User, project_id: UUID | None) -> list[UUID] | None:
         self.ensure_management_access(actor)
         if project_id is not None:
+            if not has_permission(actor, PERMISSION_PROJECTS_READ):
+                raise AppException(
+                    "Project analytics are restricted.",
+                    status_code=404,
+                    error_code="ANALYTICS_PROJECT_NOT_FOUND",
+                )
             await ensure_project_access(self.session, project_id, actor)
             return [project_id]
+        # Company dashboards may aggregate company projects without granting
+        # company-wide access to the underlying project/report resources.
+        if has_permission(actor, PERMISSION_DASHBOARD_COMPANY):
+            return None
         return await accessible_project_ids(self.session, actor)
 
     @staticmethod
@@ -228,6 +292,8 @@ class AnalyticsService:
         date_to: date | None,
         location: str | None,
         department: str | None,
+        *,
+        include_financial: bool,
     ) -> list[ProjectAnalyticsRow]:
         # Each total is a correlated scalar subquery. Joining reports, invoices and payments
         # into one row set multiplies every row by the others' cardinality, which inflated
@@ -249,6 +315,8 @@ class AnalyticsService:
                 Invoice.status.notin_(NON_BILLABLE_INVOICE_STATUSES),
             )
             .scalar_subquery()
+            if include_financial
+            else literal(None, type_=Numeric(14, 2))
         )
         paid_total = (
             select(func.coalesce(func.sum(Payment.amount), 0))
@@ -260,6 +328,8 @@ class AnalyticsService:
                 Invoice.deleted_at.is_(None),
             )
             .scalar_subquery()
+            if include_financial
+            else literal(None, type_=Numeric(14, 2))
         )
         query = select(
             Project.id,
@@ -284,8 +354,8 @@ class AnalyticsService:
                 project_name=row[1],
                 progress_percentage=Decimal(row[2] or 0),
                 report_count=int(row[3] or 0),
-                invoice_total=Decimal(row[4] or 0),
-                paid_total=Decimal(row[5] or 0),
+                invoice_total=Decimal(row[4] or 0) if row[4] is not None else None,
+                paid_total=Decimal(row[5] or 0) if row[5] is not None else None,
             )
             for row in result.all()
         ]

@@ -30,7 +30,7 @@ import { ManualPage } from './pages/manual/ManualPage';
 
 function DailyReportsRoute() {
   const { user } = useAuth();
-  return user?.role === 'civil_supervisor' ? (
+  return ['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ? (
     <Navigate to="/reports/supervisor-update" replace />
   ) : (
     <DailyReportPage />
@@ -39,7 +39,18 @@ function DailyReportsRoute() {
 
 function SupervisorUpdatesRoute() {
   const { user } = useAuth();
-  return user?.role === 'civil_supervisor' ? <SupervisorUpdatePage /> : <SupervisorReviewPage />;
+  if (['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '')) {
+    return (
+      <RequirePermission permission="reports:submit">
+        <SupervisorUpdatePage />
+      </RequirePermission>
+    );
+  }
+  return (
+    <RequirePermission permission="reports:view">
+      <SupervisorReviewPage />
+    </RequirePermission>
+  );
 }
 
 export function App() {
@@ -95,7 +106,7 @@ export function App() {
         <Route
           path="/photos"
           element={
-            <RequirePermission permission="reports:view">
+            <RequirePermission permission={['reports:view', 'reports:submit']}>
               <PhotosPage />
             </RequirePermission>
           }
@@ -152,18 +163,14 @@ export function App() {
         <Route
           path="/reports/daily"
           element={
-            <RequirePermission permission="reports:view">
+            <RequirePermission permission={['reports:view', 'reports:submit']}>
               <DailyReportsRoute />
             </RequirePermission>
           }
         />
         <Route
           path="/reports/supervisor-update"
-          element={
-            <RequirePermission permission="reports:view">
-              <SupervisorUpdatesRoute />
-            </RequirePermission>
-          }
+          element={<SupervisorUpdatesRoute />}
         />
         <Route path="/approvals" element={<ApprovalInboxPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

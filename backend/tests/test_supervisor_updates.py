@@ -82,9 +82,9 @@ def project_payload() -> dict:
 
 
 async def setup_assigned_supervisor_project(client: httpx.AsyncClient):
-    op_email, op_password = await create_user("operation_manager")
-    supervisor_email, supervisor_password = await create_user("civil_supervisor")
-    engineer_email, engineer_password = await create_user("civil_engineer")
+    op_email, op_password = await create_user("operations_director")
+    supervisor_email, supervisor_password = await create_user("site_supervisor")
+    engineer_email, engineer_password = await create_user("quantity_surveyor")
     op_token = await login_for_token(client, op_email, op_password)
     supervisor_token = await login_for_token(client, supervisor_email, supervisor_password)
     engineer_token = await login_for_token(client, engineer_email, engineer_password)
@@ -110,7 +110,7 @@ async def setup_assigned_supervisor_project(client: httpx.AsyncClient):
     )
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
-        json={"user_id": engineer.json()["id"], "role_in_project": "civil_engineer"},
+        json={"user_id": engineer.json()["id"], "role_in_project": "quantity_surveyor"},
         headers={"Authorization": f"Bearer {op_token}"},
     )
     return project, supervisor_token, engineer_token
@@ -158,7 +158,24 @@ async def test_supervisor_can_create_and_submit_update_for_assigned_project() ->
         )
 
         assert list_response.status_code == 200
-        assert list_response.json()["total"] >= 1
+        assert list_response.json()["total"] == 1
+        assert list_response.json()["items"][0]["id"] == update["id"]
+        assert list_response.json()["items"][0]["status"] == "submitted"
+
+        # A submit-only report author can select evidence for an assigned project,
+        # but cannot enumerate updates across the company or inspect drafts.
+        no_project = await client.get(
+            "/api/v1/supervisor-updates",
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert no_project.status_code == 422
+        assert no_project.json()["error_code"] == "SUPERVISOR_UPDATE_PROJECT_REQUIRED"
+        another_project = await client.get(
+            "/api/v1/supervisor-updates",
+            params={"project_id": str(uuid4()), "status": "draft"},
+            headers={"Authorization": f"Bearer {engineer_token}"},
+        )
+        assert another_project.status_code == 404
 
 
 async def test_supervisor_can_autosave_existing_draft_update() -> None:
@@ -199,8 +216,8 @@ async def test_supervisor_can_autosave_existing_draft_update() -> None:
 
 async def test_unassigned_supervisor_cannot_create_update() -> None:
     await skip_if_database_unavailable()
-    op_email, op_password = await create_user("operation_manager")
-    supervisor_email, supervisor_password = await create_user("civil_supervisor")
+    op_email, op_password = await create_user("operations_director")
+    supervisor_email, supervisor_password = await create_user("site_supervisor")
 
     async with create_test_client() as client:
         op_token = await login_for_token(client, op_email, op_password)

@@ -6,9 +6,9 @@ barrier — sequential calls would pass even without the row locks, so they prov
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from sqlalchemy import func, select
@@ -32,9 +32,8 @@ from tests.test_daily_reports import (
 )
 from tests.test_daily_reports import create_user as create_report_user
 from tests.test_daily_reports import login_for_token as report_login
-from tests.test_finance import create_project_and_supplier
+from tests.test_finance import add_invoice, create_project_and_supplier
 from tests.test_finance import create_user as create_finance_user
-from tests.test_finance import login_for_token as finance_login
 
 pytestmark = pytest.mark.asyncio
 
@@ -50,7 +49,9 @@ async def _submitted_report_with_stock() -> tuple[UUID, UUID, UUID, UUID]:
     """Create + submit a report that consumes 12 m3 from a location holding 20."""
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        stock = await setup_report_consumption_stock(client, setup["project_id"])
+        stock = await setup_report_consumption_stock(
+            client, setup["project_id"], setup["op_token"]
+        )
         report = (
             await client.post(
                 "/api/v1/reports",
@@ -126,16 +127,14 @@ async def test_concurrent_submits_keep_distinct_report_numbers() -> None:
     await require_database()
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        second_email, second_password = await create_report_user("civil_engineer")
+        second_email, second_password = await create_report_user("quantity_surveyor")
         second_token = await report_login(client, second_email, second_password)
         second = (
-            await client.get(
-                "/api/v1/auth/me", headers={"Authorization": f"Bearer {second_token}"}
-            )
+            await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {second_token}"})
         ).json()
         member = await client.post(
             f"/api/v1/projects/{setup['project_id']}/members",
-            json={"user_id": second["id"], "role_in_project": "civil_engineer"},
+            json={"user_id": second["id"], "role_in_project": "quantity_surveyor"},
             headers={"Authorization": f"Bearer {setup['op_token']}"},
         )
         assert member.status_code in {200, 201}
@@ -218,9 +217,7 @@ async def test_number_collision_returns_409_and_keeps_existing_numbers() -> None
                 "/api/v1/reports", json=report_payload(setup["project_id"]), headers=headers
             )
         ).json()
-        engineer = (
-            await client.get("/api/v1/auth/me", headers=headers)
-        ).json()
+        engineer = (await client.get("/api/v1/auth/me", headers=headers)).json()
 
     # Leave a hole at -002 so the next COUNT+1 lands on the number we plant at -003.
     prefix, _, sequence = existing_number.rpartition("-")
@@ -250,45 +247,11 @@ async def test_number_collision_returns_409_and_keeps_existing_numbers() -> None
 
 
 async def _approved_invoice(total: str = "315.00") -> tuple[UUID, UUID]:
-    """Create an invoice and drive it to ``approved`` through the real approval flow."""
-    admin, _ = await create_finance_user("admin")
-    accounts, accounts_password = await create_finance_user("accounts")
-    op_manager, op_password = await create_finance_user("operation_manager")
+    """Seed an approved invoice for verifying the read-only finance boundary."""
+    admin, _ = await create_finance_user("managing_director")
     project, supplier = await create_project_and_supplier(admin)
-
-    async with create_test_client() as client:
-        accounts_token = await finance_login(client, accounts, accounts_password)
-        op_token = await finance_login(client, op_manager, op_password)
-        created = await client.post(
-            "/api/v1/finance/invoices",
-            json={
-                "invoice_number": f"INV-{uuid4().hex[:8]}",
-                "project_id": str(project.id),
-                "supplier_id": str(supplier.id),
-                "invoice_date": date.today().isoformat(),
-                "due_date": (date.today() + timedelta(days=30)).isoformat(),
-                "amount": total,
-                "tax_amount": "0",
-            },
-            headers={"Authorization": f"Bearer {accounts_token}"},
-        )
-        assert created.status_code == 201
-        invoice_id = UUID(created.json()["id"])
-
-        approvals = await client.get(
-            "/api/v1/approvals", headers={"Authorization": f"Bearer {op_token}"}
-        )
-        assert approvals.status_code == 200
-        approval = next(
-            item for item in approvals.json()["items"] if item["request_id"] == str(invoice_id)
-        )
-        approved = await client.post(
-            f"/api/v1/approvals/{approval['id']}/approve",
-            json={"comments": "Approved for payment."},
-            headers={"Authorization": f"Bearer {op_token}"},
-        )
-        assert approved.status_code == 200
-    return invoice_id, accounts.id
+    invoice = await add_invoice(project, Decimal(total), status="approved", supplier_id=supplier.id)
+    return invoice.id, admin.id
 
 
 def _payment(amount: str) -> PaymentCreateRequest:
@@ -297,7 +260,7 @@ def _payment(amount: str) -> PaymentCreateRequest:
     )
 
 
-async def test_double_payment_cannot_exceed_the_balance() -> None:
+async def test_concurrent_payment_attempts_are_denied_without_financial_write_permission() -> None:
     await require_database()
     invoice_id, accounts_id = await _approved_invoice("315.00")
 
@@ -311,8 +274,8 @@ async def test_double_payment_cannot_exceed_the_balance() -> None:
 
     results = await race_sessions(pay, pay, pay)
 
-    assert status_counts(results) == {"paid": 1, 409: 2}
-    assert set(error_codes(results)) <= {"INVOICE_ALREADY_PAID", "PAYMENT_EXCEEDS_BALANCE"}
+    assert status_counts(results) == {403: 3}
+    assert error_codes(results) == ["FINANCE_WRITE_FORBIDDEN"] * 3
 
     async with AsyncSessionLocal() as session:
         paid = await session.scalar(
@@ -322,15 +285,15 @@ async def test_double_payment_cannot_exceed_the_balance() -> None:
         )
         invoice = await session.get(Invoice, invoice_id)
         assert invoice is not None
-        assert Decimal(paid or 0) == invoice.total_amount
-        assert invoice.payment_status == "paid"
+        assert Decimal(paid or 0) == Decimal("0.00")
+        assert invoice.payment_status == "unpaid"
         count = await session.scalar(
             select(func.count()).select_from(Payment).where(Payment.invoice_id == invoice_id)
         )
-        assert count == 1
+        assert count == 0
 
 
-async def test_payment_above_outstanding_balance_is_rejected() -> None:
+async def test_payment_amount_variants_are_denied_without_financial_write_permission() -> None:
     await require_database()
     invoice_id, accounts_id = await _approved_invoice("200.00")
 
@@ -338,21 +301,17 @@ async def test_payment_above_outstanding_balance_is_rejected() -> None:
         actor = await session.get(User, accounts_id)
         assert actor is not None
         service = FinanceService(session)
-        partial = await service.create_payment(invoice_id, _payment("50.00"), actor)
-        assert partial.payment_status == "partial"
+        for amount in ("50.00", "150.01", "150.00", "0.01"):
+            with pytest.raises(AppException) as excinfo:
+                await service.create_payment(invoice_id, _payment(amount), actor)
+            assert excinfo.value.status_code == 403
+            assert excinfo.value.error_code == "FINANCE_WRITE_FORBIDDEN"
 
-        with pytest.raises(AppException) as excinfo:
-            await service.create_payment(invoice_id, _payment("150.01"), actor)
-        assert excinfo.value.status_code == 409
-        assert excinfo.value.error_code == "PAYMENT_EXCEEDS_BALANCE"
+    async with AsyncSessionLocal() as session:
+        assert await session.scalar(
+            select(func.count()).select_from(Payment).where(Payment.invoice_id == invoice_id)
+        ) == 0
 
-        settled = await service.create_payment(invoice_id, _payment("150.00"), actor)
-        assert settled.payment_status == "paid"
-
-        with pytest.raises(AppException) as excinfo:
-            await service.create_payment(invoice_id, _payment("0.01"), actor)
-        assert excinfo.value.status_code == 409
-        assert excinfo.value.error_code == "INVOICE_ALREADY_PAID"
 
 async def test_concurrent_draft_edits_from_one_revision_have_one_winner() -> None:
     await require_database()

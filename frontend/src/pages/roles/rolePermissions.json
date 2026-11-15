@@ -18,84 +18,42 @@
     "financial:view"
   ],
   "roles": {
-    "admin": [
-      "users:manage",
-      "users:read",
-      "projects:manage",
-      "projects:read",
-      "audit:view",
-      "dashboard:company",
-      "dashboard:scoped",
-      "reports:view",
-      "reports:submit",
-      "reports:approve",
-      "inventory:view",
-      "inventory:manage",
-      "suppliers:manage",
-      "documents:view",
-      "documents:manage",
-      "financial:view"
+    "managing_director": [
+      "users:manage","users:read","projects:manage","projects:read","audit:view",
+      "dashboard:company","dashboard:scoped","reports:view","reports:submit","reports:approve",
+      "inventory:view","inventory:manage","suppliers:manage","documents:view","documents:manage","financial:view"
     ],
-    "general_manager": [
-      "users:read",
-      "projects:manage",
-      "projects:read",
-      "dashboard:company",
-      "reports:view",
-      "reports:approve",
-      "inventory:view",
-      "suppliers:manage",
-      "documents:view",
-      "documents:manage",
-      "financial:view"
+    "operations_director": [
+      "users:manage","users:read","projects:manage","projects:read","audit:view",
+      "dashboard:company","dashboard:scoped","reports:view","reports:submit","reports:approve",
+      "inventory:view","inventory:manage","suppliers:manage","documents:view","documents:manage","financial:view"
     ],
-    "operation_manager": [
-      "users:read",
-      "projects:manage",
-      "projects:read",
-      "dashboard:company",
-      "reports:view",
-      "reports:approve",
-      "inventory:view",
-      "suppliers:manage",
-      "documents:view",
-      "documents:manage",
-      "financial:view"
+    "group_project_manager": [
+      "users:read","projects:manage","projects:read","dashboard:scoped","reports:view","reports:submit",
+      "reports:approve","inventory:view","documents:view"
     ],
-    "project_manager": [
-      "projects:read",
-      "dashboard:scoped",
-      "reports:view",
-      "reports:approve",
-      "inventory:view",
-      "documents:view",
-      "documents:manage",
-      "financial:view"
+    "mep_project_manager": [
+      "users:read","projects:manage","projects:read","dashboard:scoped","reports:view","reports:submit",
+      "reports:approve","inventory:view","suppliers:manage","documents:view"
     ],
-    "civil_engineer": [
-      "projects:read",
-      "dashboard:scoped",
-      "reports:view",
-      "reports:submit",
-      "inventory:view",
-      "documents:view",
-      "documents:manage"
+    "quantity_surveyor": [
+      "users:read","dashboard:scoped","reports:submit","inventory:view","suppliers:manage","documents:view"
     ],
-    "civil_supervisor": [
-      "projects:read",
-      "dashboard:scoped",
-      "reports:view",
-      "reports:submit",
-      "documents:view"
+    "senior_site_supervisor": [
+      "users:read","projects:read","dashboard:scoped","reports:submit","inventory:view","documents:view"
     ],
-    "store_keeper": ["dashboard:scoped", "inventory:view", "inventory:manage", "suppliers:manage"],
-    "accounts": [
-      "projects:read",
-      "dashboard:scoped",
-      "reports:view",
-      "documents:view",
-      "documents:manage",
-      "financial:view"
+    "site_supervisor": [
+      "users:read","projects:read","dashboard:scoped","reports:submit","inventory:view","documents:view"
+    ],
+    "hr_manager": [
+      "users:manage","users:read","audit:view","dashboard:company","dashboard:scoped",
+      "reports:view","reports:approve","documents:view"
+    ],
+    "hr_executive": [
+      "users:read","dashboard:scoped","reports:view","documents:view"
+    ],
+    "administrative_executive": [
+      "users:read","dashboard:company","dashboard:scoped","inventory:view","suppliers:manage","documents:view"
     ]
   }
 }

@@ -12,7 +12,7 @@ from scripts.validate_import_sources import default_template_sources, validate_s
 
 def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
     signoff = tmp_path / "uat.md"
-    signoff.write_text("signed by operation manager", encoding="utf-8")
+    signoff.write_text("signed by operations director", encoding="utf-8")
     args = argparse.Namespace(
         target="production",
         output=tmp_path / "evidence.md",
@@ -20,7 +20,7 @@ def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
         health_url=None,
         readiness_url=None,
         timeout=1,
-        approver="Operation Manager",
+        approver="Operations Director",
         operator="Release Operator",
         run_url="https://github.example/run/1",
         commit="abc123",
@@ -35,7 +35,7 @@ def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
     markdown = render_markdown(evidence)
 
     assert evidence["target"] == "production"
-    assert evidence["approver"] == "Operation Manager"
+    assert evidence["approver"] == "Operations Director"
     assert evidence["operator"] == "Release Operator"
     assert evidence["commit"] == "abc123"
     assert evidence["files"][0]["label"] == "uat_signoff"
@@ -46,7 +46,7 @@ def test_launch_evidence_records_attached_files(tmp_path: Path) -> None:
     ("approver", "operator", "environment"),
     [
         (None, None, {}),
-        ("Operation Manager", None, {}),
+        ("Operations Director", None, {}),
         (
             None,
             None,

@@ -91,14 +91,16 @@ def project_payload() -> dict:
 
 
 async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
-    op_email, op_password = await create_user("operation_manager")
-    engineer_email, engineer_password = await create_user("civil_engineer")
-    supervisor_email, supervisor_password = await create_user("civil_supervisor")
-    manager_email, manager_password = await create_user("project_manager")
+    op_email, op_password = await create_user("operations_director")
+    engineer_email, engineer_password = await create_user("quantity_surveyor")
+    supervisor_email, supervisor_password = await create_user("site_supervisor")
+    manager_email, manager_password = await create_user("group_project_manager")
+    non_submitter_email, non_submitter_password = await create_user("administrative_executive")
     op_token = await login_for_token(client, op_email, op_password)
     engineer_token = await login_for_token(client, engineer_email, engineer_password)
     supervisor_token = await login_for_token(client, supervisor_email, supervisor_password)
     manager_token = await login_for_token(client, manager_email, manager_password)
+    non_submitter_token = await login_for_token(client, non_submitter_email, non_submitter_password)
     project = (
         await client.post(
             "/api/v1/projects",
@@ -126,7 +128,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
     ).json()
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
-        json={"user_id": engineer["id"], "role_in_project": "civil_engineer"},
+        json={"user_id": engineer["id"], "role_in_project": "quantity_surveyor"},
         headers={"Authorization": f"Bearer {op_token}"},
     )
     await client.post(
@@ -136,7 +138,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
     )
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
-        json={"user_id": manager["id"], "role_in_project": "project_manager"},
+        json={"user_id": manager["id"], "role_in_project": "group_project_manager"},
         headers={"Authorization": f"Bearer {op_token}"},
     )
     supervisor_update = (
@@ -164,6 +166,7 @@ async def setup_project_team(client: httpx.AsyncClient) -> dict[str, str]:
         "project_code": project["code"],
         "engineer_token": engineer_token,
         "manager_token": manager_token,
+        "non_submitter_token": non_submitter_token,
         "op_token": op_token,
         "supervisor_token": supervisor_token,
         "supervisor_update_id": supervisor_update["id"],
@@ -198,9 +201,9 @@ def report_payload(project_id: str, supervisor_update_id: str | None = None) -> 
     }
 
 
-async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: str) -> dict:
-    store_email, store_password = await create_user("store_keeper")
-    store_token = await login_for_token(client, store_email, store_password)
+async def setup_report_consumption_stock(
+    client: httpx.AsyncClient, project_id: str, inventory_manager_token: str
+) -> dict:
     suffix = uuid4().hex[:6]
     supplier = (
         await client.post(
@@ -219,7 +222,7 @@ async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: 
                 "tds_expiry_date": "2027-05-16",
                 "compliance_status": "compliant",
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {inventory_manager_token}"},
         )
     ).json()
     location = (
@@ -232,7 +235,7 @@ async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: 
                 "project_id": project_id,
                 "address": "Site",
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {inventory_manager_token}"},
         )
     ).json()
     item = (
@@ -249,7 +252,7 @@ async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: 
                 "unit_cost": "12.50",
                 "supplier_id": supplier["id"],
             },
-            headers={"Authorization": f"Bearer {store_token}"},
+            headers={"Authorization": f"Bearer {inventory_manager_token}"},
         )
     ).json()
     await client.post(
@@ -262,9 +265,13 @@ async def setup_report_consumption_stock(client: httpx.AsyncClient, project_id: 
             "project_id": project_id,
             "notes": "Opening stock",
         },
-        headers={"Authorization": f"Bearer {store_token}"},
+        headers={"Authorization": f"Bearer {inventory_manager_token}"},
     )
-    return {"store_token": store_token, "item_id": item["id"], "location_id": location["id"]}
+    return {
+        "inventory_manager_token": inventory_manager_token,
+        "item_id": item["id"],
+        "location_id": location["id"],
+    }
 
 
 async def test_engineer_can_save_and_submit_daily_report() -> None:
@@ -295,13 +302,15 @@ async def test_engineer_can_save_and_submit_daily_report() -> None:
         assert submitted["report_number"].startswith(f"{setup['project_code']}-DR-")
 
         updates_response = await client.get(
-            "/api/v1/supervisor-updates",
-            params={"project_id": setup["project_id"], "status": "verified"},
+            f"/api/v1/reports/{report['id']}/supervisor-updates",
             headers={"Authorization": f"Bearer {setup['engineer_token']}"},
         )
 
         assert updates_response.status_code == 200
-        assert updates_response.json()["total"] >= 1
+        assert any(
+            update["id"] == setup["supervisor_update_id"]
+            for update in updates_response.json()
+        )
 
 
 async def test_non_engineer_cannot_create_daily_report() -> None:
@@ -312,7 +321,7 @@ async def test_non_engineer_cannot_create_daily_report() -> None:
         response = await client.post(
             "/api/v1/reports",
             json=report_payload(setup["project_id"]),
-            headers={"Authorization": f"Bearer {setup['op_token']}"},
+            headers={"Authorization": f"Bearer {setup['non_submitter_token']}"},
         )
 
         assert response.status_code == 403
@@ -345,7 +354,7 @@ async def test_rejected_report_can_resubmit_its_verified_supervisor_evidence(
             f"/api/v1/reports/{first_draft.json()['id']}/submit", headers=engineer
         )
         assert old_unsubmitted.status_code == 422
-        assert old_unsubmitted.json()["error_code"] == "DAILY_REPORT_PAST_DATE_REQUIRES_ADMIN"
+        assert old_unsubmitted.json()["error_code"] == "DAILY_REPORT_PAST_DATE_UNSUPPORTED"
 
         rejected = await client.post(f"{url}/reject", json={"comments": "Revise"}, headers=manager)
         assert rejected.status_code == 200
@@ -504,7 +513,21 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        stock = await setup_report_consumption_stock(client, setup["project_id"])
+        stock = await setup_report_consumption_stock(
+            client, setup["project_id"], setup["op_token"]
+        )
+        direct_movement = await client.post(
+            "/api/v1/inventory/movements",
+            json={
+                "item_id": stock["item_id"],
+                "movement_type": "receive",
+                "quantity": "1",
+                "to_location_id": stock["location_id"],
+                "project_id": setup["project_id"],
+            },
+            headers={"Authorization": f"Bearer {setup['manager_token']}"},
+        )
+        assert direct_movement.status_code == 403
         report = (
             await client.post(
                 "/api/v1/reports",
@@ -524,7 +547,7 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
             headers={"Authorization": f"Bearer {setup['manager_token']}"},
         )
 
-        assert approved.status_code == 200
+        assert approved.status_code == 200, approved.text
 
     async with AsyncSessionLocal() as session:
         movement = await session.scalar(
@@ -538,12 +561,12 @@ async def test_report_approval_consumes_matching_inventory_stock() -> None:
         assert str(movement.quantity) == "12.000"
 
 
-async def test_admin_can_override_submitted_report_with_target_confirmation() -> None:
+async def test_director_cannot_override_submitted_report() -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
         setup = await setup_project_team(client)
-        admin_email, admin_password = await create_user("admin")
+        admin_email, admin_password = await create_user("managing_director")
         admin_token = await login_for_token(client, admin_email, admin_password)
         report = (
             await client.post(
@@ -568,14 +591,14 @@ async def test_admin_can_override_submitted_report_with_target_confirmation() ->
             headers={"Authorization": f"Bearer {admin_token}"},
         )
 
-        assert response.status_code == 200
-        overridden = response.json()
-        assert overridden["status"] == "approved"
-        assert any(
-            item["decision"] == "approved"
-            and item["comments"] == "Admin override: Emergency management approval."
-            for item in overridden["approval_history"]
+        assert response.status_code == 403
+        assert response.json()["error_code"] == "DAILY_REPORT_OVERRIDE_FORBIDDEN"
+        unchanged = await client.get(
+            f"/api/v1/reports/{submitted['id']}",
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
+        assert unchanged.status_code == 200
+        assert unchanged.json()["status"] == "submitted"
 
 
 async def test_approved_report_can_be_downloaded_as_pdf(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -14,7 +14,12 @@ from typing import Any, TextIO
 import httpx
 
 from app.utils.redaction import redact_payload
-from scripts import garrisonctl_access, garrisonctl_auth, garrisonctl_data, garrisonctl_ops
+from scripts import (
+    garrisonctl_access,
+    garrisonctl_auth,
+    garrisonctl_data,
+    garrisonctl_ops,
+)
 from scripts.garrisonctl_common import (
     CONNECTION,
     FAILED,
@@ -97,7 +102,7 @@ def build_parser() -> Parser:
             "GET",
             f"{POLICY}/reconciliation",
         ),
-        permission="admin",
+        permission="financial:view",
     )
     # Keep globals discoverable and usable before or after subcommands.
     for group in registry.groups.values():

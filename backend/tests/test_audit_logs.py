@@ -64,8 +64,8 @@ async def login_for_token(client: httpx.AsyncClient, email: str, password: str) 
 
 async def test_admin_can_filter_audit_logs_and_non_admin_is_blocked() -> None:
     await skip_if_database_unavailable()
-    admin_email, admin_password = await create_user("admin")
-    engineer_email, engineer_password = await create_user("civil_engineer")
+    admin_email, admin_password = await create_user("managing_director")
+    engineer_email, engineer_password = await create_user("quantity_surveyor")
 
     async with AsyncSessionLocal() as session:
         admin = await UserRepository(session).get_by_email(admin_email)
@@ -103,7 +103,7 @@ async def test_admin_can_filter_audit_logs_and_non_admin_is_blocked() -> None:
 
 async def test_authenticated_request_is_recorded_in_audit_log() -> None:
     await skip_if_database_unavailable()
-    admin_email, admin_password = await create_user("admin")
+    admin_email, admin_password = await create_user("managing_director")
 
     async with create_test_client() as client:
         admin_token = await login_for_token(client, admin_email, admin_password)

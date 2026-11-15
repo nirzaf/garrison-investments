@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the 34 application tables at [Alembic head `202605300003`](../../backend/alembic/versions/202605300003_repair_inventory_reservations.py). Each page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints, and indexes from the migrated schema. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables along with the HR & Workforce Management schema introduced at [Alembic head `202605310007`](../../backend/alembic/versions/202605310007_hr_workforce_management.py) (see also [`backend/app/models/hr.py`](../../backend/app/models/hr.py)). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints, and indexes from the migrated schema. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
 
@@ -74,3 +74,16 @@ A dash in the default column means the database has no server default. Applicati
 | [`activity_log`](activity_log.md) | Audit and operational events with actor, request, context, and retention metadata. |
 | [`idempotency_records`](idempotency_records.md) | Request keys and resource references used to deduplicate retried writes. |
 | [`task_outbox`](task_outbox.md) | Background work recorded in the same database transaction as the operation that schedules it. |
+
+## HR and workforce management (migration `202605310007`)
+
+Defined in [`backend/app/models/hr.py`](../../backend/app/models/hr.py) and [`202605310007_hr_workforce_management.py`](../../backend/alembic/versions/202605310007_hr_workforce_management.py):
+
+| Domain | Tables |
+| --- | --- |
+| Core organization & employee master | `hr_departments`, `hr_positions`, `hr_employees`, `hr_employee_private` (Fernet-encrypted sensitive fields), `hr_employment_history` (immutable audit ledger), `hr_access_requests` (3-party HR/Admin provisioning queue) |
+| Recruitment & onboarding | `hr_requisitions`, `hr_candidates`, `hr_applications`, `hr_interviews`, `hr_offers`, `hr_onboarding_cases`, `hr_onboarding_tasks` |
+| HR documents vault & compliance | `hr_documents` (category RBAC: ordinary, confidential, medical, compensation, disciplinary), `hr_document_versions` |
+| Time, attendance & leave | `hr_work_calendars`, `hr_holidays`, `hr_shift_assignments`, `hr_attendance_entries`, `hr_attendance_corrections`, `hr_timesheets`, `hr_timesheet_entries`, `hr_overtime_requests`, `hr_leave_types`, `hr_leave_policies`, `hr_leave_ledger_entries`, `hr_leave_requests` |
+| Policies, letters, requests & offboarding | `hr_policy_documents`, `hr_policy_acknowledgements`, `hr_letter_templates`, `hr_service_requests`, `hr_offboarding_cases`, `hr_clearance_steps` |
+| P2 governance & policy-gated modules | `hr_goals`, `hr_review_cycles`, `hr_performance_reviews`, `hr_training_courses`, `hr_training_enrollments`, `hr_certifications`, `hr_benefit_types`, `hr_employee_benefits`, `hr_reimbursement_claims`, `hr_compensation_terms`, `hr_payroll_policies` (dual-approval gate), `hr_payroll_periods`, `hr_payroll_runs`, `hr_cases` (encrypted restricted case details) |

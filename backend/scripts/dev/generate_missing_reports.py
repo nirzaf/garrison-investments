@@ -109,19 +109,13 @@ def _random_manpower():
 def _random_equipment():
     n = randint(1, 3)
     selected = [(e, lo, hi) for e, lo, hi in EQUIPMENT[:n]]
-    return [
-        (e, randint(lo, hi), Decimal(f"{randint(4, 10)}.00"), "")
-        for e, lo, hi in selected
-    ]
+    return [(e, randint(lo, hi), Decimal(f"{randint(4, 10)}.00"), "") for e, lo, hi in selected]
 
 
 def _random_materials():
     n = randint(1, 3)
     selected = [(m, u, lo, hi) for m, u, lo, hi in MATERIALS[:n]]
-    return [
-        (m, u, Decimal(f"{randint(lo, hi)}.000"), "")
-        for m, u, lo, hi in selected
-    ]
+    return [(m, u, Decimal(f"{randint(lo, hi)}.000"), "") for m, u, lo, hi in selected]
 
 
 async def main():
@@ -130,12 +124,14 @@ async def main():
     async with AsyncSessionLocal() as session:
         # Fetch all active, non-deleted projects
         projects = (
-            await session.execute(
-                select(Project).where(
-                    Project.status == "active", Project.deleted_at.is_(None)
+            (
+                await session.execute(
+                    select(Project).where(Project.status == "active", Project.deleted_at.is_(None))
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         if not projects:
             print("No active projects found.")
@@ -143,15 +139,11 @@ async def main():
 
         # Fetch an engineer user to author the reports
         engineer = await session.scalar(
-            select(User).where(
-                User.role == "civil_engineer", User.deleted_at.is_(None)
-            )
+            select(User).where(User.role == "quantity_surveyor", User.deleted_at.is_(None))
         )
         if not engineer:
             # Fallback: use any active user
-            engineer = await session.scalar(
-                select(User).where(User.deleted_at.is_(None))
-            )
+            engineer = await session.scalar(select(User).where(User.deleted_at.is_(None)))
         if not engineer:
             print("No users found to author reports.")
             return

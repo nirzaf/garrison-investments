@@ -96,6 +96,19 @@ class ProjectListResponse(BaseModel):
     total: int
 
 
+class ProjectOption(BaseModel):
+    id: UUID
+    name: str
+    code: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectOptionListResponse(BaseModel):
+    items: list[ProjectOption]
+    total: int
+
+
 class ProjectMemberCreateRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -148,8 +161,8 @@ class BoqItemResponse(BaseModel):
     unit: str
     planned_quantity: Decimal
     approved_quantity: Decimal
-    unit_rate: Decimal
-    planned_amount: Decimal
+    unit_rate: Decimal | None
+    planned_amount: Decimal | None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -24,7 +24,12 @@ from app.schemas.projects import (
     ProjectUpdateRequest,
 )
 from app.services.project_service import READ_ONLY_STATUSES, ProjectService
-from app.utils.permissions import PERMISSION_PROJECTS_MANAGE, PERMISSION_PROJECTS_READ
+from app.utils.permissions import (
+    PERMISSION_FINANCIAL_VIEW,
+    PERMISSION_PROJECTS_MANAGE,
+    PERMISSION_PROJECTS_READ,
+    has_permission,
+)
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -44,6 +49,23 @@ async def _member_responses(
     ]
 
 
+def _project_response(project: object, actor: User) -> ProjectResponse:
+    response = ProjectResponse.model_validate(project)
+    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+        response = response.model_copy(update={"budget_amount": None})
+    return response
+
+
+def _boq_responses(items: list[object], actor: User) -> list[BoqItemResponse]:
+    responses = [BoqItemResponse.model_validate(item) for item in items]
+    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+        return [
+            item.model_copy(update={"unit_rate": None, "planned_amount": None})
+            for item in responses
+        ]
+    return responses
+
+
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     current_user: CanReadProjects,
@@ -61,7 +83,7 @@ async def list_projects(
         offset=offset,
     )
     return ProjectListResponse(
-        items=[ProjectResponse.model_validate(project) for project in projects],
+        items=[_project_response(project, current_user) for project in projects],
         total=total,
     )
 
@@ -73,7 +95,7 @@ async def create_project(
     session: DbSession,
 ) -> ProjectResponse:
     project = await ProjectService(session).create_project(payload, current_user)
-    return ProjectResponse.model_validate(project)
+    return _project_response(project, current_user)
 
 
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
@@ -87,10 +109,10 @@ async def get_project(
         current_user,
     )
     return ProjectDetailResponse(
-        **ProjectResponse.model_validate(project).model_dump(),
+        **_project_response(project, current_user).model_dump(),
         members=await _member_responses(members, session),
         milestones=[MilestoneResponse.model_validate(milestone) for milestone in milestones],
-        boq_items=[BoqItemResponse.model_validate(item) for item in boq_items],
+        boq_items=_boq_responses(boq_items, current_user),
         is_read_only=project.status in READ_ONLY_STATUSES,
     )
 
@@ -103,7 +125,7 @@ async def update_project(
     session: DbSession,
 ) -> ProjectResponse:
     project = await ProjectService(session).update_project(project_id, payload, current_user)
-    return ProjectResponse.model_validate(project)
+    return _project_response(project, current_user)
 
 
 @router.get("/{project_id}/members", response_model=list[ProjectMemberResponse])
@@ -158,7 +180,7 @@ async def get_project_timeline(
         project_id, current_user
     )
     return ProjectTimelineResponse(
-        project=ProjectResponse.model_validate(project),
+        project=_project_response(project, current_user),
         milestones=[MilestoneResponse.model_validate(milestone) for milestone in milestones],
         tasks=[ProjectTaskResponse.model_validate(task) for task in tasks],
         owner_names=await UserRepository(session).display_names(

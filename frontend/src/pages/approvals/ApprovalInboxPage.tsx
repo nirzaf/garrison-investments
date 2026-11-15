@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios';
-import { AlertTriangle, Check, Forward, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Check, Forward, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -9,7 +9,6 @@ import {
   getGenericApproval,
   listApprovals,
   listDelegationCandidates,
-  overrideGenericApproval,
   rejectGenericApproval,
   type ApprovalDelegate,
   type ApprovalRecord
@@ -19,7 +18,6 @@ import {
   approveDailyReport,
   getDailyReport,
   listDailyReports,
-  overrideDailyReport,
   rejectDailyReport,
   type DailyReportRecord
 } from '../../api/reports';
@@ -34,6 +32,12 @@ function roleLabel(role: string) {
     .split('_')
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function delegateOptionPrompt(loading: boolean, total: number) {
+  if (loading) return 'Loading eligible approvers…';
+  if (total === 0) return 'No eligible approvers found';
+  return 'Select an eligible approver';
 }
 
 export function ApprovalInboxPage() {
@@ -52,9 +56,6 @@ export function ApprovalInboxPage() {
   const [genericApprovals, setGenericApprovals] = useState<ApprovalRecord[]>([]);
   const [commentsByReport, setCommentsByReport] = useState<Record<string, string>>({});
   const [targetCoveredByReport, setTargetCoveredByReport] = useState<Record<string, boolean>>({});
-  const [overrideByReport, setOverrideByReport] = useState<
-    Record<string, { decision: 'approved' | 'rejected'; reason: string; targetCovered: boolean }>
-  >({});
   const [commentsByApproval, setCommentsByApproval] = useState<Record<string, string>>({});
   const [delegateByApproval, setDelegateByApproval] = useState<
     Record<string, { delegated_to_id: string; reason: string }>
@@ -62,8 +63,17 @@ export function ApprovalInboxPage() {
   const [delegatesByApproval, setDelegatesByApproval] = useState<
     Record<string, ApprovalDelegate[]>
   >({});
-  const [overrideByApproval, setOverrideByApproval] = useState<
-    Record<string, { decision: 'approved' | 'rejected'; reason: string }>
+  const [delegateSearchByApproval, setDelegateSearchByApproval] = useState<Record<string, string>>(
+    {}
+  );
+  const [delegateTotalByApproval, setDelegateTotalByApproval] = useState<Record<string, number>>(
+    {}
+  );
+  const [delegateNextOffsetByApproval, setDelegateNextOffsetByApproval] = useState<
+    Record<string, number>
+  >({});
+  const [delegateLoadingByApproval, setDelegateLoadingByApproval] = useState<
+    Record<string, boolean>
   >({});
   const [tab, setTab] = useState<'reports' | 'workflow' | 'outbox'>(requestedTab);
   const [statusFilter, setStatusFilter] = useState('open');
@@ -75,23 +85,53 @@ export function ApprovalInboxPage() {
   const [isLoading, setIsLoading] = useState(true);
   const approvalRefs = useRef<Record<string, HTMLElement | null>>({});
   const reportRefs = useRef<Record<string, HTMLElement | null>>({});
-  const canOverride = user?.role === 'admin';
   // Re-entry guard for decision buttons: the ref blocks a second click in the same tick,
   // the state drives `disabled` so a double approve/reject cannot reach the server.
   const pendingActionsRef = useRef<Set<string>>(new Set());
   const [pendingActions, setPendingActions] = useState<Record<string, true>>({});
-  // Eligible delegates are fetched once per approval, on first focus of the picker.
-  const delegateRequestsRef = useRef<Set<string>>(new Set());
+  // Ignore stale search responses so a slow earlier query cannot replace newer results.
+  const delegateRequestVersionsRef = useRef<Record<string, number>>({});
 
-  async function loadDelegates(approvalId: string) {
-    if (delegateRequestsRef.current.has(approvalId)) return;
-    delegateRequestsRef.current.add(approvalId);
+  async function loadDelegates(
+    approvalId: string,
+    search = delegateSearchByApproval[approvalId] ?? '',
+    pageOffset = 0,
+    append = false
+  ) {
+    const requestVersion = (delegateRequestVersionsRef.current[approvalId] ?? 0) + 1;
+    delegateRequestVersionsRef.current[approvalId] = requestVersion;
+    setDelegateLoadingByApproval((current) => ({ ...current, [approvalId]: true }));
     try {
-      const response = await listDelegationCandidates(approvalId);
-      setDelegatesByApproval((current) => ({ ...current, [approvalId]: response.items }));
+      const response = await listDelegationCandidates(approvalId, {
+        search: search.trim() || undefined,
+        limit: 50,
+        offset: pageOffset
+      });
+      if (delegateRequestVersionsRef.current[approvalId] !== requestVersion) return;
+      setDelegatesByApproval((current) => {
+        const items = append ? [...(current[approvalId] ?? []), ...response.items] : response.items;
+        const selectedId = delegateByApproval[approvalId]?.delegated_to_id;
+        const selected = selectedId
+          ? current[approvalId]?.find((candidate) => candidate.id === selectedId)
+          : undefined;
+        if (selected && !items.some((candidate) => candidate.id === selected.id)) {
+          items.push(selected);
+        }
+        return { ...current, [approvalId]: items };
+      });
+      setDelegateTotalByApproval((current) => ({ ...current, [approvalId]: response.total }));
+      setDelegateNextOffsetByApproval((current) => ({
+        ...current,
+        [approvalId]: pageOffset + response.items.length
+      }));
     } catch {
-      delegateRequestsRef.current.delete(approvalId);
-      setError('Unable to load eligible delegates.');
+      if (delegateRequestVersionsRef.current[approvalId] === requestVersion) {
+        setError('Unable to load eligible delegates.');
+      }
+    } finally {
+      if (delegateRequestVersionsRef.current[approvalId] === requestVersion) {
+        setDelegateLoadingByApproval((current) => ({ ...current, [approvalId]: false }));
+      }
     }
   }
 
@@ -217,31 +257,6 @@ export function ApprovalInboxPage() {
     }
   }
 
-  async function overrideReport(report: DailyReportRecord) {
-    setError(null);
-    setNotice(null);
-    const payload = overrideByReport[report.id];
-    if (!payload?.reason.trim()) {
-      setError('Override reason is required.');
-      return;
-    }
-    if (payload.decision === 'approved' && !payload.targetCovered) {
-      setError('Admin approval override requires target-covered confirmation.');
-      return;
-    }
-    try {
-      await overrideDailyReport(report.id, {
-        decision: payload.decision,
-        reason: payload.reason.trim(),
-        targetCovered: payload.targetCovered
-      });
-      setNotice(`Report override ${payload.decision}.`);
-      await loadReports();
-    } catch (cause) {
-      await showDecisionError(cause, 'Unable to override the report.');
-    }
-  }
-
   async function reject(report: DailyReportRecord) {
     setError(null);
     setNotice(null);
@@ -305,26 +320,6 @@ export function ApprovalInboxPage() {
       await loadReports();
     } catch (cause) {
       await showDecisionError(cause, 'Unable to delegate the workflow item.');
-    }
-  }
-
-  async function overrideWorkflow(approval: ApprovalRecord) {
-    setError(null);
-    setNotice(null);
-    const payload = overrideByApproval[approval.id];
-    if (!payload?.reason.trim()) {
-      setError('Override reason is required.');
-      return;
-    }
-    try {
-      await overrideGenericApproval(approval.id, {
-        decision: payload.decision,
-        reason: payload.reason.trim()
-      });
-      setNotice(`Approval override ${payload.decision}.`);
-      await loadReports();
-    } catch (cause) {
-      await showDecisionError(cause, 'Unable to override the workflow item.');
     }
   }
 
@@ -402,9 +397,7 @@ export function ApprovalInboxPage() {
                 'escalated',
                 'approved',
                 'rejected',
-                'cancelled',
-                'override_approved',
-                'override_rejected'
+                'cancelled'
               ].map((status) => (
                 <option value={status} key={status}>
                   {roleLabel(status)}
@@ -512,15 +505,29 @@ export function ApprovalInboxPage() {
                     />
                   </label>
                 )}
-                {approval.allowed_actions?.some(
-                  (action) => action === 'delegate' || action === 'override'
-                ) && (
+                {approval.allowed_actions?.includes('delegate') && (
                   <div className="mt-4 grid gap-3 rounded-md border border-theme-border bg-theme-main p-3 lg:grid-cols-2">
                     {approval.allowed_actions?.includes('delegate') && (
                       <div>
                         <p className="text-sm font-semibold text-theme-text-primary">Delegate</p>
                         <div className="mt-2 grid gap-2">
+                          <input
+                            aria-label={`Search eligible approvers for ${approval.title}`}
+                            className="form-field"
+                            onChange={(event) => {
+                              const search = event.target.value;
+                              setDelegateSearchByApproval((current) => ({
+                                ...current,
+                                [approval.id]: search
+                              }));
+                              void loadDelegates(approval.id, search);
+                            }}
+                            placeholder="Search eligible approvers"
+                            type="search"
+                            value={delegateSearchByApproval[approval.id] ?? ''}
+                          />
                           <select
+                            aria-label={`Eligible approver for ${approval.title}`}
                             className="form-field"
                             onChange={(event) =>
                               setDelegateByApproval({
@@ -531,16 +538,53 @@ export function ApprovalInboxPage() {
                                 }
                               })
                             }
-                            onFocus={() => void loadDelegates(approval.id)}
+                            onFocus={() => {
+                              if (
+                                !delegatesByApproval[approval.id]?.length &&
+                                !delegateLoadingByApproval[approval.id]
+                              ) {
+                                void loadDelegates(approval.id);
+                              }
+                            }}
                             value={delegateByApproval[approval.id]?.delegated_to_id ?? ''}
                           >
-                            <option value="">Select an eligible approver</option>
+                            <option value="">
+                              {delegateOptionPrompt(
+                                delegateLoadingByApproval[approval.id] ?? false,
+                                delegateTotalByApproval[approval.id] ?? 0
+                              )}
+                            </option>
                             {(delegatesByApproval[approval.id] ?? []).map((candidate) => (
                               <option key={candidate.id} value={candidate.id}>
                                 {candidate.full_name} — {roleLabel(candidate.role)}
                               </option>
                             ))}
                           </select>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-theme-text-secondary">
+                            <span role="status">
+                              {delegateLoadingByApproval[approval.id]
+                                ? 'Loading eligible approvers…'
+                                : `Showing ${(delegatesByApproval[approval.id] ?? []).length} of ${delegateTotalByApproval[approval.id] ?? 0} eligible approvers`}
+                            </span>
+                            {(delegateNextOffsetByApproval[approval.id] ?? 0) <
+                              (delegateTotalByApproval[approval.id] ?? 0) && (
+                              <button
+                                className="underline"
+                                disabled={delegateLoadingByApproval[approval.id]}
+                                onClick={() =>
+                                  void loadDelegates(
+                                    approval.id,
+                                    delegateSearchByApproval[approval.id] ?? '',
+                                    delegateNextOffsetByApproval[approval.id] ?? 0,
+                                    true
+                                  )
+                                }
+                                type="button"
+                              >
+                                Load more
+                              </button>
+                            )}
+                          </div>
                           <input
                             className="form-field"
                             onChange={(event) =>
@@ -572,58 +616,6 @@ export function ApprovalInboxPage() {
                         </div>
                       </div>
                     )}
-                    {approval.allowed_actions?.includes('override') ? (
-                      <div>
-                        <p className="text-sm font-semibold text-theme-text-primary">
-                          Admin override
-                        </p>
-                        <div className="mt-2 grid gap-2">
-                          <select
-                            className="form-field"
-                            onChange={(event) =>
-                              setOverrideByApproval({
-                                ...overrideByApproval,
-                                [approval.id]: {
-                                  decision: event.target.value as 'approved' | 'rejected',
-                                  reason: overrideByApproval[approval.id]?.reason ?? ''
-                                }
-                              })
-                            }
-                            value={overrideByApproval[approval.id]?.decision ?? 'approved'}
-                          >
-                            <option value="approved">Approve override</option>
-                            <option value="rejected">Reject override</option>
-                          </select>
-                          <input
-                            className="form-field"
-                            onChange={(event) =>
-                              setOverrideByApproval({
-                                ...overrideByApproval,
-                                [approval.id]: {
-                                  decision: overrideByApproval[approval.id]?.decision ?? 'approved',
-                                  reason: event.target.value
-                                }
-                              })
-                            }
-                            placeholder="Override reason"
-                            value={overrideByApproval[approval.id]?.reason ?? ''}
-                          />
-                          <button
-                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isEntityPending(`approval:${approval.id}`)}
-                            onClick={() =>
-                              void runAction(`approval:${approval.id}`, () =>
-                                overrideWorkflow(approval)
-                              )
-                            }
-                            type="button"
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            Override
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 )}
                 <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -754,73 +746,6 @@ export function ApprovalInboxPage() {
                     history.
                   </span>
                 </label>
-                {canOverride ? (
-                  <div className="mt-4 rounded-md border border-theme-border bg-theme-main p-3">
-                    <p className="text-sm font-semibold text-theme-text-primary">Admin override</p>
-                    <div className="mt-2 grid gap-2 md:grid-cols-[160px_1fr]">
-                      <select
-                        className="form-field"
-                        onChange={(event) =>
-                          setOverrideByReport({
-                            ...overrideByReport,
-                            [report.id]: {
-                              decision: event.target.value as 'approved' | 'rejected',
-                              reason: overrideByReport[report.id]?.reason ?? '',
-                              targetCovered: overrideByReport[report.id]?.targetCovered ?? false
-                            }
-                          })
-                        }
-                        value={overrideByReport[report.id]?.decision ?? 'approved'}
-                      >
-                        <option value="approved">Approve</option>
-                        <option value="rejected">Reject</option>
-                      </select>
-                      <input
-                        className="form-field"
-                        onChange={(event) =>
-                          setOverrideByReport({
-                            ...overrideByReport,
-                            [report.id]: {
-                              decision: overrideByReport[report.id]?.decision ?? 'approved',
-                              reason: event.target.value,
-                              targetCovered: overrideByReport[report.id]?.targetCovered ?? false
-                            }
-                          })
-                        }
-                        placeholder="Override reason"
-                        value={overrideByReport[report.id]?.reason ?? ''}
-                      />
-                    </div>
-                    <label className="mt-2 flex items-center gap-2 text-sm text-theme-text-secondary">
-                      <input
-                        checked={overrideByReport[report.id]?.targetCovered ?? false}
-                        onChange={(event) =>
-                          setOverrideByReport({
-                            ...overrideByReport,
-                            [report.id]: {
-                              decision: overrideByReport[report.id]?.decision ?? 'approved',
-                              reason: overrideByReport[report.id]?.reason ?? '',
-                              targetCovered: event.target.checked
-                            }
-                          })
-                        }
-                        type="checkbox"
-                      />
-                      <span>Target covered for override approval</span>
-                    </label>
-                    <button
-                      className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-theme-border px-3 py-2 text-sm font-semibold text-theme-text-secondary hover:bg-theme-card disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={isEntityPending(`report:${report.id}`)}
-                      onClick={() =>
-                        void runAction(`report:${report.id}`, () => overrideReport(report))
-                      }
-                      type="button"
-                    >
-                      <ShieldCheck className="h-4 w-4" />
-                      Override report
-                    </button>
-                  </div>
-                ) : null}
               </div>
 
               <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

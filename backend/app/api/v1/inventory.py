@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 
 from app.api.dependencies import DbSession, require_permission
-from app.models.inventory import InventoryItem, InventoryLocationStock
+from app.models.inventory import InventoryItem, InventoryLocationStock, MaterialRequest
 from app.models.user import User
 from app.schemas.inventory import (
     AssetCreateRequest,
@@ -23,9 +23,14 @@ from app.schemas.inventory import (
     StockResponse,
 )
 from app.services.idempotency import validate_key
-from app.services.inventory_service import PRICE_VISIBLE_ROLES, InventoryService
+from app.services.inventory_service import InventoryService
 from app.utils.exceptions import AppException
-from app.utils.permissions import PERMISSION_INVENTORY_MANAGE, PERMISSION_INVENTORY_VIEW
+from app.utils.permissions import (
+    PERMISSION_FINANCIAL_VIEW,
+    PERMISSION_INVENTORY_MANAGE,
+    PERMISSION_INVENTORY_VIEW,
+    has_permission,
+)
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -52,14 +57,34 @@ def stock_response(stock: InventoryLocationStock) -> StockResponse:
 def item_response(item: InventoryItem, actor: User) -> InventoryItemResponse:
     """Mask unit_cost on the response only — never on the persistent ORM instance."""
     response = InventoryItemResponse.model_validate(item)
-    if actor.role not in PRICE_VISIBLE_ROLES:
+    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
         response.unit_cost = None
     return response
 
 
+def material_request_response(
+    request: MaterialRequest | MaterialRequestResponse, actor: User
+) -> MaterialRequestResponse:
+    response = (
+        request
+        if isinstance(request, MaterialRequestResponse)
+        else MaterialRequestResponse.model_validate(request)
+    )
+    if not has_permission(actor, PERMISSION_FINANCIAL_VIEW):
+        response = response.model_copy(
+            update={
+                "total_estimated_cost": None,
+                "lines": [line.model_copy(update={"unit_cost": None}) for line in response.lines],
+            }
+        )
+    return response
+
+
 @router.get("/locations", response_model=list[LocationResponse])
-async def list_locations(_: CanViewInventory, session: DbSession) -> list[LocationResponse]:
-    locations = await InventoryService(session).list_locations()
+async def list_locations(
+    current_user: CanViewInventory, session: DbSession
+) -> list[LocationResponse]:
+    locations = await InventoryService(session).list_locations(current_user)
     return [LocationResponse.model_validate(location) for location in locations]
 
 
@@ -112,16 +137,16 @@ async def get_item(
 @router.get("/items/{item_id}/stock", response_model=list[StockResponse])
 async def list_item_stock(
     item_id: UUID,
-    _: CanViewInventory,
+    current_user: CanViewInventory,
     session: DbSession,
 ) -> list[StockResponse]:
-    stock_rows = await InventoryService(session).list_stock(item_id)
+    stock_rows = await InventoryService(session).list_stock(item_id, current_user)
     return [stock_response(stock) for stock in stock_rows]
 
 
 @router.get("/assets", response_model=list[AssetResponse])
-async def list_assets(_: CanViewInventory, session: DbSession) -> list[AssetResponse]:
-    assets = await InventoryService(session).list_assets()
+async def list_assets(current_user: CanViewInventory, session: DbSession) -> list[AssetResponse]:
+    assets = await InventoryService(session).list_assets(current_user)
     return [AssetResponse.model_validate(asset) for asset in assets]
 
 
@@ -137,7 +162,7 @@ async def create_asset(
 
 @router.get("/movements", response_model=list[MovementResponse], responses=PAGINATION_HEADERS)
 async def list_movements(
-    _: CanViewInventory,
+    current_user: CanViewInventory,
     session: DbSession,
     response: Response,
     item_id: Annotated[UUID | None, Query()] = None,
@@ -147,6 +172,7 @@ async def list_movements(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[MovementResponse]:
     movements, total = await InventoryService(session).list_movements(
+        actor=current_user,
         item_id=item_id,
         location_id=location_id,
         project_id=project_id,
@@ -171,14 +197,14 @@ async def create_movement(
 
 
 @router.get("/low-stock", response_model=list[StockResponse])
-async def low_stock(_: CanViewInventory, session: DbSession) -> list[StockResponse]:
-    stock_rows = await InventoryService(session).low_stock()
+async def low_stock(current_user: CanViewInventory, session: DbSession) -> list[StockResponse]:
+    stock_rows = await InventoryService(session).low_stock(current_user)
     return [stock_response(stock) for stock in stock_rows]
 
 
 @router.get("/requests", response_model=list[MaterialRequestResponse], responses=PAGINATION_HEADERS)
 async def list_material_requests(
-    _: CanViewInventory,
+    current_user: CanViewInventory,
     session: DbSession,
     response: Response,
     request_id: Annotated[UUID | None, Query()] = None,
@@ -186,10 +212,10 @@ async def list_material_requests(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[MaterialRequestResponse]:
     requests, total = await InventoryService(session).list_material_requests(
-        request_id=request_id, limit=limit, offset=offset
+        current_user, request_id=request_id, limit=limit, offset=offset
     )
     response.headers["X-Total-Count"] = str(total)
-    return [MaterialRequestResponse.model_validate(request) for request in requests]
+    return [material_request_response(request, current_user) for request in requests]
 
 
 @router.post(
@@ -197,11 +223,11 @@ async def list_material_requests(
 )
 async def create_material_request(
     payload: MaterialRequestCreateRequest,
-    current_user: CanViewInventory,
+    current_user: CanManageInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).create_material_request(payload, current_user)
-    return MaterialRequestResponse.model_validate(request)
+    return material_request_response(request, current_user)
 
 
 @router.get("/request-projects", response_model=RequestProjectOptions)
@@ -230,11 +256,12 @@ async def reserve_material_request(
 ) -> MaterialRequestResponse:
     service = InventoryService(session)
     if command is not None:
-        return await service.fulfill_quantities(
+        result = await service.fulfill_quantities(
             request_id, current_user, command, action="reserve", key=quantity_key(idempotency_key)
         )
+        return material_request_response(result, current_user)
     request = await service.reserve_request(request_id, current_user)
-    return MaterialRequestResponse.model_validate(request)
+    return material_request_response(request, current_user)
 
 
 @router.post("/requests/{request_id}/issue", response_model=MaterialRequestResponse)
@@ -247,11 +274,12 @@ async def issue_material_request(
 ) -> MaterialRequestResponse:
     service = InventoryService(session)
     if command is not None:
-        return await service.fulfill_quantities(
+        result = await service.fulfill_quantities(
             request_id, current_user, command, action="issue", key=quantity_key(idempotency_key)
         )
+        return material_request_response(result, current_user)
     request = await service.issue_request(request_id, current_user)
-    return MaterialRequestResponse.model_validate(request)
+    return material_request_response(request, current_user)
 
 
 def quantity_key(header: str | None) -> str:
@@ -268,8 +296,8 @@ def quantity_key(header: str | None) -> str:
 @router.post("/requests/{request_id}/cancel", response_model=MaterialRequestResponse)
 async def cancel_material_request(
     request_id: UUID,
-    current_user: CanViewInventory,
+    current_user: CanManageInventory,
     session: DbSession,
 ) -> MaterialRequestResponse:
     request = await InventoryService(session).cancel_request(request_id, current_user)
-    return MaterialRequestResponse.model_validate(request)
+    return material_request_response(request, current_user)

@@ -13,6 +13,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.email_service import EmailDeliveryError, EmailService
 from app.utils.exceptions import AppException
+from app.utils.permissions import VALID_ROLES
 from app.utils.security import (
     create_access_token,
     decode_access_token,
@@ -64,7 +65,12 @@ class AuthService:
 
     async def login(self, email: str, password: str, meta: RequestMeta) -> OtpChallengeResult:
         user = await self.users.get_by_email(email, for_update=True)
-        if not user or not user.is_active or not verify_password(password, user.password_hash):
+        if (
+            not user
+            or not user.is_active
+            or user.role not in VALID_ROLES
+            or not verify_password(password, user.password_hash)
+        ):
             if user:
                 await self._register_failed_login(user, meta)
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="LOGIN_FAILED")
@@ -132,7 +138,7 @@ class AuthService:
             await self.session.commit()
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
-        if not user or not user.is_active:
+        if not user or not user.is_active or user.role not in VALID_ROLES:
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
         challenge.consumed_at = now
@@ -159,6 +165,7 @@ class AuthService:
         if (
             not user
             or not user.is_active
+            or user.role not in VALID_ROLES
             or not token
             or token.revoked_at
             or token.expires_at <= now
@@ -199,6 +206,7 @@ class AuthService:
         if (
             not user
             or not user.is_active
+            or user.role not in VALID_ROLES
             or payload.get("access_revision", 0) != user.access_revision
         ):
             raise AppException(
@@ -244,7 +252,7 @@ class AuthService:
         meta: RequestMeta,
     ) -> OtpChallengeResult | None:
         user = await self.users.get_by_email(email, for_update=True)
-        if not user or not user.is_active:
+        if not user or not user.is_active or user.role not in VALID_ROLES:
             return None
         otp = generate_otp()
         challenge = await self.auth.add_otp_challenge(
@@ -335,7 +343,7 @@ class AuthService:
                 status_code=401,
                 error_code="PASSWORD_RESET_FAILED",
             )
-        if not user or not user.is_active:
+        if not user or not user.is_active or user.role not in VALID_ROLES:
             raise AppException(
                 "Invalid or expired password reset code.",
                 status_code=401,
@@ -379,6 +387,10 @@ class AuthService:
         await self.session.commit()
 
     async def _create_session(self, user: User) -> SessionResult:
+        if user.role not in VALID_ROLES:
+            raise AppException(
+                "Invalid or expired session.", status_code=401, error_code="INVALID_TOKEN"
+            )
         access_token, access_expires_at = create_access_token(
             user.id, user.role, access_revision=user.access_revision
         )

@@ -81,7 +81,7 @@ async def create_project(pm: User, engineer: User) -> Project:
         session.add_all(
             [
                 ProjectMember(
-                    project_id=project.id, user_id=pm.id, role_in_project="Project Manager"
+                    project_id=project.id, user_id=pm.id, role_in_project="Group Project Manager"
                 ),
                 ProjectMember(
                     project_id=project.id, user_id=engineer.id, role_in_project="Engineer"
@@ -114,125 +114,55 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
     return str(verify_response.json()["access_token"])
 
 
-async def test_generic_approval_chain_delegation_rejection_and_override() -> None:
+async def test_generic_approval_creation_and_override_are_disabled() -> None:
     await skip_if_database_unavailable()
-    admin, admin_password = await create_user("admin")
-    operation_manager, op_password = await create_user("operation_manager")
-    project_manager, pm_password = await create_user("project_manager")
-    engineer, engineer_password = await create_user("civil_engineer")
-    project = await create_project(project_manager, engineer)
+    director, director_password = await create_user("managing_director")
+    submitter, submitter_password = await create_user("quantity_surveyor")
 
     async with create_test_client() as client:
-        engineer_token = await login_for_token(client, engineer, engineer_password)
-        pm_token = await login_for_token(client, project_manager, pm_password)
-        op_token = await login_for_token(client, operation_manager, op_password)
-        admin_token = await login_for_token(client, admin, admin_password)
+        submitter_token = await login_for_token(client, submitter, submitter_password)
+        director_token = await login_for_token(client, director, director_password)
 
         created = await client.post(
             "/api/v1/approvals",
             json={
                 "request_type": "project_change",
                 "request_id": str(uuid4()),
-                "project_id": str(project.id),
+                "project_id": str(uuid4()),
                 "title": "Change blockwork sequence",
                 "comments": "Weather impact requires sequence change.",
             },
-            headers={"Authorization": f"Bearer {engineer_token}"},
+            headers={"Authorization": f"Bearer {submitter_token}"},
         )
-        assert created.status_code == 201
-        approval = created.json()
-        assert approval["approver_id"] == str(project_manager.id)
-
-        inbox = await client.get(
-            "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {pm_token}"},
-        )
-        assert inbox.status_code == 200
-        assert any(item["id"] == approval["id"] for item in inbox.json()["items"])
-
-        blocked_engineer_inbox = await client.get(
-            "/api/v1/approvals",
-            headers={"Authorization": f"Bearer {engineer_token}"},
-        )
-        assert blocked_engineer_inbox.status_code == 403
-
-        delegated = await client.post(
-            f"/api/v1/approvals/{approval['id']}/delegate",
-            json={"delegated_to_id": str(operation_manager.id), "reason": "PM is on leave"},
-            headers={"Authorization": f"Bearer {pm_token}"},
-        )
-        assert delegated.status_code == 200
-        assert delegated.json()["delegated_to_id"] == str(operation_manager.id)
-
-        missing_reason = await client.post(
-            f"/api/v1/approvals/{approval['id']}/reject",
-            json={"comments": ""},
-            headers={"Authorization": f"Bearer {op_token}"},
-        )
-        assert missing_reason.status_code == 422
-
-        rejected = await client.post(
-            f"/api/v1/approvals/{approval['id']}/reject",
-            json={"comments": "Rejected for UAT validation."},
-            headers={"Authorization": f"Bearer {op_token}"},
-        )
-        assert rejected.status_code == 200
-        assert rejected.json()["status"] == "rejected"
-
-        blocked_entity_approval = await client.post(
-            "/api/v1/approvals",
-            json={
-                "request_type": "material_request",
-                "request_id": str(uuid4()),
-                "project_id": str(project.id),
-                "title": "Direct material request approval",
-                "amount": "1500.00",
-                "currency": "USD",
-            },
-            headers={"Authorization": f"Bearer {engineer_token}"},
-        )
-        assert blocked_entity_approval.status_code == 403
-        assert blocked_entity_approval.json()["error_code"] == "APPROVAL_TYPE_FORBIDDEN"
-
-        high_value = await client.post(
-            "/api/v1/approvals",
-            json={
-                "request_type": "project_change",
-                "request_id": str(uuid4()),
-                "project_id": str(project.id),
-                "title": "High priority sequence override",
-                "amount": "1500.00",
-                "currency": "USD",
-            },
-            headers={"Authorization": f"Bearer {engineer_token}"},
-        )
-        assert high_value.status_code == 201
+        assert created.status_code == 403
+        assert created.json()["error_code"] == "APPROVAL_TYPE_FORBIDDEN"
 
         overridden = await client.post(
-            f"/api/v1/approvals/{high_value.json()['id']}/override",
+            f"/api/v1/approvals/{uuid4()}/override",
             json={"decision": "approved", "reason": "Emergency site requirement"},
-            headers={"Authorization": f"Bearer {admin_token}"},
+            headers={"Authorization": f"Bearer {director_token}"},
         )
-        assert overridden.status_code == 200
-        assert overridden.json()["status"] == "override_approved"
+        assert overridden.status_code == 403
+        assert overridden.json()["error_code"] == "APPROVAL_OVERRIDE_FORBIDDEN"
 
 
-async def test_project_manager_material_request_approval_routes_to_operations() -> None:
+async def test_material_request_approval_falls_back_only_to_company_director() -> None:
     await skip_if_database_unavailable()
-    operation_manager, _ = await create_user("operation_manager")
-    project_manager, _ = await create_user("project_manager")
-    engineer, _ = await create_user("civil_engineer")
-    project = await create_project(project_manager, engineer)
+    operations_director, _ = await create_user("operations_director")
+    managing_director, _ = await create_user("managing_director")
+    group_pm, _ = await create_user("group_project_manager")
+    engineer, _ = await create_user("quantity_surveyor")
+    project = await create_project(group_pm, engineer)
 
     async with AsyncSessionLocal() as session:
-        actor = await session.get(User, project_manager.id)
+        actor = await session.get(User, managing_director.id)
         assert actor is not None
         approval = await ApprovalService(session).create_approval(
             ApprovalCreateRequest(
                 request_type="material_request",
                 request_id=uuid4(),
                 project_id=project.id,
-                title="PM submitted material request",
+                title="Director submitted material request",
                 amount=Decimal("50.00"),
                 currency="USD",
             ),
@@ -240,12 +170,12 @@ async def test_project_manager_material_request_approval_routes_to_operations() 
             internal=True,
         )
 
-    assert approval.approver_id == operation_manager.id
+    assert approval.approver_id == operations_director.id
 
     async with AsyncSessionLocal() as session:
         notification = await session.scalar(
             select(Notification).where(
-                Notification.user_id == operation_manager.id,
+                Notification.user_id == operations_director.id,
                 Notification.reference_id == approval.id,
                 Notification.title == "Approval pending",
             )
@@ -253,8 +183,7 @@ async def test_project_manager_material_request_approval_routes_to_operations() 
 
     assert notification is not None
     assert (
-        notification.body
-        == "PM submitted material request is waiting for your approval.\n\n"
+        notification.body == "Director submitted material request is waiting for your approval.\n\n"
         "Open approval: https://portal.example.com/approvals?tab=workflow&approvalId="
         f"{approval.id}"
     )

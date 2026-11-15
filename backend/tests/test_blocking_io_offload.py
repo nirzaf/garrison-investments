@@ -30,6 +30,7 @@ from app.services.photo_service import PhotoService
 from app.services.report_export_service import ReportExportService
 from app.services.supplier_service import SupplierService
 from app.tasks.report import _generate_management_export
+from app.utils.exceptions import AppException
 from tests.test_daily_reports import (
     create_test_client,
     report_payload,
@@ -220,24 +221,25 @@ async def test_report_pdf_build_upload_and_download_offload_without_orm_objects(
         assert expected in text, f"{expected!r} missing from the rendered PDF"
 
 
-async def test_invoice_attachment_upload_offloads_storage(
+async def test_invoice_attachment_write_is_denied_before_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await skip_if_database_unavailable()
-    loop_thread = threading.get_ident()
     recorder = Recorder()
     monkeypatch.setattr(FinanceService, "_upload_object", recorder.stub("_upload_object"))
-    admin, _ = await create_user("admin")
+    admin, _ = await create_user("managing_director")
     project, _supplier = await create_project_and_supplier(admin)
     invoice = await add_invoice(project, Decimal("300.00"))
 
     async with AsyncSessionLocal() as session:
-        updated = await FinanceService(session).upload_invoice_attachment(
-            invoice.id, upload_file("invoice.pdf", pdf_bytes(), "application/pdf"), admin
-        )
+        with pytest.raises(AppException) as excinfo:
+            await FinanceService(session).upload_invoice_attachment(
+                invoice.id, upload_file("invoice.pdf", pdf_bytes(), "application/pdf"), admin
+            )
 
-    assert updated.attachment_key
-    assert_off_loop(recorder, "_upload_object", loop_thread)
+    assert excinfo.value.status_code == 403
+    assert excinfo.value.error_code == "FINANCE_WRITE_FORBIDDEN"
+    assert recorder.named("_upload_object") == []
 
 
 async def test_supplier_tds_upload_offloads_storage(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -245,7 +247,7 @@ async def test_supplier_tds_upload_offloads_storage(monkeypatch: pytest.MonkeyPa
     loop_thread = threading.get_ident()
     recorder = Recorder()
     monkeypatch.setattr(SupplierService, "_upload_object", recorder.stub("_upload_object"))
-    admin, _ = await create_user("admin")
+    admin, _ = await create_user("managing_director")
     _project, supplier = await create_project_and_supplier(admin)
 
     async with AsyncSessionLocal() as session:
@@ -262,7 +264,7 @@ async def test_document_upload_offloads_storage(monkeypatch: pytest.MonkeyPatch)
     loop_thread = threading.get_ident()
     recorder = Recorder()
     monkeypatch.setattr(DocumentService, "_upload_object", recorder.stub("_upload_object"))
-    admin, _ = await create_user("admin")
+    admin, _ = await create_user("managing_director")
 
     async with AsyncSessionLocal() as session:
         document = await DocumentService(session).upload_document(
@@ -292,7 +294,7 @@ async def test_management_export_upload_offloads_storage(
     monkeypatch.setattr(
         AnalyticsService, "upload_export", recorder.stub("upload_export", "exports/key")
     )
-    admin, _ = await create_user("admin")
+    admin, _ = await create_user("managing_director")
 
     object_key = await _generate_management_export("project-progress", str(admin.id), {})
 

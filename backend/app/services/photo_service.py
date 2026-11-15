@@ -28,15 +28,15 @@ from app.services.authorization import (
     ensure_project_access,
 )
 from app.services.idempotency import bind, resolve_or_reserve
-from app.services.report_service import DAILY_REPORT_READ_ROLES
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
+    OFFICIAL_REPORT_AUTHOR_ROLES,
     PERMISSION_REPORTS_SUBMIT,
-    ROLE_ADMIN,
-    ROLE_CIVIL_ENGINEER,
-    ROLE_CIVIL_SUPERVISOR,
+    PERMISSION_REPORTS_VIEW,
+    SUPERVISOR_ROLES,
     ensure_permission,
+    has_permission,
 )
 from app.utils.security import utc_now
 
@@ -255,7 +255,7 @@ class PhotoService:
                     error_code="INVALID_FILE_KIND",
                 )
             kind = normalized_kind
-        if actor.role not in DAILY_REPORT_READ_ROLES:
+        if not has_permission(actor, PERMISSION_REPORTS_VIEW):
             return [], 0
         return await self.photos.list_recent(
             entity_type=entity_type,
@@ -263,7 +263,7 @@ class PhotoService:
             limit=limit,
             offset=offset,
             project_ids=await accessible_project_ids(self.session, actor),
-            engineer_id=actor.id if actor.role == ROLE_CIVIL_ENGINEER else None,
+            engineer_id=None,
         )
 
     async def get(self, photo_id: UUID, *, actor: User) -> Photo:
@@ -291,10 +291,15 @@ class PhotoService:
         )
 
     async def deletable_ids(self, photos: list[Photo], actor: User) -> set[UUID]:
-        if actor.role == ROLE_ADMIN:
-            return {photo.id for photo in photos if photo.deleted_at is None}
-        project_ids = await accessible_project_ids(self.session, actor) or []
-        if actor.role == ROLE_CIVIL_ENGINEER:
+        if not has_permission(actor, PERMISSION_REPORTS_SUBMIT):
+            return set()
+        project_ids = await accessible_project_ids(self.session, actor)
+        project_filter = (
+            DailyReport.project_id.is_not(None)
+            if project_ids is None
+            else DailyReport.project_id.in_(project_ids or [])
+        )
+        if actor.role in OFFICIAL_REPORT_AUTHOR_ROLES:
             report_ids = [
                 photo.entity_id for photo in photos if photo.entity_type == "daily_report"
             ]
@@ -304,13 +309,13 @@ class PhotoService:
                 select(DailyReport.id).where(
                     DailyReport.id.in_(report_ids),
                     DailyReport.engineer_id == actor.id,
-                    DailyReport.project_id.in_(project_ids),
+                    project_filter,
                     DailyReport.status == "draft",
                     DailyReport.deleted_at.is_(None),
                 )
             )
             entity_type = "daily_report"
-        elif actor.role == ROLE_CIVIL_SUPERVISOR:
+        elif actor.role in SUPERVISOR_ROLES:
             update_ids = [
                 photo.entity_id for photo in photos if photo.entity_type == "supervisor_update"
             ]
@@ -320,7 +325,11 @@ class PhotoService:
                 select(SupervisorUpdate.id).where(
                     SupervisorUpdate.id.in_(update_ids),
                     SupervisorUpdate.supervisor_id == actor.id,
-                    SupervisorUpdate.project_id.in_(project_ids),
+                    (
+                        SupervisorUpdate.project_id.is_not(None)
+                        if project_ids is None
+                        else SupervisorUpdate.project_id.in_(project_ids or [])
+                    ),
                     SupervisorUpdate.status == "draft",
                     SupervisorUpdate.deleted_at.is_(None),
                 )
@@ -345,7 +354,7 @@ class PhotoService:
         offset: int,
         actor: User,
     ) -> tuple[list[Photo], int]:
-        self._ensure_admin(actor)
+        self._ensure_recovery_disabled()
         if entity_type:
             self._validate_entity_type(entity_type)
         if kind and kind not in {"photo", "attachment"}:
@@ -363,14 +372,13 @@ class PhotoService:
         photo = await self.photos.get_by_id(photo_id, for_update=True)
         if photo is None:
             raise NotFoundException("Photo")
-        if actor.role != ROLE_ADMIN:
-            await self._ensure_author(owner, actor)
-            if owner is None or owner.status != "draft":
-                raise AppException(
-                    "Files can only be removed from editable drafts.",
-                    status_code=409,
-                    error_code="PHOTO_DELETE_LOCKED",
-                )
+        await self._ensure_author(owner, actor)
+        if owner is None or owner.status != "draft":
+            raise AppException(
+                "Files can only be removed from editable drafts.",
+                status_code=409,
+                error_code="PHOTO_DELETE_LOCKED",
+            )
         reason = self._evidence_reason(owner, actor, reason)
         photo.deleted_at = utc_now()
         if isinstance(owner, DailyReport):
@@ -386,7 +394,7 @@ class PhotoService:
         await self.session.commit()
 
     async def recover(self, photo_id: UUID, actor: User, reason: str | None = None) -> Photo:
-        self._ensure_admin(actor)
+        self._ensure_recovery_disabled()
         photo = await self.photos.get_deleted_by_id(photo_id)
         if photo is None:
             raise NotFoundException("Photo")
@@ -434,21 +442,15 @@ class PhotoService:
         self, owner: DailyReport | SupervisorUpdate | None, actor: User, reason: str | None
     ) -> str | None:
         reason = reason.strip() if reason else None
-        if actor.role == ROLE_ADMIN and (owner is None or owner.status != "draft") and not reason:
-            raise AppException(
-                "Give a reason for changing this evidence.",
-                status_code=422,
-                error_code="PHOTO_CHANGE_REASON_REQUIRED",
-            )
         return reason
 
-    def _ensure_admin(self, actor: User) -> None:
-        if actor.role != ROLE_ADMIN:
-            raise AppException(
-                "Only Admin can access deleted media.",
-                status_code=403,
-                error_code="PHOTO_RECOVERY_FORBIDDEN",
-            )
+    @staticmethod
+    def _ensure_recovery_disabled() -> None:
+        raise AppException(
+            "Deleted-media recovery is unavailable because no role has that privilege.",
+            status_code=403,
+            error_code="PHOTO_RECOVERY_FORBIDDEN",
+        )
 
     async def _lock_owner(
         self, entity_type: str, entity_id: UUID, actor: User
@@ -479,9 +481,17 @@ class PhotoService:
         self, owner: DailyReport | SupervisorUpdate | None, actor: User
     ) -> None:
         if isinstance(owner, DailyReport):
-            owns_draft = actor.role == ROLE_CIVIL_ENGINEER and owner.engineer_id == actor.id
+            owns_draft = (
+                actor.role in OFFICIAL_REPORT_AUTHOR_ROLES
+                and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
+                and owner.engineer_id == actor.id
+            )
         elif isinstance(owner, SupervisorUpdate):
-            owns_draft = actor.role == ROLE_CIVIL_SUPERVISOR and owner.supervisor_id == actor.id
+            owns_draft = (
+                actor.role in SUPERVISOR_ROLES
+                and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
+                and owner.supervisor_id == actor.id
+            )
         else:
             owns_draft = False
         if not owns_draft or owner is None:
@@ -496,9 +506,14 @@ class PhotoService:
         actor: User,
     ) -> DailyReport | SupervisorUpdate | None:
         owner = await self._lock_owner(entity_type, entity_id, actor)
+        if entity_type not in {"daily_report", "supervisor_update"}:
+            raise AppException(
+                "This file owner type is not available through report uploads.",
+                status_code=403,
+                error_code="PHOTO_OWNER_FORBIDDEN",
+            )
         if owner is not None:
-            if actor.role != ROLE_ADMIN:
-                await self._ensure_author(owner, actor)
+            await self._ensure_author(owner, actor)
             if owner.status != "draft":
                 raise AppException(
                     "Files can only be added to editable drafts.",

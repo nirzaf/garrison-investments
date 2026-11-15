@@ -28,9 +28,9 @@ async def test_seed_activity_logs_use_the_policy_aware_audit_writer(
     monkeypatch.setattr(seed, "AuditService", AuditWriter)
     users = {
         seed.DEFAULT_ADMIN_EMAIL: SimpleNamespace(id=uuid4()),
-        "engineer.test@garrisons.lk": SimpleNamespace(id=uuid4()),
-        "pm.test@garrisons.lk": SimpleNamespace(id=uuid4()),
-        "storekeeper.test@garrisons.lk": SimpleNamespace(id=uuid4()),
+        "qs.test@garrisons.lk": SimpleNamespace(id=uuid4()),
+        "mep.pm.test@garrisons.lk": SimpleNamespace(id=uuid4()),
+        "site.supervisor.test@garrisons.lk": SimpleNamespace(id=uuid4()),
     }
 
     await seed.seed_activity_logs(Session(), users, {})

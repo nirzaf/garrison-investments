@@ -276,7 +276,9 @@ export function AnalyticsPage() {
                   {displayed.projects.map((project) => (
                     <p className="text-xs text-theme-text-muted" key={project.project_id}>
                       {project.project_name}: {project.report_count} reports,{' '}
-                      {labelledAmount(project.invoice_total, policy.data?.business_currency)} invoiced
+                      {project.invoice_total == null
+                        ? 'invoice total unavailable'
+                        : `${labelledAmount(project.invoice_total, policy.data?.business_currency)} invoiced`}
                     </p>
                   ))}
                 </div>

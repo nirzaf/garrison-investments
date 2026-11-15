@@ -214,7 +214,7 @@ test('project teams and task dates persist through reload at narrow and desktop 
       email: engineer.email,
       temporary_password: engineer.password,
       full_name: `Assigned engineer ${suffix}`,
-      role: 'civil_engineer',
+      role: 'site_supervisor',
       employee_code: `ENG-${suffix}`,
       phone: '5550123'
     }

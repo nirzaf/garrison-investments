@@ -19,7 +19,7 @@ from app.schemas.imports import (
 from app.services.idempotency import validate_key
 from app.services.import_service import TEMPLATE_COLUMNS, ImportService
 from app.tasks.imports import run_import_async
-from app.utils.permissions import PERMISSION_USERS_MANAGE
+from app.utils.permissions import COMPANY_RESOURCE_ROLES, PERMISSION_USERS_MANAGE
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
 
@@ -29,10 +29,10 @@ CanManageImports = Annotated[User, Depends(require_permission(PERMISSION_USERS_M
 @router.get("/templates/{template_type}")
 async def download_template(
     template_type: str,
-    _: CanManageImports,
+    current_user: CanManageImports,
     session: DbSession,
 ) -> Response:
-    ImportService(session).template_path(template_type)
+    ImportService(session).template_path(template_type, current_user)
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(TEMPLATE_COLUMNS[template_type])
@@ -46,13 +46,14 @@ async def download_template(
 @router.get("/batches/{batch_id}")
 async def get_batch_status(
     batch_id: UUID,
-    _: CanManageImports,
+    current_user: CanManageImports,
     session: DbSession,
 ):
-    batch = await session.scalar(
-        select(ImportBatch).where(ImportBatch.id == batch_id)
-    )
+    batch = await session.scalar(select(ImportBatch).where(ImportBatch.id == batch_id))
     if not batch:
+        return JSONResponse(status_code=404, content={"detail": "Import batch not found"})
+    ImportService.ensure_template_access(current_user, batch.template_type)
+    if current_user.role not in COMPANY_RESOURCE_ROLES and batch.created_by != current_user.id:
         return JSONResponse(status_code=404, content={"detail": "Import batch not found"})
     return {
         "batch_id": str(batch.id),
@@ -67,17 +68,13 @@ async def get_batch_status(
 
 @router.get("/batches", response_model=ImportBatchListResponse)
 async def list_import_batches(
-    _: CanManageImports,
+    current_user: CanManageImports,
     session: DbSession,
 ) -> ImportBatchListResponse:
-    batches = (
-        await session.scalars(
-            select(ImportBatch)
-            .where(ImportBatch.deleted_at.is_(None))
-            .order_by(ImportBatch.created_at.desc())
-            .limit(25)
-        )
-    ).all()
+    query = select(ImportBatch).where(ImportBatch.deleted_at.is_(None))
+    if current_user.role not in COMPANY_RESOURCE_ROLES:
+        query = query.where(ImportBatch.created_by == current_user.id)
+    batches = (await session.scalars(query.order_by(ImportBatch.created_at.desc()).limit(25))).all()
     return ImportBatchListResponse(
         items=[
             ImportRunResponse(
@@ -98,12 +95,12 @@ async def list_import_batches(
 @router.post("/{template_type}/preview", response_model=ImportPreviewResponse)
 async def preview_import(
     template_type: str,
-    _: CanManageImports,
+    current_user: CanManageImports,
     session: DbSession,
     file: Annotated[UploadFile, File()],
 ) -> ImportPreviewResponse:
     content = await file.read()
-    return await ImportService(session).preview(template_type, content)
+    return await ImportService(session).preview(template_type, content, current_user)
 
 
 @router.post("/{template_type}/run", response_model=ImportRunResponse)

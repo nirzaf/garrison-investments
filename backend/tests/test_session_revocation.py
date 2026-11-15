@@ -37,7 +37,7 @@ def create_test_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
-async def create_user(role: str = "civil_engineer") -> User:
+async def create_user(role: str = "quantity_surveyor") -> User:
     user = User(
         email=f"revoke-{uuid4().hex}@example.com",
         full_name=f"{role} Revoke User",
@@ -168,17 +168,25 @@ async def test_password_change_serializes_refresh_and_invalidates_pending_otps()
 
 async def test_admin_password_reset_revokes_every_session() -> None:
     await skip_if_database_unavailable()
-    admin = await create_user(role="admin")
+    admin = await create_user(role="managing_director")
     target = await create_user()
     admin_access, _ = await open_session(admin.email)
     _, first_refresh = await open_session(target.email)
     _, second_refresh = await open_session(target.email)
 
     async with create_test_client() as client:
+        current_target = await client.get(
+            f"/api/v1/users/{target.id}",
+            headers={"Authorization": f"Bearer {admin_access}"},
+        )
+        assert current_target.status_code == 200, current_target.text
         response = await client.post(
             f"/api/v1/users/{target.id}/reset-password",
             headers={"Authorization": f"Bearer {admin_access}"},
-            json={"new_password": NEW_PASSWORD},
+            json={
+                "new_password": NEW_PASSWORD,
+                "expected_updated_at": current_target.json()["updated_at"],
+            },
         )
 
     assert response.status_code == 200, response.text

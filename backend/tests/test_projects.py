@@ -105,7 +105,7 @@ def project_payload() -> dict:
 
 async def test_operation_manager_creates_project_with_boq_and_timeline() -> None:
     await skip_if_database_unavailable()
-    op_email, op_password = await create_user("operation_manager")
+    op_email, op_password = await create_user("operations_director")
 
     async with create_test_client() as client:
         token = await login_for_token(client, op_email, op_password)
@@ -145,9 +145,9 @@ async def test_operation_manager_creates_project_with_boq_and_timeline() -> None
 
 async def test_assigned_engineer_can_read_assigned_project_only() -> None:
     await skip_if_database_unavailable()
-    op_email, op_password = await create_user("operation_manager")
-    engineer_email, engineer_password = await create_user("civil_engineer")
-    inactive_email, _ = await create_user("civil_engineer")
+    op_email, op_password = await create_user("operations_director")
+    engineer_email, engineer_password = await create_user("site_supervisor")
+    inactive_email, _ = await create_user("site_supervisor")
     async with AsyncSessionLocal() as session:
         inactive = await UserRepository(session).get_by_email(inactive_email)
         assert inactive is not None
@@ -171,12 +171,12 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
         )
         assign_response = await client.post(
             f"/api/v1/projects/{project['id']}/members",
-            json={"user_id": me.json()["id"], "role_in_project": "site_engineer"},
+            json={"user_id": me.json()["id"], "role_in_project": "site_supervisor"},
             headers={"Authorization": f"Bearer {op_token}"},
         )
 
         assert assign_response.status_code == 201
-        assert assign_response.json()["user_name"] == "civil_engineer User"
+        assert assign_response.json()["user_name"] == "site_supervisor User"
 
         detail_response = await client.get(
             f"/api/v1/projects/{project['id']}",
@@ -185,7 +185,7 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
 
         assert detail_response.status_code == 200
         assert detail_response.json()["revision"] == project["revision"] + 1
-        assert detail_response.json()["members"][0]["user_name"] == "civil_engineer User"
+        assert detail_response.json()["members"][0]["user_name"] == "site_supervisor User"
 
         denied_edit = await client.patch(
             f"/api/v1/projects/{project['id']}",
@@ -226,8 +226,8 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
 
 async def test_revoke_project_member_is_scoped_revision_checked_and_audited() -> None:
     await skip_if_database_unavailable()
-    manager = await create_user("operation_manager")
-    engineer = await create_user("civil_engineer")
+    manager = await create_user("operations_director")
+    engineer = await create_user("site_supervisor")
 
     async with create_test_client() as client:
         manager_token = await login_for_token(client, *manager)
@@ -307,7 +307,7 @@ async def test_revoke_project_member_is_scoped_revision_checked_and_audited() ->
 @pytest.mark.parametrize("final_status", ["completed", "cancelled"])
 async def test_closed_project_is_read_only(final_status: str) -> None:
     await skip_if_database_unavailable()
-    op_email, op_password = await create_user("operation_manager")
+    op_email, op_password = await create_user("operations_director")
 
     async with create_test_client() as client:
         token = await login_for_token(client, op_email, op_password)
@@ -345,7 +345,7 @@ async def test_closed_project_is_read_only(final_status: str) -> None:
 
 async def test_project_setup_rejects_invalid_rows_before_persisting() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("operation_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         headers = {"Authorization": f"Bearer {token}"}
@@ -384,7 +384,7 @@ async def test_project_setup_rejects_invalid_rows_before_persisting() -> None:
 
 async def test_multiple_milestones_and_boq_rows_preserve_decimal_values() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("general_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         headers = {"Authorization": f"Bearer {token}"}
@@ -416,7 +416,7 @@ async def test_multiple_milestones_and_boq_rows_preserve_decimal_values() -> Non
 
 async def test_project_edit_can_clear_optional_fields_and_audits_only_changed_fields() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("operation_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         headers = {"Authorization": f"Bearer {token}"}
@@ -471,7 +471,7 @@ async def test_project_edit_can_clear_optional_fields_and_audits_only_changed_fi
 
 async def test_project_edits_from_same_revision_serialize() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("operation_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         response = await client.post(
@@ -499,7 +499,7 @@ async def test_project_edits_from_same_revision_serialize() -> None:
 
 async def test_task_updates_keep_each_date_range_and_require_current_revision() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("operation_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         headers = {"Authorization": f"Bearer {token}"}
@@ -579,7 +579,7 @@ async def test_task_updates_keep_each_date_range_and_require_current_revision() 
 
 async def test_concurrent_reverse_dependencies_cannot_create_cycle() -> None:
     await skip_if_database_unavailable()
-    credentials = await create_user("operation_manager")
+    credentials = await create_user("operations_director")
     async with create_test_client() as client:
         token = await login_for_token(client, *credentials)
         headers = {"Authorization": f"Bearer {token}"}

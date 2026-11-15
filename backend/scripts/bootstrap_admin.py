@@ -1,4 +1,4 @@
-"""Create the first administrator in an empty portal database."""
+"""Create the first Managing Director in an empty portal database."""
 
 import argparse
 import asyncio
@@ -18,7 +18,7 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException
-from app.utils.permissions import ROLE_ADMIN
+from app.utils.permissions import ROLE_MANAGING_DIRECTOR
 from app.utils.security import hash_password, validate_password_policy
 
 
@@ -35,22 +35,22 @@ async def create_first_admin(
         select(func.pg_advisory_xact_lock(func.hashtext("garrison.bootstrap_admin")))
     )
     if await session.scalar(select(User.id).limit(1)) is not None:
-        raise ValueError("Administrator setup requires an empty user table.")
+        raise ValueError("Managing Director setup requires an empty user table.")
 
     user = User(
         email=email,
         full_name=full_name,
-        role=ROLE_ADMIN,
+        role=ROLE_MANAGING_DIRECTOR,
         password_hash=hash_password(password),
         must_change_password=True,
     )
     await UserRepository(session).add(user)
     await AuditService(session).record(
-        action="users.first_admin_created",
+        action="users.first_managing_director_created",
         user_id=user.id,
         entity_type="users",
         entity_id=user.id,
-        new_values={"role": ROLE_ADMIN},
+        new_values={"role": ROLE_MANAGING_DIRECTOR},
     )
     await session.commit()
     return user.id
@@ -84,7 +84,7 @@ def main() -> None:
         parser.error(str(exc))
     except AppException as exc:
         parser.error(str(exc))
-    print(f"Created first administrator {user_id}.")
+    print(f"Created first Managing Director {user_id}.")
 
 
 if __name__ == "__main__":

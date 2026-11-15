@@ -11,15 +11,16 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.supervisor_update_repository import SupervisorUpdateRepository
 from app.schemas.supervisor_updates import SupervisorUpdateCreateRequest, SupervisorUpdateResponse
 from app.services.audit_service import AuditService
-from app.services.authorization import COMPANY_WIDE_ROLES, accessible_project_ids
+from app.services.authorization import accessible_project_ids
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
-    ROLE_ADMIN,
-    ROLE_CIVIL_ENGINEER,
-    ROLE_CIVIL_SUPERVISOR,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_PROJECT_MANAGER,
+    COMPANY_RESOURCE_ROLES,
+    OFFICIAL_REPORT_AUTHOR_ROLES,
+    PERMISSION_REPORTS_SUBMIT,
+    PERMISSION_REPORTS_VIEW,
+    SUPERVISOR_ROLES,
+    ensure_permission,
+    has_permission,
 )
 from app.utils.security import utc_now
 from app.utils.time import business_today
@@ -60,9 +61,10 @@ class ReportingService:
         payload: SupervisorUpdateCreateRequest,
         actor: User,
     ) -> SupervisorUpdate:
-        if actor.role != ROLE_CIVIL_SUPERVISOR:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        if actor.role not in SUPERVISOR_ROLES:
             raise AppException(
-                "Only Civil Supervisors can create supervisor updates.",
+                "Only site supervisors can create supervisor updates.",
                 status_code=403,
                 error_code="SUPERVISOR_UPDATE_FORBIDDEN",
             )
@@ -108,6 +110,13 @@ class ReportingService:
         payload: SupervisorUpdateCreateRequest,
         actor: User,
     ) -> SupervisorUpdate:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        if actor.role not in SUPERVISOR_ROLES:
+            raise AppException(
+                "This role cannot edit supervisor updates.",
+                status_code=403,
+                error_code="SUPERVISOR_UPDATE_FORBIDDEN",
+            )
         update = await self.updates.get_by_id(update_id, for_update=True)
         if not update:
             raise NotFoundException("Supervisor update")
@@ -143,6 +152,13 @@ class ReportingService:
         return update
 
     async def submit_supervisor_update(self, update_id: UUID, actor: User) -> SupervisorUpdate:
+        ensure_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        if actor.role not in SUPERVISOR_ROLES:
+            raise AppException(
+                "This role cannot submit supervisor updates.",
+                status_code=403,
+                error_code="SUPERVISOR_UPDATE_FORBIDDEN",
+            )
         update = await self.updates.get_by_id(update_id, for_update=True)
         if not update:
             raise NotFoundException("Supervisor update")
@@ -154,6 +170,7 @@ class ReportingService:
                 status_code=409,
                 error_code="SUPERVISOR_UPDATE_LOCKED",
             )
+        await self._ensure_project_member(update.project_id, actor)
         update.status = "submitted"
         update.submitted_at = utc_now()
         await self.audit.record(
@@ -175,22 +192,40 @@ class ReportingService:
         offset: int,
     ) -> tuple[list[SupervisorUpdate], int]:
         self._validate_status(status)
-        supervisor_id = current_user.id if current_user.role == ROLE_CIVIL_SUPERVISOR else None
+        is_supervisor = current_user.role in SUPERVISOR_ROLES
+        supervisor_id = current_user.id if is_supervisor else None
         project_ids: list[UUID] | None = None
-        if current_user.role == ROLE_CIVIL_ENGINEER:
-            if project_id is None:
+        if is_supervisor:
+            project_ids = await self.projects.list_project_ids_for_user(current_user.id)
+            if project_id is not None:
+                await self._ensure_project_member(project_id, current_user)
+            elif not project_ids:
                 return [], 0
+        elif (
+            current_user.role in OFFICIAL_REPORT_AUTHOR_ROLES
+            and has_permission(current_user, PERMISSION_REPORTS_SUBMIT)
+            and not has_permission(current_user, PERMISSION_REPORTS_VIEW)
+        ):
+            # Report authors such as Quantity Surveyors need to select submitted
+            # supervisor evidence before a report exists. Keep this path project-
+            # explicit and expose only selectable submitted evidence.
+            if project_id is None:
+                raise AppException(
+                    "Choose an assigned project to view submitted supervisor updates.",
+                    status_code=422,
+                    error_code="SUPERVISOR_UPDATE_PROJECT_REQUIRED",
+                )
             await self._ensure_project_member(project_id, current_user)
-        elif current_user.role == ROLE_PROJECT_MANAGER:
+            status = "submitted"
+        elif (
+            has_permission(current_user, PERMISSION_REPORTS_VIEW)
+            and current_user.role not in COMPANY_RESOURCE_ROLES
+        ):
             if project_id is not None:
                 await self._ensure_project_member(project_id, current_user)
             else:
-                # Unfiltered list: a manager sees their own projects, never the company.
                 project_ids = await accessible_project_ids(self.session, current_user) or []
-        elif (
-            current_user.role not in COMPANY_WIDE_ROLES
-            and current_user.role != ROLE_CIVIL_SUPERVISOR
-        ):
+        elif current_user.role not in COMPANY_RESOURCE_ROLES and not is_supervisor:
             raise AppException(
                 "You do not have access to supervisor updates.",
                 status_code=403,
@@ -209,24 +244,19 @@ class ReportingService:
         project = await self.projects.get_by_id(project_id)
         if not project:
             raise NotFoundException("Project")
+        if actor.role in COMPANY_RESOURCE_ROLES:
+            return
         members = await self.projects.list_members(project_id)
         if not any(member.user_id == actor.id for member in members):
             raise NotFoundException("Project")
 
     def _validate_previous_date(self, payload: SupervisorUpdateCreateRequest, actor: User) -> None:
-        allowed_roles = {
-            ROLE_ADMIN,
-            ROLE_GENERAL_MANAGER,
-            ROLE_OPERATION_MANAGER,
-            ROLE_PROJECT_MANAGER,
-            ROLE_CIVIL_ENGINEER,
-        }
         is_previous_date = payload.update_date < (business_today() - timedelta(days=1))
-        if is_previous_date and actor.role not in allowed_roles:
+        if is_previous_date:
             raise AppException(
-                "Previous-date supervisor updates require admin approval.",
+                "Previous-date supervisor updates are not supported.",
                 status_code=409,
-                error_code="PREVIOUS_DATE_UPDATE_BLOCKED",
+                error_code="PREVIOUS_DATE_UPDATE_UNSUPPORTED",
             )
 
     def _validate_day_type(self, day_type: str) -> None:

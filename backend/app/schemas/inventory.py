@@ -170,7 +170,7 @@ class MaterialRequestResponse(BaseModel):
     from_location_id: UUID | None
     status: str
     revision: int
-    total_estimated_cost: Decimal
+    total_estimated_cost: Decimal | None
     notes: str | None
     lines: list[MaterialRequestLineResponse]
 

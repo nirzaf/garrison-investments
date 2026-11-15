@@ -134,9 +134,7 @@ class Bundle:
         )
         return self.write(f"receipts/{phase}-{kind}.json", row)
 
-    def alert(
-        self, name: str, start: datetime, phase: str, profile_hash: str
-    ) -> dict[str, Any]:
+    def alert(self, name: str, start: datetime, phase: str, profile_hash: str) -> dict[str, Any]:
         times = ["trigger_at", "evaluated_at", "fired_at", "recovered_at", "resolved_at"]
         result = {
             "rule_id": name,
@@ -378,8 +376,13 @@ def runtime() -> dict[str, Any]:
 def github_stub(path: str, token: str | None) -> dict[str, Any]:
     jobs: list[dict[str, Any]] = [
         {
-            "id": i, "name": name, "head_sha": SHA, "status": "completed",
-            "conclusion": "success", "run_id": 11, "run_attempt": 1,
+            "id": i,
+            "name": name,
+            "head_sha": SHA,
+            "status": "completed",
+            "conclusion": "success",
+            "run_id": 11,
+            "run_attempt": 1,
         }
         for i, name in enumerate(sorted(contract.CI_JOBS), 1)
     ]
@@ -392,12 +395,14 @@ def github_stub(path: str, token: str | None) -> dict[str, Any]:
             if fixture is None:
                 continue
             name, archive, _ = fixture
-            artifacts.append({
-                "name": name,
-                "digest": "sha256:" + hashlib.sha256(archive).hexdigest(),
-                "size_in_bytes": len(archive),
-                "workflow_run": {"id": 11, "head_sha": SHA, "head_branch": "main"},
-            })
+            artifacts.append(
+                {
+                    "name": name,
+                    "digest": "sha256:" + hashlib.sha256(archive).hexdigest(),
+                    "size_in_bytes": len(archive),
+                    "workflow_run": {"id": 11, "head_sha": SHA, "head_branch": "main"},
+                }
+            )
         return {"artifacts": artifacts, "total_count": len(artifacts)}
     parts = path.split("/")
     run_id = int(parts[2])
@@ -1158,9 +1163,7 @@ def manifest(
     }
     predeploy_payload = dict(result)
     if phase == "final":
-        predeploy_payload["ledger"] = bundle.write(
-            "ledger-predeploy.json", ledger("predeploy")
-        )
+        predeploy_payload["ledger"] = bundle.write("ledger-predeploy.json", ledger("predeploy"))
     predeploy_manifest = bundle.write("manifests/predeploy.json", predeploy_payload)
     predeploy_verdict = bundle.write(
         "artifacts/PREDEPLOY.json",
@@ -1293,9 +1296,7 @@ def test_complete_synthetic_contract_never_claims_live_acceptance(
     "field",
     ["manifest_sha256", "runtime_identity", "control_registry_sha256", "verified_receipt_ids"],
 )
-def test_predeploy_verdict_rejects_unbound_identity_fields(
-    tmp_path: Path, field: str
-) -> None:
+def test_predeploy_verdict_rejects_unbound_identity_fields(tmp_path: Path, field: str) -> None:
     bundle = Bundle(tmp_path)
     data = manifest(bundle, "final")
     deployment_ref = next(
@@ -1391,18 +1392,14 @@ def test_observability_requires_matching_firing_and_resolution_evidence(
             original = result[key]
             path = original["path"]
             record = json.loads((self.root / path).read_text())
-            firing = json.loads(
-                (self.root / result["firing_delivery"]["path"]).read_text()
-            )
+            firing = json.loads((self.root / result["firing_delivery"]["path"]).read_text())
             field, value = {
                 "wrong-profile": ("profile_sha256", "0" * 64),
                 "early-resolution": ("received_at", start.isoformat()),
                 "reused-id": ("message_id", firing["message_id"]),
                 "reused-receipt": ("receipt_ref", firing["receipt_ref"]),
                 "wrong-destination": ("destination", "other@example.test"),
-                "ack-before-receipt": (
-                    "received_at", (start + timedelta(seconds=6)).isoformat()
-                ),
+                "ack-before-receipt": ("received_at", (start + timedelta(seconds=6)).isoformat()),
             }[problem]
             record[field] = value
             ref = self.write(path, record)
@@ -1505,9 +1502,7 @@ def test_recovery_requires_matching_restore_command_evidence(
         decisions[row["decision_id"]] = row
     result = phase_results(bundle, "predeploy", decisions, **overrides)["recovery"]
     ref = bundle.receipt("recovery", result, executor="Fixture Restore Operator")
-    data["receipts"] = [
-        ref if item["path"] == ref["path"] else item for item in data["receipts"]
-    ]
+    data["receipts"] = [ref if item["path"] == ref["path"] else item for item in data["receipts"]]
     bundle.write("release_manifest.json", data)
 
     with pytest.raises(contract.ContractError, match=reason):
@@ -1790,7 +1785,8 @@ def test_retention_inventory_requires_all_pages_for_each_exception_category() ->
         contract.retention_exception_ids(pages, policy_hash, STAGE_END)
     pages.append({**pages[0], "rows": [{"id": "fixture-002"}], "next_after": None})
     assert contract.retention_exception_ids(pages, policy_hash, STAGE_END) == {
-        "fixture-001", "fixture-002"
+        "fixture-001",
+        "fixture-002",
     }
 
 
@@ -1798,7 +1794,7 @@ def test_uat_matrix_requires_the_specified_role_on_desktop(tmp_path: Path) -> No
     bundle = Bundle(tmp_path)
     matrix = decision_values(bundle)["D-32-SUPPORT"]["scenario_platform_map"]
     desktop = matrix["UAT-07"][0]
-    assert desktop == {"platform": "desktop", "role": "civil_supervisor"}
+    assert desktop == {"platform": "desktop", "role": "senior_site_supervisor"}
     desktop["role"] = "operator"
     with pytest.raises(contract.ContractError, match="Mandatory UAT role omitted for UAT-07"):
         contract.scenario_matrix(matrix)
@@ -1817,7 +1813,7 @@ def test_uat_support_requires_chrome_only(tmp_path: Path) -> None:
     with pytest.raises(contract.ContractError, match="Physical mobile targets"):
         contract.decision_support({**support, "physical_mobile_targets": [device("ios", "Safari")]})
     support["scenario_platform_map"]["UAT-21"].append(
-        {"platform": "android", "role": "civil_engineer"}
+        {"platform": "android", "role": "quantity_surveyor"}
     )
     with pytest.raises(contract.ContractError, match="scenario platform"):
         contract.decision_support(support)
@@ -2144,9 +2140,7 @@ def test_host_configuration_rejects_missing_runtime_or_external_inputs(
     @contextmanager
     def open_fixture(path: Path, *, protected: bool = False):
         yield BytesIO(
-            b"LOG_PURGE_ENABLED=false\n"
-            if path.name == "production.env"
-            else b"services: {}\n"
+            b"LOG_PURGE_ENABLED=false\n" if path.name == "production.env" else b"services: {}\n"
         )
 
     monkeypatch.setattr(contract, "open_evidence", open_fixture)
@@ -2181,11 +2175,13 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
             "docker-compose.prod.yml",
             "observability/grafana/contact-points/usesend.yml",
         }:
-            mounts.append({
-                "type": "bind",
-                "source": str(target),
-                "target": f"/mounted/{len(mounts)}",
-            })
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": str(target),
+                    "target": f"/mounted/{len(mounts)}",
+                }
+            )
 
     external_contents = {
         "secrets/jwt_private_key": b"private-key-fixture",
@@ -2296,11 +2292,13 @@ def test_candidate_configuration_verification_matches_compose_mounts_without_emi
     compose["services"]["backend"]["environment"]["LOG_PURGE_ENABLED"] = "false"
     extra_mount = candidate / "unexpected.conf"
     extra_mount.write_text("unapproved runtime input")
-    compose["services"]["backend"]["volumes"].append({
-        "type": "bind",
-        "source": str(extra_mount),
-        "target": "/etc/unexpected.conf",
-    })
+    compose["services"]["backend"]["volumes"].append(
+        {
+            "type": "bind",
+            "source": str(extra_mount),
+            "target": "/etc/unexpected.conf",
+        }
+    )
     with pytest.raises(
         contract.ContractError,
         match="do not cover the approved release configuration set",

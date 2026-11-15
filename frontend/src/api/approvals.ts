@@ -41,8 +41,14 @@ export async function rejectGenericApproval(id: string, comments: string) {
   return data;
 }
 
-export async function listDelegationCandidates(id: string) {
-  const { data } = await apiClient.get<ApprovalDelegateListResponse>(`/approvals/${id}/delegates`);
+export async function listDelegationCandidates(
+  id: string,
+  params: { search?: string; limit?: number; offset?: number } = {}
+) {
+  const { data } = await apiClient.get<ApprovalDelegateListResponse>(
+    `/approvals/${id}/delegates`,
+    { params }
+  );
   return data;
 }
 

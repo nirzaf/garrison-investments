@@ -15,6 +15,7 @@ export function ProjectListPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const canManage = user?.permissions?.includes('projects:manage') ?? false;
+  const canCreate = ['managing_director', 'operations_director'].includes(user?.role ?? '');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -37,13 +38,13 @@ export function ProjectListPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold text-theme-text-primary">Projects</h2>
-        {canManage && !creating && (
+        {canCreate && !creating && (
           <button className={projectActionClass} type="button" onClick={() => setCreating(true)}>
             New project
           </button>
         )}
       </div>
-      {canManage && creating && (
+      {canCreate && creating && (
         <ProjectCreateForm
           onCancel={() => setCreating(false)}
           onCreated={(project) => {

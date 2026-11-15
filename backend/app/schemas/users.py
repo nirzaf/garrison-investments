@@ -30,7 +30,9 @@ class UserDetailResponse(UserResponse):
 
 class UserRoleResponse(BaseModel):
     role: str
+    label: str
     permissions: list[str]
+    assignable: bool = False
 
 
 class UserRoleListResponse(BaseModel):

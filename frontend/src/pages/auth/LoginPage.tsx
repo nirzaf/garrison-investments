@@ -9,7 +9,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const successNotice = (location.state as { notice?: string } | null)?.notice ?? null;
-  const [email, setEmail] = useState('admin@garrisons.qa');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [challengeId, setChallengeId] = useState<string | null>(null);

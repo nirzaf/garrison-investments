@@ -1,10 +1,2 @@
-export { adminManual } from './admin';
-export { generalManagerManual } from './generalManager';
-export { operationManagerManual } from './operationManager';
-export { projectManagerManual } from './projectManager';
-export { civilEngineerManual } from './civilEngineer';
-export { civilSupervisorManual } from './civilSupervisor';
-export { storeKeeperManual } from './storeKeeper';
-export { accountsManual } from './accounts';
 export { COMMON_SECTIONS } from './common';
 export type { Manual, ManualSection, ManualStep } from './common';

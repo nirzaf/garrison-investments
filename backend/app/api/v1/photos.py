@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Response, UploadFile, status
 
-from app.api.dependencies import DbSession, require_permission
+from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.models.user import User
 from app.schemas.photos import (
     PhotoDecisionRequest,
@@ -15,10 +15,9 @@ from app.schemas.photos import (
 from app.services.idempotency import validate_key
 from app.services.photo_service import PHOTO_RECOVERY_DAYS, SIGNED_URL_SECONDS, PhotoService
 from app.utils.exceptions import AppException
-from app.utils.permissions import PERMISSION_REPORTS_SUBMIT, PERMISSION_REPORTS_VIEW
+from app.utils.permissions import PERMISSION_REPORTS_SUBMIT
 
 router = APIRouter(prefix="/photos", tags=["Photos"])
-CanViewReports = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_VIEW))]
 CanSubmitReports = Annotated[User, Depends(require_permission(PERMISSION_REPORTS_SUBMIT))]
 MAX_UPLOAD_FILES = 100
 MAX_UPLOAD_BATCH_SIZE = 60 * 1024 * 1024
@@ -99,7 +98,7 @@ async def upload_files(
 
 @router.get("", response_model=PhotoListResponse)
 async def list_files(
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
     entity_type: Annotated[str | None, Query()] = None,
     entity_id: Annotated[UUID | None, Query()] = None,
@@ -163,7 +162,7 @@ async def list_files(
 @router.get("/{photo_id}", response_model=PhotoResponse)
 async def get_file(
     photo_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> PhotoResponse:
     photo = await PhotoService(session).get(photo_id, actor=current_user)
@@ -173,7 +172,7 @@ async def get_file(
 @router.get("/{photo_id}/download", response_model=ProtectedFileUrlResponse)
 async def get_file_download_url(
     photo_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> ProtectedFileUrlResponse:
     url = await PhotoService(session).signed_url(photo_id, variant="original", actor=current_user)
@@ -183,7 +182,7 @@ async def get_file_download_url(
 @router.get("/{photo_id}/thumbnail", response_model=ProtectedFileUrlResponse)
 async def get_thumbnail_url(
     photo_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> ProtectedFileUrlResponse:
     url = await PhotoService(session).signed_url(photo_id, variant="thumbnail", actor=current_user)
@@ -203,7 +202,7 @@ async def delete_file(
 @router.post("/{photo_id}/recover", response_model=PhotoResponse)
 async def recover_file(
     photo_id: UUID,
-    current_user: CanViewReports,
+    current_user: CurrentUser,
     session: DbSession,
     payload: PhotoDecisionRequest | None = None,
 ) -> PhotoResponse:

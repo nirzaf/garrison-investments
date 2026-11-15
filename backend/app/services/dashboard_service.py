@@ -9,9 +9,10 @@ from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.dashboard import DashboardSummaryResponse
 from app.utils.permissions import (
-    ROLE_ADMIN,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_DASHBOARD_COMPANY,
+    PERMISSION_REPORTS_VIEW,
+    has_permission,
 )
 
 
@@ -26,7 +27,14 @@ class DashboardService:
         approved_reports = await self._count_reports(project_ids, "approved")
         pending_documents = await self._count_documents(project_ids)
         unread_notifications = await self._count_notifications(actor)
-        recent_activity = await self._recent_activity(project_ids)
+        recent_activity: list[str] = []
+        if has_permission(actor, PERMISSION_REPORTS_VIEW):
+            recent_project_ids = (
+                None
+                if actor.role in COMPANY_RESOURCE_ROLES
+                else await self._assigned_project_ids(actor)
+            )
+            recent_activity = await self._recent_activity(recent_project_ids)
         return DashboardSummaryResponse(
             active_projects=active_projects,
             pending_reports=pending_reports,
@@ -37,8 +45,13 @@ class DashboardService:
         )
 
     async def _visible_project_ids(self, actor: User) -> list | None:
-        if actor.role in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        if actor.role in COMPANY_RESOURCE_ROLES or has_permission(
+            actor, PERMISSION_DASHBOARD_COMPANY
+        ):
             return None
+        return await self._assigned_project_ids(actor)
+
+    async def _assigned_project_ids(self, actor: User) -> list:
         result = await self.session.execute(
             select(ProjectMember.project_id).where(
                 ProjectMember.user_id == actor.id,

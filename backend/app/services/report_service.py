@@ -11,6 +11,7 @@ from app.models.daily_report import (
     ReportManpower,
     ReportMaterialConsumption,
 )
+from app.models.project_member import ProjectMember
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
@@ -25,17 +26,22 @@ from app.services.notification_service import NotificationService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.links import append_link, approval_inbox_url, daily_report_url
 from app.utils.permissions import (
-    ROLE_ADMIN,
-    ROLE_CIVIL_ENGINEER,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_PROJECT_MANAGER,
+    COMPANY_RESOURCE_ROLES,
+    OFFICIAL_REPORT_AUTHOR_ROLES,
+    PERMISSION_REPORTS_APPROVE,
+    PERMISSION_REPORTS_SUBMIT,
+    PERMISSION_REPORTS_VIEW,
+    REPORT_APPROVER_ROLES,
+    ROLE_PERMISSIONS,
+    has_permission,
 )
 from app.utils.security import utc_now
 from app.utils.time import business_today
 
 REPORT_STATUSES = {"draft", "submitted", "approved", "rejected"}
-DAILY_REPORT_READ_ROLES = COMPANY_WIDE_ROLES | {ROLE_PROJECT_MANAGER, ROLE_CIVIL_ENGINEER}
+DAILY_REPORT_READ_ROLES = {
+    role for role, permissions in ROLE_PERMISSIONS.items() if PERMISSION_REPORTS_VIEW in permissions
+}
 IDEMPOTENCY_ROUTE = "reports.create"
 
 
@@ -318,67 +324,12 @@ class ReportService:
         reason: str,
         target_covered: bool,
     ) -> DailyReport:
-        if actor.role != ROLE_ADMIN:
-            raise AppException(
-                "Only Admin can override daily report approvals.",
-                status_code=403,
-                error_code="DAILY_REPORT_OVERRIDE_FORBIDDEN",
-            )
-        if decision == "approved" and not target_covered:
-            raise AppException(
-                "Admin approval override requires target-covered confirmation.",
-                status_code=422,
-                error_code="DAILY_REPORT_TARGET_CONFIRMATION_REQUIRED",
-            )
-        report = await self._get_required(report_id, for_update=True)
-        if report.status == "approved":
-            raise AppException(
-                "Approved reports cannot be overridden.",
-                status_code=409,
-                error_code="DAILY_REPORT_APPROVED_LOCKED",
-            )
-        previous_status = report.status
-        report.revision += 1
-        if decision == "approved":
-            report.status = "approved"
-            report.approved_by = actor.id
-            report.approved_at = utc_now()
-            report.rejection_comments = None
-            await self._consume_report_materials(report, actor)
-        else:
-            report.status = "draft"
-            report.rejection_comments = reason.strip()
-        await self._record_history(
-            report=report,
-            actor=actor,
-            decision=decision,
-            previous_status=previous_status,
-            comments=f"Admin override: {reason.strip()}",
+        del report_id, actor, decision, reason, target_covered
+        raise AppException(
+            "Report override is not part of the supported role policy.",
+            status_code=403,
+            error_code="DAILY_REPORT_OVERRIDE_FORBIDDEN",
         )
-        await self.audit.record(
-            action=f"daily_reports.override_{decision}",
-            user_id=actor.id,
-            entity_type="daily_reports",
-            entity_id=report.id,
-            comments=reason.strip(),
-            new_values={"target_covered": target_covered},
-        )
-        await self.notifications.create(
-            user_id=report.engineer_id,
-            title="Daily report override",
-            body=append_link(
-                f"{report.report_number or 'Daily report'} was overridden: {decision}.",
-                label="Open report",
-                url=daily_report_url(report.id),
-            ),
-            notification_type="approval",
-            reference_type="daily_report",
-            reference_id=report.id,
-        )
-        if decision == "approved":
-            self._queue_post_approval_tasks(report.id, actor.id)
-        await self.session.commit()
-        return await self._get_required(report.id)
 
     async def reject_report(
         self,
@@ -456,18 +407,25 @@ class ReportService:
         offset: int,
     ) -> tuple[list[DailyReport], int]:
         self._validate_status(status)
-        engineer_id = actor.id if actor.role == ROLE_CIVIL_ENGINEER else None
+        has_view = has_permission(actor, PERMISSION_REPORTS_VIEW)
+        has_submit = has_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        if not has_view and not has_submit:
+            raise AppException(
+                "You do not have access to daily reports.",
+                status_code=403,
+                error_code="DAILY_REPORT_FORBIDDEN",
+            )
+        own_work_only = not has_view
+        engineer_id = actor.id if own_work_only else None
         project_ids: list[UUID] | None = None
-        if actor.role == ROLE_PROJECT_MANAGER:
-            if project_id is None:
+        if actor.role not in COMPANY_RESOURCE_ROLES:
+            if project_id is not None:
+                await self._ensure_project_member(project_id, actor)
+            else:
                 project_ids = await self.projects.list_project_ids_for_user(actor.id)
                 if not project_ids:
                     return [], 0
-            else:
-                await self._ensure_project_member(project_id, actor)
-        elif actor.role == ROLE_CIVIL_ENGINEER and project_id:
-            await self._ensure_project_member(project_id, actor)
-        elif actor.role not in DAILY_REPORT_READ_ROLES:
+        if not own_work_only and actor.role not in DAILY_REPORT_READ_ROLES:
             raise AppException(
                 "You do not have access to daily reports.",
                 status_code=403,
@@ -565,7 +523,7 @@ class ReportService:
         project = await self.projects.get_by_id(project_id)
         if not project:
             raise NotFoundException("Project")
-        if actor.role in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        if actor.role in COMPANY_RESOURCE_ROLES:
             return project
         members = await self.projects.list_members(project_id)
         if not any(member.user_id == actor.id for member in members):
@@ -573,19 +531,37 @@ class ReportService:
         return project
 
     async def _ensure_report_access(self, report: DailyReport, actor: User) -> None:
-        if actor.role == ROLE_CIVIL_ENGINEER and report.engineer_id == actor.id:
+        if (
+            report.engineer_id == actor.id
+            and has_permission(actor, PERMISSION_REPORTS_SUBMIT)
+        ):
+            await self._ensure_project_member(report.project_id, actor)
             return
         if actor.role in COMPANY_WIDE_ROLES:
             return
-        if actor.role == ROLE_PROJECT_MANAGER:
+        if has_permission(actor, PERMISSION_REPORTS_VIEW):
             await self._ensure_project_member(report.project_id, actor)
             return
         raise NotFoundException("Daily report")
 
     async def _ensure_approver(self, report: DailyReport, actor: User) -> None:
-        if actor.role in {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER}:
+        if actor.role not in REPORT_APPROVER_ROLES or not has_permission(
+            actor, PERMISSION_REPORTS_APPROVE
+        ):
+            raise AppException(
+                "You do not have approval access for this daily report.",
+                status_code=403,
+                error_code="DAILY_REPORT_APPROVAL_FORBIDDEN",
+            )
+        if report.engineer_id == actor.id:
+            raise AppException(
+                "Authors cannot approve their own daily reports.",
+                status_code=403,
+                error_code="REPORT_SELF_APPROVAL_FORBIDDEN",
+            )
+        if actor.role in COMPANY_RESOURCE_ROLES:
             return
-        if actor.role == ROLE_PROJECT_MANAGER:
+        if actor.role in REPORT_APPROVER_ROLES:
             await self._ensure_project_member(report.project_id, actor)
             return
         raise AppException(
@@ -622,17 +598,26 @@ class ReportService:
         body: str,
         notification_type: str,
     ) -> None:
-        members = await self.projects.list_members(report.project_id)
-        for member in members:
-            if member.role_in_project == "project_manager":
-                await self.notifications.create(
-                    user_id=member.user_id,
-                    title=title,
-                    body=body,
-                    notification_type=notification_type,
-                    reference_type="daily_report",
-                    reference_id=report.id,
-                )
+        recipients = await self.session.scalars(
+            select(User.id)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
+                ProjectMember.project_id == report.project_id,
+                ProjectMember.deleted_at.is_(None),
+                User.role.in_(REPORT_APPROVER_ROLES - COMPANY_RESOURCE_ROLES),
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        for user_id in recipients:
+            await self.notifications.create(
+                user_id=user_id,
+                title=title,
+                body=body,
+                notification_type=notification_type,
+                reference_type="daily_report",
+                reference_id=report.id,
+            )
 
     async def _consume_report_materials(self, report: DailyReport, actor: User) -> None:
         from app.services.inventory_service import InventoryService
@@ -640,21 +625,21 @@ class ReportService:
         await InventoryService(self.session).consume_daily_report_materials(report, actor)
 
     def _ensure_engineer(self, actor: User) -> None:
-        if actor.role not in {ROLE_ADMIN, ROLE_CIVIL_ENGINEER}:
+        if actor.role not in OFFICIAL_REPORT_AUTHOR_ROLES or not has_permission(
+            actor, PERMISSION_REPORTS_SUBMIT
+        ):
             raise AppException(
-                "Only Civil Engineers can manage official daily reports.",
+                "This role cannot author official daily reports.",
                 status_code=403,
                 error_code="DAILY_REPORT_ENGINEER_REQUIRED",
             )
 
     def _validate_report_date(self, report_date, actor: User) -> None:
-        if actor.role == ROLE_ADMIN:
-            return
         if report_date < business_today():
             raise AppException(
-                "Past-dated daily reports require Admin submission.",
+                "Past-dated daily reports are not supported.",
                 status_code=422,
-                error_code="DAILY_REPORT_PAST_DATE_REQUIRES_ADMIN",
+                error_code="DAILY_REPORT_PAST_DATE_UNSUPPORTED",
             )
 
     def _report_values(self, payload: DailyReportCreateRequest | DailyReportUpdateRequest) -> dict:

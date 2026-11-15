@@ -97,11 +97,13 @@ beforeAll(() => {
 function renderApp({
   route,
   permissions = [],
-  isAuthenticated = true
+  isAuthenticated = true,
+  role = 'operations_director'
 }: {
   route: string;
   permissions?: string[];
   isAuthenticated?: boolean;
+  role?: string;
 }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -120,7 +122,7 @@ function renderApp({
           id: 'user-1',
           email: 'manager@example.com',
           full_name: 'Manager User',
-          role: 'general_manager',
+          role,
           employee_code: 'MGR-001',
           phone: '+97450000000',
           designation: 'Manager',
@@ -161,6 +163,23 @@ describe('App route smoke tests', () => {
     expect(html).toContain('Suppliers And Compliance');
   });
 
+  it('keeps priced project creation director-only even when project managers can manage projects', () => {
+    const projectManager = renderApp({
+      route: '/projects',
+      role: 'group_project_manager',
+      permissions: ['projects:manage', 'projects:read']
+    });
+    expect(projectManager).toContain('Projects');
+    expect(projectManager).not.toContain('New project');
+
+    const director = renderApp({
+      route: '/projects',
+      role: 'managing_director',
+      permissions: ['projects:manage', 'projects:read']
+    });
+    expect(director).toContain('New project');
+  });
+
   it('renders import route for admins', () => {
     const html = renderApp({ route: '/admin/imports', permissions: ['users:manage'] });
 
@@ -188,12 +207,12 @@ describe('App route smoke tests', () => {
     expect(html).toContain('There is no staging deployment.');
     expect(html).toContain('D-28: Records owner approval of the retain-only policy');
     expect(html).toContain('D-29: System owner approval of independent backup targets');
-    expect(html).toContain('D-32: QA lead approval of Chrome and Edge targets');
+    expect(html).toContain('D-32: QA lead approval of the Chrome target');
     expect(html).toContain('Daily and monthly database backup schedules are configured.');
     expect(html).toContain(
       'This does not prove a successful run or recovery of referenced files; both require operational evidence and an executed restore drill.'
     );
-    expect(html).toContain('Desktop Chrome and Edge, including degraded-network checks.');
+    expect(html).toContain('Desktop Chrome, including degraded-network checks.');
   });
 
   it('renders profile route for signed-in users', () => {
@@ -221,5 +240,34 @@ describe('App route smoke tests', () => {
     const html = renderApp({ route: '/suppliers', permissions: ['inventory:view'] });
 
     expect(html).toContain('data-navigate-to="/dashboard"');
+  });
+
+  it('keeps supervisor review limited to viewers and the update editor limited to supervisors', () => {
+    const quantitySurveyor = renderApp({
+      route: '/reports/supervisor-update',
+      role: 'quantity_surveyor',
+      permissions: ['reports:submit']
+    });
+    expect(quantitySurveyor).toContain('data-navigate-to="/dashboard"');
+    expect(quantitySurveyor).not.toContain('Supervisor Site Update');
+
+    const siteSupervisor = renderApp({
+      route: '/reports/supervisor-update',
+      role: 'site_supervisor',
+      permissions: ['reports:submit']
+    });
+    expect(siteSupervisor).toContain('Supervisor Site Update');
+  });
+
+  it('does not mount an HR workspace route as part of role replacement', () => {
+    const html = renderApp({
+      route: '/hr',
+      role: 'hr_manager',
+      permissions: ['users:manage', 'users:read', 'audit:view', 'dashboard:company']
+    });
+
+    expect(html).toContain('data-navigate-to="/dashboard"');
+    expect(html).not.toContain('HR &amp; Workforce Hub');
+    expect(html).not.toContain('HR &amp; Workforce');
   });
 });

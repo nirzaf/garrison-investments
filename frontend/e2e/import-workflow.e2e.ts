@@ -62,10 +62,17 @@ test('launch imports reconcile linked records and retry opening stock without du
       mimeType: 'text/csv',
       buffer: Buffer.from([columns, ...rows, ''].join('\n'))
     });
+    const previewed = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/v1/imports/${type}/preview`)
+    );
     await preview.click();
+    const response = await previewed;
+    expect(response.ok(), `Preview returned HTTP ${response.status()}`).toBe(true);
+    return response.json() as Promise<{ valid: boolean; errors: { row: number; field: string }[] }>;
   };
   const importRows = async (type: string, rows: string[]) => {
-    await selectCsv(type, rows);
+    const preview = await selectCsv(type, rows);
+    expect(preview.valid).toBe(true);
     await expect(page.getByText('valid', { exact: true })).toBeVisible();
     const completed = page.waitForResponse((response) =>
       response.url().endsWith(`/imports/${type}/run`)
@@ -80,17 +87,19 @@ test('launch imports reconcile linked records and retry opening stock without du
     await expect(page.getByText(`Import completed: ${rows.length} rows, 0 errors.`)).toBeVisible();
   };
 
-  await selectCsv('users', [
+  const invalidUserPreview = await selectCsv('users', [
     `${userEmail},Imported Operator,invalid_role,EMP-${marker},1234567,Operator,FixturePass123!`
   ]);
+  expect(invalidUserPreview.valid).toBe(false);
+  expect(invalidUserPreview.errors).toContainEqual(expect.objectContaining({ row: 2, field: 'role' }));
   await expect(page.getByText(/Row 2, role:/)).toBeVisible();
   await expect(run).toHaveCount(0);
   expect((await get('/users', { search: userEmail })).items).toEqual([]);
   await importRows('users', [
-    `${userEmail},Imported Operator,store_keeper,EMP-${marker},1234567,Operator,FixturePass123!`
+    `${userEmail},Imported Operator,site_supervisor,EMP-${marker},1234567,Operator,FixturePass123!`
   ]);
   expect((await get('/users', { search: userEmail })).items).toEqual([
-    expect.objectContaining({ email: userEmail, role: 'store_keeper', employee_code: `EMP-${marker}` })
+    expect.objectContaining({ email: userEmail, role: 'site_supervisor', employee_code: `EMP-${marker}` })
   ]);
   await importRows('projects', [
     `${projectCode},Import Project ${marker},Fixture yard,Fit out,active,12500.25,2026-01-01,2027-01-01,Client,CON-${marker}`

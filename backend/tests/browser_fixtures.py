@@ -5,7 +5,8 @@ import asyncio
 import json
 import os
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -90,12 +91,14 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
                 )
                 session.add(project)
                 await session.flush()
-            if role == "civil_supervisor":
+            if role == "site_supervisor":
                 session.add(ProjectMember(project_id=project.id, user_id=user.id))
-            if role == "project_manager" and existing_project_id is not None:
+            if role == "group_project_manager" and existing_project_id is not None:
                 session.add(
                     ProjectMember(
-                        project_id=project.id, user_id=user.id, role_in_project="project_manager"
+                        project_id=project.id,
+                        user_id=user.id,
+                        role_in_project="group_project_manager",
                     )
                 )
             project_id = str(project.id)
@@ -103,6 +106,185 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
     finally:
         await engine.dispose()
     print(json.dumps({"email": email, "password": password, "projectId": project_id}))
+
+
+async def seed_delegation() -> None:
+    from app.database import AsyncSessionLocal, engine
+    from app.models.approval import Approval
+    from app.models.inventory import (
+        InventoryItem,
+        MaterialRequest,
+        MaterialRequestLine,
+        StorageLocation,
+    )
+    from app.models.project import Project
+    from app.models.user import User
+    from app.utils.security import hash_password, utc_now
+    from app.utils.time import business_today
+
+    identifier = uuid4().hex[:12]
+    email = f"browser-delegator-{identifier}@example.com"
+    password = secrets.token_urlsafe(24)
+    title = f"Browser delegation {identifier}"
+    candidate_name = "Browser Candidate 060"
+    try:
+        async with AsyncSessionLocal() as session:
+            actor = User(
+                email=email,
+                full_name=f"Browser Test Operations Director {identifier}",
+                role="operations_director",
+                employee_code=f"E2E-{identifier}",
+                password_hash=hash_password(password),
+                must_change_password=False,
+            )
+            submitter = User(
+                email=f"browser-submitter-{identifier}@example.com",
+                full_name=f"Browser Submitter {identifier}",
+                role="quantity_surveyor",
+                employee_code=f"E2E-SUB-{identifier}",
+                password_hash=hash_password(secrets.token_urlsafe(24)),
+                must_change_password=False,
+            )
+            candidates = [
+                User(
+                    email=f"browser-candidate-{identifier}-{index:03d}@example.com",
+                    full_name=f"Browser Candidate {index:03d}",
+                    role="managing_director",
+                    employee_code=f"E2E-CAN-{identifier}-{index:03d}",
+                    password_hash=hash_password(secrets.token_urlsafe(24)),
+                    must_change_password=False,
+                )
+                for index in range(61)
+            ]
+            project = Project(
+                name=f"Browser Delegation {identifier}",
+                code=f"BD-{identifier}",
+                status="active",
+                scope_of_work="Browser delegation search regression",
+                target_end_date=business_today() + timedelta(days=30),
+                created_by=actor.id,
+            )
+            session.add_all([actor, submitter, *candidates, project])
+            await session.flush()
+            location = StorageLocation(
+                name=f"Browser Store {identifier}",
+                code=f"BS-{identifier}",
+                location_type="project_site",
+                project_id=project.id,
+            )
+            item = InventoryItem(
+                name=f"Browser item {identifier}",
+                item_code=f"BI-{identifier}",
+                category="Browser test",
+                item_type="consumable",
+                unit="each",
+            )
+            session.add_all([location, item])
+            await session.flush()
+            request = MaterialRequest(
+                request_number=f"BR-{identifier}",
+                project_id=project.id,
+                requester_id=submitter.id,
+                from_location_id=location.id,
+                status="requested",
+                notes="Disposable browser-test approval.",
+            )
+            session.add(request)
+            await session.flush()
+            approval = Approval(
+                request_type="material_request",
+                request_id=request.id,
+                project_id=project.id,
+                submitter_id=submitter.id,
+                approver_id=actor.id,
+                status="pending",
+                title=title,
+                submitted_at=utc_now(),
+                due_at=utc_now() + timedelta(days=1),
+            )
+            session.add_all(
+                [
+                    MaterialRequestLine(
+                        request_id=request.id,
+                        item_id=item.id,
+                        quantity=Decimal("1.000"),
+                    ),
+                    approval,
+                ]
+            )
+            await session.flush()
+            await session.commit()
+    finally:
+        await engine.dispose()
+    print(
+        json.dumps(
+            {
+                "email": email,
+                "password": password,
+                "approvalId": str(approval.id),
+                "approvalTitle": title,
+                "candidateId": str(candidates[60].id),
+                "candidateName": candidate_name,
+            }
+        )
+    )
+
+
+async def seed_analytics_finance(project_id: UUID) -> None:
+    """Create read-only finance facts for analytics browser coverage."""
+    from app.database import AsyncSessionLocal, engine
+    from app.models.finance import Invoice, Payment
+    from app.models.project import Project
+    from app.utils.security import utc_now
+
+    try:
+        async with AsyncSessionLocal() as session:
+            project = await session.get(Project, project_id)
+            if project is None or project.created_by is None:
+                raise ValueError("The analytics browser-test project is unavailable.")
+            first = Invoice(
+                invoice_number=f"AN-{project_id.hex[:8]}-1",
+                project_id=project.id,
+                invoice_date=date(2024, 1, 1),
+                due_date=date(2024, 1, 31),
+                amount=Decimal("100.00"),
+                tax_amount=Decimal("7.25"),
+                total_amount=Decimal("107.25"),
+                status="approved",
+                payment_status="partial",
+                created_by=project.created_by,
+                approved_by=project.created_by,
+                approved_at=utc_now(),
+            )
+            second = Invoice(
+                invoice_number=f"AN-{project_id.hex[:8]}-2",
+                project_id=project.id,
+                invoice_date=date(2024, 1, 1),
+                due_date=date(2024, 1, 31),
+                amount=Decimal("100.00"),
+                tax_amount=Decimal("7.25"),
+                total_amount=Decimal("107.25"),
+                status="approved",
+                payment_status="unpaid",
+                created_by=project.created_by,
+                approved_by=project.created_by,
+                approved_at=utc_now(),
+            )
+            session.add_all([first, second])
+            await session.flush()
+            session.add(
+                Payment(
+                    invoice_id=first.id,
+                    payment_date=date(2024, 1, 15),
+                    amount=Decimal("42.15"),
+                    method="browser test fixture",
+                    recorded_by=project.created_by,
+                )
+            )
+            await session.commit()
+    finally:
+        await engine.dispose()
+    print(json.dumps({"seeded": True, "projectId": str(project_id)}))
 
 
 async def expire_login_challenge(challenge_id: UUID) -> None:
@@ -133,22 +315,38 @@ if __name__ == "__main__":
     from app.utils.permissions import VALID_ROLES
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["seed", "seed-supervisor", "serve", "expire-login"])
-    parser.add_argument("--role", choices=sorted(VALID_ROLES), default="admin")
+    parser.add_argument(
+        "command",
+        choices=[
+            "seed",
+            "seed-supervisor",
+            "seed-delegation",
+            "seed-analytics-finance",
+            "serve",
+            "expire-login",
+        ],
+    )
+    parser.add_argument("--role", choices=sorted(VALID_ROLES), default="managing_director")
     parser.add_argument("--project-id", type=UUID)
     parser.add_argument("--challenge-id", type=UUID)
     args = parser.parse_args()
     if args.command == "expire-login" and args.challenge_id is None:
         parser.error("expire-login requires --challenge-id")
+    if args.command == "seed-analytics-finance" and args.project_id is None:
+        parser.error("seed-analytics-finance requires --project-id")
     configure()
     if args.command == "serve":
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
     elif args.command == "expire-login":
         asyncio.run(expire_login_challenge(args.challenge_id))
+    elif args.command == "seed-delegation":
+        asyncio.run(seed_delegation())
+    elif args.command == "seed-analytics-finance":
+        asyncio.run(seed_analytics_finance(args.project_id))
     else:
         asyncio.run(
             seed(
-                "civil_supervisor" if args.command == "seed-supervisor" else args.role,
+                "site_supervisor" if args.command == "seed-supervisor" else args.role,
                 args.project_id,
             )
         )

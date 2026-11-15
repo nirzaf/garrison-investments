@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -12,6 +13,9 @@ USER = "7c764ad1-c6e1-4ad1-a286-84bdd525b7ed"
 PROJECT = "954ac3cf-71c2-4492-986e-5f98a5e9343d"
 BATCH = "ac033ed0-7643-4e31-9abf-9d647833af01"
 TOKEN = "test-only-bearer-do-not-print"
+ROLE_MATRIX = json.loads(Path(__file__).with_name("business_role_matrix.json").read_text())
+RETIRED_ROLE_KEYS = ROLE_MATRIX["retired_roles"]
+TARGET_ROLE_KEYS = tuple(ROLE_MATRIX["roles"])
 
 
 def invoke(args, handler=None):
@@ -134,7 +138,7 @@ def test_role_plan_requires_matching_state_and_verifies_apply():
     user = {
         "id": USER,
         "email": "engineer@example.com",
-        "role": "civil_engineer",
+        "role": "quantity_surveyor",
         "updated_at": "2026-11-14T00:00:00Z",
     }
     writes = []
@@ -145,21 +149,35 @@ def test_role_plan_requires_matching_state_and_verifies_apply():
         if path.endswith("/auth/me"):
             return response({"id": ACTOR, "permissions": ["users:manage"]})
         if path.endswith("/users/roles"):
-            return response({"items": [{"role": "project_manager", "permissions": []}]})
+            return response(
+                {
+                    "items": [
+                        {
+                            "role": "group_project_manager",
+                            "permissions": [],
+                            "assignable": True,
+                        }
+                    ]
+                }
+            )
         if request.method == "GET" and path.endswith("/users"):
             assert request.url.params["email"] == user["email"]
             return response({"items": [user], "total": 1})
         if request.method == "PATCH":
             payload = json.loads(request.content)
-            assert payload == {"role": "project_manager", "expected_updated_at": user["updated_at"]}
+            assert payload == {
+                "role": "group_project_manager",
+                "expected_updated_at": user["updated_at"],
+            }
             writes.append(payload)
             user["role"] = payload["role"]
             return response(user, request_id="role-write")
         return response(user)
 
-    args = ["users", "set-role", "--email", user["email"], "--role", "project_manager"]
+    args = ["users", "set-role", "--email", user["email"], "--role", "group_project_manager"]
     code, preview = invoke([*args, "--dry-run"], handler)
-    assert code == 0 and not writes and preview["outcome"] == "preview"
+    assert code == 0, preview["errors"]
+    assert not writes and preview["outcome"] == "preview"
     expect = preview["data"]["plan_sha256"]
     assert invoke([*args, "--apply"], handler)[0] == 2
     assert invoke([*args, "--apply", "--expect", "0" * 64], handler)[0] == 4
@@ -167,6 +185,53 @@ def test_role_plan_requires_matching_state_and_verifies_apply():
     code, result = invoke([*args, "--apply", "--expect", expect], handler)
     assert code == 0 and len(writes) == 1
     assert result["changed"] is True and result["request_id"] == "role-write"
+
+
+@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+def test_role_command_rejects_each_retired_key_before_planning_or_writing(retired_role: str):
+    target = {
+        "id": USER,
+        "email": "target@example.com",
+        "role": "quantity_surveyor",
+        "updated_at": "2026-11-14T00:00:00Z",
+    }
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.url.path.endswith("/auth/me"):
+            return response({"id": ACTOR, "permissions": ["users:manage"]})
+        if request.url.path == "/api/v1/users":
+            return response({"items": [target], "total": 1})
+        if request.url.path == f"/api/v1/users/{USER}":
+            return response(target)
+        if request.url.path == "/api/v1/users/roles":
+            return response(
+                {
+                    "items": [
+                        {"role": role, "permissions": [], "assignable": True}
+                        for role in TARGET_ROLE_KEYS
+                    ]
+                }
+            )
+        raise AssertionError(f"Unexpected CLI request: {request.method} {request.url.path}")
+
+    code, result = invoke(
+        [
+            "users",
+            "set-role",
+            "--email",
+            target["email"],
+            "--role",
+            retired_role,
+            "--dry-run",
+        ],
+        handler,
+    )
+
+    assert code != 0
+    assert "Unknown role" in json.dumps(result)
+    assert not any(method in {"POST", "PATCH", "DELETE"} for method, _ in calls)
 
 
 def test_import_retry_keeps_key_and_partial_receipt_fails(tmp_path):

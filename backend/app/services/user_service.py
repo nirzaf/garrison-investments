@@ -11,8 +11,9 @@ from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, User
 from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
     PERMISSION_USERS_MANAGE,
-    ROLE_ADMIN,
+    can_assign_user_role,
     ensure_permission,
     validate_role,
 )
@@ -48,11 +49,14 @@ class UserService:
 
     async def create_user(self, payload: UserCreateRequest, actor: User) -> User:
         validate_password_policy(payload.temporary_password)
+        target_role = validate_role(payload.role)
         await self._lock_managed_users(actor)
+        if not can_assign_user_role(actor.role, target_role):
+            raise PermissionDeniedException(PERMISSION_USERS_MANAGE)
         user = User(
             email=payload.email.lower(),
             full_name=payload.full_name.strip(),
-            role=validate_role(payload.role),
+            role=target_role,
             employee_code=payload.employee_code.strip(),
             phone=payload.phone.strip(),
             designation=payload.designation.strip() if payload.designation else None,
@@ -85,30 +89,48 @@ class UserService:
         return user
 
     async def update_user(self, user_id: UUID, payload: UserUpdateRequest, actor: User) -> User:
+        if ("role" in payload.model_fields_set or "is_active" in payload.model_fields_set) and (
+            payload.expected_updated_at is None
+        ):
+            raise AppException(
+                "Reload the user and include expected_updated_at before changing access.",
+                status_code=422,
+                error_code="USER_PRECONDITION_REQUIRED",
+            )
         user = await self._lock_target(
             actor,
             user_id,
             payload.expected_updated_at,
-            include_active_admins=payload.role is not None or payload.is_active is not None,
+            include_active_directors=payload.role is not None or payload.is_active is not None,
         )
         role = validate_role(payload.role) if payload.role is not None else user.role
         active = user.is_active if payload.is_active is None else payload.is_active
+        if not can_assign_user_role(actor.role, user.role) or not can_assign_user_role(
+            actor.role, role
+        ):
+            raise PermissionDeniedException(PERMISSION_USERS_MANAGE)
+        if user.id == actor.id and role != user.role:
+            raise AppException(
+                "You cannot change your own role.",
+                status_code=409,
+                error_code="SELF_ROLE_CHANGE_BLOCKED",
+            )
         if user.id == actor.id and not active:
             raise AppException(
-                "Admins cannot deactivate their own account.",
+                "You cannot deactivate your own account.",
                 status_code=409,
                 error_code="SELF_DEACTIVATION_BLOCKED",
             )
         if (
             user.is_active
-            and user.role == ROLE_ADMIN
-            and (not active or role != ROLE_ADMIN)
-            and not await self.users.has_other_usable_admin(user.id)
+            and user.role in COMPANY_RESOURCE_ROLES
+            and (not active or role not in COMPANY_RESOURCE_ROLES)
+            and not await self.users.has_other_usable_director(user.id)
         ):
             raise AppException(
-                "At least one other administrator must be able to sign in.",
+                "At least one other director account must be able to sign in.",
                 status_code=409,
-                error_code="LAST_ADMINISTRATOR_REQUIRED",
+                error_code="LAST_ACCESS_MANAGER_REQUIRED",
             )
         old_values = {
             "full_name": user.full_name,
@@ -180,8 +202,16 @@ class UserService:
                 status_code=409,
                 error_code="SELF_PASSWORD_RESET_BLOCKED",
             )
+        if payload.expected_updated_at is None:
+            raise AppException(
+                "Reload the user and include expected_updated_at before resetting credentials.",
+                status_code=422,
+                error_code="USER_PRECONDITION_REQUIRED",
+            )
         validate_password_policy(payload.new_password)
         user = await self._lock_target(actor, user_id, payload.expected_updated_at)
+        if not can_assign_user_role(actor.role, user.role):
+            raise PermissionDeniedException(PERMISSION_USERS_MANAGE)
         user.password_hash = hash_password(payload.new_password)
         user.must_change_password = True
         user.access_revision += 1
@@ -198,12 +228,12 @@ class UserService:
         return user
 
     async def _lock_managed_users(
-        self, actor: User, *targets: UUID, include_active_admins: bool = False
+        self, actor: User, *targets: UUID, include_active_directors: bool = False
     ) -> dict[UUID, User]:
         actor_access_revision = actor.access_revision
         await self.users.lock_access_management()
         users = await self.users.lock_users(
-            actor.id, *targets, include_active_admins=include_active_admins
+            actor.id, *targets, include_active_directors=include_active_directors
         )
         current_actor = users.get(actor.id)
         if (
@@ -221,10 +251,10 @@ class UserService:
         user_id: UUID,
         expected_updated_at: datetime | None,
         *,
-        include_active_admins: bool = False,
+        include_active_directors: bool = False,
     ) -> User:
         users = await self._lock_managed_users(
-            actor, user_id, include_active_admins=include_active_admins
+            actor, user_id, include_active_directors=include_active_directors
         )
         user = users.get(user_id)
         if not user:

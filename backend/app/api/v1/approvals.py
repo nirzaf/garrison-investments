@@ -103,13 +103,16 @@ async def list_delegation_candidates(
     approval_id: UUID,
     current_user: CanUseApprovalInbox,
     session: DbSession,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ApprovalDelegateListResponse:
-    candidates = await ApprovalService(session).list_delegation_candidates(
-        approval_id, current_user
+    candidates, total = await ApprovalService(session).list_delegation_candidates(
+        approval_id, current_user, search=search, limit=limit, offset=offset
     )
     return ApprovalDelegateListResponse(
         items=[ApprovalDelegateResponse.model_validate(user) for user in candidates],
-        total=len(candidates),
+        total=total,
     )
 
 

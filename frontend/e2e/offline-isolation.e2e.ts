@@ -44,7 +44,7 @@ async function signIn(page: Page, account: TestAccount): Promise<string> {
   return access_token;
 }
 
-async function signOut(page: Page, roleLabel = 'Admin') {
+async function signOut(page: Page, roleLabel = 'Managing Director') {
   await page.getByRole('button', { name: `Browser Test ${roleLabel}` }).click();
   page.once('dialog', async (dialog) => {
     expect(dialog.message()).toContain('Unsynced work will be lost.');
@@ -200,7 +200,7 @@ test('a supervisor draft survives session expiry for its owner and legacy data s
   await nextTab.getByRole('link', { name: 'Reports', exact: true }).click();
   await expect(nextTab.getByLabel('Progress notes')).toHaveValue('');
   await expect.poll(() => ownedRecordCount(nextTab, 'ownedSupervisorDrafts')).toBe(1);
-  await signOut(nextTab, 'Civil Supervisor');
+  await signOut(nextTab, 'Site Supervisor');
   await signIn(nextTab, first);
   await nextTab.getByRole('link', { name: 'Reports', exact: true }).click();
   await expect(nextTab.getByLabel('Progress notes')).toHaveValue('First supervisor local notes');

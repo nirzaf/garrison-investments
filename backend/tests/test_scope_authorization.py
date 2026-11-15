@@ -77,7 +77,7 @@ async def upload_document(client, team: dict, *, project_scoped: bool = True) ->
         "/api/v1/documents",
         data=data,
         files={"file": ("wir.pdf", pdf_bytes("v1"), "application/pdf")},
-        headers=auth(team["engineer_token"] if project_scoped else team["op_token"]),
+        headers=auth(team["op_token"]),
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -147,13 +147,16 @@ async def test_recent_photo_feed_is_project_and_owner_scoped() -> None:
         assert op_feed.status_code == 200
         assert photo_id in {item["id"] for item in op_feed.json()["items"]}
 
-        accounts_email, accounts_password = await create_user("accounts")
+        accounts_email, accounts_password = await create_user("administrative_executive")
         accounts_token = await login_for_token(client, accounts_email, accounts_password)
         accounts_feed = await client.get(
             "/api/v1/photos", params=PHOTO_FEED, headers=auth(accounts_token)
         )
         assert accounts_feed.status_code == 200
-        assert photo_id in {item["id"] for item in accounts_feed.json()["items"]}
+        assert photo_id not in {item["id"] for item in accounts_feed.json()["items"]}
+        assert (
+            await client.get(f"/api/v1/photos/{photo_id}", headers=auth(accounts_token))
+        ).status_code == 404
 
         supervisor = auth(team_a["supervisor_token"])
         supervisor_feed = await client.get("/api/v1/photos", params=PHOTO_FEED, headers=supervisor)
@@ -169,17 +172,9 @@ async def test_recent_photo_feed_is_project_and_owner_scoped() -> None:
         )
         assert update_files.status_code == 200
 
-        # Project membership alone must not reveal another engineer's report evidence.
-        engineer = await client.get("/api/v1/auth/me", headers=auth(team_b["engineer_token"]))
-        membership = await client.post(
-            f"/api/v1/projects/{team_a['project_id']}/members",
-            json={"user_id": engineer.json()["id"], "role_in_project": "civil_engineer"},
-            headers=auth(team_a["op_token"]),
-        )
-        assert membership.status_code == 201, membership.text
         _, own_photo_id = await upload_report_photo(client, team_b)
         feed = await client.get(
-            "/api/v1/photos", params=PHOTO_FEED, headers=auth(team_b["engineer_token"])
+            "/api/v1/photos", params=PHOTO_FEED, headers=auth(team_b["manager_token"])
         )
         assert feed.status_code == 200
         ids = {item["id"] for item in feed.json()["items"]}
@@ -187,59 +182,55 @@ async def test_recent_photo_feed_is_project_and_owner_scoped() -> None:
         assert photo_id not in ids
 
 
-async def test_accounts_can_read_listed_reports_and_evidence() -> None:
+async def test_dashboard_only_role_cannot_read_reports_and_evidence() -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
         team_a, team_b = await two_teams(client)
         report_id, photo_id = await upload_report_photo(client, team_a)
         other_report_id, _ = await upload_report_photo(client, team_b)
-        accounts_email, accounts_password = await create_user("accounts")
-        accounts = auth(await login_for_token(client, accounts_email, accounts_password))
+        admin_exec_email, admin_exec_password = await create_user("administrative_executive")
+        admin_exec = auth(await login_for_token(client, admin_exec_email, admin_exec_password))
 
         for team, expected_id in ((team_a, report_id), (team_b, other_report_id)):
             reports = await client.get(
-                "/api/v1/reports", params={"project_id": team["project_id"]}, headers=accounts
+                "/api/v1/reports", params={"project_id": team["project_id"]}, headers=admin_exec
             )
-            assert reports.status_code == 200
-            assert {item["id"] for item in reports.json()["items"]} == {expected_id}
-            detail = await client.get(f"/api/v1/reports/{expected_id}", headers=accounts)
-            assert detail.status_code == 200
-            assert detail.json()["id"] == expected_id
+            assert reports.status_code == 403
+            assert reports.json()["error_code"] == "DAILY_REPORT_FORBIDDEN"
+            detail = await client.get(f"/api/v1/reports/{expected_id}", headers=admin_exec)
+            assert detail.status_code == 404
 
         photo_list = await client.get(
             "/api/v1/photos",
             params={"entity_type": "daily_report", "entity_id": report_id},
-            headers=accounts,
+            headers=admin_exec,
         )
-        assert photo_list.status_code == 200
-        assert {item["id"] for item in photo_list.json()["items"]} == {photo_id}
-        photo = await client.get(f"/api/v1/photos/{photo_id}", headers=accounts)
-        assert photo.status_code == 200
+        assert photo_list.status_code == 404
+        photo = await client.get(f"/api/v1/photos/{photo_id}", headers=admin_exec)
+        assert photo.status_code == 404
         for variant in ("download", "thumbnail"):
-            link = await client.get(f"/api/v1/photos/{photo_id}/{variant}", headers=accounts)
-            assert link.status_code == 200
-            assert link.json()["expires_in_seconds"] > 0
+            link = await client.get(f"/api/v1/photos/{photo_id}/{variant}", headers=admin_exec)
+            assert link.status_code == 404
 
-        draft_pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=accounts)
-        assert draft_pdf.status_code == 409
-        assert draft_pdf.json()["error_code"] == "REPORT_EXPORT_REQUIRES_APPROVAL"
+        draft_pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=admin_exec)
+        assert draft_pdf.status_code == 404
         denied_update = await client.put(
             f"/api/v1/reports/{report_id}",
             json=report_payload(team_a["project_id"]),
-            headers=accounts,
+            headers=admin_exec,
         )
         assert denied_update.status_code == 403
-        denied_submit = await client.post(f"/api/v1/reports/{report_id}/submit", headers=accounts)
+        denied_submit = await client.post(f"/api/v1/reports/{report_id}/submit", headers=admin_exec)
         assert denied_submit.status_code == 403
         denied_upload = await client.post(
             "/api/v1/photos/upload",
             data={"entity_type": "daily_report", "entity_id": report_id, "kind": "photo"},
             files={"files": ("site.jpg", jpeg_bytes(), "image/jpeg")},
-            headers=accounts,
+            headers=admin_exec,
         )
         assert denied_upload.status_code == 403
-        denied_delete = await client.delete(f"/api/v1/photos/{photo_id}", headers=accounts)
+        denied_delete = await client.delete(f"/api/v1/photos/{photo_id}", headers=admin_exec)
         assert denied_delete.status_code == 403
 
         submitted = await client.post(
@@ -248,7 +239,7 @@ async def test_accounts_can_read_listed_reports_and_evidence() -> None:
         assert submitted.status_code == 200, submitted.text
         decision = {"comments": "Ready for archive.", "target_covered": True}
         denied_approval = await client.post(
-            f"/api/v1/reports/{report_id}/approve", json=decision, headers=accounts
+            f"/api/v1/reports/{report_id}/approve", json=decision, headers=admin_exec
         )
         assert denied_approval.status_code == 403
         approved = await client.post(
@@ -258,10 +249,15 @@ async def test_accounts_can_read_listed_reports_and_evidence() -> None:
         )
         assert approved.status_code == 200, approved.text
 
-        pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=accounts)
-        assert pdf.status_code == 200
-        assert pdf.headers["content-type"] == "application/pdf"
-        assert pdf.content.startswith(b"%PDF-") and pdf.content.rstrip().endswith(b"%%EOF")
+        director_pdf = await client.get(
+            f"/api/v1/reports/{report_id}/pdf", headers=auth(team_a["op_token"])
+        )
+        assert director_pdf.status_code == 200
+        assert director_pdf.headers["content-type"] == "application/pdf"
+        pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=admin_exec)
+        assert pdf.status_code == 404
+        assert director_pdf.content.startswith(b"%PDF-")
+        assert director_pdf.content.rstrip().endswith(b"%%EOF")
         for outsider in (team_b["manager_token"], team_b["engineer_token"]):
             pdf = await client.get(f"/api/v1/reports/{report_id}/pdf", headers=auth(outsider))
             assert pdf.status_code == 404
@@ -321,7 +317,7 @@ async def test_document_read_paths_are_project_scoped() -> None:
             files={"file": ("intruder.pdf", pdf_bytes("v2"), "application/pdf")},
             headers=auth(outsider),
         )
-        assert version_upload.status_code == 404, version_upload.text
+        assert version_upload.status_code == 403, version_upload.text
 
         listed = await client.get("/api/v1/documents", params=LIST_ALL, headers=auth(outsider))
         assert listed.status_code == 200
@@ -371,16 +367,16 @@ async def test_company_wide_documents_are_hidden_from_project_roles() -> None:
         ).status_code == 200
 
 
-async def test_supervisor_updates_are_scoped_and_store_keeper_is_denied() -> None:
+async def test_supervisor_updates_are_scoped_and_unprivileged_role_is_denied() -> None:
     await skip_if_database_unavailable()
 
     async with create_test_client() as client:
         team_a, team_b = await two_teams(client)
         update_id = team_a["supervisor_update_id"]
 
-        store_email, store_password = await create_user("store_keeper")
-        store_token = await login_for_token(client, store_email, store_password)
-        denied = await client.get("/api/v1/supervisor-updates", headers=auth(store_token))
+        user_email, user_password = await create_user("administrative_executive")
+        user_token = await login_for_token(client, user_email, user_password)
+        denied = await client.get("/api/v1/supervisor-updates", headers=auth(user_token))
         assert denied.status_code == 403, denied.text
         assert denied.json()["error_code"] == "SUPERVISOR_UPDATE_FORBIDDEN"
 
@@ -428,20 +424,29 @@ async def test_document_version_approval_requires_pending_and_project_scope() ->
         version_id = document["versions"][0]["id"]
         approve_path = f"/api/v1/documents/{document_id}/versions/{version_id}/approve"
 
+        approver_email, approver_password = await create_user("managing_director")
+        approver_token = await login_for_token(client, approver_email, approver_password)
+
         foreign_pm = await client.post(
             approve_path, json={"comments": "nope"}, headers=auth(team_b["manager_token"])
         )
         assert foreign_pm.status_code == 403, foreign_pm.text
-        assert foreign_pm.json()["error_code"] == "PROJECT_FORBIDDEN"
+        assert foreign_pm.json()["error_code"] == "PERMISSION_DENIED"
+
+        self_approval = await client.post(
+            approve_path, json={"comments": "not allowed"}, headers=auth(team_a["op_token"])
+        )
+        assert self_approval.status_code == 403, self_approval.text
+        assert self_approval.json()["error_code"] == "DOCUMENT_SELF_APPROVAL_FORBIDDEN"
 
         approved = await client.post(
-            approve_path, json={"comments": "ok"}, headers=auth(team_a["manager_token"])
+            approve_path, json={"comments": "ok"}, headers=auth(approver_token)
         )
         assert approved.status_code == 200, approved.text
         assert approved.json()["active_version"] == 1
 
         replay = await client.post(
-            approve_path, json={"comments": "again"}, headers=auth(team_a["manager_token"])
+            approve_path, json={"comments": "again"}, headers=auth(approver_token)
         )
         assert replay.status_code == 409, replay.text
         assert replay.json()["error_code"] == "DOCUMENT_VERSION_NOT_PENDING"
@@ -455,12 +460,12 @@ async def test_document_version_approval_requires_pending_and_project_scope() ->
             headers=auth(team_a["manager_token"]),
         )
         assert global_approve.status_code == 403, global_approve.text
-        assert global_approve.json()["error_code"] == "DOCUMENT_APPROVAL_FORBIDDEN"
+        assert global_approve.json()["error_code"] == "PERMISSION_DENIED"
         global_ok = await client.post(
             f"/api/v1/documents/{global_document['id']}/versions/"
             f"{global_document['versions'][0]['id']}/approve",
             json={"comments": "op can"},
-            headers=auth(team_a["op_token"]),
+            headers=auth(approver_token),
         )
         assert global_ok.status_code == 200, global_ok.text
 
@@ -472,17 +477,19 @@ async def test_concurrent_document_approvals_activate_exactly_one_version() -> N
     async with create_test_client() as client:
         team_a, _ = await two_teams(client)
         document = await upload_document(client, team_a)
+        approver_email, approver_password = await create_user("managing_director")
+        approver_token = await login_for_token(client, approver_email, approver_password)
         document_id = UUID(document["id"])
         revised = await client.post(
             f"/api/v1/documents/{document_id}/versions",
             files={"file": ("wir-rev2.pdf", pdf_bytes("v2"), "application/pdf")},
-            headers=auth(team_a["engineer_token"]),
+            headers=auth(team_a["op_token"]),
         )
         assert revised.status_code == 200, revised.text
         pending = max(revised.json()["versions"], key=lambda item: item["version"])
         assert pending["status"] == "pending_approval"
         version_id = UUID(pending["id"])
-        me = (await client.get("/api/v1/auth/me", headers=auth(team_a["manager_token"]))).json()
+        me = (await client.get("/api/v1/auth/me", headers=auth(approver_token))).json()
         manager_id = UUID(me["id"])
 
     async def approve(session):

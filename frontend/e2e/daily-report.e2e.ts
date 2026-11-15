@@ -51,7 +51,7 @@ test('offline report photos and verified supervisor evidence survive rejection a
 }) => {
   const account = seed('seed');
   const supervisor = seed('seed-supervisor', '--project-id', account.projectId);
-  const projectManager = seed('seed', '--role', 'project_manager', '--project-id', account.projectId);
+  const projectManager = seed('seed', '--role', 'group_project_manager', '--project-id', account.projectId);
   const supervisorPage = await browser.newPage();
   await signIn(supervisorPage, supervisor);
   await supervisorPage.getByRole('link', { name: 'Reports', exact: true }).click();
@@ -261,7 +261,7 @@ test('offline report photos and verified supervisor evidence survive rejection a
   await reviewer.goto(inbox);
   await expect(reviewer.getByRole('heading', { name: number, exact: true })).toHaveCount(0);
   const unrelated = await browser.newPage();
-  const unrelatedHeaders = await signIn(unrelated, seed('seed', '--role', 'project_manager'));
+  const unrelatedHeaders = await signIn(unrelated, seed('seed', '--role', 'group_project_manager'));
   await unrelated.goto(`/reports/daily?reportId=${original.id}`);
   await expect(unrelated.getByRole('alert')).toContainText('not found');
   await expect(unrelated.getByRole('heading', { name: number, exact: true })).toHaveCount(0);

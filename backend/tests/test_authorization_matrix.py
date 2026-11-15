@@ -1,4 +1,4 @@
-"""Report and finance access for eight roles across project scopes."""
+"""Report and finance access for all ten roles across project scopes."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -25,65 +25,61 @@ from tests.test_daily_reports import (
 pytestmark = pytest.mark.asyncio
 
 ROLES = (
-    "admin",
-    "general_manager",
-    "operation_manager",
-    "project_manager",
-    "civil_engineer",
-    "civil_supervisor",
-    "store_keeper",
-    "accounts",
+    "managing_director",
+    "operations_director",
+    "group_project_manager",
+    "mep_project_manager",
+    "quantity_surveyor",
+    "senior_site_supervisor",
+    "site_supervisor",
+    "hr_manager",
+    "hr_executive",
+    "administrative_executive",
 )
-COMPANY_WIDE = ("admin", "general_manager", "operation_manager", "accounts")
+COMPANY_WIDE = ("managing_director", "operations_director")
 SCOPES = ("own", "other", "none")
 _MATRIX_CACHE: dict = {}
 
 # GET /reports?project_id=... — list_reports()
 REPORTS_LIST: dict[str, dict[str, int]] = {
-    "admin": {"own": 200, "other": 200, "none": 200},
-    "general_manager": {"own": 200, "other": 200, "none": 200},
-    "operation_manager": {"own": 200, "other": 200, "none": 200},
-    "accounts": {"own": 200, "other": 200, "none": 200},
-    "project_manager": {"own": 200, "other": 404, "none": 200},
-    "civil_engineer": {"own": 200, "other": 404, "none": 200},
-    "civil_supervisor": {"own": 403, "other": 403, "none": 403},
-    "store_keeper": {"own": 403, "other": 403, "none": 403},
+    "managing_director": {"own": 200, "other": 200, "none": 200},
+    "operations_director": {"own": 200, "other": 200, "none": 200},
+    "group_project_manager": {"own": 200, "other": 404, "none": 200},
+    "mep_project_manager": {"own": 200, "other": 404, "none": 200},
+    "quantity_surveyor": {"own": 200, "other": 404, "none": 200},
+    "senior_site_supervisor": {"own": 200, "other": 404, "none": 200},
+    "site_supervisor": {"own": 200, "other": 404, "none": 200},
+    "hr_manager": {"own": 200, "other": 404, "none": 200},
+    "hr_executive": {"own": 200, "other": 404, "none": 200},
+    "administrative_executive": {"own": 403, "other": 403, "none": 403},
 }
 
 # GET /reports/{id} — get_report() / _ensure_report_access()
 REPORTS_GET: dict[str, dict[str, int]] = {
-    "admin": {"own": 200, "other": 200},
-    "general_manager": {"own": 200, "other": 200},
-    "operation_manager": {"own": 200, "other": 200},
-    "accounts": {"own": 200, "other": 200},
-    "project_manager": {"own": 200, "other": 404},
-    "civil_engineer": {"own": 200, "other": 404},
-    "civil_supervisor": {"own": 404, "other": 404},
-    "store_keeper": {"own": 403, "other": 403},
+    "managing_director": {"own": 200, "other": 200},
+    "operations_director": {"own": 200, "other": 200},
+    "group_project_manager": {"own": 200, "other": 404},
+    "mep_project_manager": {"own": 200, "other": 404},
+    "quantity_surveyor": {"own": 200, "other": 404},
+    "senior_site_supervisor": {"own": 404, "other": 404},
+    "site_supervisor": {"own": 404, "other": 404},
+    "hr_manager": {"own": 200, "other": 404},
+    "hr_executive": {"own": 200, "other": 404},
+    "administrative_executive": {"own": 404, "other": 404},
 }
 
 # GET /finance/invoices?project_id=... — list_invoices()
 FINANCE_LIST: dict[str, dict[str, int]] = {
-    "admin": {"own": 200, "other": 200, "none": 200},
-    "general_manager": {"own": 200, "other": 200, "none": 200},
-    "operation_manager": {"own": 200, "other": 200, "none": 200},
-    "accounts": {"own": 200, "other": 200, "none": 200},
-    "project_manager": {"own": 200, "other": 403, "none": 200},
-    "civil_engineer": {"own": 403, "other": 403, "none": 403},
-    "civil_supervisor": {"own": 403, "other": 403, "none": 403},
-    "store_keeper": {"own": 403, "other": 403, "none": 403},
+    "managing_director": {"own": 200, "other": 200, "none": 200},
+    "operations_director": {"own": 200, "other": 200, "none": 200},
+    **{role: {"own": 403, "other": 403, "none": 403} for role in ROLES if role not in COMPANY_WIDE},
 }
 
 # GET /finance/invoices/{id} — get_invoice() / _ensure_invoice_scope()
 FINANCE_GET: dict[str, dict[str, int]] = {
-    "admin": {"own": 200, "other": 200},
-    "general_manager": {"own": 200, "other": 200},
-    "operation_manager": {"own": 200, "other": 200},
-    "accounts": {"own": 200, "other": 200},
-    "project_manager": {"own": 200, "other": 403},
-    "civil_engineer": {"own": 403, "other": 403},
-    "civil_supervisor": {"own": 403, "other": 403},
-    "store_keeper": {"own": 403, "other": 403},
+    "managing_director": {"own": 200, "other": 200},
+    "operations_director": {"own": 200, "other": 200},
+    **{role: {"own": 403, "other": 403} for role in ROLES if role not in COMPANY_WIDE},
 }
 
 
@@ -156,29 +152,28 @@ async def _user_id(session: AsyncSession, email: str) -> UUID:
 
 
 async def build_matrix() -> dict:
-    """Two projects, one report and one invoice each, plus a token for all 8 roles.
+    """Two projects, one report and invoice each, with a token for all ten roles.
 
     Every matrix role is a member of the *own* project only. The other project has a
     single outsider engineer so its report exists but belongs to nobody in the matrix.
 
     The result is cached at module level: it is plain strings, so it stays valid across
     the per-test engine disposal and event loops, and 80 parametrised cases share one
-    setup instead of creating 720 users.
+    setup instead of creating 900 users.
     """
     if _MATRIX_CACHE:
         return _MATRIX_CACHE
     credentials = {role: await create_user(role) for role in ROLES}
-    outsider_email, _ = await create_user("civil_engineer")
+    outsider_email, _ = await create_user("quantity_surveyor")
 
     async with AsyncSessionLocal() as session:
         user_ids = {
-            role: await _user_id(session, email)
-            for role, (email, _) in credentials.items()
+            role: await _user_id(session, email) for role, (email, _) in credentials.items()
         }
         outsider_id = await _user_id(session, outsider_email)
-        admin_id = user_ids["admin"]
-        own = _project(admin_id)
-        other = _project(admin_id)
+        director_id = user_ids["managing_director"]
+        own = _project(director_id)
+        other = _project(director_id)
         session.add_all([own, other])
         await session.flush()
         session.add_all(
@@ -191,10 +186,10 @@ async def build_matrix() -> dict:
                 for role, user_id in user_ids.items()
             ]
         )
-        own_report = _report(own.id, user_ids["civil_engineer"])
+        own_report = _report(own.id, user_ids["quantity_surveyor"])
         other_report = _report(other.id, outsider_id)
-        own_invoice = _invoice(own.id, admin_id)
-        other_invoice = _invoice(other.id, admin_id)
+        own_invoice = _invoice(own.id, director_id)
+        other_invoice = _invoice(other.id, director_id)
         session.add_all([own_report, other_report, own_invoice, other_invoice])
         await session.commit()
         ids = {
@@ -287,8 +282,8 @@ async def test_finance_get_matrix(role: str, scope: str) -> None:
     )
 
 
-async def test_company_wide_roles_see_both_projects_in_reports_list() -> None:
-    """Guards the specific regression the plan calls out: accounts/GM losing visibility."""
+async def test_directors_see_both_projects_in_reports_list() -> None:
+    """Only MD and OD have company-wide resource scope."""
     await skip_if_database_unavailable()
     matrix = await build_matrix()
 
@@ -305,11 +300,11 @@ async def test_company_wide_roles_see_both_projects_in_reports_list() -> None:
                 assert matrix[f"{scope}_report_id"] in ids, (role, scope)
 
 
-async def test_project_manager_without_membership_sees_nothing() -> None:
+async def test_group_project_manager_without_membership_sees_nothing() -> None:
     await skip_if_database_unavailable()
     # Build the data first so "sees nothing" is proven against a populated database.
     await build_matrix()
-    email, password = await create_user("project_manager")
+    email, password = await create_user("group_project_manager")
 
     async with create_test_client() as client:
         token = await login_for_token(client, email, password)
@@ -324,5 +319,5 @@ async def test_project_manager_without_membership_sees_nothing() -> None:
 
     assert response.status_code == 200
     assert response.json()["items"] == []
-    assert finance.status_code == 200
-    assert finance.json()["items"] == []
+    assert finance.status_code == 403
+    assert finance.json()["error_code"] == "PERMISSION_DENIED"

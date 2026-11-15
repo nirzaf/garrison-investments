@@ -1346,8 +1346,15 @@
             "title": "Phase"
           },
           "planned_amount": {
-            "title": "Planned Amount",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Amount"
           },
           "planned_quantity": {
             "title": "Planned Quantity",
@@ -1363,8 +1370,15 @@
             "type": "string"
           },
           "unit_rate": {
-            "title": "Unit Rate",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Rate"
           }
         },
         "required": [
@@ -3775,8 +3789,15 @@
             "type": "string"
           },
           "total_estimated_cost": {
-            "title": "Total Estimated Cost",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Estimated Cost"
           }
         },
         "required": [
@@ -4849,12 +4870,26 @@
       "ProjectAnalyticsRow": {
         "properties": {
           "invoice_total": {
-            "title": "Invoice Total",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Total"
           },
           "paid_total": {
-            "title": "Paid Total",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Total"
           },
           "progress_percentage": {
             "title": "Progress Percentage",
@@ -5328,6 +5363,51 @@
           "revision"
         ],
         "title": "ProjectMemberRevocationResponse",
+        "type": "object"
+      },
+      "ProjectOption": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code"
+        ],
+        "title": "ProjectOption",
+        "type": "object"
+      },
+      "ProjectOptionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ProjectOptionListResponse",
         "type": "object"
       },
       "ProjectResponse": {
@@ -7647,6 +7727,15 @@
       },
       "UserRoleResponse": {
         "properties": {
+          "assignable": {
+            "default": false,
+            "title": "Assignable",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
           "permissions": {
             "items": {
               "type": "string"
@@ -7661,6 +7750,7 @@
         },
         "required": [
           "role",
+          "label",
           "permissions"
         ],
         "title": "UserRoleResponse",
@@ -8386,6 +8476,46 @@
               "format": "uuid",
               "title": "Approval Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           }
         ],
@@ -9316,6 +9446,92 @@
           }
         ],
         "summary": "Upload Document",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/project-options": {
+      "get": {
+        "operationId": "list_document_project_options_api_v1_documents_project_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Document Project Options Api V1 Documents Project Options Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Document Project Options",
         "tags": [
           "Documents"
         ]
@@ -14559,6 +14775,92 @@
           }
         ],
         "summary": "Create Report",
+        "tags": [
+          "Daily Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/project-options": {
+      "get": {
+        "operationId": "list_report_project_options_api_v1_reports_project_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOptionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Report Project Options Api V1 Reports Project Options Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Report Project Options",
         "tags": [
           "Daily Reports"
         ]

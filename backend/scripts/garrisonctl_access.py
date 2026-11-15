@@ -61,16 +61,24 @@ def roles(args: argparse.Namespace, ctx: Context) -> Any:
     raise CLIError("Role was not found.", CONFLICT)
 
 
+def has_cli_permission(ctx: Context, permission: str) -> bool:
+    identity = ctx.identity()
+    return permission in identity.get("permissions", [])
+
+
 def require_preview_permission(ctx: Context, permission: str) -> None:
-    if permission not in ctx.identity().get("permissions", []):
+    if not has_cli_permission(ctx, permission):
         raise CLIError("The authenticated account lacks the required permission.", AUTH)
 
 
-def validate_role(ctx: Context, role: str) -> str:
+def validate_role(ctx: Context, role: str, *, require_assignable: bool = False) -> str:
     normalized = role.strip().lower()
     rows = ctx.request("GET", f"{USERS}/roles")["items"]
-    if normalized not in {row["role"] for row in rows}:
+    match = next((row for row in rows if row["role"] == normalized), None)
+    if match is None:
         raise CLIError("Unknown role. See roles list.")
+    if require_assignable and not match.get("assignable", False):
+        raise CLIError("The authenticated account cannot assign that role.", AUTH)
     return normalized
 
 
@@ -93,7 +101,7 @@ def validate_payload(schema: Any, values: dict[str, Any]) -> dict[str, Any]:
 def create_user(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, MANAGE)
     values = query(args, "email", "full_name", "employee_code", "phone", "designation", "role")
-    values["role"] = validate_role(ctx, values["role"])
+    values["role"] = validate_role(ctx, values["role"], require_assignable=True)
     fields = validate_payload(UserCreateRequest, {**values, "temporary_password": "preview-only"})
     del fields["temporary_password"]
     matches = ctx.request("GET", USERS, params={"email": fields["email"], "limit": 2})["items"]
@@ -135,7 +143,7 @@ def update_user(args: argparse.Namespace, ctx: Context) -> Result:
             raise CLIError("Provide at least one field to update.")
         fields = validate_payload(UserUpdateRequest, fields)
     if operation == "set-role":
-        fields = {"role": validate_role(ctx, args.role)}
+        fields = {"role": validate_role(ctx, args.role, require_assignable=True)}
     if operation in {"activate", "deactivate"}:
         fields = {"is_active": operation == "activate"}
     self_change = user["id"] == ctx.identity()["id"]

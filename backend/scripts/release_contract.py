@@ -65,40 +65,50 @@ CI_JOBS = {
     "Compose files are valid",
 } | set().union(*CI_TEST_JOBS.values())
 ROLE_IDS = {
-    "admin",
-    "general_manager",
-    "operation_manager",
-    "project_manager",
-    "civil_engineer",
-    "civil_supervisor",
-    "store_keeper",
-    "accounts",
+    "managing_director",
+    "operations_director",
+    "group_project_manager",
+    "mep_project_manager",
+    "quantity_surveyor",
+    "senior_site_supervisor",
+    "site_supervisor",
+    "hr_manager",
+    "hr_executive",
+    "administrative_executive",
 }
-PROJECT_MANAGING_ROLES = {"admin", "general_manager", "operation_manager"}
-REPORT_APPROVER_ROLES = PROJECT_MANAGING_ROLES | {"project_manager"}
-SITE_REPORT_ROLES = {"civil_supervisor", "civil_engineer"}
+PROJECT_MANAGING_ROLES = {
+    "managing_director",
+    "operations_director",
+    "group_project_manager",
+    "mep_project_manager",
+}
+REPORT_APPROVER_ROLES = PROJECT_MANAGING_ROLES | {"hr_manager"}
+SITE_REPORT_ROLES = {"senior_site_supervisor", "site_supervisor"}
 UAT_REQUIRED_ROLES = {
-    "UAT-02": ({"admin"}, {"project_manager", "civil_engineer", "civil_supervisor"}),
-    "UAT-03": ({"admin", "operation_manager"},),
+    "UAT-02": (
+        {"managing_director"},
+        {"mep_project_manager", "quantity_surveyor", "site_supervisor"},
+    ),
+    "UAT-03": ({"managing_director", "operations_director"},),
     "UAT-04": (PROJECT_MANAGING_ROLES,),
     "UAT-05": (PROJECT_MANAGING_ROLES,),
     "UAT-06": (PROJECT_MANAGING_ROLES,),
-    "UAT-07": ({"civil_supervisor"},),
-    "UAT-08": ({"civil_engineer"}, REPORT_APPROVER_ROLES),
+    "UAT-07": ({"senior_site_supervisor", "site_supervisor"},),
+    "UAT-08": ({"quantity_surveyor"}, REPORT_APPROVER_ROLES),
     "UAT-09": (REPORT_APPROVER_ROLES,),
-    "UAT-10": ({"store_keeper"},),
-    "UAT-12": ({"store_keeper"},),
-    "UAT-13": ({"store_keeper"},),
-    "UAT-15": ({"accounts"}, {"project_manager"}),
-    "UAT-16": ({"operation_manager"},),
-    "UAT-20": ({"admin"},),
+    "UAT-10": ({"managing_director", "operations_director"},),
+    "UAT-12": ({"managing_director", "operations_director"},),
+    "UAT-13": ({"managing_director", "operations_director"},),
+    "UAT-15": ({"managing_director", "operations_director"},),
+    "UAT-16": ({"operations_director"},),
+    "UAT-20": ({"managing_director"},),
     "UAT-21": (SITE_REPORT_ROLES,),
     "UAT-22": (SITE_REPORT_ROLES,),
-    "UAT-23": ({"civil_engineer"},),
-    "UAT-24": ({"civil_engineer"},),
-    "UAT-27": ({"civil_engineer"},),
-    "UAT-28": ({"civil_engineer"},),
-    "UAT-33": ({"admin"},),
+    "UAT-23": ({"quantity_surveyor"},),
+    "UAT-24": ({"mep_project_manager"},),
+    "UAT-27": ({"quantity_surveyor"},),
+    "UAT-28": ({"site_supervisor"},),
+    "UAT-33": ({"managing_director"},),
 }
 DESKTOP_BROWSERS = {"Chrome"}
 OPERATOR_SCENARIOS = {33, 36, 37, 38, 40}
@@ -430,7 +440,12 @@ def github_record(path: str, token: str | None) -> dict[str, Any]:
 
 
 def checked_run(
-    run_id: int, sha: str, token: str | None, *, ci: bool, active: bool = False,
+    run_id: int,
+    sha: str,
+    token: str | None,
+    *,
+    ci: bool,
+    active: bool = False,
     attempt: int | None = None,
 ) -> dict[str, Any]:
     path = f"actions/runs/{run_id}"
@@ -1139,12 +1154,14 @@ def receipt_ci(
                 reported[key] += result
             shard = re.search(r"\(([12])/2\)$", jobs[job_id])
             suffix = f"-{shard[1]}" if shard else ""
-            reports_to_verify.append((
-                f"ci-{attempt}-{name}{suffix}",
-                "frontend.xml" if name == "frontend" else "test-report.xml",
-                row["archive"],
-                sha256,
-            ))
+            reports_to_verify.append(
+                (
+                    f"ci-{attempt}-{name}{suffix}",
+                    "frontend.xml" if name == "frontend" else "test-report.xml",
+                    row["archive"],
+                    sha256,
+                )
+            )
         require(report_jobs == expected_jobs, "A required CI job is missing its JUnit report.", 3)
         require(reported == counts, "JUnit test report counts differ from the receipt.", 3)
     require(suites == set(CI_TEST_JOBS), "Missing a mandatory test suite.", 3)
@@ -1491,8 +1508,12 @@ def receipt_observability(
                 {
                     key: item
                     for key, item in row.items()
-                    if key not in {
-                        "acknowledgement_ref", "recovered_at", "resolved_at", "resolution_delivery"
+                    if key
+                    not in {
+                        "acknowledgement_ref",
+                        "recovered_at",
+                        "resolved_at",
+                        "resolution_delivery",
                     }
                 }
             ),
@@ -1679,7 +1700,8 @@ def verify_repair(
         and execution["outcome"] == "pass"
         and utc(authorization["approved_at"], "repair approval")
         <= utc(authorization.get("valid_from"), "repair authorization start")
-        <= started <= completed
+        <= started
+        <= completed
         < utc(authorization.get("valid_until"), "repair authorization expiry"),
         "Legacy repair does not match its approved plan, backup, or execution window.",
         3,
@@ -1898,7 +1920,8 @@ def receipt_reconciliation(
         )
         remaining = strings(row["observed_ids"], "observed exception IDs", minimum=0)
         require(
-            remaining == inventory_exception_ids(
+            remaining
+            == inventory_exception_ids(
                 row["inventory_ref"],
                 name,
                 approvals,
@@ -1914,8 +1937,10 @@ def receipt_reconciliation(
         owner = records_owner if name == "retention" else approved["signatories"][role]
         for value in items(row["dispositions"], "legacy exception dispositions", minimum=0):
             disposition = fields(
-                value, "exception_id status reason evidence_ref approval_ref",
-                optional="repair", label="legacy exception disposition",
+                value,
+                "exception_id status reason evidence_ref approval_ref",
+                optional="repair",
+                label="legacy exception disposition",
             )
             exception_id = meaningful(disposition["exception_id"], "legacy exception ID")
             require(exception_id in remaining, "Unexpected or repeated exception disposition.", 3)
@@ -2116,8 +2141,7 @@ def verify_predeploy_manifest(
     subject = fields(
         evidence.load(manifest["release_subject"], parse=True),
         "release_id repository source_sha environment configuration_sha256 inventory_sha256 "
-        "control_registry_sha256 decision_sha256 support_matrix_sha256 "
-        + RUNTIME_FIELDS,
+        "control_registry_sha256 decision_sha256 support_matrix_sha256 " + RUNTIME_FIELDS,
         label="predeployment release subject",
     )
     require(
@@ -2334,7 +2358,8 @@ def observation(
     checks, backup_check = monitor_check_ids(profile)
     for event in items(monitor["observations"], "scheduled monitor observations"):
         row = fields(
-            event, "check_id result event suppressed delivery message_id acknowledgement",
+            event,
+            "check_id result event suppressed delivery message_id acknowledgement",
             label="scheduled monitor check",
         )
         check_id = meaningful(row["check_id"], "scheduled monitor check ID")
@@ -2345,8 +2370,10 @@ def observation(
             label="scheduled check result",
         )
         require(
-            check_id in checks and result["ok"] is True
-            and row["suppressed"] is False and row["delivery"] in {"none", "accepted"},
+            check_id in checks
+            and result["ok"] is True
+            and row["suppressed"] is False
+            and row["delivery"] in {"none", "accepted"},
             "An approved scheduled check failed, was repeated, or was suppressed.",
             4,
         )
@@ -2913,7 +2940,8 @@ class Validation:
             require(
                 start <= self.deployed_at <= end
                 and utc(run.get("run_started_at"), "GitHub deployment start")
-                <= self.deployed_at <= utc(run.get("updated_at"), "GitHub deployment completion")
+                <= self.deployed_at
+                <= utc(run.get("updated_at"), "GitHub deployment completion")
                 and self.deploy_window[0] <= self.deployed_at < self.deploy_window[1],
                 "Deployment occurred outside its approval or recorded execution window.",
                 3,
@@ -3380,12 +3408,8 @@ def host_configuration(state: Path) -> str:
         "Approved host configuration does not cover the complete release configuration set.",
         3,
     )
-    fullchain_paths = {
-        path for path in external_files if path.endswith("/nginx/ssl/fullchain.pem")
-    }
-    private_key_paths = {
-        path for path in external_files if path.endswith("/nginx/ssl/privkey.pem")
-    }
+    fullchain_paths = {path for path in external_files if path.endswith("/nginx/ssl/fullchain.pem")}
+    private_key_paths = {path for path in external_files if path.endswith("/nginx/ssl/privkey.pem")}
     require(
         {"secrets/jwt_private_key", "secrets/jwt_public_key"} <= external_files
         and len(fullchain_paths) == 1
@@ -3475,9 +3499,7 @@ def _effective_environment(service: dict[str, Any], service_name: str) -> dict[s
             key, value = entry.split("=", 1)
             entries.append((key, value))
     else:
-        raise ContractError(
-            3, f"Invalid effective application environment for {service_name}."
-        )
+        raise ContractError(3, f"Invalid effective application environment for {service_name}.")
 
     for key, value in entries:
         require(
@@ -3694,10 +3716,16 @@ def host_main() -> None:
             file_map = configuration_files_from_runtime(
                 args.host_state, args.configuration_profile_root, compose_config
             )
-            print(json.dumps({
-                "configuration_sha256": canonical_digest(file_map),
-                "files": file_map,
-            }, sort_keys=True, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "configuration_sha256": canonical_digest(file_map),
+                        "files": file_map,
+                    },
+                    sort_keys=True,
+                    indent=2,
+                )
+            )
             return
 
         if args.verify_runtime_config_root is not None:

@@ -346,6 +346,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/project-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Project Options */
+        get: operations["list_document_project_options_api_v1_documents_project_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -1295,6 +1312,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/project-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Report Project Options */
+        get: operations["list_report_project_options_api_v1_reports_project_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/{report_id}": {
         parameters: {
             query?: never;
@@ -2050,7 +2084,7 @@ export interface components {
             /** Phase */
             phase: string | null;
             /** Planned Amount */
-            planned_amount: string;
+            planned_amount: string | null;
             /** Planned Quantity */
             planned_quantity: string;
             /**
@@ -2061,7 +2095,7 @@ export interface components {
             /** Unit */
             unit: string;
             /** Unit Rate */
-            unit_rate: string;
+            unit_rate: string | null;
         };
         /** BudgetSummaryResponse */
         BudgetSummaryResponse: {
@@ -2917,7 +2951,7 @@ export interface components {
             /** Status */
             status: string;
             /** Total Estimated Cost */
-            total_estimated_cost: string;
+            total_estimated_cost: string | null;
         };
         /** MaterialUsageRow */
         MaterialUsageRow: {
@@ -3251,9 +3285,9 @@ export interface components {
         /** ProjectAnalyticsRow */
         ProjectAnalyticsRow: {
             /** Invoice Total */
-            invoice_total: string;
+            invoice_total: string | null;
             /** Paid Total */
-            paid_total: string;
+            paid_total: string | null;
             /** Progress Percentage */
             progress_percentage: string;
             /**
@@ -3413,6 +3447,25 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** ProjectOption */
+        ProjectOption: {
+            /** Code */
+            code: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ProjectOptionListResponse */
+        ProjectOptionListResponse: {
+            /** Items */
+            items: components["schemas"]["ProjectOption"][];
+            /** Total */
+            total: number;
         };
         /** ProjectResponse */
         ProjectResponse: {
@@ -4112,6 +4165,13 @@ export interface components {
         };
         /** UserRoleResponse */
         UserRoleResponse: {
+            /**
+             * Assignable
+             * @default false
+             */
+            assignable: boolean;
+            /** Label */
+            label: string;
             /** Permissions */
             permissions: string[];
             /** Role */
@@ -4411,7 +4471,11 @@ export interface operations {
     };
     list_delegation_candidates_api_v1_approvals__approval_id__delegates_get: {
         parameters: {
-            query?: never;
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path: {
                 approval_id: string;
@@ -4886,6 +4950,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_document_project_options_api_v1_documents_project_options_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOptionListResponse"];
                 };
             };
             /** @description Invalid request */
@@ -7183,6 +7280,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DailyReportResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_report_project_options_api_v1_reports_project_options_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOptionListResponse"];
                 };
             };
             /** @description Invalid request */

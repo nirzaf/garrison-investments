@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.user import User
-from app.utils.permissions import ROLE_ADMIN
+from app.utils.permissions import COMPANY_RESOURCE_ROLES
 from app.utils.security import utc_now
 
 
@@ -34,13 +34,16 @@ class UserRepository:
         )
 
     async def lock_users(
-        self, *user_ids: UUID, include_active_admins: bool = False
+        self, *user_ids: UUID, include_active_directors: bool = False
     ) -> dict[UUID, User]:
         selected: ColumnElement[bool] = User.id.in_(user_ids)
-        if include_active_admins:
-            # Lock candidate admins in the same order as the actor and target. Their
-            # credential and lockout state also determines whether they can sign in.
-            selected = or_(selected, and_(User.role == ROLE_ADMIN, User.is_active.is_(True)))
+        if include_active_directors:
+            # Lock director candidates in a stable order before checking the last-usable
+            # director invariant.
+            selected = or_(
+                selected,
+                and_(User.role.in_(COMPANY_RESOURCE_ROLES), User.is_active.is_(True)),
+            )
         result = await self.session.scalars(
             select(User)
             .where(selected, User.deleted_at.is_(None))
@@ -50,12 +53,12 @@ class UserRepository:
         )
         return {user.id: user for user in result}
 
-    async def has_other_usable_admin(self, excluded_user_id: UUID) -> bool:
+    async def has_other_usable_director(self, excluded_user_id: UUID) -> bool:
         other_id = await self.session.scalar(
             select(User.id)
             .where(
                 User.id != excluded_user_id,
-                User.role == ROLE_ADMIN,
+                User.role.in_(COMPANY_RESOURCE_ROLES),
                 User.is_active.is_(True),
                 User.deleted_at.is_(None),
                 User.password_hash.is_not(None),

@@ -25,7 +25,12 @@ from app.services.notification_service import NotificationService
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.links import append_link, document_url
-from app.utils.permissions import ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER
+from app.utils.permissions import (
+    PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_FINANCIAL_VIEW,
+    ensure_permission,
+    has_permission,
+)
 from app.utils.security import utc_now
 
 MAX_DOCUMENT_SIZE = 60 * 1024 * 1024
@@ -36,6 +41,7 @@ ALLOWED_DOCUMENT_MAGIC = {
     "image/png": (b"\x89PNG\r\n\x1a\n",),
 }
 BLOCKED_EXTENSIONS = {".exe", ".sh", ".bat", ".cmd", ".js", ".ps1", ".php", ".py"}
+FINANCIAL_DOCUMENT_TYPES = {"contract", "invoice"}
 logger = structlog.get_logger(__name__)
 
 
@@ -172,6 +178,12 @@ class DocumentService:
         version = await self.documents.get_version(version_id)
         if not version or version.document_id != document.id:
             raise NotFoundException("Document version")
+        if version.uploaded_by == actor.id:
+            raise AppException(
+                "The person who uploaded a document version cannot approve that version.",
+                status_code=403,
+                error_code="DOCUMENT_SELF_APPROVAL_FORBIDDEN",
+            )
         if version.status != "pending_approval":
             raise AppException(
                 "Only versions pending approval can be approved.",
@@ -216,6 +228,7 @@ class DocumentService:
     async def get(self, document_id: UUID, actor: User) -> Document:
         document = await self._get_required(document_id)
         await ensure_document_access(self.session, document, actor)
+        self._ensure_financial_document_access(document, actor)
         return document
 
     async def list_document_versions(self, document_id: UUID, actor: User) -> list[DocumentVersion]:
@@ -239,6 +252,11 @@ class DocumentService:
             limit=limit,
             offset=offset,
             scope_filter=await document_scope_filter(self.session, actor),
+            exclude_document_types=(
+                None
+                if has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+                else FINANCIAL_DOCUMENT_TYPES
+            ),
         )
 
     async def signed_download_url(
@@ -250,6 +268,7 @@ class DocumentService:
     ) -> tuple[str, bool]:
         document = await self._get_required(document_id)
         await ensure_document_access(self.session, document, actor)
+        self._ensure_financial_document_access(document, actor)
         version = self._select_version(document, version_id)
         superseded = version.status == "superseded"
         await self.audit.record(
@@ -266,6 +285,14 @@ class DocumentService:
             expires=timedelta(seconds=SIGNED_URL_SECONDS),
         )
         return url, superseded
+
+    @staticmethod
+    def _ensure_financial_document_access(document: Document, actor: User) -> None:
+        if (
+            document.document_type.strip().lower() in FINANCIAL_DOCUMENT_TYPES
+            and not has_permission(actor, PERMISSION_FINANCIAL_VIEW)
+        ):
+            raise NotFoundException("Document")
 
     async def _store_version(
         self,
@@ -327,23 +354,8 @@ class DocumentService:
         raise NotFoundException("Document version")
 
     async def _ensure_approver(self, actor: User, document: Document) -> None:
-        if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER}:
-            raise AppException(
-                "Document approval is not allowed.",
-                status_code=403,
-                error_code="DOCUMENT_APPROVAL_FORBIDDEN",
-            )
-        if document.project_id is None:
-            # Company-wide documents have no project membership to check, so they stay
-            # with the two roles that already own company-wide configuration.
-            if actor.role not in {ROLE_ADMIN, ROLE_OPERATION_MANAGER}:
-                raise AppException(
-                    "Document approval is not allowed.",
-                    status_code=403,
-                    error_code="DOCUMENT_APPROVAL_FORBIDDEN",
-                )
-            return
-        if actor.role == ROLE_PROJECT_MANAGER:
+        ensure_permission(actor, PERMISSION_DOCUMENTS_MANAGE)
+        if document.project_id is not None:
             await ensure_project_access(self.session, document.project_id, actor)
 
     def _validate_file(self, filename: str, data: bytes) -> str:

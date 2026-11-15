@@ -10,6 +10,7 @@ import {
   type ProjectDetail,
   type ProjectUpdatePayload
 } from '../../api/projects';
+import { useAuth } from '../../context/useAuth';
 import {
   ProjectInput,
   ProjectSelect,
@@ -31,6 +32,8 @@ export function ProjectDetailPanel({
   canManage: boolean;
   onClose: () => void;
 }) {
+  const { user } = useAuth();
+  const canViewFinancial = user?.permissions?.includes('financial:view') ?? false;
   const [tab, setTab] = useState<(typeof tabs)[number]>('Overview');
   const detail = useQuery({
     queryKey: ['project-detail', projectId],
@@ -96,6 +99,7 @@ export function ProjectDetailPanel({
             <ProjectOverview
               project={project}
               canEdit={canEdit}
+              canViewFinancial={canViewFinancial}
               refresh={() => void detail.refetch()}
             />
           </div>
@@ -112,10 +116,12 @@ export function ProjectDetailPanel({
 function ProjectOverview({
   project,
   canEdit,
+  canViewFinancial,
   refresh
 }: {
   project: ProjectDetail;
   canEdit: boolean;
+  canViewFinancial: boolean;
   refresh: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -127,7 +133,7 @@ function ProjectOverview({
     ['Start date', project.start_date],
     ['Target end date', project.target_end_date],
     ['Actual end date', project.actual_end_date],
-    ['Budget', project.budget_amount],
+    ...(canViewFinancial ? [['Budget', project.budget_amount] as const] : []),
     ['Status', project.status.replace(/_/g, ' ')],
     ['Progress', `${project.progress_percentage}%`]
   ];
@@ -163,6 +169,7 @@ function ProjectOverview({
         <ProjectEditor
           project={project}
           canSave={canEdit}
+          canEditFinancial={canViewFinancial}
           onClose={() => setEditing(false)}
           refresh={refresh}
         />
@@ -187,7 +194,13 @@ function ProjectOverview({
           <caption className="mb-2 text-left font-semibold">Bill of quantities</caption>
           <thead className="bg-theme-main">
             <tr>
-              {['Code', 'Description', 'Milestone', 'Quantity', 'Rate', 'Planned amount'].map(
+              {[
+                'Code',
+                'Description',
+                'Milestone',
+                'Quantity',
+                ...(canViewFinancial ? ['Rate', 'Planned amount'] : [])
+              ].map(
                 (label) => (
                   <th key={label} scope="col" className="p-2">
                     {label}
@@ -205,8 +218,12 @@ function ProjectOverview({
                 <td className="p-2">
                   {item.planned_quantity} {item.unit}
                 </td>
-                <td className="p-2">{item.unit_rate}</td>
-                <td className="p-2">{item.planned_amount}</td>
+                {canViewFinancial && (
+                  <>
+                    <td className="p-2">{item.unit_rate ?? '—'}</td>
+                    <td className="p-2">{item.planned_amount ?? '—'}</td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -220,11 +237,13 @@ function ProjectOverview({
 function ProjectEditor({
   project,
   canSave,
+  canEditFinancial,
   onClose,
   refresh
 }: {
   project: ProjectDetail;
   canSave: boolean;
+  canEditFinancial: boolean;
   onClose: () => void;
   refresh: () => void;
 }) {
@@ -263,7 +282,7 @@ function ProjectEditor({
       description: draft.description.trim() || null,
       start_date: draft.start_date || null,
       actual_end_date: draft.actual_end_date || null,
-      budget_amount: draft.budget_amount.trim() || null
+      ...(canEditFinancial ? { budget_amount: draft.budget_amount.trim() || null } : {})
     };
     try {
       await updateProject(project.id, payload);
@@ -341,12 +360,14 @@ function ProjectEditor({
           value={draft.actual_end_date}
           onChange={(e) => setDraft({ ...draft, actual_end_date: e.target.value })}
         />
-        <ProjectInput
-          label="Budget"
-          inputMode="decimal"
-          value={draft.budget_amount}
-          onChange={(e) => setDraft({ ...draft, budget_amount: e.target.value })}
-        />
+        {canEditFinancial && (
+          <ProjectInput
+            label="Budget"
+            inputMode="decimal"
+            value={draft.budget_amount}
+            onChange={(e) => setDraft({ ...draft, budget_amount: e.target.value })}
+          />
+        )}
         <ProjectSelect
           label="Status"
           value={draft.status}

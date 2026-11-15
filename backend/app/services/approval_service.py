@@ -1,12 +1,16 @@
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.approval import Approval
+from app.models.daily_report import DailyReport
+from app.models.document import Document
 from app.models.finance import Invoice
 from app.models.inventory import MaterialRequest
 from app.models.notification import Notification
@@ -28,12 +32,15 @@ from app.utils.links import (
     material_request_url,
 )
 from app.utils.permissions import (
+    COMPANY_RESOURCE_ROLES,
+    PERMISSION_DOCUMENTS_MANAGE,
+    PERMISSION_INVENTORY_MANAGE,
     PERMISSION_REPORTS_APPROVE,
-    ROLE_ADMIN,
-    ROLE_GENERAL_MANAGER,
-    ROLE_OPERATION_MANAGER,
-    ROLE_PROJECT_MANAGER,
+    PERMISSION_REPORTS_SUBMIT,
+    REPORT_APPROVER_ROLES,
     ensure_permission,
+    has_permission,
+    roles_with_permission,
 )
 from app.utils.security import utc_now
 
@@ -46,18 +53,12 @@ APPROVAL_ESCALATION_TITLE = "Approval escalated"
 # Roles that may actually decide each request type. Delegation must not hand decision
 # power to someone the owning workflow would reject: `_apply_entity_decision` writes the
 # decision directly and never re-runs the downstream service guards.
-_GENERIC_DECISION_ROLES = frozenset({ROLE_ADMIN, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER})
 DELEGATION_ELIGIBLE_ROLES: dict[str, frozenset[str]] = {
-    # finance_service.update_invoice requires Operation Manager approval.
-    "invoice": frozenset({ROLE_ADMIN, ROLE_OPERATION_MANAGER}),
-    # report_service._ensure_approver also accepts General Manager.
-    "daily_report": frozenset(
-        {ROLE_ADMIN, ROLE_GENERAL_MANAGER, ROLE_OPERATION_MANAGER, ROLE_PROJECT_MANAGER}
-    ),
-    "document": _GENERIC_DECISION_ROLES,
-    "material_request": _GENERIC_DECISION_ROLES,
-    "payment": _GENERIC_DECISION_ROLES,
-    "project_change": _GENERIC_DECISION_ROLES,
+    # The role matrix grants read-only finance access, so invoice approval is disabled.
+    "invoice": frozenset(),
+    "daily_report": frozenset(REPORT_APPROVER_ROLES),
+    "document": frozenset(roles_with_permission(PERMISSION_DOCUMENTS_MANAGE)),
+    "material_request": frozenset(roles_with_permission(PERMISSION_INVENTORY_MANAGE)),
 }
 
 
@@ -95,7 +96,11 @@ class ApprovalService:
                 error_code="APPROVAL_ALREADY_PENDING",
             )
         approver = await self._resolve_approver(payload, actor)
-        escalation_user = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
+        escalation_user = await self._first_active_scoped_approver(
+            payload.project_id,
+            set(DELEGATION_ELIGIBLE_ROLES.get(payload.request_type, frozenset())),
+            excluded_user_ids={actor.id, approver.id},
+        )
         now = utc_now()
         try:
             approval = await self.approvals.add(
@@ -165,6 +170,13 @@ class ApprovalService:
             raise AppException("Invalid approval box.", status_code=422, error_code="INVALID_BOX")
         if box == "inbox":
             ensure_permission(actor, PERMISSION_REPORTS_APPROVE)
+        request_types = None
+        if box == "inbox":
+            request_types = {"daily_report"}
+            if has_permission(actor, PERMISSION_INVENTORY_MANAGE):
+                request_types.add("material_request")
+            if has_permission(actor, PERMISSION_DOCUMENTS_MANAGE):
+                request_types.add("document")
         if status_group == "open" and status and status not in APPROVAL_PENDING_STATUSES:
             raise AppException(
                 "This status is outside the open group.",
@@ -178,12 +190,13 @@ class ApprovalService:
             open_only=status_group == "open",
             limit=limit,
             offset=offset,
-            include_all_inbox=actor.role == ROLE_ADMIN and box == "inbox",
+            include_all_inbox=False,
             project_ids=(
                 await accessible_project_ids(self.session, actor)
-                if box == "inbox" and actor.role == ROLE_PROJECT_MANAGER
+                if box == "inbox" and actor.role not in COMPANY_RESOURCE_ROLES
                 else None
             ),
+            request_types=request_types,
         )
 
     async def get_for_actor(self, approval_id: UUID, actor: User) -> Approval:
@@ -196,7 +209,7 @@ class ApprovalService:
             )
         if approval.submitter_id != actor.id:
             ensure_permission(actor, PERMISSION_REPORTS_APPROVE)
-            if actor.role == ROLE_PROJECT_MANAGER:
+            if actor.role not in COMPANY_RESOURCE_ROLES:
                 project_ids = await accessible_project_ids(self.session, actor) or []
                 if approval.project_id not in project_ids:
                     raise NotFoundException("Approval")
@@ -207,7 +220,7 @@ class ApprovalService:
     ) -> list[ApprovalResponse]:
         project_ids = (
             await accessible_project_ids(self.session, actor)
-            if actor.role == ROLE_PROJECT_MANAGER
+            if actor.role not in COMPANY_RESOURCE_ROLES
             else None
         )
         material_ids = [
@@ -255,8 +268,6 @@ class ApprovalService:
                 if eligible:
                     if self._can_act(approval, actor, project_ids=project_ids):
                         response.allowed_actions.extend(["approve", "reject", "delegate"])
-                    if actor.role == ROLE_ADMIN and not self._self_invoice(approval, actor):
-                        response.allowed_actions.append("override")
             responses.append(response)
         return responses
 
@@ -401,17 +412,26 @@ class ApprovalService:
         await self.session.commit()
         return approval
 
-    async def list_delegation_candidates(self, approval_id: UUID, actor: User) -> list[User]:
+    async def list_delegation_candidates(
+        self,
+        approval_id: UUID,
+        actor: User,
+        *,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[User], int]:
         """Active users who may receive this approval, using the same rules as `delegate`.
 
-        Project Managers lack `users:read`, so the picker is served from the approval
+        Group and MEP Project Managers lack `users:read`, so the picker is served from the approval
         itself rather than the company-wide user directory. Only the eligible role set is
-        returned, and Project Managers are narrowed to members of the approval's project.
+        returned, and Group and MEP Project Managers are narrowed to members of the
+        approval's project.
         """
         approval = await self._get(approval_id)
         project_ids = (
             await accessible_project_ids(self.session, actor)
-            if actor.role == ROLE_PROJECT_MANAGER
+            if actor.role not in COMPANY_RESOURCE_ROLES
             else None
         )
         if approval.status not in APPROVAL_PENDING_STATUSES or not self._can_act(
@@ -423,7 +443,7 @@ class ApprovalService:
                 error_code="APPROVAL_FORBIDDEN",
             )
         await self._ensure_entity_actionable(approval, actor)
-        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
+        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
         query = select(User).where(
             User.role.in_(eligible),
             User.is_active.is_(True),
@@ -441,23 +461,42 @@ class ApprovalService:
                 )
             )
         if approval.project_id is None:
-            query = query.where(User.role != ROLE_PROJECT_MANAGER)
-            return list(await self.session.scalars(query.order_by(User.full_name.asc()).limit(200)))
-        membership = (
-            select(ProjectMember.id)
-            .where(
-                ProjectMember.project_id == approval.project_id,
-                ProjectMember.user_id == User.id,
-                ProjectMember.deleted_at.is_(None),
+            query = query.where(User.role.in_(COMPANY_RESOURCE_ROLES))
+            ordering: list[ColumnElement[Any]] = [User.full_name.asc(), User.id.asc()]
+        else:
+            membership = (
+                select(ProjectMember.id)
+                .where(
+                    ProjectMember.project_id == approval.project_id,
+                    ProjectMember.user_id == User.id,
+                    ProjectMember.deleted_at.is_(None),
+                )
+                .exists()
             )
-            .exists()
+            query = query.where(or_(User.role.in_(COMPANY_RESOURCE_ROLES), membership))
+            # Project members are preferred, then company-wide directors; both remain
+            # searchable beyond the first page instead of disappearing at a fixed cap.
+            ordering = [
+                case(
+                    (membership, 0),
+                    (User.role.in_(COMPANY_RESOURCE_ROLES), 1),
+                    else_=2,
+                ),
+                User.full_name.asc(),
+                User.id.asc(),
+            ]
+        if search and search.strip():
+            query = query.where(User.full_name.ilike(f"%{search.strip()}%"))
+        total = int(
+            await self.session.scalar(
+                select(func.count()).select_from(query.order_by(None).subquery())
+            )
+            or 0
         )
-        query = query.where(or_(User.role != ROLE_PROJECT_MANAGER, membership))
-        # The project's own people are the natural delegates, and the alphabetical cap
-        # must not crowd them out of a large company directory.
-        query = query.order_by(case((membership, 0), else_=1), User.full_name.asc())
-        candidates = await self.session.scalars(query.limit(200))
-        return list(candidates)
+        candidates = await self.session.scalars(
+            query.order_by(*ordering).limit(limit).offset(offset)
+        )
+        return list(candidates), total
 
     async def override(
         self,
@@ -466,45 +505,11 @@ class ApprovalService:
         decision: str,
         reason: str,
     ) -> Approval:
-        if actor.role != ROLE_ADMIN:
-            raise AppException(
-                "Only Admin can override approvals.",
-                status_code=403,
-                error_code="APPROVAL_OVERRIDE_FORBIDDEN",
-            )
-        approval = await self._get(approval_id, for_update=True)
-        if approval.status not in APPROVAL_PENDING_STATUSES:
-            raise AppException(
-                "Only pending approvals can be overridden.",
-                status_code=409,
-                error_code="APPROVAL_FINAL",
-            )
-        if self._self_invoice(approval, actor):
-            raise AppException(
-                "The invoice submitter cannot decide it.",
-                status_code=403,
-                error_code="APPROVAL_FORBIDDEN",
-            )
-        await self._ensure_entity_actionable(approval, actor)
-        approval.status = f"override_{decision}"
-        approval.override_reason = reason
-        approval.decided_at = utc_now()
-        await self._apply_entity_decision(approval, actor, decision, reason)
-        await self._notify_submitter(
-            approval,
-            "Approval overridden",
-            f"{approval.title} was {decision} by admin override.",
+        raise AppException(
+            "Approval overrides are disabled by the active role policy.",
+            status_code=403,
+            error_code="APPROVAL_OVERRIDE_FORBIDDEN",
         )
-        await self.audit.record(
-            action="approvals.overridden",
-            user_id=actor.id,
-            entity_type=approval.request_type,
-            entity_id=approval.request_id,
-            old_values={"approver_id": str(approval.approver_id) if approval.approver_id else None},
-            new_values={"approval_id": str(approval.id), "decision": decision, "reason": reason},
-        )
-        await self.session.commit()
-        return approval
 
     async def send_reminders_and_escalations(self) -> tuple[int, int]:
         now = utc_now()
@@ -530,7 +535,12 @@ class ApprovalService:
             ):
                 continue
             recipient_id = approval.delegated_to_id or approval.approver_id
-            if recipient_id and approval.reminded_at is None and approval.due_at <= now:
+            if (
+                recipient_id
+                and approval.reminded_at is None
+                and approval.due_at <= now
+                and await self._approval_recipient_has_current_scope(approval, recipient_id)
+            ):
                 await self.notifications.create(
                     user_id=recipient_id,
                     title=APPROVAL_REMINDER_TITLE,
@@ -547,8 +557,12 @@ class ApprovalService:
                 reminded += 1
             if (
                 approval.escalation_user_id
+                and approval.escalation_user_id != approval.approver_id
                 and approval.escalated_at is None
                 and approval.due_at <= escalation_cutoff
+                and await self._approval_recipient_has_current_scope(
+                    approval, approval.escalation_user_id
+                )
             ):
                 await self.notifications.create(
                     user_id=approval.escalation_user_id,
@@ -569,28 +583,99 @@ class ApprovalService:
         return reminded, escalated
 
     async def can_deliver_scheduled_email(self, notification: Notification) -> bool:
-        if (
-            notification.notification_type != "approval"
-            or notification.reference_type != "approvals"
-            or notification.title not in {APPROVAL_REMINDER_TITLE, APPROVAL_ESCALATION_TITLE}
-        ):
+        if notification.notification_type != "approval":
+            return True
+        if notification.reference_type == "daily_report":
+            return await self._can_deliver_report_notification(notification)
+        if notification.reference_type != "approvals":
             return True
         if notification.reference_id is None:
             return False
         approval = await self.approvals.get_by_id(notification.reference_id)
         if approval is None:
             return False
-        if approval.request_type != "material_request":
-            return True
-
-        # Hold the same parent-before-approval locks as cancellation through the email attempt.
+        # Hold the owning parent before the approval row while checking the current
+        # recipient and request state. A queued message must not preserve old authority.
         try:
             approval = await self._get(approval.id, for_update=True)
         except NotFoundException:
             return False
-        return approval.status in APPROVAL_PENDING_STATUSES and (
-            await self._material_request_status(approval.request_id) == "requested"
+        expected_user_id: UUID | None = None
+        if notification.title == "Approval pending":
+            if approval.status != "pending":
+                return False
+            expected_user_id = approval.approver_id
+        elif notification.title == "Approval delegated":
+            if approval.status != "delegated":
+                return False
+            expected_user_id = approval.delegated_to_id
+        elif notification.title == APPROVAL_REMINDER_TITLE:
+            if approval.status not in {"pending", "delegated"}:
+                return False
+            expected_user_id = approval.delegated_to_id or approval.approver_id
+        elif notification.title == APPROVAL_ESCALATION_TITLE:
+            if (
+                approval.status != "escalated"
+                or approval.escalation_user_id == approval.approver_id
+            ):
+                return False
+            expected_user_id = approval.escalation_user_id
+        elif notification.title in {"Approval completed", "Approval rejected"}:
+            expected_status = (
+                "approved" if notification.title == "Approval completed" else "rejected"
+            )
+            if approval.status != expected_status:
+                return False
+            return await self._active_user_matches(notification.user_id, approval.submitter_id)
+        else:
+            return False
+        if expected_user_id is None or notification.user_id != expected_user_id:
+            return False
+        return await self._approval_recipient_has_current_scope(approval, expected_user_id)
+
+    async def _can_deliver_report_notification(self, notification: Notification) -> bool:
+        if notification.reference_id is None:
+            return False
+        report = await self.session.scalar(
+            select(DailyReport).where(
+                DailyReport.id == notification.reference_id,
+                DailyReport.deleted_at.is_(None),
+            )
         )
+        recipient = await self.users.get_by_id(notification.user_id)
+        if report is None or recipient is None or not recipient.is_active:
+            return False
+        if notification.title == "Daily report pending approval":
+            if report.status != "submitted" or recipient.id == report.engineer_id:
+                return False
+            if recipient.role not in REPORT_APPROVER_ROLES or not has_permission(
+                recipient, PERMISSION_REPORTS_APPROVE
+            ):
+                return False
+            if recipient.role in COMPANY_RESOURCE_ROLES:
+                return True
+            return bool(
+                await self.session.scalar(
+                    select(ProjectMember.id).where(
+                        ProjectMember.project_id == report.project_id,
+                        ProjectMember.user_id == recipient.id,
+                        ProjectMember.deleted_at.is_(None),
+                    )
+                )
+            )
+        if notification.title == "Daily report approved":
+            return (
+                report.engineer_id == recipient.id
+                and report.status == "approved"
+                and has_permission(recipient, PERMISSION_REPORTS_SUBMIT)
+            )
+        if notification.title == "Daily report rejected":
+            return (
+                report.engineer_id == recipient.id
+                and report.status == "draft"
+                and has_permission(recipient, PERMISSION_REPORTS_SUBMIT)
+            )
+        return False
 
     async def _get(self, approval_id: UUID, *, for_update: bool = False) -> Approval:
         approval = await self.approvals.get_by_id(approval_id)
@@ -604,6 +689,18 @@ class ApprovalService:
                 await self.session.scalar(
                     select(MaterialRequest.id)
                     .where(MaterialRequest.id == approval.request_id)
+                    .with_for_update()
+                )
+            elif approval.request_type == "daily_report":
+                await self.session.scalar(
+                    select(DailyReport.id)
+                    .where(DailyReport.id == approval.request_id)
+                    .with_for_update()
+                )
+            elif approval.request_type == "document":
+                await self.session.scalar(
+                    select(Document.id)
+                    .where(Document.id == approval.request_id)
                     .with_for_update()
                 )
             approval = await self.approvals.get_by_id(approval_id, for_update=True)
@@ -621,7 +718,7 @@ class ApprovalService:
             )
         project_ids = (
             await accessible_project_ids(self.session, actor)
-            if actor.role == ROLE_PROJECT_MANAGER
+            if actor.role not in COMPANY_RESOURCE_ROLES
             else None
         )
         if not self._can_act(approval, actor, project_ids=project_ids):
@@ -648,27 +745,11 @@ class ApprovalService:
                 error_code="APPROVAL_REQUIRES_OWNING_WORKFLOW",
             )
         if approval.request_type == "invoice":
-            invoice = (
-                await self.session.execute(
-                    select(Invoice.status, Invoice.created_by).where(
-                        Invoice.id == approval.request_id, Invoice.deleted_at.is_(None)
-                    )
-                )
-            ).one_or_none()
-            if invoice is None:
-                raise NotFoundException("Invoice")
-            if invoice.created_by == actor.id:
-                raise AppException(
-                    "The invoice creator cannot decide it.",
-                    status_code=403,
-                    error_code="APPROVAL_FORBIDDEN",
-                )
-            if invoice.status != "submitted":
-                raise AppException(
-                    "Only submitted invoices can be decided.",
-                    status_code=409,
-                    error_code="INVOICE_STATUS_TRANSITION_INVALID",
-                )
+            raise AppException(
+                "Invoice decisions are disabled by the read-only finance policy.",
+                status_code=403,
+                error_code="FINANCE_WRITE_FORBIDDEN",
+            )
         if approval.request_type != "material_request":
             return
         status = await self._material_request_status(approval.request_id)
@@ -682,58 +763,144 @@ class ApprovalService:
             )
 
     async def _resolve_approver(self, payload: ApprovalCreateRequest, actor: User) -> User:
-        if payload.request_type == "invoice":
-            approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
-            if approver:
-                return approver
-        if (
-            payload.request_type == "material_request"
-            and payload.amount is not None
-            and payload.amount > get_settings().material_approval_threshold
-        ):
-            approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
-            if approver:
-                return approver
-        if (
-            payload.request_type in {"material_request", "project_change"}
-            and actor.role == ROLE_PROJECT_MANAGER
-        ):
-            approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
-            if approver:
-                return approver
-        if payload.project_id:
-            project_manager = await self.session.scalar(
-                select(User)
-                .join(ProjectMember, ProjectMember.user_id == User.id)
-                .where(
-                    ProjectMember.project_id == payload.project_id,
-                    ProjectMember.deleted_at.is_(None),
-                    User.role == ROLE_PROJECT_MANAGER,
-                    User.id != actor.id,
-                    User.is_active.is_(True),
-                    User.deleted_at.is_(None),
-                )
-                .order_by(ProjectMember.assigned_at.desc(), User.full_name.asc())
+        eligible_roles = set(DELEGATION_ELIGIBLE_ROLES.get(payload.request_type, frozenset()))
+        if not eligible_roles:
+            raise AppException(
+                "No decision permission is defined for this approval type.",
+                status_code=403,
+                error_code="APPROVAL_TYPE_FORBIDDEN",
             )
-            if project_manager:
-                return project_manager
-        approver = await self._first_active_role_user(ROLE_OPERATION_MANAGER)
+        approver = await self._first_active_scoped_approver(
+            payload.project_id, eligible_roles, excluded_user_ids={actor.id}
+        )
         if approver:
             return approver
-        admin = await self._first_active_role_user(ROLE_ADMIN)
-        if admin:
-            return admin
         raise AppException(
             "No active approver is configured.",
             status_code=409,
             error_code="APPROVER_NOT_CONFIGURED",
         )
 
-    async def _first_active_role_user(self, role: str) -> User | None:
-        return await self.session.scalar(
-            select(User)
-            .where(User.role == role, User.is_active.is_(True), User.deleted_at.is_(None))
-            .order_by(User.created_at.desc(), User.full_name.asc())
+    async def _first_active_scoped_approver(
+        self,
+        project_id: UUID | None,
+        roles: set[str],
+        *,
+        excluded_user_ids: set[UUID] | None = None,
+    ) -> User | None:
+        excluded_user_ids = excluded_user_ids or set()
+        if project_id and roles:
+            project_query = (
+                select(User)
+                .join(ProjectMember, ProjectMember.user_id == User.id)
+                .where(
+                    ProjectMember.project_id == project_id,
+                    ProjectMember.deleted_at.is_(None),
+                    User.role.in_(roles),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+            if excluded_user_ids:
+                project_query = project_query.where(User.id.not_in(excluded_user_ids))
+            project_user = await self.session.scalar(
+                project_query.order_by(ProjectMember.assigned_at.desc(), User.full_name.asc())
+            )
+            if project_user is not None:
+                return project_user
+        # Only explicit company-resource roles may be a projectless fallback. A
+        # scoped HR/project role without membership is never selected globally.
+        return await self._first_active_role_user(
+            roles & COMPANY_RESOURCE_ROLES, excluded_user_ids=excluded_user_ids
+        )
+
+    async def _first_active_role_user(
+        self, roles: set[str], *, excluded_user_ids: set[UUID] | None = None
+    ) -> User | None:
+        if not roles:
+            return None
+        query = select(User).where(
+            User.role.in_(roles), User.is_active.is_(True), User.deleted_at.is_(None)
+        )
+        if excluded_user_ids:
+            query = query.where(User.id.not_in(excluded_user_ids))
+        ordered_query = query.order_by(User.created_at.desc(), User.full_name.asc())
+        return await self.session.scalar(ordered_query)
+
+    async def _active_user_matches(
+        self, actual_user_id: UUID, expected_user_id: UUID | None
+    ) -> bool:
+        if expected_user_id is None or actual_user_id != expected_user_id:
+            return False
+        return bool(
+            await self.session.scalar(
+                select(User.id).where(
+                    User.id == actual_user_id,
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+        )
+
+    async def _approval_recipient_has_current_scope(
+        self, approval: Approval, recipient_id: UUID
+    ) -> bool:
+        permission = {
+            "daily_report": PERMISSION_REPORTS_APPROVE,
+            "document": PERMISSION_DOCUMENTS_MANAGE,
+            "material_request": PERMISSION_INVENTORY_MANAGE,
+        }.get(approval.request_type)
+        if permission is None:
+            return False
+        recipient = await self.session.scalar(
+            select(User).where(
+                User.id == recipient_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if (
+            recipient is None
+            or recipient.id == approval.submitter_id
+            or recipient.role not in DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, ())
+            or not has_permission(recipient, permission)
+        ):
+            return False
+        if approval.request_type == "material_request":
+            if await self._material_request_status(approval.request_id) != "requested":
+                return False
+        elif approval.request_type == "daily_report":
+            report = await self.session.scalar(
+                select(DailyReport).where(
+                    DailyReport.id == approval.request_id,
+                    DailyReport.deleted_at.is_(None),
+                    DailyReport.status == "submitted",
+                )
+            )
+            if report is None or report.engineer_id == recipient.id:
+                return False
+        elif approval.request_type == "document":
+            document = await self.session.scalar(
+                select(Document).where(
+                    Document.id == approval.request_id,
+                    Document.deleted_at.is_(None),
+                    Document.status == "pending_approval",
+                )
+            )
+            if document is None:
+                return False
+        if recipient.role in COMPANY_RESOURCE_ROLES:
+            return True
+        if approval.project_id is None:
+            return False
+        return bool(
+            await self.session.scalar(
+                select(ProjectMember.id).where(
+                    ProjectMember.project_id == approval.project_id,
+                    ProjectMember.user_id == recipient.id,
+                    ProjectMember.deleted_at.is_(None),
+                )
+            )
         )
 
     async def _ensure_delegate_eligible(
@@ -766,20 +933,20 @@ class ApprovalService:
                 status_code=403,
                 error_code="DELEGATION_TO_SUBMITTER_FORBIDDEN",
             )
-        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
+        eligible = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
         if delegate.role not in eligible:
             raise AppException(
                 "This user cannot approve this request type.",
                 status_code=403,
                 error_code="DELEGATION_ROLE_FORBIDDEN",
             )
-        if delegate.role != ROLE_PROJECT_MANAGER:
+        if delegate.role in COMPANY_RESOURCE_ROLES:
             # Company-wide approvers are unrestricted, mirroring the owning workflows.
             return
         if approval.project_id is None:
-            # document_service._ensure_approver reserves unscoped documents for admin/OM.
+            # Scoped roles cannot decide an unassigned project request.
             raise AppException(
-                "A Project Manager cannot approve requests outside a project.",
+                "A Group or MEP Project Manager cannot approve requests outside a project.",
                 status_code=403,
                 error_code="DELEGATION_PROJECT_FORBIDDEN",
             )
@@ -798,29 +965,38 @@ class ApprovalService:
             )
 
     def _can_view(self, approval: Approval, actor: User) -> bool:
-        return (
-            actor.role == ROLE_ADMIN
-            or actor.id
-            in {
-                approval.submitter_id,
-                approval.approver_id,
-                approval.delegated_to_id,
-            }
-            or (approval.status == "escalated" and actor.id == approval.escalation_user_id)
-        )
+        if actor.id == approval.submitter_id:
+            return True
+        if not self._has_request_type_permission(approval.request_type, actor):
+            return False
+        return actor.id in {
+            approval.submitter_id,
+            approval.approver_id,
+            approval.delegated_to_id,
+        } or (approval.status == "escalated" and actor.id == approval.escalation_user_id)
 
     @staticmethod
     def _self_invoice(approval: Approval, actor: User) -> bool:
         return approval.request_type == "invoice" and actor.id == approval.submitter_id
 
     def _can_act(self, approval: Approval, actor: User, *, project_ids: list[UUID] | None) -> bool:
-        roles = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, _GENERIC_DECISION_ROLES)
+        roles = DELEGATION_ELIGIBLE_ROLES.get(approval.request_type, frozenset())
         return (
             actor.id in {approval.approver_id, approval.delegated_to_id}
             and actor.role in roles
+            and self._has_request_type_permission(approval.request_type, actor)
             and not self._self_invoice(approval, actor)
-            and (actor.role != ROLE_PROJECT_MANAGER or approval.project_id in (project_ids or []))
+            and (actor.role in COMPANY_RESOURCE_ROLES or approval.project_id in (project_ids or []))
         )
+
+    @staticmethod
+    def _has_request_type_permission(request_type: str, actor: User) -> bool:
+        permission = {
+            "daily_report": PERMISSION_REPORTS_APPROVE,
+            "document": PERMISSION_DOCUMENTS_MANAGE,
+            "material_request": PERMISSION_INVENTORY_MANAGE,
+        }.get(request_type)
+        return permission is not None and has_permission(actor, permission)
 
     async def _apply_entity_decision(
         self,

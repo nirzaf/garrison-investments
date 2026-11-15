@@ -30,7 +30,7 @@ import {
   type MediaUploadIntent,
   type PhotoRecord
 } from '../../api/photos';
-import { listProjects, type ProjectRecord } from '../../api/projects';
+import { listReportProjectOptions, type ProjectOption } from '../../api/projects';
 import {
   getDailyReport,
   downloadReportPdf,
@@ -198,7 +198,7 @@ export function DailyReportPage() {
   const scope = browserScope?.ownerUserId === currentUserId ? browserScope : undefined;
   const [searchParams] = useSearchParams();
   const focusedReportId = searchParams.get('reportId');
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [supervisorUpdates, setSupervisorUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [reportList, setReports] = useState<DailyReportRecord[]>([]);
   const focusedReport = useQuery({
@@ -290,7 +290,7 @@ export function DailyReportPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([listProjects({ status: 'active' }), listDailyReports({})])
+    Promise.all([listReportProjectOptions({ limit: 100 }), listDailyReports({})])
       .then(([projectResponse, reportResponse]) => {
         setProjects(projectResponse.items);
         setReports(reportResponse.items);

@@ -59,8 +59,11 @@ class ApprovalRepository:
         offset: int,
         include_all_inbox: bool = False,
         project_ids: list[UUID] | None = None,
+        request_types: set[str] | None = None,
     ) -> tuple[list[Approval], int]:
         query: Select[Approval] = select(Approval).where(Approval.deleted_at.is_(None))
+        if request_types is not None:
+            query = query.where(Approval.request_type.in_(request_types))
         if box == "outbox":
             query = query.where(Approval.submitter_id == user_id)
         elif not include_all_inbox:

@@ -31,7 +31,7 @@ const deliveryItems = [
   },
   {
     label: 'Testing',
-    detail: 'Desktop Chrome and Edge, including degraded-network checks.',
+    detail: 'Desktop Chrome, including degraded-network checks.',
     icon: BookOpenCheck,
     status: 'pending QA'
   },
@@ -61,7 +61,7 @@ const remainingInputs = [
   'D-28: Records owner approval of the retain-only policy, event classes, deadlines, hold behavior, and legacy dispositions',
   'D-29: System owner approval of independent backup targets, RPO/RTO, key custodians, operators, and restore evidence',
   'D-30: Operations owner approval of off-host monitoring, recipients, responders, and firing/resolution evidence',
-  'D-32: QA lead approval of Chrome and Edge targets, scenario roles, network/performance budgets, and executed results',
+  'D-32: QA lead approval of the Chrome target, scenario roles, network/performance budgets, and executed results',
   'D-33: Finance/data owner approval of assignments, business samples, financial/import conventions, and final signatories'
 ];
 

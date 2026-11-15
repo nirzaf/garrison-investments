@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal, engine
-from app.models.activity_log import ActivityLog
 from app.models.daily_report import DailyReport
 from app.models.photo import Photo
 from app.models.user import User
@@ -91,8 +90,11 @@ async def test_photo_upload_download_url_and_delete_lock() -> None:
         )
 
         assert recent_response.status_code == 200
-        assert recent_response.json()["total"] >= 1
+        # Submit-only authors can retrieve evidence through their own report, but do not
+        # receive the general cross-report photo feed.
+        assert recent_response.json()["total"] == 0
         assert entity_response.status_code == 200
+        assert entity_response.json()["total"] == 1
         assert entity_response.json()["items"][0]["id"] == photo["id"]
 
         url_response = await client.get(
@@ -147,14 +149,14 @@ async def test_blocked_file_type_is_rejected() -> None:
         assert response.status_code == 422
 
 
-async def test_photo_quota_serializes_upload_and_recovery() -> None:
+async def test_photo_quota_serializes_concurrent_uploads() -> None:
     await skip_if_database_unavailable()
     async with create_test_client() as client:
         team = await setup_project_team(client)
         engineer = {"Authorization": f"Bearer {team['engineer_token']}"}
-        admin_email, admin_password = await create_user("admin")
-        admin_token = await login_for_token(client, admin_email, admin_password)
-        admin = {"Authorization": f"Bearer {admin_token}"}
+        director_email, director_password = await create_user("managing_director")
+        director_token = await login_for_token(client, director_email, director_password)
+        director = {"Authorization": f"Bearer {director_token}"}
         report_response = await client.post(
             "/api/v1/reports",
             json=report_payload(team["project_id"], team["supervisor_update_id"]),
@@ -170,11 +172,10 @@ async def test_photo_quota_serializes_upload_and_recovery() -> None:
             headers=engineer,
         )
         assert upload.status_code == 201
-        first, second, *_ = upload.json()
-        first_id, second_id = UUID(first["id"]), UUID(second["id"])
-        assert (
-            await client.delete(f"/api/v1/photos/{first_id}", headers=engineer)
-        ).status_code == 204
+        first, *_ = upload.json()
+        first_id = UUID(first["id"])
+        delete_first = await client.delete(f"/api/v1/photos/{first_id}", headers=engineer)
+        assert delete_first.status_code == 204, delete_first.text
 
         async def upload_one(session: AsyncSession) -> int:
             actor = await session.get_one(User, UUID(report["engineer_id"]))
@@ -198,30 +199,14 @@ async def test_photo_quota_serializes_upload_and_recovery() -> None:
         assert denied.status_code == 403
         denied = await client.post(f"/api/v1/photos/{first_id}/recover", headers=engineer)
         assert denied.status_code == 403
-        deleted = await client.get(
-            "/api/v1/photos", params={**owner, "deleted": True}, headers=admin
+        denied = await client.get(
+            "/api/v1/photos", params={**owner, "deleted": True}, headers=director
         )
-        assert deleted.status_code == 200
-        assert deleted.json()["items"][0]["recoverable_until"]
-        assert deleted.json()["items"][0]["id"] == str(first_id)
-        full = await client.post(f"/api/v1/photos/{first_id}/recover", headers=admin)
-        assert full.status_code == 409
-        assert full.json()["error_code"] == "REPORT_PHOTO_LIMIT_REACHED"
-
-        assert (
-            await client.delete(f"/api/v1/photos/{second_id}", headers=engineer)
-        ).status_code == 204
-        admin_me = await client.get("/api/v1/auth/me", headers=admin)
-
-        async def recover_one(session: AsyncSession) -> int:
-            actor = await session.get_one(User, UUID(admin_me.json()["id"]))
-            await PhotoService(session).recover(first_id, actor)
-            return 200
-
-        results = await race_sessions(upload_one, recover_one)
-        counts = status_counts(results)
-        assert counts in ({201: 1, 409: 1}, {200: 1, 409: 1})
-        assert error_codes(results) == ["REPORT_PHOTO_LIMIT_REACHED"]
+        assert denied.status_code == 403
+        denied = await client.post(
+            f"/api/v1/photos/{first_id}/recover", headers=director
+        )
+        assert denied.status_code == 403
         listing = await client.get(
             "/api/v1/photos", params={**owner, "kind": "photo"}, headers=engineer
         )
@@ -388,14 +373,14 @@ async def test_supervisor_photo_quota_and_final_state_are_checked() -> None:
         assert upload.json()["error_code"] == "PHOTO_UPLOAD_LOCKED"
 
 
-async def test_admin_reason_and_stored_bytes_are_required_for_finalized_evidence() -> None:
+async def test_director_cannot_use_retired_admin_media_override() -> None:
     await skip_if_database_unavailable()
     async with create_test_client() as client:
         team = await setup_project_team(client)
         engineer = {"Authorization": f"Bearer {team['engineer_token']}"}
-        admin_email, admin_password = await create_user("admin")
-        admin_token = await login_for_token(client, admin_email, admin_password)
-        admin = {"Authorization": f"Bearer {admin_token}"}
+        director_email, director_password = await create_user("managing_director")
+        director_token = await login_for_token(client, director_email, director_password)
+        director = {"Authorization": f"Bearer {director_token}"}
         report_response = await client.post(
             "/api/v1/reports",
             json=report_payload(team["project_id"], team["supervisor_update_id"]),
@@ -415,44 +400,25 @@ async def test_admin_reason_and_stored_bytes_are_required_for_finalized_evidence
         submitted = await client.post(f"/api/v1/reports/{report_id}/submit", headers=engineer)
         assert submitted.status_code == 200
 
-        no_reason = await client.delete(photo_path, headers=admin)
-        assert no_reason.status_code == 422
-        assert no_reason.json()["error_code"] == "PHOTO_CHANGE_REASON_REQUIRED"
+        # The ten-role policy has no technical Admin role or implicit admin override.
+        # A director may view company-wide evidence but cannot rewrite finalized evidence
+        # without an explicitly granted domain operation.
+        no_reason = await client.delete(photo_path, headers=director)
+        assert no_reason.status_code == 404, no_reason.text
         removal = await client.request(
             "DELETE",
             photo_path,
             json={"reason": "Synthetic evidence reconciliation."},
-            headers=admin,
+            headers=director,
         )
-        assert removal.status_code == 204
-
-        no_reason = await client.post(f"{photo_path}/recover", headers=admin)
-        assert no_reason.status_code == 422
-        assert no_reason.json()["error_code"] == "PHOTO_CHANGE_REASON_REQUIRED"
-        payload = {"reason": "Synthetic evidence confirmed."}
-        recovered = await client.post(f"{photo_path}/recover", json=payload, headers=admin)
-        assert recovered.status_code == 200
-        async with AsyncSessionLocal() as session:
-            actions = set(
-                (
-                    await session.scalars(
-                        select(ActivityLog.comments).where(
-                            ActivityLog.entity_id == UUID(report_id),
-                            ActivityLog.action.in_(("photos.deleted", "photos.recovered")),
-                        )
-                    )
-                ).all()
-            )
-            assert actions == {
-                "Synthetic evidence reconciliation.",
-                "Synthetic evidence confirmed.",
-            }
-
-        deleted = await client.request("DELETE", photo_path, json=payload, headers=admin)
-        assert deleted.status_code == 204
-        settings = get_settings()
-        minio_client(settings).remove_object(settings.minio_bucket, photo["thumbnail_path"])
-        unavailable = await client.post(f"{photo_path}/recover", json=payload, headers=admin)
-        assert unavailable.status_code == 409
-        assert unavailable.json()["error_code"] == "PHOTO_RECOVERY_UNAVAILABLE"
-        assert (await client.get(photo_path, headers=admin)).status_code == 404
+        assert removal.status_code == 404, removal.text
+        forbidden_recovery = await client.post(
+            f"{photo_path}/recover",
+            json={"reason": "Synthetic evidence confirmed."},
+            headers=director,
+        )
+        assert forbidden_recovery.status_code == 403, forbidden_recovery.text
+        retained = await client.get(photo_path, headers=engineer)
+        assert retained.status_code == 200
+        assert retained.json()["deleted_at"] is None
+        assert (await client.get(photo_path, headers=director)).status_code == 200

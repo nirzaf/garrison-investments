@@ -79,10 +79,10 @@ async def login_for_token(client: httpx.AsyncClient, user: User, password: str) 
 
 
 @pytest.mark.asyncio
-async def test_management_analytics_and_exports_are_restricted() -> None:
+async def test_scoped_dashboard_analytics_requires_no_general_project_access() -> None:
     await skip_if_database_unavailable()
-    manager, manager_password = await create_user("general_manager")
-    engineer, engineer_password = await create_user("civil_engineer")
+    manager, manager_password = await create_user("operations_director")
+    engineer, engineer_password = await create_user("quantity_surveyor")
 
     async with create_test_client() as client:
         manager_token = await login_for_token(client, manager, manager_password)
@@ -113,10 +113,16 @@ async def test_management_analytics_and_exports_are_restricted() -> None:
             assert invalid.status_code == 422
             assert invalid.json()["error_code"] == "INVALID_ANALYTICS_DATE_RANGE"
 
-        for path in ANALYTICS_PATHS:
-            blocked = await client.get(path, headers={"Authorization": f"Bearer {engineer_token}"})
-            assert blocked.status_code == 403, path
-            assert blocked.json()["error_code"] == "ANALYTICS_FORBIDDEN"
+        # Quantity Surveyors have dashboard:scoped but no general project read. Their
+        # analytics endpoints are allowed and must remain empty without membership.
+        scoped_headers = {"Authorization": f"Bearer {engineer_token}"}
+        scoped_summary = await client.get(ANALYTICS_PATHS[0], headers=scoped_headers)
+        assert scoped_summary.status_code == 200
+        assert scoped_summary.json() == {"projects": [], "material_usage": []}
+        for path in ANALYTICS_PATHS[1:]:
+            scoped_export = await client.get(path, headers=scoped_headers)
+            assert scoped_export.status_code == 200, path
+            assert scoped_export.content
 
 
 def test_generate_excel_export_requires_actor_id() -> None:
@@ -190,9 +196,9 @@ def xlsx_rows(data: bytes) -> list[list[str]]:
 @pytest.mark.asyncio
 async def test_analytics_summary_and_exports_respect_project_scope() -> None:
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
-    manager, manager_password = await create_user("project_manager")
-    accounts, accounts_password = await create_user("accounts")
+    admin, _ = await create_user("managing_director")
+    manager, manager_password = await create_user("group_project_manager")
+    admin_exec, admin_exec_password = await create_user("administrative_executive")
     assigned = await create_project(admin)
     unassigned = await create_project(admin)
     removed = await create_project(admin)
@@ -260,19 +266,26 @@ async def test_analytics_summary_and_exports_respect_project_scope() -> None:
             ]
             data = summary.json()
             assert [(row["project_id"], row["invoice_total"]) for row in data["projects"]] == [
-                (str(assigned.id), "123.00")
+                (str(assigned.id), None)
             ]
             assert [
                 (row["item_name"], row["issued_quantity"], row["consumed_quantity"])
                 for row in data["material_usage"]
             ] == [(shared_name, "2.500", "1.000")]
-            assert xlsx_rows(progress.content)[1:] == [[assigned.name, "25.00", "0", "123.00", "0"]]
+            assert xlsx_rows(progress.content)[1:] == [[assigned.name, "25.00", "0"]]
             assert xlsx_rows(material.content)[1:] == [[shared_name, "2.500", "1.000"]]
             assert pdf.content.startswith(b"%PDF-")
             text = pdf_text(pdf.content)
-            for allowed in (assigned.name, shared_name, "123.00", "2.500"):
+            for allowed in (assigned.name, shared_name, "2.500"):
                 assert allowed in text
-            for forbidden in (unassigned.name, removed.name, other_name, "789.00", "31.000"):
+            for forbidden in (
+                unassigned.name,
+                removed.name,
+                other_name,
+                "123.00",
+                "789.00",
+                "31.000",
+            ):
                 assert forbidden not in text
 
         for path in ANALYTICS_PATHS:
@@ -290,9 +303,9 @@ async def test_analytics_summary_and_exports_respect_project_scope() -> None:
         assert empty.status_code == 200
         assert empty.json() == {"projects": [], "material_usage": []}
 
-        accounts_token = await login_for_token(client, accounts, accounts_password)
+        admin_exec_token = await login_for_token(client, admin_exec, admin_exec_password)
         company = await client.get(
-            ANALYTICS_PATHS[0], headers={"Authorization": f"Bearer {accounts_token}"}
+            ANALYTICS_PATHS[0], headers={"Authorization": f"Bearer {admin_exec_token}"}
         )
         assert company.status_code == 200
         assert {str(assigned.id), str(unassigned.id)} <= {
@@ -395,9 +408,9 @@ async def summary_row(client: httpx.AsyncClient, token: str, project: Project) -
 async def test_project_totals_survive_the_report_invoice_payment_fan_out() -> None:
     """Two equal-value invoices and three payments must total exactly, not collapse or multiply."""
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
-    manager, manager_password = await create_user("general_manager")
-    engineer, _ = await create_user("civil_engineer")
+    admin, _ = await create_user("managing_director")
+    manager, manager_password = await create_user("operations_director")
+    engineer, _ = await create_user("quantity_surveyor")
     project = await create_project(admin)
 
     # Equal values are deliberate: SUM(DISTINCT total_amount) would collapse these into one.
@@ -422,9 +435,9 @@ async def test_project_totals_survive_the_report_invoice_payment_fan_out() -> No
 @pytest.mark.asyncio
 async def test_project_totals_exclude_draft_rejected_and_soft_deleted_records() -> None:
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
-    manager, manager_password = await create_user("general_manager")
-    engineer, _ = await create_user("civil_engineer")
+    admin, _ = await create_user("managing_director")
+    manager, manager_password = await create_user("operations_director")
+    engineer, _ = await create_user("quantity_surveyor")
     project = await create_project(admin)
 
     counted = await add_invoice(project, Decimal("315.00"), status="approved")
@@ -450,9 +463,9 @@ async def test_project_totals_exclude_draft_rejected_and_soft_deleted_records() 
 async def test_project_without_reports_in_range_is_still_returned() -> None:
     """A date filter must narrow the report count, not delete projects from the result."""
     await skip_if_database_unavailable()
-    admin, _ = await create_user("admin")
-    manager, manager_password = await create_user("general_manager")
-    engineer, _ = await create_user("civil_engineer")
+    admin, _ = await create_user("managing_director")
+    manager, manager_password = await create_user("operations_director")
+    engineer, _ = await create_user("quantity_surveyor")
     location = f"Analytics Range {uuid4().hex[:8]}"
     busy = await create_project(admin, location=location)
     quiet = await create_project(admin, location=location)

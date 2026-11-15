@@ -24,7 +24,7 @@ import {
   type MediaUploadIntent,
   type PhotoRecord
 } from '../../api/photos';
-import { listProjects, type ProjectRecord } from '../../api/projects';
+import { listReportProjectOptions, type ProjectOption } from '../../api/projects';
 import {
   createSupervisorUpdate,
   listSupervisorUpdates,
@@ -113,7 +113,7 @@ export function SupervisorUpdatePage() {
   const { user } = useAuth();
   const browserScope = getBrowserSession()?.scope;
   const scope = browserScope?.ownerUserId === user?.id ? browserScope : undefined;
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [updates, setUpdates] = useState<SupervisorUpdateRecord[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +158,7 @@ export function SupervisorUpdatePage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([listProjects({ status: 'active' }), listSupervisorUpdates({})])
+    Promise.all([listReportProjectOptions({ limit: 100 }), listSupervisorUpdates({})])
       .then(([projectResponse, updateResponse]) => {
         if (!active) return;
         setProjects(projectResponse.items);

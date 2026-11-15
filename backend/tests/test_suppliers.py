@@ -79,7 +79,7 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await skip_if_database_unavailable()
-    operation_manager, password = await create_user("operation_manager")
+    operations_director, password = await create_user("operations_director")
     monkeypatch.setattr(
         "app.services.supplier_service.SupplierService._upload_object",
         lambda self, object_key, data, content_type: None,
@@ -90,7 +90,7 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
     )
 
     async with create_test_client() as client:
-        token = await login_for_token(client, operation_manager, password)
+        token = await login_for_token(client, operations_director, password)
         created = await client.post(
             "/api/v1/suppliers",
             json={
@@ -131,7 +131,7 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
             await SupplierService(session).update_supplier(
                 UUID(supplier["id"]),
                 SupplierUpdateRequest(rating=rating, expected_revision=updated.json()["revision"]),
-                operation_manager,
+                operations_director,
             )
             return 200
 
@@ -199,8 +199,8 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
 
 async def test_supplier_tds_expiry_reminder_notifies_accounts_and_operations() -> None:
     await skip_if_database_unavailable()
-    accounts, _ = await create_user("accounts")
-    operation_manager, _ = await create_user("operation_manager")
+    admin_exec, _ = await create_user("administrative_executive")
+    operations_director, _ = await create_user("operations_director")
     async with AsyncSessionLocal() as session:
         supplier = Supplier(
             name=f"Expiring Supplier {uuid4().hex[:6]}",
@@ -235,8 +235,8 @@ async def test_supplier_tds_expiry_reminder_notifies_accounts_and_operations() -
             ).all()
         )
         recipient_ids = {notification.user_id for notification in notifications}
-        assert accounts.id in recipient_ids
-        assert operation_manager.id in recipient_ids
+        assert admin_exec.id in recipient_ids
+        assert operations_director.id in recipient_ids
 
 
 async def test_supplier_tds_expiry_window_uses_the_business_date(
@@ -244,7 +244,7 @@ async def test_supplier_tds_expiry_window_uses_the_business_date(
 ) -> None:
     """M9: just after local midnight the UTC date is still yesterday in Qatar."""
     await skip_if_database_unavailable()
-    accounts, _ = await create_user("accounts")
+    admin_exec, _ = await create_user("administrative_executive")
     # 2026-11-11T22:00Z is 2026-11-12T01:00 in Asia/Qatar (UTC+3).
     frozen = datetime(2026, 11, 11, 22, 0, tzinfo=UTC)
     monkeypatch.setattr("app.tasks.maintenance.utc_now", lambda: frozen)
@@ -278,7 +278,7 @@ async def test_supplier_tds_expiry_window_uses_the_business_date(
             select(Notification).where(
                 Notification.title == "Supplier TDS expiring",
                 Notification.reference_id == supplier_id,
-                Notification.user_id == accounts.id,
+                Notification.user_id == admin_exec.id,
             )
         )
     assert notified is not None, "the 30-day window was anchored to the UTC date"
