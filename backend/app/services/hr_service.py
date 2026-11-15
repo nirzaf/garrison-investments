@@ -13,6 +13,8 @@ from app.models.hr import (
     HrOnboardingCase,
     HrPosition,
 )
+from app.models.project import Project
+from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.schemas.hr import (
     AccessRequestCreateRequest,
@@ -40,6 +42,7 @@ from app.schemas.hr import (
 from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.services.hr_crypto import decrypt_hr_value, encrypt_hr_value, mask_identifier
 from app.services.hr_manager_review import eligible_reviewer
+from app.services.hr_project_assignment import ACTIVE_ASSIGNMENT_EMPLOYMENT
 from app.services.hr_workforce_service import HrWorkforceService
 from app.services.user_service import UserService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
@@ -195,6 +198,25 @@ class HrService(HrWorkforceService):
                 select(HrPosition).where(HrPosition.deleted_at.is_(None))
             )
         }
+        active_primary_assignments = set(
+            await self.session.scalars(
+                select(HrEmployee.id)
+                .join(Project, Project.id == HrEmployee.primary_project_id)
+                .join(User, User.id == HrEmployee.user_id)
+                .join(
+                    ProjectMember,
+                    (ProjectMember.project_id == Project.id) & (ProjectMember.user_id == User.id),
+                )
+                .where(
+                    HrEmployee.deleted_at.is_(None),
+                    HrEmployee.employment_status.in_(ACTIVE_ASSIGNMENT_EMPLOYMENT),
+                    Project.deleted_at.is_(None),
+                    ProjectMember.deleted_at.is_(None),
+                    User.deleted_at.is_(None),
+                    User.is_active.is_(True),
+                )
+            )
+        )
         nodes: dict[UUID, OrgChartNode] = {
             emp.id: OrgChartNode(
                 employee_id=emp.id,
@@ -206,6 +228,14 @@ class HrService(HrWorkforceService):
                 position_id=emp.position_id,
                 position_title=positions.get(emp.position_id) if emp.position_id else None,
                 manager_employee_id=emp.manager_employee_id,
+                work_location=emp.work_location,
+                primary_assignment=(
+                    "active"
+                    if emp.id in active_primary_assignments
+                    else "inactive"
+                    if emp.primary_project_id
+                    else "none"
+                ),
                 direct_reports=[],
             )
             for emp in employees

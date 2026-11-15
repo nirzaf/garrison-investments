@@ -15,6 +15,26 @@ export type ProjectTaskPayload = components['schemas']['ProjectTaskCreateRequest
 export type ProjectTaskRecord = components['schemas']['ProjectTaskResponse'];
 export type ProjectTaskUpdatePayload = components['schemas']['ProjectTaskUpdateRequest'];
 
+export async function listProjectHrAssignments(projectId: string, offset: number) {
+  const { data } = await apiClient.get<components['schemas']['HrProjectAssignmentListResponse']>(
+    `/projects/${projectId}/hr-assignment-requests`,
+    { params: { offset } }
+  );
+  return data;
+}
+
+export async function decideProjectHrAssignment(
+  projectId: string,
+  requestId: string,
+  payload: components['schemas']['HrProjectAssignmentDecision']
+) {
+  const { data } = await apiClient.post<components['schemas']['HrProjectAssignmentResponse']>(
+    `/projects/${projectId}/hr-assignment-requests/${requestId}/decision`,
+    payload
+  );
+  return data;
+}
+
 export async function listProjects(params: {
   status?: string;
   search?: string;

@@ -665,6 +665,77 @@ test('HR extends and confirms probation from a completed onboarding case', async
   await expect(card.getByText('Employment active', { exact: true })).toBeVisible();
 });
 
+test('HR requests a project assignment for a director to approve', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const worker = seedAccount('group_project_manager');
+  const directorContext = await browser.newContext();
+  try {
+    const directorPage = await directorContext.newPage();
+    const directorSession = await signIn(directorPage, director);
+    const directorHeaders = { Authorization: `Bearer ${directorSession.accessToken}` };
+    const projectEndpoint = `/api/v1/projects/${director.projectId}`;
+    const project = (await (await request.get(projectEndpoint, { headers: directorHeaders })).json()) as {
+      name: string;
+      code: string;
+    };
+    const accounts = await request.get('/api/v1/users', {
+      headers: directorHeaders,
+      params: { email: worker.email }
+    });
+    const workerId = (await accounts.json()).items[0].id as string;
+    const manager = await signIn(page, seedAccount('hr_manager'));
+    const employeeCode = `ASSIGN-${Date.now()}`;
+    const created = await request.post('/api/v1/hr/employees', {
+      headers: { Authorization: `Bearer ${manager.accessToken}` },
+      data: {
+        employee_code: employeeCode,
+        first_name: 'Synthetic',
+        last_name: 'Assignment',
+        work_email: worker.email,
+        employment_status: 'active'
+      }
+    });
+    expect(created.status()).toBe(201);
+    const linked = await request.post(`/api/v1/hr/employees/${(await created.json()).id}/link-account`, {
+      headers: directorHeaders,
+      data: { user_id: workerId }
+    });
+    expect(linked.status()).toBe(200);
+
+    await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await page.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await page.getByLabel('Search employees').fill(employeeCode);
+    await page.getByRole('row').filter({ hasText: employeeCode }).getByRole('button', { name: 'Inspect' }).click();
+    await page.getByLabel('Find project by name or code').fill(project.code);
+    await page.getByRole('button', { name: 'Find project', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Assignment project' }).selectOption(director.projectId);
+    await page.getByLabel('Assignment reason').fill('Staffing review.');
+    await page.getByRole('button', { name: 'Send assignment request' }).click();
+    await expect(page.getByText('Request sent for project review.')).toBeVisible();
+    const before = await request.get(`${projectEndpoint}/members`, { headers: directorHeaders });
+    expect((await before.json()).some((item: { user_id: string }) => item.user_id === workerId)).toBe(false);
+
+    await directorPage.getByRole('link', { name: 'Projects', exact: true }).click();
+    await directorPage.getByRole('button', { name: project.name, exact: true }).click();
+    const detail = directorPage.getByRole('region', { name: 'Project details' });
+    await detail.getByRole('button', { name: 'Team', exact: true }).click();
+    await detail.getByRole('button', { name: 'Approve assignment', exact: true }).click();
+    await expect(detail.getByText('Assignment decision recorded.')).toBeVisible();
+    const after = await request.get(`${projectEndpoint}/members`, { headers: directorHeaders });
+    expect((await after.json()).some((item: { user_id: string }) => item.user_id === workerId)).toBe(true);
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await expect(page.getByText(`Synthetic Assignment · ${project.code} · Add · approved`)).toBeVisible();
+  } finally {
+    await directorContext.close();
+  }
+});
+
 test('revoking the HR role clears the open HR workspace and prevents access after sign-in', async ({
   page,
   browser,

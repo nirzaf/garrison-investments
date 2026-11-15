@@ -1134,6 +1134,142 @@ async def test_probation_review_extends_then_confirms_with_current_revision(monk
 
 
 @pytest.mark.asyncio
+async def test_hr_project_assignment_uses_project_permissions_and_atomic_decisions() -> None:
+    await skip_if_database_unavailable()
+    admin_id, admin_email, password = await _create_portal_user("managing_director")
+    _, hr_email, _ = await _create_portal_user("hr_manager", password)
+    worker_id, worker_email, _ = await _create_portal_user("group_project_manager", password)
+    async with AsyncSessionLocal() as session:
+        projects = [
+            Project(
+                name=name,
+                code=f"HRP-{uuid4().hex[:8]}",
+                status="active",
+                target_end_date=business_today() + timedelta(days=30),
+                scope_of_work="Synthetic assignment verification.",
+                created_by=UUID(admin_id),
+            )
+            for name in ("Synthetic assignment site", "Other assignment site")
+        ]
+        session.add_all(projects)
+        await session.flush()
+        project_id, other_project = [str(project.id) for project in projects]
+        await session.commit()
+
+    async with _client() as client:
+        admin = _auth(await _login(client, admin_email, password))
+        hr = _auth(await _login(client, hr_email, password))
+        worker = _auth(await _login(client, worker_email, password))
+        projects_url = f"/api/v1/projects/{project_id}"
+        queue = f"{projects_url}/hr-assignment-requests"
+        assert (await client.get(projects_url, headers=worker)).status_code == 404
+        picker = await client.get(
+            "/api/v1/hr/project-assignment-options",
+            params={"search": "Synthetic assignment site"},
+            headers=hr,
+        )
+        option = next(item for item in picker.json()["items"] if item["id"] == project_id)
+        assert set(option) == {"id", "code", "name"}
+        employee = await client.post(
+            "/api/v1/hr/employees",
+            json={
+                "employee_code": f"LINK-{uuid4().hex[:8]}",
+                "first_name": "Synthetic",
+                "last_name": "Assignment",
+                "work_email": worker_email,
+                "work_location": "West site",
+                "primary_project_id": project_id,
+                "employment_status": "active",
+            },
+            headers=hr,
+        )
+        assert employee.status_code == 201
+        employee_id = employee.json()["id"]
+        assert (
+            await client.post(
+                f"/api/v1/hr/employees/{employee_id}/link-account",
+                json={"user_id": worker_id},
+                headers=admin,
+            )
+        ).status_code == 200
+        org = await client.get("/api/v1/hr/org-chart", headers=hr)
+        node = next(node for node in org.json()["roots"] if node["employee_id"] == employee_id)
+        assert node["work_location"] == "West site"
+        assert node["primary_assignment"] == "inactive"
+        assert "primary_project_id" not in node
+
+        endpoint = f"/api/v1/hr/employees/{employee_id}/project-assignment-requests"
+        payload = {"project_id": project_id, "action": "assign", "reason": "Review staffing."}
+        pending = await client.post(endpoint, json=payload, headers=hr)
+        assert pending.status_code == 201
+        request_id = pending.json()["id"]
+        assert (await client.post(endpoint, json=payload, headers=hr)).status_code == 409
+        assert (await client.get(projects_url, headers=worker)).status_code == 404
+        assert (await client.get(queue, headers=hr)).status_code == 403
+        assert (await client.get(queue, headers=worker)).status_code == 404
+        revision = (await client.get(projects_url, headers=admin)).json()["revision"]
+        approve = {"decision": "approve", "expected_project_revision": revision}
+        decision_endpoint = f"{queue}/{request_id}/decision"
+        assert (await client.post(decision_endpoint, json=approve, headers=hr)).status_code == 403
+        assert (
+            await client.post(
+                f"/api/v1/projects/{other_project}/hr-assignment-requests/{request_id}/decision",
+                json=approve,
+                headers=admin,
+            )
+        ).status_code == 404
+        stale = await client.post(
+            decision_endpoint,
+            json={**approve, "expected_project_revision": revision + 1},
+            headers=admin,
+        )
+        assert stale.status_code == 409
+        assert (await client.get(queue, headers=admin)).json()["items"][0]["status"] == "pending"
+        decisions = await asyncio.gather(
+            *(client.post(decision_endpoint, json=approve, headers=admin) for _ in range(2))
+        )
+        assert sorted(response.status_code for response in decisions) == [200, 409]
+        assert (await client.get(projects_url, headers=worker)).status_code == 200
+        org = await client.get("/api/v1/hr/org-chart", headers=hr)
+        node = next(node for node in org.json()["roots"] if node["employee_id"] == employee_id)
+        assert node["primary_assignment"] == "active"
+
+        removal = await client.post(endpoint, json={**payload, "action": "revoke"}, headers=hr)
+        assert removal.status_code == 201
+        remove_endpoint = f"{queue}/{removal.json()['id']}/decision"
+        assert (
+            await client.post(
+                remove_endpoint,
+                json={"decision": "reject", "expected_project_revision": revision + 1},
+                headers=admin,
+            )
+        ).status_code == 422
+        assert (
+            await client.post(
+                remove_endpoint,
+                json={
+                    "decision": "reject",
+                    "expected_project_revision": revision + 1,
+                    "note": "Staffing still needed.",
+                },
+                headers=admin,
+            )
+        ).json()["status"] == "rejected"
+        assert (await client.get(projects_url, headers=worker)).status_code == 200
+        removal = await client.post(endpoint, json={**payload, "action": "revoke"}, headers=hr)
+        assert removal.status_code == 201
+        remove_endpoint = f"{queue}/{removal.json()['id']}/decision"
+        assert (
+            await client.post(
+                remove_endpoint,
+                json={"decision": "approve", "expected_project_revision": revision + 1},
+                headers=admin,
+            )
+        ).status_code == 200
+        assert (await client.get(projects_url, headers=worker)).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_hr_f_document_vault_rbac_and_compliance() -> None:
     await skip_if_database_unavailable()
     _, hrm_email, pw = await _create_portal_user("hr_manager")

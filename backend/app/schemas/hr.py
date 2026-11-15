@@ -164,12 +164,54 @@ class OrgChartNode(BaseModel):
     position_id: UUID | None
     position_title: str | None = None
     manager_employee_id: UUID | None
+    work_location: str | None = None
+    primary_assignment: Literal["none", "active", "inactive"] = "none"
     direct_reports: list["OrgChartNode"] = Field(default_factory=list)
 
 
 class OrgChartResponse(BaseModel):
     roots: list[OrgChartNode]
     total_employees: int
+
+
+class HrProjectAssignmentCreateRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    project_id: UUID
+    action: Literal["assign", "revoke"]
+    role_in_project: str | None = Field(default=None, max_length=50)
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class HrProjectAssignmentDecision(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    decision: Literal["approve", "reject"]
+    expected_project_revision: int = Field(ge=1)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class HrProjectAssignmentResponse(BaseModel):
+    id: UUID
+    employee_id: UUID
+    employee_name: str
+    project_id: UUID
+    project_code: str
+    project_name: str
+    action: str
+    status: str
+    role_in_project: str | None
+    reason: str
+    decision_note: str | None
+    decided_at: datetime | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HrProjectAssignmentListResponse(BaseModel):
+    items: list[HrProjectAssignmentResponse]
+    total: int
 
 
 # --- Employees & Projections ---

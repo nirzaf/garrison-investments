@@ -7,6 +7,11 @@ from app.api.dependencies import DbSession, require_permission
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.hr import (
+    HrProjectAssignmentDecision,
+    HrProjectAssignmentListResponse,
+    HrProjectAssignmentResponse,
+)
 from app.schemas.projects import (
     BoqItemResponse,
     MilestoneResponse,
@@ -23,6 +28,7 @@ from app.schemas.projects import (
     ProjectTimelineResponse,
     ProjectUpdateRequest,
 )
+from app.services.hr_project_assignment import HrProjectAssignmentService
 from app.services.project_service import READ_ONLY_STATUSES, ProjectService
 from app.utils.permissions import (
     PERMISSION_FINANCIAL_VIEW,
@@ -136,6 +142,33 @@ async def list_project_members(
 ) -> list[ProjectMemberResponse]:
     members = await ProjectService(session).list_members(project_id, current_user)
     return await _member_responses(members, session)
+
+
+@router.get("/{project_id}/hr-assignment-requests", response_model=HrProjectAssignmentListResponse)
+async def project_assignment_requests(
+    project_id: UUID,
+    actor: CanManageProjects,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HrProjectAssignmentListResponse:
+    return await HrProjectAssignmentService(session).list_requests(
+        actor, project_id=project_id, limit=limit, offset=offset
+    )
+
+
+@router.post(
+    "/{project_id}/hr-assignment-requests/{request_id}/decision",
+    response_model=HrProjectAssignmentResponse,
+)
+async def decide_project_assignment(
+    project_id: UUID,
+    request_id: UUID,
+    payload: HrProjectAssignmentDecision,
+    actor: CanManageProjects,
+    session: DbSession,
+) -> HrProjectAssignmentResponse:
+    return await HrProjectAssignmentService(session).decide(project_id, request_id, payload, actor)
 
 
 @router.post(

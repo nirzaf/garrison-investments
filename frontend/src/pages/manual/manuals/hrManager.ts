@@ -47,6 +47,13 @@ export const hrManagerManual: Manual = {
         'Open Docs & Compliance and review a pending version. An approved replacement supersedes the active version.'
     },
     {
+      id: 'hr-project-assignment',
+      title: 'Request a project assignment',
+      icon: '📋',
+      content:
+        'In Directory & Org, inspect an employee with a linked portal account. Under Project assignment requests, find the project, choose whether to add or remove team access, and provide a reason. An authorized project manager or director reviews the request on the project Team tab. Return to My requests to see the decision.'
+    },
+    {
       id: 'hr-probation-review',
       title: 'Record a probation decision',
       icon: '📋',

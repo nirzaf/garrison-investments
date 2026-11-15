@@ -78,6 +78,9 @@ from app.schemas.hr import (
     HrDocumentDownloadResponse,
     HrDocumentListResponse,
     HrDocumentResponse,
+    HrProjectAssignmentCreateRequest,
+    HrProjectAssignmentListResponse,
+    HrProjectAssignmentResponse,
     HrReportFilters,
     HrReportSiteListResponse,
     HrServiceRequestCreateRequest,
@@ -192,6 +195,7 @@ from app.schemas.hr import (
     WorkCalendarUpdateRequest,
     WorkScheduleResponse,
 )
+from app.schemas.projects import ProjectOptionListResponse
 from app.services.audit_service import AuditService
 from app.services.hr_attendance_import import MAX_ATTENDANCE_CSV_BYTES, review_attendance_csv
 from app.services.hr_manager_review import (
@@ -199,6 +203,7 @@ from app.services.hr_manager_review import (
     list_manager_reviews,
     recommend_request,
 )
+from app.services.hr_project_assignment import HrProjectAssignmentService
 from app.services.hr_reporting import (
     HR_REPORT_MEDIA_TYPES,
     HrReportFormat,
@@ -701,6 +706,45 @@ async def update_position(
 @router.get("/org-chart", response_model=OrgChartResponse)
 async def get_org_chart(_: CanReadEmployees, session: DbSession) -> OrgChartResponse:
     return await HrService(session).get_org_chart()
+
+
+@router.get("/project-assignment-options", response_model=ProjectOptionListResponse)
+async def project_assignment_options(
+    actor: CanManageEmployees,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ProjectOptionListResponse:
+    return await HrProjectAssignmentService(session).project_options(
+        actor, search=search, limit=limit, offset=offset
+    )
+
+
+@router.get("/project-assignment-requests", response_model=HrProjectAssignmentListResponse)
+async def my_project_assignment_requests(
+    actor: CanManageEmployees,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HrProjectAssignmentListResponse:
+    return await HrProjectAssignmentService(session).list_requests(
+        actor, limit=limit, offset=offset
+    )
+
+
+@router.post(
+    "/employees/{employee_id}/project-assignment-requests",
+    response_model=HrProjectAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def request_project_assignment(
+    employee_id: UUID,
+    payload: HrProjectAssignmentCreateRequest,
+    actor: CanManageEmployees,
+    session: DbSession,
+) -> HrProjectAssignmentResponse:
+    return await HrProjectAssignmentService(session).create(employee_id, payload, actor)
 
 
 # --- Employees & Private Vault ---

@@ -19,6 +19,7 @@ import {
   projectSubmitClass
 } from './ProjectFields';
 import { ProjectTimeline } from './ProjectTimeline';
+import { ProjectHrAssignments } from './ProjectHrAssignments';
 import { ProjectUserPicker } from './ProjectUserPicker';
 
 const tabs = ['Overview', 'Team', 'Timeline'] as const;
@@ -104,7 +105,12 @@ export function ProjectDetailPanel({
             />
           </div>
           <div hidden={tab !== 'Team'}>
-            <ProjectTeam project={project} canEdit={canEdit} active={tab === 'Team'} />
+            <ProjectTeam
+              project={project}
+              canEdit={canEdit}
+              canReviewHrRequests={canManage}
+              active={tab === 'Team'}
+            />
           </div>
           <ProjectTimeline project={project} canEdit={canEdit} active={tab === 'Timeline'} />
         </>
@@ -415,10 +421,12 @@ function ProjectEditor({
 function ProjectTeam({
   project,
   canEdit,
+  canReviewHrRequests,
   active
 }: {
   project: ProjectDetail;
   canEdit: boolean;
+  canReviewHrRequests: boolean;
   active: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -462,6 +470,13 @@ function ProjectTeam({
   return (
     <div className="space-y-3">
       <h4 className="font-semibold">Project team</h4>
+      {canReviewHrRequests && active && (
+        <ProjectHrAssignments
+          projectId={project.id}
+          revision={project.revision}
+          canApprove={canEdit}
+        />
+      )}
       {members.isPending && (
         <p role="status" className="text-sm">
           Loading project team…

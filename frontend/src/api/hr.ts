@@ -7,6 +7,34 @@ export type DepartmentRecord = HrSchemas['DepartmentResponse'];
 export type PositionRecord = HrSchemas['PositionResponse'];
 export type OrgChartResponse = HrSchemas['OrgChartResponse'];
 export type OrgChartNode = HrSchemas['OrgChartNode'];
+export type HrProjectAssignment = HrSchemas['HrProjectAssignmentResponse'];
+
+export async function listHrAssignmentProjects(search?: string) {
+  const { data } = await apiClient.get<HrSchemas['ProjectOptionListResponse']>(
+    '/hr/project-assignment-options',
+    { params: { search } }
+  );
+  return data;
+}
+
+export async function listMyHrAssignments(offset: number) {
+  const { data } = await apiClient.get<HrSchemas['HrProjectAssignmentListResponse']>(
+    '/hr/project-assignment-requests',
+    { params: { offset } }
+  );
+  return data;
+}
+
+export async function requestHrAssignment(
+  employeeId: string,
+  payload: HrSchemas['HrProjectAssignmentCreateRequest']
+) {
+  const { data } = await apiClient.post<HrProjectAssignment>(
+    `/hr/employees/${employeeId}/project-assignment-requests`,
+    payload
+  );
+  return data;
+}
 export type EmployeeDirectoryRecord = HrSchemas['EmployeeDirectoryResponse'];
 export type EmployeeDetailRecord = HrSchemas['EmployeeDetailResponse'];
 export type EmployeeSensitiveRecord = HrSchemas['EmployeeSensitiveResponse'];

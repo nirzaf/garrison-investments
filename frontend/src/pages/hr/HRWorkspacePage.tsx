@@ -64,6 +64,7 @@ import { HRSummaryPanel } from './HRSummaryPanel';
 import { HRTimePanel } from './HRTimePanel';
 import { HRHiringPanel } from './HRHiringPanel';
 import { HRLettersPanel } from './HRLettersPanel';
+import { HRProjectAssignments } from './HRProjectAssignments';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
@@ -83,6 +84,9 @@ function OrgBranch({ node }: { node: OrgChartNode }) {
       <p>
         {node.full_name} · {node.position_title ?? 'Unassigned position'} ·{' '}
         {node.department_name ?? 'Unassigned department'}
+        {node.work_location && ` · ${node.work_location}`}
+        {node.primary_assignment === 'active' && ' · Active primary project membership'}
+        {node.primary_assignment === 'inactive' && ' · No active primary project membership'}
       </p>
       {node.direct_reports?.length ? (
         <ul className="ml-4 border-l border-theme-border pl-3">
@@ -699,6 +703,12 @@ export function HRWorkspacePage() {
 
             <div className="rounded-lg border border-theme-border bg-theme-card p-4 space-y-4">
               <h3 className="text-base font-semibold">Selected Employee</h3>
+              {hasPerm('hr:employees:manage') && (
+                <HRProjectAssignments
+                  key={selectedEmp?.id}
+                  employeeId={selectedEmp?.user_id ? selectedEmp.id : undefined}
+                />
+              )}
               {!selectedEmp ? (
                 <p className="text-sm text-theme-text-muted">Select an employee to inspect.</p>
               ) : (

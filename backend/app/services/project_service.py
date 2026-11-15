@@ -287,9 +287,12 @@ class ProjectService:
         ensure_permission(current_actor, PERMISSION_PROJECTS_MANAGE)
         return users
 
-    async def list_members(self, project_id: UUID, current_user: User) -> list[ProjectMember]:
+    async def get_project(self, project_id: UUID, current_user: User) -> Project:
         ensure_permission(current_user, PERMISSION_PROJECTS_READ)
-        project = await self._get_authorized_project(project_id, current_user)
+        return await self._get_authorized_project(project_id, current_user)
+
+    async def list_members(self, project_id: UUID, current_user: User) -> list[ProjectMember]:
+        project = await self.get_project(project_id, current_user)
         return await self.projects.list_members(project.id)
 
     async def list_timeline(self, project_id: UUID, current_user: User):

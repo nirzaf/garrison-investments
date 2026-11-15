@@ -1215,6 +1215,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/employees/{employee_id}/project-assignment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Project Assignment */
+        post: operations["request_project_assignment_api_v1_hr_employees__employee_id__project_assignment_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/employees/{employee_id}/status": {
         parameters: {
             query?: never;
@@ -2206,6 +2223,40 @@ export interface paths {
         patch: operations["update_position_api_v1_hr_positions__position_id__patch"];
         trace?: never;
     };
+    "/api/v1/hr/project-assignment-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Assignment Options */
+        get: operations["project_assignment_options_api_v1_hr_project_assignment_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/project-assignment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Project Assignment Requests */
+        get: operations["my_project_assignment_requests_api_v1_hr_project_assignment_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/reimbursements": {
         parameters: {
             query?: never;
@@ -3105,6 +3156,40 @@ export interface paths {
         head?: never;
         /** Update Project */
         patch: operations["update_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/hr-assignment-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Assignment Requests */
+        get: operations["project_assignment_requests_api_v1_projects__project_id__hr_assignment_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/hr-assignment-requests/{request_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Project Assignment */
+        post: operations["decide_project_assignment_api_v1_projects__project_id__hr_assignment_requests__request_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/members": {
@@ -6097,6 +6182,83 @@ export interface components {
             /** Version Number */
             version_number: number;
         };
+        /** HrProjectAssignmentCreateRequest */
+        HrProjectAssignmentCreateRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "assign" | "revoke";
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /** Role In Project */
+            role_in_project?: string | null;
+        };
+        /** HrProjectAssignmentDecision */
+        HrProjectAssignmentDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "reject";
+            /** Expected Project Revision */
+            expected_project_revision: number;
+            /** Note */
+            note?: string | null;
+        };
+        /** HrProjectAssignmentListResponse */
+        HrProjectAssignmentListResponse: {
+            /** Items */
+            items: components["schemas"]["HrProjectAssignmentResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** HrProjectAssignmentResponse */
+        HrProjectAssignmentResponse: {
+            /** Action */
+            action: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decision Note */
+            decision_note: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Employee Name */
+            employee_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Project Code */
+            project_code: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Reason */
+            reason: string;
+            /** Role In Project */
+            role_in_project: string | null;
+            /** Status */
+            status: string;
+        };
         /** HrReportFilters */
         HrReportFilters: {
             /** Date From */
@@ -7815,6 +7977,14 @@ export interface components {
             position_id: string | null;
             /** Position Title */
             position_title?: string | null;
+            /**
+             * Primary Assignment
+             * @default none
+             * @enum {string}
+             */
+            primary_assignment: "none" | "active" | "inactive";
+            /** Work Location */
+            work_location?: string | null;
         };
         /** OrgChartResponse */
         OrgChartResponse: {
@@ -13379,6 +13549,41 @@ export interface operations {
             };
         };
     };
+    request_project_assignment_api_v1_hr_employees__employee_id__project_assignment_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HrProjectAssignmentCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrProjectAssignmentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     transition_employee_status_api_v1_hr_employees__employee_id__status_post: {
         parameters: {
             query?: never;
@@ -15914,6 +16119,71 @@ export interface operations {
             };
         };
     };
+    project_assignment_options_api_v1_hr_project_assignment_options_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOptionListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    my_project_assignment_requests_api_v1_hr_project_assignment_requests_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrProjectAssignmentListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_reimbursements_api_v1_hr_reimbursements_get: {
         parameters: {
             query?: {
@@ -18178,6 +18448,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    project_assignment_requests_api_v1_projects__project_id__hr_assignment_requests_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrProjectAssignmentListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_project_assignment_api_v1_projects__project_id__hr_assignment_requests__request_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HrProjectAssignmentDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrProjectAssignmentResponse"];
                 };
             };
             /** @description Invalid request */

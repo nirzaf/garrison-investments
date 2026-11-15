@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -305,6 +306,46 @@ class HrAccessRequest(TimestampMixin, Base):
     linked_user_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class HrProjectAssignmentRequest(TimestampMixin, Base):
+    __tablename__ = "hr_project_assignment_requests"
+    __table_args__ = (
+        CheckConstraint("action IN ('assign', 'revoke')", name="hr_assignment_action"),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')", name="hr_assignment_status"
+        ),
+        Index(
+            "uq_hr_project_assignment_pending",
+            "project_id",
+            "employee_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    employee_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_employees.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    linked_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    requested_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default=text("'pending'")
+    )
+    role_in_project: Mapped[str | None] = mapped_column(String(50))
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    decision_note: Mapped[str | None] = mapped_column(String(500))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HrRequisition(TimestampMixin, SoftDeleteMixin, Base):
