@@ -102,6 +102,9 @@ jobs:
       npm_config_cache: /runner/state/npm-cache
     strategy:
       fail-fast: false
+      # Concurrent Chrome shards and a third integration job have exceeded
+      # the shared runner host's capacity. Keep all shards and tests.
+      max-parallel: 2
       matrix:
         include:
           - suite: backend
