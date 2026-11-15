@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Architecture](../ARCHITECTURE.md) · [Operations and deployment](../OPERATIONS_AND_DEPLOYMENT.md)
 
-This reference covers the core operational tables along with the HR & Workforce Management schema defined in [Alembic revision `202605310007`](../../backend/alembic/versions/202605310007_hr_workforce_management.py) (see also [`backend/app/models/hr.py`](../../backend/app/models/hr.py)). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints, and indexes from the migrated schema. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
+This reference covers the core operational tables and HR & Workforce Management schema. The HR table-constraint reference was checked against production schema head `202605310013` on 2026-11-15 and includes pending revision [`202605310014`](../../backend/alembic/versions/202605310014_hr_recruitment_followups.py); HR migrations begin at [revision `202605310007`](../../backend/alembic/versions/202605310007_hr_workforce_management.py) and evolve through [`202605310014`](../../backend/alembic/versions/202605310014_hr_recruitment_followups.py) (see also [`backend/app/models/hr.py`](../../backend/app/models/hr.py)). Each core table page links to its [SQLAlchemy model](../../backend/app/models/) and lists PostgreSQL columns, server defaults, constraints, and indexes from its described schema snapshot. Follow [Alembic migrations](../../backend/alembic/versions/) to trace schema changes.
 
 A dash in the default column means the database has no server default. Application-side rules live in the linked model and service code. Many tables use `deleted_at` for soft deletion. Foreign-key delete actions describe physical row deletion.
 
@@ -75,15 +75,18 @@ A dash in the default column means the database has no server default. Applicati
 | [`idempotency_records`](idempotency_records.md) | Request keys and resource references used to deduplicate retried writes. |
 | [`task_outbox`](task_outbox.md) | Background work recorded in the same database transaction as the operation that schedules it. |
 
-## HR and workforce management (migration `202605310007`)
+## HR and workforce management
 
-Defined in [`backend/app/models/hr.py`](../../backend/app/models/hr.py) and [`202605310007_hr_workforce_management.py`](../../backend/alembic/versions/202605310007_hr_workforce_management.py):
+See [HR table constraints](hr.md) for the primary keys, foreign keys, named
+indexes and soft-delete columns. The initial schema is defined in
+[`backend/app/models/hr.py`](../../backend/app/models/hr.py) and
+[`202605310007_hr_workforce_management.py`](../../backend/alembic/versions/202605310007_hr_workforce_management.py).
 
 | Domain | Tables |
 | --- | --- |
-| Core organization & employee master | `hr_departments`, `hr_positions`, `hr_employees`, `hr_employee_private` (Fernet-encrypted sensitive fields), `hr_employment_history` (immutable audit ledger), `hr_access_requests` (3-party HR/Admin provisioning queue) |
+| Core organization & employee master | `hr_departments`, `hr_positions`, `hr_employees`, `hr_employee_private` (Fernet-encrypted sensitive fields), `hr_employment_history` (employment change history), `hr_access_requests` (HR request, separate HR review and director fulfillment), `hr_project_assignment_requests` (pending requests only change membership after authorized approval) |
 | Recruitment & onboarding | `hr_requisitions`, `hr_candidates`, `hr_applications`, `hr_interviews`, `hr_offers`, `hr_onboarding_cases`, `hr_onboarding_tasks` |
-| HR documents vault & compliance | `hr_documents` (category RBAC: ordinary, confidential, medical, compensation, disciplinary), `hr_document_versions` |
+| HR documents vault & compliance | `hr_documents` (categories: ordinary, confidential, medical, identity, compensation, disciplinary), `hr_document_versions` |
 | Time, attendance & leave | `hr_work_calendars`, `hr_holidays`, `hr_shift_assignments`, `hr_attendance_entries`, `hr_attendance_corrections`, `hr_timesheets`, `hr_overtime_requests`, `hr_leave_types`, `hr_leave_policies`, `hr_leave_ledger`, `hr_leave_requests` |
 | Policies, letters, requests & offboarding | `hr_policy_documents`, `hr_policy_acknowledgements`, `hr_letter_templates`, `hr_hr_requests`, `hr_offboarding_cases`, `hr_clearance_steps` |
 | P2 governance & policy-gated modules | `hr_goals`, `hr_review_cycles`, `hr_reviews`, `hr_training_courses`, `hr_training_enrollments`, `hr_certifications`, `hr_benefit_types`, `hr_employee_benefits`, `hr_reimbursement_claims`, `hr_compensation_terms`, `hr_payroll_policies` (dual-approval gate), `hr_payroll_periods`, `hr_payroll_runs`, `hr_payroll_lines`, `hr_cases` (encrypted restricted case details) |
@@ -100,3 +103,12 @@ checks that no active account holds the retired HR Executive role.
 [202605310012](../../backend/alembic/versions/202605310012_hr_attendance_review.py)
 adds approval state, independent review and revision tracking to attendance entries
 and records the base revision on correction requests.
+[202605310013](../../backend/alembic/versions/202605310013_hr_project_assignment.py)
+adds the project assignment request and decision table. Existing memberships
+are preserved. Membership changes use the existing project service only after
+an authorized reviewer approves a request.
+[202605310014](../../backend/alembic/versions/202605310014_hr_recruitment_followups.py)
+adds `hr_requisitions.rejection_reason` plus offer validity, versioning, and
+supersession columns (`valid_until`, `version_number`, `supersedes_offer_id`,
+`superseded_by_id`, `superseded_at`), self-referential foreign keys, and
+`ck_hr_offers_version_positive` on `hr_offers`.

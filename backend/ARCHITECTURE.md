@@ -22,7 +22,7 @@ The [portal architecture](../docs/ARCHITECTURE.md) covers runtime dependencies, 
 
 ## Verify a change
 
-Run the relevant [backend checks](../README.md#verification) against the disposable test services. The [Pytest suite](tests/) contains endpoint regressions and the [browser fixture module](tests/browser_fixtures.py) seeds isolated Chromium data.
+Run the relevant [backend checks](../README.md#verification) against the disposable test services. The [Pytest suite](tests/) contains endpoint regressions and the [browser fixture module](tests/browser_fixtures.py) seeds isolated data for the Google Chrome suite.
 
 - For authorization, see the [permission matrix tests](tests/test_authorization_matrix.py), [scope tests](tests/test_scope_authorization.py), and [delegation guards](tests/test_delegation_guards.py).
 - For transactional changes, start with [report and payment concurrency](tests/test_report_payment_concurrency.py), [inventory accounting](tests/test_inventory_accounting.py), [import execution](tests/test_imports.py), or [idempotency](tests/test_idempotency.py).

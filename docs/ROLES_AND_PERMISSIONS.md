@@ -1,9 +1,9 @@
 # Roles and permissions
 
-The portal accepts exactly the ten role keys below. Their current portal and HR grants are defined in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
+The portal accepts exactly the nine role keys below. Their current portal and HR grants are defined in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
 and [the backend permission definitions](../backend/app/utils/permissions.py). The
 independent [business matrix test fixture](../backend/tests/business_role_matrix.json)
-records the 160 historical source decisions. The HR specification changes selected grants for the two HR roles. A role grant is only one authorization boundary:
+records the 160 historical source decisions. The current catalogue grants HR workflow permissions to HR Manager. A role grant is only one authorization boundary:
 services also check record ownership, project membership, state, and current account
 status.
 
@@ -21,7 +21,9 @@ status.
 | `hr_manager` | HR Manager |
 | `administrative_executive` | Administrative Executive |
 
-The eight former role keys are retired. They are not aliases, valid login roles,
+The original eight keys (`admin`, `general_manager`, `operation_manager`,
+`project_manager`, `civil_engineer`, `civil_supervisor`, `store_keeper`,
+`accounts`) and the later `hr_executive` key are retired. They are not aliases, valid login roles,
 assignment options, import targets, seed defaults, or worker privileges. Historical
 records and explicit rejection/migration tests may still contain those strings.
 There is no technical administrator role or role-based bypass.
@@ -63,6 +65,12 @@ recommend specific time and leave requests when the company policy is enabled.
 The authorization applies to that reporting relationship and does not grant
 HR directory, document or final-decision permissions. See [HR and workforce](HR_WORKFORCE.md).
 
+The backend defines 16 standard and 21 HR permission keys. No current role is
+granted `hr:cases:restricted`, `hr:payroll:approve`, `hr:payroll:prepare`,
+`hr:payroll:sensitive`, `hr:performance:manage`, or `hr:training:manage`.
+The associated permission-gated workflows cannot be operated by assigning a
+current portal role. [Permission definitions and grants](../backend/app/utils/permissions.py)
+
 ## Authorization rules
 
 - Only Managing Director and Operations Director have company-wide resource scope.
@@ -71,7 +79,7 @@ HR directory, document or final-decision permissions. See [HR and workforce](HR_
 - The API and service remain authoritative. Hiding a menu or button is not an
   authorization check. Current role, active state, access revision, ownership,
   membership, and workflow state are rechecked on protected actions.
-- User management uses target-role ceilings. Directors may manage the ten supported
+- User management uses target-role ceilings. Directors may manage the nine supported
   roles directly. HR access requests require HR review and director fulfillment. Self-elevation,
   self-role change, self-deactivation, and self-password reset are blocked. Changes
   to access revoke refresh sessions and pending OTP challenges.
@@ -81,14 +89,22 @@ HR directory, document or final-decision permissions. See [HR and workforce](HR_
 - `financial:view` grants read access to protected financial fields; it does not
   grant invoice, payment, or other finance mutations. Financial writes without an
   explicit matrix permission remain unavailable.
-- Inventory management is granted only to MD and OD. Other inventory viewers receive
-  scoped read access; visibility does not imply stock, master-data, reservation, or
-  issue mutation rights.
+- Inventory management is granted only to MD and OD. That grant is required to
+  create, reserve, issue or cancel material requests. Other inventory viewers
+  receive scoped reads and can use the scoped request-project lookup.
+  [Inventory routes](../backend/app/api/v1/inventory.py) · [Inventory service](../backend/app/services/inventory_service.py)
 - Company dashboard access does not imply company-wide project, report, document,
   audit, or financial access. Those paths enforce their own permission and scope.
 - Submission and viewing are separate report permissions. A submitter without
   `reports:view` may recover only their own allowed work; do not widen the role
   matrix to make a page load.
+- Official daily report authoring is available to the two directors, the Group
+  and MEP Project Managers, and Quantity Surveyor. The two supervisor roles
+  author supervisor updates. Assigned-project scope applies outside the two
+  director roles. Daily-report decisions are available to eligible directors,
+  Group and MEP Project Managers, and HR Manager. The service rejects a
+  self-approval and requires project membership for non-director decisions.
+  [Role eligibility](../backend/app/utils/permissions.py) · [Report service](../backend/app/services/report_service.py) · [Supervisor service](../backend/app/services/reporting_service.py)
 - Approval visibility and action eligibility differ. Normal self-approval and
   former global override powers are denied. Each owning workflow service applies its
   own transition and scope checks.

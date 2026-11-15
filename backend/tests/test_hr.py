@@ -21,6 +21,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
+from app.models.activity_log import ActivityLog
 from app.models.hr import (
     HrAttendanceEntry,
     HrCertification,
@@ -30,7 +31,9 @@ from app.models.hr import (
     HrEmployee,
     HrEmployeePrivate,
     HrLeaveLedger,
+    HrOffer,
     HrOnboardingCase,
+    HrRequisition,
     HrServiceRequest,
 )
 from app.models.notification import Notification
@@ -922,12 +925,29 @@ async def test_hr_e_recruitment_offer_and_onboarding() -> None:
     async with _client() as client:
         tok = await _login(client, hrm_email, pw)
 
+        assert (
+            await client.post(
+                "/api/v1/hr/requisitions",
+                json={
+                    "requisition_code": f"REQ-BAD-{uuid4().hex[:5]}",
+                    "title": "Invalid Headcount",
+                    "headcount_requested": 0,
+                },
+                headers=_auth(tok),
+            )
+        ).status_code == 422
+
         req = await client.post(
             "/api/v1/hr/requisitions",
-            json={"requisition_code": f"REQ-{uuid4().hex[:5]}", "title": "Site Foreman"},
+            json={
+                "requisition_code": f"REQ-{uuid4().hex[:5]}",
+                "title": "Site Foreman",
+                "headcount_requested": 2,
+            },
             headers=_auth(tok),
         )
         assert req.status_code == 201
+        assert req.json()["headcount_requested"] == 2
         req_id = req.json()["id"]
 
         for step in ("submitted", "approved", "open"):
@@ -986,16 +1006,19 @@ async def test_hr_e_recruitment_offer_and_onboarding() -> None:
                 "offer_code": f"OFR-{uuid4().hex[:5]}",
                 "application_id": app_id,
                 "proposed_title": "Site Foreman",
+                "valid_until": business_today().isoformat(),
             },
             headers=_auth(tok),
         )
         assert offer.status_code == 201
+        assert offer.json()["version_number"] == 1
+        assert offer.json()["valid_until"] == business_today().isoformat()
         offer_id = offer.json()["id"]
 
         for status_step in ("pending_approval", "approved", "issued", "accepted"):
             res = await client.post(
                 f"/api/v1/hr/offers/{offer_id}/decision",
-                json={"status": status_step},
+                json={"status": status_step, "expected_version_number": 1},
                 headers=_auth(tok),
             )
             assert res.status_code == 200
@@ -1018,6 +1041,341 @@ async def test_hr_e_recruitment_offer_and_onboarding() -> None:
                     headers=_auth(tok),
                 )
             ).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_hr_recruitment_requisition_rejection_and_offer_expiry_versioning(
+    monkeypatch,
+) -> None:
+    await skip_if_database_unavailable()
+    _, hrm_email, hrm_pw = await _create_portal_user("hr_manager")
+    _, sup_email, sup_pw = await _create_portal_user("site_supervisor")
+    base_today = date(2027, 3, 10)
+    monkeypatch.setattr("app.services.hr_workforce_service.business_today", lambda: base_today)
+
+    async with _client() as client:
+        hr = _auth(await _login(client, hrm_email, hrm_pw))
+        sup = _auth(await _login(client, sup_email, sup_pw))
+
+        # --- HR-008: Requisition rejection persistence, headcount, and access control ---
+        assert (
+            await client.post(
+                "/api/v1/hr/requisitions",
+                json={"requisition_code": f"REQ-DENY-{uuid4().hex[:5]}", "title": "Denied"},
+                headers=sup,
+            )
+        ).status_code == 403
+
+        req = await client.post(
+            "/api/v1/hr/requisitions",
+            json={
+                "requisition_code": f"REQ-REJ-{uuid4().hex[:5]}",
+                "title": "MEP Engineer",
+                "headcount_requested": 3,
+            },
+            headers=hr,
+        )
+        assert req.status_code == 201
+        req_id = req.json()["id"]
+        assert req.json()["headcount_requested"] == 3
+        assert (
+            await client.post(
+                f"/api/v1/hr/requisitions/{req_id}/decision",
+                json={"status": "submitted"},
+                headers=hr,
+            )
+        ).status_code == 200
+
+        # Non-HR user cannot reject or view requisitions.
+        assert (
+            await client.post(
+                f"/api/v1/hr/requisitions/{req_id}/decision",
+                json={"status": "rejected", "notes": "Unauthorized"},
+                headers=sup,
+            )
+        ).status_code == 403
+        assert (await client.get("/api/v1/hr/requisitions", headers=sup)).status_code == 403
+
+        # Blank rejection reason fails with 422.
+        assert (
+            await client.post(
+                f"/api/v1/hr/requisitions/{req_id}/decision",
+                json={"status": "rejected", "notes": "   "},
+                headers=hr,
+            )
+        ).status_code == 422
+
+        confidential_reason = "Confidential budget hold for confidential restructuring."
+        rejected = await client.post(
+            f"/api/v1/hr/requisitions/{req_id}/decision",
+            json={"status": "rejected", "notes": confidential_reason},
+            headers=hr,
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected"
+        assert rejected.json()["rejection_reason"] == confidential_reason
+
+        listed_reqs = await client.get("/api/v1/hr/requisitions", headers=hr)
+        assert listed_reqs.status_code == 200
+        reloaded_req = next(item for item in listed_reqs.json()["items"] if item["id"] == req_id)
+        assert reloaded_req["rejection_reason"] == confidential_reason
+        assert reloaded_req["headcount_requested"] == 3
+
+        async with AsyncSessionLocal() as session:
+            req_row = await session.get(HrRequisition, UUID(req_id))
+            assert req_row is not None and req_row.rejection_reason == confidential_reason
+            audit_rows = list(
+                await session.scalars(
+                    select(ActivityLog).where(
+                        ActivityLog.entity_type == "hr_requisitions",
+                        ActivityLog.entity_id == UUID(req_id),
+                        ActivityLog.action == "hr.requisition.rejected",
+                    )
+                )
+            )
+            assert len(audit_rows) == 1
+            assert audit_rows[0].new_values is None
+
+        # --- HR-010: Offer expiry boundaries, concurrency, and immutable versioned terms ---
+        open_req = await client.post(
+            "/api/v1/hr/requisitions",
+            json={
+                "requisition_code": f"REQ-OPEN-{uuid4().hex[:5]}",
+                "title": "Quantity Surveyor",
+                "headcount_requested": 2,
+            },
+            headers=hr,
+        )
+        assert open_req.status_code == 201
+        open_req_id = open_req.json()["id"]
+        for step in ("submitted", "approved", "open"):
+            assert (
+                await client.post(
+                    f"/api/v1/hr/requisitions/{open_req_id}/decision",
+                    json={"status": step},
+                    headers=hr,
+                )
+            ).status_code == 200
+
+        cand = await client.post(
+            "/api/v1/hr/candidates",
+            json={
+                "candidate_code": f"CAND-V-{uuid4().hex[:5]}",
+                "full_name": "Candidate Versioned",
+            },
+            headers=hr,
+        )
+        assert cand.status_code == 201
+        app = await client.post(
+            "/api/v1/hr/applications",
+            json={"requisition_id": open_req_id, "candidate_id": cand.json()["id"]},
+            headers=hr,
+        )
+        assert app.status_code == 201
+        app_id = app.json()["id"]
+        iv = await client.post(
+            "/api/v1/hr/interviews",
+            json={"application_id": app_id, "interview_type": "technical"},
+            headers=hr,
+        )
+        assert (
+            await client.patch(
+                f"/api/v1/hr/interviews/{iv.json()['id']}",
+                json={"status": "completed"},
+                headers=hr,
+            )
+        ).status_code == 200
+        for stage in ("screening", "interview", "evaluation"):
+            assert (
+                await client.patch(
+                    f"/api/v1/hr/applications/{app_id}/stage",
+                    json={"stage": stage},
+                    headers=hr,
+                )
+            ).status_code == 200
+
+        # Salary without payroll permission fails closed with 403.
+        assert (
+            await client.post(
+                "/api/v1/hr/offers",
+                json={
+                    "offer_code": f"OFR-SAL-{uuid4().hex[:5]}",
+                    "application_id": app_id,
+                    "proposed_title": "Quantity Surveyor",
+                    "proposed_salary": "150000",
+                },
+                headers=hr,
+            )
+        ).status_code == 403
+
+        # Past valid_until rejected on creation.
+        assert (
+            await client.post(
+                "/api/v1/hr/offers",
+                json={
+                    "offer_code": f"OFR-PAST-{uuid4().hex[:5]}",
+                    "application_id": app_id,
+                    "proposed_title": "Quantity Surveyor",
+                    "valid_until": (base_today - timedelta(days=1)).isoformat(),
+                },
+                headers=hr,
+            )
+        ).status_code == 422
+
+        v1_deadline = base_today + timedelta(days=3)
+        v1 = await client.post(
+            "/api/v1/hr/offers",
+            json={
+                "offer_code": f"OFR-V1-{uuid4().hex[:5]}",
+                "application_id": app_id,
+                "proposed_title": "Junior QS",
+                "valid_until": v1_deadline.isoformat(),
+                "notes": "Initial terms",
+            },
+            headers=hr,
+        )
+        assert v1.status_code == 201
+        v1_id = v1.json()["id"]
+        for step in ("pending_approval", "approved", "issued"):
+            assert (
+                await client.post(
+                    f"/api/v1/hr/offers/{v1_id}/decision",
+                    json={"status": step},
+                    headers=hr,
+                )
+            ).status_code == 200
+
+        # Offer cannot be marked expired on or before valid_until.
+        monkeypatch.setattr(
+            "app.services.hr_workforce_service.business_today", lambda: v1_deadline
+        )
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v1_id}/decision",
+                json={"status": "expired"},
+                headers=hr,
+            )
+        ).status_code == 409
+
+        # Once past valid_until, concurrent expiry vs acceptance yields one expiry and
+        # rejects the accept attempt.
+        monkeypatch.setattr(
+            "app.services.hr_workforce_service.business_today",
+            lambda: v1_deadline + timedelta(days=1),
+        )
+        accept_attempt = client.post(
+            f"/api/v1/hr/offers/{v1_id}/decision",
+            json={"status": "accepted"},
+            headers=hr,
+        )
+        expire_attempt = client.post(
+            f"/api/v1/hr/offers/{v1_id}/decision",
+            json={"status": "expired"},
+            headers=hr,
+        )
+        concurrent = await asyncio.gather(accept_attempt, expire_attempt)
+        assert sorted(res.status_code for res in concurrent) == [200, 409]
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v1_id}/convert",
+                json={"employee_code": f"EXP-{uuid4().hex[:5]}"},
+                headers=hr,
+            )
+        ).status_code == 409
+
+        # Reissuing creates v2 while preserving v1's original terms as immutable.
+        new_today = v1_deadline + timedelta(days=1)
+        v2_deadline = new_today + timedelta(days=5)
+        monkeypatch.setattr("app.services.hr_workforce_service.business_today", lambda: new_today)
+        v2 = await client.post(
+            f"/api/v1/hr/offers/{v1_id}/reissue",
+            json={
+                "offer_code": f"OFR-V2-{uuid4().hex[:5]}",
+                "proposed_title": "Senior QS",
+                "valid_until": v2_deadline.isoformat(),
+                "notes": "Updated title and validity",
+            },
+            headers=hr,
+        )
+        assert v2.status_code == 201
+        v2_id = v2.json()["id"]
+        assert v2.json()["version_number"] == 2
+        assert v2.json()["supersedes_offer_id"] == v1_id
+        assert v2.json()["proposed_title"] == "Senior QS"
+
+        # Verify v1 stays superseded and preserves its initial terms.
+        async with AsyncSessionLocal() as session:
+            v1_row = await session.get(HrOffer, UUID(v1_id))
+            assert v1_row is not None
+            assert v1_row.status == "superseded"
+            assert v1_row.superseded_by_id == UUID(v2_id)
+            assert v1_row.superseded_at is not None
+            assert v1_row.proposed_title == "Junior QS"
+            assert v1_row.valid_until == v1_deadline
+
+        # Superseded v1 cannot be transitioned, accepted, converted, or reissued again.
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v1_id}/decision",
+                json={"status": "accepted"},
+                headers=hr,
+            )
+        ).status_code == 409
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v1_id}/convert",
+                json={"employee_code": f"STALE-{uuid4().hex[:5]}"},
+                headers=hr,
+            )
+        ).status_code == 409
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v1_id}/reissue",
+                json={
+                    "offer_code": f"OFR-V3-{uuid4().hex[:5]}",
+                    "proposed_title": "Duplicate",
+                },
+                headers=hr,
+            )
+        ).status_code == 409
+
+        # Stale expected_version_number on v2 returns 409.
+        assert (
+            await client.post(
+                f"/api/v1/hr/offers/{v2_id}/decision",
+                json={"status": "pending_approval", "expected_version_number": 1},
+                headers=hr,
+            )
+        ).status_code == 409
+
+        # Approve, issue, and accept v2 on the exact deadline day (`today == valid_until`),
+        # then convert.
+        for step in ("pending_approval", "approved", "issued"):
+            assert (
+                await client.post(
+                    f"/api/v1/hr/offers/{v2_id}/decision",
+                    json={"status": step, "expected_version_number": 2},
+                    headers=hr,
+                )
+            ).status_code == 200
+
+        monkeypatch.setattr(
+            "app.services.hr_workforce_service.business_today", lambda: v2_deadline
+        )
+        accepted_v2 = await client.post(
+            f"/api/v1/hr/offers/{v2_id}/decision",
+            json={"status": "accepted", "expected_version_number": 2},
+            headers=hr,
+        )
+        assert accepted_v2.status_code == 200
+        assert accepted_v2.json()["status"] == "accepted"
+
+        converted_v2 = await client.post(
+            f"/api/v1/hr/offers/{v2_id}/convert",
+            json={"employee_code": f"VER-{uuid4().hex[:5]}"},
+            headers=hr,
+        )
+        assert converted_v2.status_code == 200
 
 
 @pytest.mark.asyncio

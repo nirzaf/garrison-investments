@@ -125,6 +125,7 @@ from app.schemas.hr import (
     OfferCreateRequest,
     OfferDecisionRequest,
     OfferListResponse,
+    OfferReissueRequest,
     OfferResponse,
     OnboardingCaseCreateRequest,
     OnboardingCaseListResponse,
@@ -1089,6 +1090,21 @@ async def decide_offer(
     session: DbSession,
 ) -> OfferResponse:
     row = await HrService(session).decide_offer(offer_id, payload, actor)
+    return OfferResponse.model_validate(row)
+
+
+@router.post(
+    "/offers/{offer_id}/reissue",
+    response_model=OfferResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def reissue_offer(
+    offer_id: UUID,
+    payload: OfferReissueRequest,
+    actor: CanManageRecruitment,
+    session: DbSession,
+) -> OfferResponse:
+    row = await HrService(session).reissue_offer(offer_id, payload, actor)
     return OfferResponse.model_validate(row)
 
 

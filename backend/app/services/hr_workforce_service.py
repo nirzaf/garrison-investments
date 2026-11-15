@@ -111,6 +111,7 @@ from app.schemas.hr import (
     OfferConvertRequest,
     OfferCreateRequest,
     OfferDecisionRequest,
+    OfferReissueRequest,
     OnboardingCaseCreateRequest,
     OnboardingCaseResponse,
     OnboardingTaskResponse,
@@ -169,6 +170,7 @@ from app.utils.permissions import (
     has_permission,
 )
 from app.utils.security import utc_now
+from app.utils.time import business_today
 
 RESTRICTED_DOC_CATEGORIES = {"confidential", "medical", "compensation", "disciplinary"}
 SIGNED_URL_SECONDS = 300
@@ -297,8 +299,11 @@ class HrWorkforceService:
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
-        if payload.status == "rejected" and not (payload.notes or "").strip():
-            raise AppException("Rejection requires a reason.", status_code=422)
+        if payload.status == "rejected":
+            reason = (payload.notes or "").strip()
+            if not reason:
+                raise AppException("Rejection requires a reason.", status_code=422)
+            req.rejection_reason = reason
         req.status = payload.status
         if payload.status in {"approved", "open"} and req.approved_by_id is None:
             req.approved_by_id = actor.id
@@ -526,6 +531,20 @@ class HrWorkforceService:
         return rows, total
 
     async def create_offer(self, payload: OfferCreateRequest, actor: User) -> HrOffer:
+        if payload.supersedes_offer_id is not None:
+            reissue_payload = OfferReissueRequest(
+                **payload.model_dump(exclude={"application_id", "supersedes_offer_id"})
+            )
+            return await self.reissue_offer(
+                payload.supersedes_offer_id,
+                reissue_payload,
+                actor,
+                expected_application_id=payload.application_id,
+            )
+        if payload.proposed_salary is not None:
+            raise PermissionDeniedException(PERMISSION_HR_PAYROLL_SENSITIVE)
+        if payload.valid_until is not None and payload.valid_until < business_today():
+            raise AppException("Offer validity date must not be in the past.", status_code=422)
         application = await self.session.scalar(
             select(HrApplication)
             .where(HrApplication.id == payload.application_id)
@@ -535,19 +554,28 @@ class HrWorkforceService:
             raise NotFoundException("Application")
         if application.stage != "evaluation":
             raise AppException("Complete interviews before drafting an offer.", status_code=409)
-        if payload.proposed_salary is not None:
-            raise PermissionDeniedException(PERMISSION_HR_PAYROLL_SENSITIVE)
         if await self.session.scalar(
             select(HrOffer.id)
             .where(
                 HrOffer.application_id == application.id,
-                HrOffer.status.notin_(["declined", "withdrawn"]),
+                HrOffer.status.notin_(["declined", "withdrawn", "expired", "superseded"]),
             )
             .limit(1)
         ):
             raise AppException(
                 "This application already has an open or accepted offer.", status_code=409
             )
+        next_version = (
+            int(
+                await self.session.scalar(
+                    select(func.coalesce(func.max(HrOffer.version_number), 0)).where(
+                        HrOffer.application_id == application.id
+                    )
+                )
+                or 0
+            )
+            + 1
+        )
         offer = HrOffer(
             offer_code=payload.offer_code.strip(),
             application_id=payload.application_id,
@@ -559,6 +587,8 @@ class HrWorkforceService:
             proposed_salary_masked=mask_identifier(payload.proposed_salary),
             currency=payload.currency or self.settings.business_currency,
             status="draft",
+            valid_until=payload.valid_until,
+            version_number=next_version,
             notes=payload.notes,
         )
         self.session.add(offer)
@@ -569,9 +599,10 @@ class HrWorkforceService:
                 user_id=actor.id,
                 entity_type="hr_offers",
                 entity_id=offer.id,
-                new_values={"offer_code": offer.offer_code},
+                new_values={"offer_code": offer.offer_code, "version_number": offer.version_number},
             )
             await self.session.commit()
+            await self.session.refresh(offer)
         except IntegrityError as exc:
             await self.session.rollback()
             raise AppException(
@@ -580,6 +611,120 @@ class HrWorkforceService:
                 error_code="OFFER_EXISTS",
             ) from exc
         return offer
+
+    async def reissue_offer(
+        self,
+        offer_id: UUID,
+        payload: OfferReissueRequest,
+        actor: User,
+        *,
+        expected_application_id: UUID | None = None,
+    ) -> HrOffer:
+        if payload.proposed_salary is not None:
+            raise PermissionDeniedException(PERMISSION_HR_PAYROLL_SENSITIVE)
+        if payload.valid_until is not None and payload.valid_until < business_today():
+            raise AppException("Offer validity date must not be in the past.", status_code=422)
+        application_id = await self.session.scalar(
+            select(HrOffer.application_id).where(HrOffer.id == offer_id)
+        )
+        if application_id is None:
+            raise NotFoundException("Offer")
+        if expected_application_id is not None and application_id != expected_application_id:
+            raise AppException(
+                "Superseded offer belongs to a different application.", status_code=422
+            )
+        application = await self.session.scalar(
+            select(HrApplication).where(HrApplication.id == application_id).with_for_update()
+        )
+        if application is None:
+            raise NotFoundException("Application")
+        prior_offer = await self.session.scalar(
+            select(HrOffer)
+            .where(HrOffer.id == offer_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if prior_offer is None:
+            raise NotFoundException("Offer")
+        if prior_offer.status == "converted" or prior_offer.converted_employee_id is not None:
+            raise AppException(
+                "Converted offers cannot be superseded.",
+                status_code=409,
+                error_code="OFFER_ALREADY_CONVERTED",
+            )
+        if (
+            prior_offer.status in {"superseded", "withdrawn"}
+            or prior_offer.superseded_by_id is not None
+        ):
+            raise AppException(
+                "This offer version cannot be superseded.",
+                status_code=409,
+                error_code="OFFER_SUPERSEDED",
+            )
+        if await self.session.scalar(
+            select(HrOffer.id)
+            .where(
+                HrOffer.application_id == prior_offer.application_id,
+                HrOffer.id != prior_offer.id,
+                HrOffer.status.notin_(["declined", "withdrawn", "expired", "superseded"]),
+            )
+            .limit(1)
+        ):
+            raise AppException(
+                "This application already has an open or accepted offer.", status_code=409
+            )
+        max_version = int(
+            await self.session.scalar(
+                select(func.coalesce(func.max(HrOffer.version_number), 0)).where(
+                    HrOffer.application_id == prior_offer.application_id
+                )
+            )
+            or 0
+        )
+        now = utc_now()
+        prior_offer.status = "superseded"
+        prior_offer.superseded_at = now
+        new_offer = HrOffer(
+            offer_code=payload.offer_code.strip(),
+            application_id=prior_offer.application_id,
+            proposed_title=payload.proposed_title.strip(),
+            proposed_department_id=payload.proposed_department_id,
+            proposed_position_id=payload.proposed_position_id,
+            proposed_join_date=payload.proposed_join_date,
+            proposed_salary_encrypted=encrypt_hr_value(payload.proposed_salary),
+            proposed_salary_masked=mask_identifier(payload.proposed_salary),
+            currency=payload.currency or prior_offer.currency or self.settings.business_currency,
+            status="draft",
+            valid_until=payload.valid_until,
+            version_number=max(prior_offer.version_number, max_version) + 1,
+            supersedes_offer_id=prior_offer.id,
+            notes=payload.notes,
+        )
+        self.session.add(new_offer)
+        try:
+            await self.session.flush()
+            prior_offer.superseded_by_id = new_offer.id
+            await self.audit.record(
+                action="hr.offer.reissued",
+                user_id=actor.id,
+                entity_type="hr_offers",
+                entity_id=new_offer.id,
+                new_values={
+                    "offer_code": new_offer.offer_code,
+                    "version_number": new_offer.version_number,
+                    "supersedes_offer_id": str(prior_offer.id),
+                },
+            )
+            await self.session.commit()
+            await self.session.refresh(new_offer)
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "Offer code already exists.",
+                status_code=409,
+                error_code="OFFER_EXISTS",
+            ) from exc
+        return new_offer
 
     async def list_offers(
         self, *, status: str | None = None, limit: int = 100, offset: int = 0
@@ -601,7 +746,10 @@ class HrWorkforceService:
         self, offer_id: UUID, payload: OfferDecisionRequest, actor: User
     ) -> HrOffer:
         offer = await self.session.scalar(
-            select(HrOffer).where(HrOffer.id == offer_id).with_for_update()
+            select(HrOffer)
+            .where(HrOffer.id == offer_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if offer is None:
             raise NotFoundException("Offer")
@@ -609,14 +757,63 @@ class HrWorkforceService:
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        if offer.status == "superseded" or offer.superseded_by_id is not None:
+            raise AppException(
+                "This offer version has been superseded by newer terms.",
+                status_code=409,
+                error_code="OFFER_SUPERSEDED",
+            )
+        if (
+            payload.expected_version_number is not None
+            and offer.version_number != payload.expected_version_number
+        ):
+            raise AppException(
+                "Offer version does not match current terms.",
+                status_code=409,
+                error_code="OFFER_VERSION_CONFLICT",
+            )
         transitions = {
             "draft": {"pending_approval", "withdrawn"},
             "pending_approval": {"approved", "withdrawn"},
             "approved": {"issued", "withdrawn"},
-            "issued": {"accepted", "declined", "withdrawn"},
+            "issued": {"accepted", "declined", "expired", "withdrawn"},
         }
         if payload.status not in transitions.get(offer.status, set()):
             raise AppException("This offer cannot make that transition.", status_code=409)
+        today = business_today()
+        if payload.valid_until is not None:
+            if payload.status not in {"pending_approval", "approved", "issued"}:
+                raise AppException(
+                    "Offer validity can only be updated before or at issuance.",
+                    status_code=409,
+                )
+            if payload.valid_until < today:
+                raise AppException("Offer validity date must not be in the past.", status_code=422)
+            offer.valid_until = payload.valid_until
+        if (
+            payload.status in {"approved", "issued"}
+            and offer.valid_until is not None
+            and offer.valid_until < today
+        ):
+            raise AppException("Offer validity date must not be in the past.", status_code=422)
+        if (
+            payload.status == "accepted"
+            and offer.valid_until is not None
+            and today > offer.valid_until
+        ):
+            raise AppException(
+                "This offer has expired and cannot be accepted.",
+                status_code=409,
+                error_code="OFFER_EXPIRED",
+            )
+        if payload.status == "expired" and (
+            offer.valid_until is None or today <= offer.valid_until
+        ):
+            raise AppException(
+                "Offer has not passed its validity deadline.",
+                status_code=409,
+                error_code="OFFER_NOT_EXPIRED",
+            )
         now = utc_now()
         offer.status = payload.status
         if payload.status == "approved":
@@ -624,7 +821,7 @@ class HrWorkforceService:
             offer.approved_at = now
         elif payload.status == "issued":
             offer.issued_at = now
-        elif payload.status in {"accepted", "declined"}:
+        elif payload.status in {"accepted", "declined", "expired"}:
             offer.responded_at = now
         if payload.notes:
             offer.notes = payload.notes
@@ -641,10 +838,19 @@ class HrWorkforceService:
         self, offer_id: UUID, payload: OfferConvertRequest, actor: User
     ) -> OnboardingCaseResponse:
         offer = await self.session.scalar(
-            select(HrOffer).where(HrOffer.id == offer_id).with_for_update()
+            select(HrOffer)
+            .where(HrOffer.id == offer_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if offer is None:
             raise NotFoundException("Offer")
+        if offer.status == "superseded" or offer.superseded_by_id is not None:
+            raise AppException(
+                "This offer version has been superseded by newer terms.",
+                status_code=409,
+                error_code="OFFER_SUPERSEDED",
+            )
         if offer.status == "converted":
             existing = await self.session.scalar(
                 select(HrOnboardingCase).where(HrOnboardingCase.offer_id == offer.id)

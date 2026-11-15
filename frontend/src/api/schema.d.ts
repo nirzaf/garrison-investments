@@ -1961,6 +1961,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/offers/{offer_id}/reissue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reissue Offer */
+        post: operations["reissue_offer_api_v1_hr_offers__offer_id__reissue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/onboarding": {
         parameters: {
             query?: never;
@@ -7756,16 +7773,24 @@ export interface components {
             proposed_salary?: string | null;
             /** Proposed Title */
             proposed_title: string;
+            /** Supersedes Offer Id */
+            supersedes_offer_id?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
         };
         /** OfferDecisionRequest */
         OfferDecisionRequest: {
+            /** Expected Version Number */
+            expected_version_number?: number | null;
             /** Notes */
             notes?: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "pending_approval" | "approved" | "issued" | "accepted" | "declined" | "withdrawn";
+            status: "pending_approval" | "approved" | "issued" | "accepted" | "declined" | "expired" | "withdrawn";
+            /** Valid Until */
+            valid_until?: string | null;
         };
         /** OfferListResponse */
         OfferListResponse: {
@@ -7773,6 +7798,27 @@ export interface components {
             items: components["schemas"]["OfferResponse"][];
             /** Total */
             total: number;
+        };
+        /** OfferReissueRequest */
+        OfferReissueRequest: {
+            /** Currency */
+            currency?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Offer Code */
+            offer_code: string;
+            /** Proposed Department Id */
+            proposed_department_id?: string | null;
+            /** Proposed Join Date */
+            proposed_join_date?: string | null;
+            /** Proposed Position Id */
+            proposed_position_id?: string | null;
+            /** Proposed Salary */
+            proposed_salary?: string | null;
+            /** Proposed Title */
+            proposed_title: string;
+            /** Valid Until */
+            valid_until?: string | null;
         };
         /** OfferResponse */
         OfferResponse: {
@@ -7819,11 +7865,24 @@ export interface components {
             responded_at: string | null;
             /** Status */
             status: string;
+            /** Superseded At */
+            superseded_at?: string | null;
+            /** Superseded By Id */
+            superseded_by_id?: string | null;
+            /** Supersedes Offer Id */
+            supersedes_offer_id?: string | null;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+            /** Valid Until */
+            valid_until?: string | null;
+            /**
+             * Version Number
+             * @default 1
+             */
+            version_number: number;
         };
         /** OnboardingCaseCreateRequest */
         OnboardingCaseCreateRequest: {
@@ -9303,6 +9362,8 @@ export interface components {
             position_id: string | null;
             /** Project Id */
             project_id: string | null;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
             /** Requested By Id */
             requested_by_id: string | null;
             /** Requisition Code */
@@ -15401,6 +15462,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    reissue_offer_api_v1_hr_offers__offer_id__reissue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfferReissueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

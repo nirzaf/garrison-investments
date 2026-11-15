@@ -1,6 +1,6 @@
 # Garrisons administration CLI
 
-`garrisonctl` uses the portal's FastAPI endpoints for account, project, finance and import operations. The authenticated account's permissions and project scope apply. The same API audit records identify the actor. Host commands use the existing deployment, recovery and monitoring tools.
+`garrisonctl` uses the portal's FastAPI endpoints for account, project, finance, workforce and import operations. The authenticated account's permissions and project scope apply. The same API audit records identify the actor. Host commands use the existing deployment, recovery and monitoring tools.
 
 ## Install and connect
 
@@ -52,6 +52,22 @@ the HR workspace. Mutations use the command's `--dry-run` and
 `--apply --expect` options. Treat workbook previews and document links as
 restricted records. See the [workforce guide](HR_WORKFORCE.md) for the account
 handoff and activation flow.
+
+The current remote workforce command groups are listed below. For exact
+arguments and preview support, run `garrisonctl capabilities --json` or the
+subcommand's `--help`.
+
+| Prefix | Registered subcommands | Access boundary |
+| --- | --- | --- |
+| `hr employees` | `list`, `get`, `create`, `update`, `transition`, `link-account` | HR read, manage or sensitive permissions for employee actions. Linking uses `users:manage`. |
+| `hr departments`, `hr positions` | `list`, `create` | Employee read or manage permission. |
+| `hr access-requests` | `list`, `create`, `decide` | Request stage and actor determine HR versus director access. |
+| `hr attendance` | `list`, `correction` | Attendance recording permission. |
+| `hr documents` | `list`, `upload` | HR document management and category checks. |
+| `hr leave` | `policy show`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management or leave approval. |
+| `hr compliance` | `expiring` | Compliance management. |
+| `hr offboarding` | `list`, `initiate`, `complete` | Offboarding management and case preconditions. |
+| `hr` | `workbook-reconcile`, `summary`, `reports summary`, `reports sites` | Employee management for workbook reconciliation. Report viewing for summaries and sites. |
 
 Use `hr reports sites` to page through primary site IDs and
 `hr reports summary --project-id ID --department-id ID --date-from YYYY-MM-DD --date-to YYYY-MM-DD`
@@ -214,7 +230,7 @@ Backup status checks the independent backup receipts using the approved monitor 
 | Diagnose historical data or prepare repairs | Use the named report and repair scripts for the specific defect. Reconcile using the relevant business owner's expected values. [Data checks and repairs](OPERATIONS_AND_DEPLOYMENT.md#data-checks-and-repairs). |
 | Review or reverse an activation | Use the existing deployment workflow and verify schema, rollback generation, assets, and readiness from the host. [Rollback](OPERATIONS_AND_DEPLOYMENT.md#rollback). |
 
-Reports, document uploads and approvals, stock fulfillment, invoice writes, and payment entry remain portal workflows. The CLI exposes finance reads, project access and approved imports as documented above.
+Reports, document uploads and approvals, and stock fulfillment remain portal workflows. The active role policy blocks invoice writes and payment entry. The CLI exposes authorized finance reads, project access and approved imports.
 
 ## Output and agent use
 

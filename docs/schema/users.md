@@ -4,6 +4,11 @@ Portal accounts, roles, profile fields, password hashes, and sign-in lockout sta
 
 [Schema index](README.md) · [SQLAlchemy model](../../backend/app/models/user.py)
 
+The access revision is included in issued access tokens. Protected requests
+compare it with the current account revision. Account access changes advance
+it and revoke refresh sessions and pending login codes.
+[Access-revision migration](../../backend/alembic/versions/202605310006_user_access_revision.py) · [Authentication service](../../backend/app/services/auth_service.py)
+
 ## Columns
 
 | Column | PostgreSQL type | Nullable | Server default |
@@ -12,6 +17,7 @@ Portal accounts, roles, profile fields, password hashes, and sign-in lockout sta
 | `email` | `varchar(255)` | No | — |
 | `full_name` | `varchar(255)` | No | — |
 | `role` | `varchar(64)` | No | — |
+| `access_revision` | `integer` | No | `0` |
 | `employee_code` | `varchar(64)` | Yes | — |
 | `phone` | `varchar(32)` | Yes | — |
 | `is_active` | `boolean` | No | `true` |

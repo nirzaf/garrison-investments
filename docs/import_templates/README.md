@@ -2,6 +2,13 @@
 
 Use the [portal import screen](../../frontend/src/pages/admin/ImportPage.tsx) at `/admin/imports` to download templates, preview CSV or XLSX files, and submit a batch. The screen and [import API](../../backend/app/api/v1/imports.py) require `users:manage`.
 
+The [import service](../../backend/app/services/import_service.py) also checks
+the template's own permission. Suppliers require `suppliers:manage`. Materials
+and opening stock require `inventory:manage`. Document metadata requires
+`documents:manage`. Project and priced BOQ imports require
+`projects:manage` and a director role. Queued imports recheck the submitting
+account and template access when processing begins.
+
 | Template | Records | Required references |
 | --- | --- | --- |
 | [Users](users.csv) | Accounts with an assigned role and temporary password | Role from the [permission reference](../ROLES_AND_PERMISSIONS.md) |

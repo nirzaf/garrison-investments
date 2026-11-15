@@ -55,4 +55,5 @@ An engineer’s report submission verifies an eligible update and binds it to th
 | --- | --- | --- | --- | --- |
 | `idx_supervisor_updates_project_date` | `btree` | `project_id, update_date` | No | `(deleted_at IS NULL)` |
 | `idx_supervisor_updates_supervisor` | `btree` | `supervisor_id` | No | `(deleted_at IS NULL)` |
+| `ix_supervisor_updates_verified_report_id` | `btree` | `verified_report_id` | No | — |
 | `uq_supervisor_update_draft_owner` | `btree` | `project_id, update_date, supervisor_id` | Yes | `((deleted_at IS NULL) AND (status IN ('draft', 'submitted')))` |

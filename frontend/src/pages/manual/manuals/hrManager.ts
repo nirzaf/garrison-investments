@@ -68,6 +68,13 @@ export const hrManagerManual: Manual = {
         'Open Recruitment and find Candidate CVs. Select the candidate and upload the confidential file. A different HR Manager downloads the pending version for review and records the decision. Upload a replacement to keep the version history together.'
     },
     {
+      id: 'hr-requisitions-offers',
+      title: 'Manage requisitions and versioned offers',
+      icon: '📝',
+      content:
+        'Enter the requested headcount when creating a requisition. To reject a submitted requisition, record the reason on the requisition row. For offers, optionally set an acceptance deadline; past-deadline offers must be marked expired or reissued with new terms. Reissuing preserves the superseded version in history and blocks stale acceptance or conversion.'
+    },
+    {
       id: 'hr-letter-preview',
       title: 'Preview an employee letter',
       icon: '📄',

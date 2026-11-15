@@ -365,6 +365,11 @@ export async function decideOffer(offerId: string, payload: HrSchemas['OfferDeci
   return data;
 }
 
+export async function reissueOffer(offerId: string, payload: HrSchemas['OfferReissueRequest']) {
+  const { data } = await apiClient.post<OfferRecord>(`/hr/offers/${offerId}/reissue`, payload);
+  return data;
+}
+
 export async function convertOffer(offerId: string, payload: HrSchemas['OfferConvertRequest']) {
   const { data } = await apiClient.post<HrSchemas['OnboardingCaseResponse']>(
     `/hr/offers/${offerId}/convert`,

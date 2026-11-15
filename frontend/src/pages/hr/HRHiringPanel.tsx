@@ -17,6 +17,7 @@ import {
   listOffers,
   listOnboardingCases,
   recordProbationReview,
+  reissueOffer,
   transitionEmployeeStatus,
   updateApplicationStage,
   updateInterview,
@@ -109,7 +110,8 @@ export function HRHiringPanel({
         await createOffer({
           application_id: field('application'),
           offer_code: field('code'),
-          proposed_title: field('name')
+          proposed_title: field('name'),
+          valid_until: field('valid_until') || null
         });
       if (kind === 'onboarding')
         await createOnboardingCase({
@@ -158,7 +160,9 @@ export function HRHiringPanel({
         {requisitions.map((row) => (
           <li className="flex flex-wrap items-center gap-2" key={row.id}>
             <span>
-              {row.requisition_code} · {row.title} · {row.status}
+              {row.requisition_code} · {row.title} · Headcount {row.headcount_requested} ·{' '}
+              {row.status}
+              {row.rejection_reason ? ` · Rejected: ${row.rejection_reason}` : ''}
             </span>
             {(canApprove || row.status === 'draft') && transitions[row.status] && (
               <button
@@ -176,6 +180,28 @@ export function HRHiringPanel({
                   ? 'Submit requisition'
                   : `Mark ${transitions[row.status]}`}
               </button>
+            )}
+            {canApprove && row.status === 'submitted' && (
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = event.currentTarget;
+                  const reason = String(new FormData(form).get('reason') ?? '').trim();
+                  void change(async () => {
+                    await decideRequisition(row.id, { status: 'rejected', notes: reason });
+                    form.reset();
+                  }, true);
+                }}
+              >
+                <label>
+                  Requisition rejection reason{' '}
+                  <input name="reason" className={hrInputClass} required maxLength={500} />
+                </label>
+                <button className={hrButtonClass} disabled={pending} type="submit">
+                  Reject requisition
+                </button>
+              </form>
             )}
           </li>
         ))}
@@ -209,6 +235,11 @@ export function HRHiringPanel({
         {kind === 'candidate' && (
           <label>
             Email <input name="email" className={hrInputClass} type="email" />
+          </label>
+        )}
+        {kind === 'offer' && (
+          <label>
+            Valid until <input name="valid_until" className={hrInputClass} type="date" />
           </label>
         )}
         {kind === 'application' && (
@@ -359,19 +390,93 @@ export function HRHiringPanel({
           {data?.offers.items.map((row) => (
             <article key={row.id} className="space-y-2 rounded border border-theme-border p-3">
               <p>
-                {row.offer_code} · {row.proposed_title} · {row.status}
+                {row.offer_code} · {row.proposed_title} · v{row.version_number} · {row.status}
+                {row.valid_until ? ` · Valid until ${row.valid_until}` : ''}
               </p>
-              {offerSteps[row.status] && (row.status !== 'pending_approval' || canApprove) && (
-                <button
-                  className={hrButtonClass}
-                  type="button"
-                  disabled={pending}
-                  onClick={() =>
-                    void change(() => decideOffer(row.id, { status: offerSteps[row.status] }))
-                  }
+              <div className="flex flex-wrap gap-2">
+                {offerSteps[row.status] && (row.status !== 'pending_approval' || canApprove) && (
+                  <button
+                    className={hrButtonClass}
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      void change(() =>
+                        decideOffer(row.id, {
+                          status: offerSteps[row.status],
+                          expected_version_number: row.version_number
+                        })
+                      )
+                    }
+                  >
+                    Mark {offerSteps[row.status].replace(/_/g, ' ')}
+                  </button>
+                )}
+                {row.status === 'issued' && row.valid_until && (
+                  <button
+                    className={hrButtonClass}
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      void change(() =>
+                        decideOffer(row.id, {
+                          status: 'expired',
+                          expected_version_number: row.version_number
+                        })
+                      )
+                    }
+                  >
+                    Mark expired
+                  </button>
+                )}
+              </div>
+              {!['converted', 'superseded', 'withdrawn'].includes(row.status) && (
+                <form
+                  className="flex flex-wrap items-end gap-2 border-t border-theme-border pt-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = event.currentTarget;
+                    const formData = new FormData(form);
+                    void change(async () => {
+                      await reissueOffer(row.id, {
+                        offer_code: String(formData.get('offer_code') ?? '').trim(),
+                        proposed_title: String(formData.get('proposed_title') ?? '').trim(),
+                        valid_until: String(formData.get('valid_until') ?? '') || null
+                      });
+                      form.reset();
+                    });
+                  }}
                 >
-                  Mark {offerSteps[row.status].replace(/_/g, ' ')}
-                </button>
+                  <label>
+                    Offer code{' '}
+                    <input
+                      name="offer_code"
+                      className={hrInputClass}
+                      placeholder={`${row.offer_code}-V${row.version_number + 1}`}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Proposed title{' '}
+                    <input
+                      name="proposed_title"
+                      className={hrInputClass}
+                      defaultValue={row.proposed_title}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Valid until{' '}
+                    <input
+                      name="valid_until"
+                      type="date"
+                      className={hrInputClass}
+                      defaultValue={row.valid_until ?? ''}
+                    />
+                  </label>
+                  <button className={hrButtonClass} type="submit" disabled={pending}>
+                    Reissue offer
+                  </button>
+                </form>
               )}
               {row.status === 'accepted' && (
                 <form

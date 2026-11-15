@@ -387,6 +387,7 @@ class HrRequisition(TimestampMixin, SoftDeleteMixin, Base):
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_join_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
@@ -482,6 +483,7 @@ class HrInterview(TimestampMixin, Base):
 
 class HrOffer(TimestampMixin, Base):
     __tablename__ = "hr_offers"
+    __table_args__ = (CheckConstraint("version_number >= 1", name="version_positive"),)
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -510,6 +512,17 @@ class HrOffer(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'draft'"), index=True
     )
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    supersedes_offer_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("hr_offers.id", ondelete="SET NULL"), nullable=True
+    )
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("hr_offers.id", ondelete="SET NULL"), nullable=True
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

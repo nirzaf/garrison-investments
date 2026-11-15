@@ -575,6 +575,7 @@ class RequisitionResponse(BaseModel):
     requested_by_id: UUID | None
     approved_by_id: UUID | None
     approved_at: datetime | None
+    rejection_reason: str | None = None
     target_join_date: date | None
     created_at: datetime
     updated_at: datetime
@@ -711,11 +712,35 @@ class OfferCreateRequest(BaseModel):
     proposed_join_date: date | None = None
     proposed_salary: str | None = Field(default=None, max_length=40)
     currency: str | None = Field(default=None, max_length=10)
+    valid_until: date | None = None
+    supersedes_offer_id: UUID | None = None
+    notes: str | None = None
+
+
+class OfferReissueRequest(BaseModel):
+    offer_code: str = Field(min_length=1, max_length=40)
+    proposed_title: str = Field(min_length=2, max_length=160)
+    proposed_department_id: UUID | None = None
+    proposed_position_id: UUID | None = None
+    proposed_join_date: date | None = None
+    proposed_salary: str | None = Field(default=None, max_length=40)
+    currency: str | None = Field(default=None, max_length=10)
+    valid_until: date | None = None
     notes: str | None = None
 
 
 class OfferDecisionRequest(BaseModel):
-    status: Literal["pending_approval", "approved", "issued", "accepted", "declined", "withdrawn"]
+    status: Literal[
+        "pending_approval",
+        "approved",
+        "issued",
+        "accepted",
+        "declined",
+        "expired",
+        "withdrawn",
+    ]
+    valid_until: date | None = None
+    expected_version_number: int | None = Field(default=None, ge=1)
     notes: str | None = None
 
 
@@ -738,6 +763,11 @@ class OfferResponse(BaseModel):
     proposed_salary_masked: str | None
     currency: str
     status: str
+    valid_until: date | None = None
+    version_number: int = 1
+    supersedes_offer_id: UUID | None = None
+    superseded_by_id: UUID | None = None
+    superseded_at: datetime | None = None
     approved_by_id: UUID | None
     approved_at: datetime | None
     issued_at: datetime | None

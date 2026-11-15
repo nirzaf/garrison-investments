@@ -158,6 +158,7 @@ export function HRWorkspacePage() {
 
   const [reqCode, setReqCode] = useState('');
   const [reqTitle, setReqTitle] = useState('');
+  const [reqHeadcount, setReqHeadcount] = useState('1');
 
   const [docTitle, setDocTitle] = useState('');
   const [docCategory, setDocCategory] = useState<
@@ -1018,24 +1019,26 @@ export function HRWorkspacePage() {
         <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-4">
           <h3 className="text-base font-semibold">Requisitions ({requisitions.length})</h3>
           <form
-            className="flex flex-wrap gap-2"
+            className="flex flex-wrap items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void createRequisition({
                 requisition_code: reqCode,
                 title: reqTitle,
                 employment_category: 'permanent',
-                headcount_requested: 1
+                headcount_requested: Number(reqHeadcount)
               })
                 .then(() => {
                   setReqCode('');
                   setReqTitle('');
+                  setReqHeadcount('1');
                   return loadCore();
                 })
                 .catch((err) => setError(errMsg(err, 'Failed to create requisition.')));
             }}
           >
             <input
+              aria-label="Requisition code"
               className="rounded border border-theme-border bg-theme-input px-2.5 py-1.5 text-sm"
               onChange={(e) => setReqCode(e.target.value)}
               placeholder="REQ-001"
@@ -1043,12 +1046,24 @@ export function HRWorkspacePage() {
               value={reqCode}
             />
             <input
+              aria-label="Requisition title"
               className="rounded border border-theme-border bg-theme-input px-2.5 py-1.5 text-sm"
               onChange={(e) => setReqTitle(e.target.value)}
               placeholder="Site Supervisor"
               required
               value={reqTitle}
             />
+            <label className="flex items-center gap-1.5 text-sm">
+              Requested headcount
+              <input
+                className="w-20 rounded border border-theme-border bg-theme-input px-2.5 py-1.5 text-sm"
+                min={1}
+                onChange={(e) => setReqHeadcount(e.target.value)}
+                required
+                type="number"
+                value={reqHeadcount}
+              />
+            </label>
             <button className="rounded bg-brand-600 px-3 py-1.5 text-sm text-white" type="submit">
               Create requisition
             </button>

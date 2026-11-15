@@ -613,6 +613,118 @@ test('candidate CVs stay private through upload, independent review and download
   expect(await download.failure()).toBeNull();
 });
 
+test('HR Manager creates a multi-headcount requisition, rejects it with a reason, and reissues an offer', async ({
+  page,
+  request
+}) => {
+  const session = await signIn(page, seedAccount('hr_manager'));
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const unique = Date.now().toString(36);
+  const reqCode = `REQ-UI-${unique}`;
+
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await page.getByLabel('Requisition code').fill(reqCode);
+  await page.getByLabel('Requisition title').fill('Site Foreman');
+  await page.getByLabel('Requested headcount').fill('3');
+  await page.getByRole('button', { name: 'Create requisition' }).click();
+
+  const reqItem = page.getByRole('listitem').filter({ hasText: reqCode });
+  await expect(reqItem).toContainText('Headcount 3');
+  await reqItem.getByRole('button', { name: 'Submit requisition' }).click();
+  await expect(reqItem).toContainText('submitted');
+  await reqItem.getByLabel('Requisition rejection reason').fill('Budget deferred for Q4.');
+  await reqItem.getByRole('button', { name: 'Reject requisition' }).click();
+  await expect(reqItem).toContainText('rejected');
+  await expect(reqItem).toContainText('Rejected: Budget deferred for Q4.');
+
+  // Prepare an evaluated application so offer creation and versioning can be exercised in the browser.
+  const openReq = await request.post('/api/v1/hr/requisitions', {
+    headers,
+    data: { requisition_code: `REQ-O-${unique}`, title: 'MEP Lead', headcount_requested: 2 }
+  });
+  expect(openReq.status()).toBe(201);
+  const openReqId = (await openReq.json()).id as string;
+  for (const step of ['submitted', 'approved', 'open']) {
+    expect(
+      (
+        await request.post(`/api/v1/hr/requisitions/${openReqId}/decision`, {
+          headers,
+          data: { status: step }
+        })
+      ).status()
+    ).toBe(200);
+  }
+  const candidate = await request.post('/api/v1/hr/candidates', {
+    headers,
+    data: { candidate_code: `CAND-UI-${unique}`, full_name: `Candidate ${unique}` }
+  });
+  expect(candidate.status()).toBe(201);
+  const application = await request.post('/api/v1/hr/applications', {
+    headers,
+    data: { requisition_id: openReqId, candidate_id: (await candidate.json()).id }
+  });
+  expect(application.status()).toBe(201);
+  const appId = (await application.json()).id as string;
+  const interview = await request.post('/api/v1/hr/interviews', {
+    headers,
+    data: { application_id: appId, interview_type: 'technical' }
+  });
+  expect(interview.status()).toBe(201);
+  expect(
+    (
+      await request.patch(`/api/v1/hr/interviews/${(await interview.json()).id}`, {
+        headers,
+        data: { status: 'completed' }
+      })
+    ).status()
+  ).toBe(200);
+  for (const stage of ['screening', 'interview', 'evaluation']) {
+    expect(
+      (
+        await request.patch(`/api/v1/hr/applications/${appId}/stage`, {
+          headers,
+          data: { stage }
+        })
+      ).status()
+    ).toBe(200);
+  }
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await expect(reqItem).toContainText('Headcount 3 · rejected · Rejected: Budget deferred for Q4.');
+
+  const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const createForm = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Save recruitment record' }) });
+  await createForm.getByLabel('New record').selectOption('offer');
+  await createForm.getByLabel('Reference code').fill(`OFR-UI-${unique}`);
+  await createForm.getByLabel('Proposed title').fill('Junior MEP Lead');
+  await createForm.locator('select[name="application"]').selectOption(appId);
+  await createForm.getByLabel('Valid until').fill(deadline);
+  await createForm.getByRole('button', { name: 'Save recruitment record' }).click();
+
+  const v1Card = page
+    .getByRole('article')
+    .filter({ hasText: `OFR-UI-${unique} · Junior MEP Lead` });
+  await expect(v1Card).toContainText(`v1 · draft · Valid until ${deadline}`);
+  await v1Card.getByLabel('Offer code').fill(`OFR-UI2-${unique}`);
+  await v1Card.getByLabel('Proposed title').fill('Senior MEP Lead');
+  await v1Card.getByRole('button', { name: 'Reissue offer' }).click();
+
+  const v2Card = page
+    .getByRole('article')
+    .filter({ hasText: `OFR-UI2-${unique} · Senior MEP Lead` });
+  await expect(v2Card).toContainText('v2 · draft');
+  await expect(v1Card).toContainText('v1 · superseded');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await expect(v2Card).toContainText('v2 · draft');
+  await expect(v1Card).toContainText('v1 · superseded');
+});
+
 test('HR extends and confirms probation from a completed onboarding case', async ({
   page,
   request

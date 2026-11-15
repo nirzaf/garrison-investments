@@ -1,5 +1,7 @@
 # Role catalogue cutover
 
+> Historical runbook for the original ten-role cutover. See [Roles and permissions](ROLES_AND_PERMISSIONS.md) for today's nine-role catalogue. The current manifest utility validates against the role keys in its checked-out source, so the historical counts below do not describe current command output.
+
 This runbook describes the one-time account-role migration for the exclusive
 ten-role catalogue. It does not authorize a production cutover. The latest role
 specification explicitly retires the former eight roles, including `admin`, and

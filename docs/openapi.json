@@ -12632,6 +12632,30 @@
             "minLength": 2,
             "title": "Proposed Title",
             "type": "string"
+          },
+          "supersedes_offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Offer Id"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
           }
         },
         "required": [
@@ -12644,6 +12668,18 @@
       },
       "OfferDecisionRequest": {
         "properties": {
+          "expected_version_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version Number"
+          },
           "notes": {
             "anyOf": [
               {
@@ -12662,10 +12698,23 @@
               "issued",
               "accepted",
               "declined",
+              "expired",
               "withdrawn"
             ],
             "title": "Status",
             "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
           }
         },
         "required": [
@@ -12693,6 +12742,111 @@
           "total"
         ],
         "title": "OfferListResponse",
+        "type": "object"
+      },
+      "OfferReissueRequest": {
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 10,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "offer_code": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Offer Code",
+            "type": "string"
+          },
+          "proposed_department_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Department Id"
+          },
+          "proposed_join_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Join Date"
+          },
+          "proposed_position_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Position Id"
+          },
+          "proposed_salary": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Salary"
+          },
+          "proposed_title": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Proposed Title",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "offer_code",
+          "proposed_title"
+        ],
+        "title": "OfferReissueRequest",
         "type": "object"
       },
       "OfferResponse": {
@@ -12846,10 +13000,63 @@
             "title": "Status",
             "type": "string"
           },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "superseded_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Id"
+          },
+          "supersedes_offer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Offer Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "version_number": {
+            "default": 1,
+            "title": "Version Number",
+            "type": "integer"
           }
         },
         "required": [
@@ -17484,6 +17691,17 @@
               }
             ],
             "title": "Project Id"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
           },
           "requested_by_id": {
             "anyOf": [
@@ -30254,6 +30472,72 @@
           }
         ],
         "summary": "Decide Offer",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/offers/{offer_id}/reissue": {
+      "post": {
+        "operationId": "reissue_offer_api_v1_hr_offers__offer_id__reissue_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "offer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Offer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferReissueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Reissue Offer Api V1 Hr Offers  Offer Id  Reissue Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reissue Offer",
         "tags": [
           "HR & Workforce"
         ]
