@@ -76,6 +76,10 @@ test('document type filtering and replacement preserve the active version', asyn
   const document = await (await created).json();
   expect(document.uploaded_by).toBe(uploader.id);
   expect(document.versions[0].uploaded_by).toBe(uploader.id);
+  // Other workers can create enough newer documents to move this card off page one.
+  const findDocument = (documentPage: Page) =>
+    documentPage.getByRole('textbox', { name: 'Search documents' }).fill(title);
+  await findDocument(page);
   const card = page.getByRole('article').filter({ hasText: title });
   const approverPage = await browser.newPage();
   const { headers: approverHeaders, user: approverSessionUser } = await signIn(
@@ -91,9 +95,11 @@ test('document type filtering and replacement preserve the active version', asyn
   expect(approverSessionUser.id).toBe(approver.id);
   const approverList = approverPage.waitForResponse((response) =>
     new URL(response.url()).pathname === '/api/v1/documents' &&
+    new URL(response.url()).searchParams.get('search') === title &&
     response.request().method() === 'GET' && response.ok()
   );
   await approverPage.goto('/documents');
+  await findDocument(approverPage);
   const firstApproverList = await approverList;
   expect(bearerSubject(firstApproverList.request().headers().authorization)).toBe(approver.id);
   const approve = async (version: number) => {
@@ -112,6 +118,7 @@ test('document type filtering and replacement preserve the active version', asyn
   await expect(card.getByText('Awaiting approval by another authorized user')).toBeVisible();
   await approve(1);
   await page.reload();
+  await findDocument(page);
   await expect(card.getByText(/Active v1/)).toBeVisible();
 
   await card.getByRole('button', { name: 'Upload replacement' }).click();
@@ -152,9 +159,11 @@ test('document type filtering and replacement preserve the active version', asyn
   };
   const refreshedApproverList = approverPage.waitForResponse((response) =>
     new URL(response.url()).pathname === '/api/v1/documents' &&
+    new URL(response.url()).searchParams.get('search') === title &&
     response.request().method() === 'GET' && response.ok()
   );
   await approverPage.reload();
+  await findDocument(approverPage);
   const approverListResponse = await refreshedApproverList;
   const approverDocuments = await approverListResponse.json();
   const approvedDocument = approverDocuments.items.find(
@@ -177,8 +186,7 @@ test('document type filtering and replacement preserve the active version', asyn
   }
   await approverPage.unroute('**/api/v1/documents?*', delayRefresh);
   await page.reload();
-  await expect(card.getByText(/Active v2/)).toBeVisible();
-  await page.reload();
+  await findDocument(page);
   await expect(card.getByText(/Active v2/)).toBeVisible();
   await expect(card.getByText('superseded', { exact: true })).toBeVisible();
 
