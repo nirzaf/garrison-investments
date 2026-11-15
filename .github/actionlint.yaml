@@ -1,3 +1,4 @@
 self-hosted-runner:
   labels:
+    - garrison-ci
     - garrison-production
