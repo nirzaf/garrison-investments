@@ -11,7 +11,6 @@ ROLE_QUANTITY_SURVEYOR: Final = "quantity_surveyor"
 ROLE_SENIOR_SITE_SUPERVISOR: Final = "senior_site_supervisor"
 ROLE_SITE_SUPERVISOR: Final = "site_supervisor"
 ROLE_HR_MANAGER: Final = "hr_manager"
-ROLE_HR_EXECUTIVE: Final = "hr_executive"
 ROLE_ADMINISTRATIVE_EXECUTIVE: Final = "administrative_executive"
 
 ROLE_LABELS: Final[dict[str, str]] = {
@@ -23,7 +22,6 @@ ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_SENIOR_SITE_SUPERVISOR: "Senior Site Supervisor",
     ROLE_SITE_SUPERVISOR: "Site Supervisor",
     ROLE_HR_MANAGER: "HR Manager",
-    ROLE_HR_EXECUTIVE: "HR Executive",
     ROLE_ADMINISTRATIVE_EXECUTIVE: "Administrative Executive",
 }
 
@@ -46,6 +44,28 @@ PERMISSION_DOCUMENTS_VIEW: Final = "documents:view"
 PERMISSION_DOCUMENTS_MANAGE: Final = "documents:manage"
 PERMISSION_FINANCIAL_VIEW: Final = "financial:view"
 
+PERMISSION_HR_EMPLOYEES_READ: Final = "hr:employees:read"
+PERMISSION_HR_EMPLOYEES_MANAGE: Final = "hr:employees:manage"
+PERMISSION_HR_EMPLOYEES_SENSITIVE: Final = "hr:employees:sensitive"
+PERMISSION_HR_RECRUITMENT_MANAGE: Final = "hr:recruitment:manage"
+PERMISSION_HR_ONBOARDING_MANAGE: Final = "hr:onboarding:manage"
+PERMISSION_HR_ATTENDANCE_RECORD: Final = "hr:attendance:record"
+PERMISSION_HR_ATTENDANCE_APPROVE: Final = "hr:attendance:approve"
+PERMISSION_HR_LEAVE_MANAGE: Final = "hr:leave:manage"
+PERMISSION_HR_LEAVE_APPROVE: Final = "hr:leave:approve"
+PERMISSION_HR_DOCUMENTS_MANAGE: Final = "hr:documents:manage"
+PERMISSION_HR_COMPLIANCE_MANAGE: Final = "hr:compliance:manage"
+PERMISSION_HR_PERFORMANCE_MANAGE: Final = "hr:performance:manage"
+PERMISSION_HR_TRAINING_MANAGE: Final = "hr:training:manage"
+PERMISSION_HR_REQUESTS_PROCESS: Final = "hr:requests:process"
+PERMISSION_HR_PAYROLL_PREPARE: Final = "hr:payroll:prepare"
+PERMISSION_HR_PAYROLL_APPROVE: Final = "hr:payroll:approve"
+PERMISSION_HR_PAYROLL_SENSITIVE: Final = "hr:payroll:sensitive"
+PERMISSION_HR_CASES_RESTRICTED: Final = "hr:cases:restricted"
+PERMISSION_HR_OFFBOARDING_MANAGE: Final = "hr:offboarding:manage"
+PERMISSION_HR_REPORTS_VIEW: Final = "hr:reports:view"
+PERMISSION_HR_POLICY_MANAGE: Final = "hr:policy:manage"
+
 ALL_PERMISSIONS: Final[set[str]] = {
     PERMISSION_USERS_MANAGE,
     PERMISSION_USERS_READ,
@@ -64,6 +84,50 @@ ALL_PERMISSIONS: Final[set[str]] = {
     PERMISSION_DOCUMENTS_MANAGE,
     PERMISSION_FINANCIAL_VIEW,
 }
+
+# HR permissions are explicit. Director roles retain their existing grants.
+_HR_MANAGER_GRANTS = {
+    PERMISSION_HR_EMPLOYEES_READ,
+    PERMISSION_HR_EMPLOYEES_MANAGE,
+    PERMISSION_HR_RECRUITMENT_MANAGE,
+    PERMISSION_HR_ONBOARDING_MANAGE,
+    PERMISSION_HR_ATTENDANCE_RECORD,
+    PERMISSION_HR_LEAVE_MANAGE,
+    PERMISSION_HR_DOCUMENTS_MANAGE,
+    PERMISSION_HR_COMPLIANCE_MANAGE,
+    PERMISSION_HR_REQUESTS_PROCESS,
+    PERMISSION_HR_REPORTS_VIEW,
+    PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_ATTENDANCE_APPROVE,
+    PERMISSION_HR_LEAVE_APPROVE,
+    PERMISSION_HR_OFFBOARDING_MANAGE,
+    PERMISSION_HR_POLICY_MANAGE,
+}
+HR_PERMISSIONS: Final[frozenset[str]] = frozenset(
+    {
+        PERMISSION_HR_EMPLOYEES_READ,
+        PERMISSION_HR_EMPLOYEES_MANAGE,
+        PERMISSION_HR_EMPLOYEES_SENSITIVE,
+        PERMISSION_HR_RECRUITMENT_MANAGE,
+        PERMISSION_HR_ONBOARDING_MANAGE,
+        PERMISSION_HR_ATTENDANCE_RECORD,
+        PERMISSION_HR_ATTENDANCE_APPROVE,
+        PERMISSION_HR_LEAVE_MANAGE,
+        PERMISSION_HR_LEAVE_APPROVE,
+        PERMISSION_HR_DOCUMENTS_MANAGE,
+        PERMISSION_HR_COMPLIANCE_MANAGE,
+        PERMISSION_HR_REQUESTS_PROCESS,
+        PERMISSION_HR_PAYROLL_PREPARE,
+        PERMISSION_HR_PAYROLL_APPROVE,
+        PERMISSION_HR_PAYROLL_SENSITIVE,
+        PERMISSION_HR_CASES_RESTRICTED,
+        PERMISSION_HR_OFFBOARDING_MANAGE,
+        PERMISSION_HR_REPORTS_VIEW,
+        PERMISSION_HR_POLICY_MANAGE,
+        PERMISSION_HR_PERFORMANCE_MANAGE,
+        PERMISSION_HR_TRAINING_MANAGE,
+    }
+)
 
 _MD_OD_PERMISSIONS = {
     PERMISSION_USERS_MANAGE,
@@ -135,21 +199,13 @@ ROLE_PERMISSIONS: Final[dict[str, set[str]]] = {
         PERMISSION_DOCUMENTS_VIEW,
     },
     ROLE_HR_MANAGER: {
-        PERMISSION_USERS_MANAGE,
         PERMISSION_USERS_READ,
-        PERMISSION_AUDIT_VIEW,
         PERMISSION_DASHBOARD_COMPANY,
         PERMISSION_DASHBOARD_SCOPED,
         PERMISSION_REPORTS_VIEW,
         PERMISSION_REPORTS_APPROVE,
-        PERMISSION_DOCUMENTS_VIEW,
-    },
-    ROLE_HR_EXECUTIVE: {
-        PERMISSION_USERS_READ,
-        PERMISSION_DASHBOARD_SCOPED,
-        PERMISSION_REPORTS_VIEW,
-        PERMISSION_DOCUMENTS_VIEW,
-    },
+    }
+    | _HR_MANAGER_GRANTS,
     ROLE_ADMINISTRATIVE_EXECUTIVE: {
         PERMISSION_USERS_READ,
         PERMISSION_DASHBOARD_COMPANY,
@@ -197,7 +253,6 @@ REPORT_APPROVER_ROLES: Final[set[str]] = {
 USER_MANAGER_ROLES: Final[set[str]] = {
     ROLE_MANAGING_DIRECTOR,
     ROLE_OPERATIONS_DIRECTOR,
-    ROLE_HR_MANAGER,
 }
 PROTECTED_USER_ROLES: Final[set[str]] = {
     ROLE_MANAGING_DIRECTOR,
@@ -209,7 +264,9 @@ PROTECTED_USER_ROLES: Final[set[str]] = {
 def has_permission(user: User, permission: str) -> bool:
     if user.role not in VALID_ROLES:
         return False
-    return permission in ALL_PERMISSIONS and permission in ROLE_PERMISSIONS.get(user.role, set())
+    return permission in (ALL_PERMISSIONS | HR_PERMISSIONS) and permission in ROLE_PERMISSIONS.get(
+        user.role, set()
+    )
 
 
 def permissions_for_role(role: str) -> list[str]:
@@ -217,7 +274,7 @@ def permissions_for_role(role: str) -> list[str]:
 
 
 def roles_with_permission(permission: str) -> set[str]:
-    if permission in ALL_PERMISSIONS:
+    if permission in (ALL_PERMISSIONS | HR_PERMISSIONS):
         return {role for role, permissions in ROLE_PERMISSIONS.items() if permission in permissions}
     return set()
 
@@ -227,7 +284,7 @@ def can_assign_user_role(actor_role: str, target_role: str) -> bool:
         return False
     if actor_role in COMPANY_RESOURCE_ROLES:
         return True
-    return actor_role == ROLE_HR_MANAGER and target_role not in PROTECTED_USER_ROLES
+    return False
 
 
 def ensure_permission(user: User, permission: str) -> None:

@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from app.config import get_settings
 from app.models.document import DocumentVersion
 from app.models.finance import Invoice
+from app.models.hr import HrDocumentVersion
 from app.models.photo import Photo
 from app.models.report_export import ReportExport
 from app.models.supplier import Supplier
@@ -227,6 +228,9 @@ async def references(connection: AsyncConnection, as_of: datetime) -> set[str]:
         ),
     ):
         keys.update(key for key in await connection.scalars(query) if key)
+    # A candidate may capture the previous schema before maintenance.
+    if await connection.scalar(text("SELECT to_regclass('hr_document_versions') IS NOT NULL")):
+        keys.update(await connection.scalars(select(HrDocumentVersion.object_key)))
     return keys
 
 

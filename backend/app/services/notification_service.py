@@ -63,6 +63,7 @@ class NotificationService:
         notification_type: str,
         reference_type: str | None = None,
         reference_id: UUID | None = None,
+        send_email: bool = True,
     ) -> Notification:
         notification = await self.notifications.add(
             Notification(
@@ -72,12 +73,13 @@ class NotificationService:
                 notification_type=notification_type,
                 reference_type=reference_type,
                 reference_id=reference_id,
-                email_status="queued",
+                email_status="queued" if send_email else None,
             )
         )
-        pending_ids = self.session.info.setdefault(PENDING_EMAIL_NOTIFICATION_IDS, set())
-        pending_ids.add(notification.id)
-        self.session.sync_session.info[PENDING_EMAIL_NOTIFICATION_IDS] = pending_ids
+        if send_email:
+            pending_ids = self.session.info.setdefault(PENDING_EMAIL_NOTIFICATION_IDS, set())
+            pending_ids.add(notification.id)
+            self.session.sync_session.info[PENDING_EMAIL_NOTIFICATION_IDS] = pending_ids
         return notification
 
     async def list_for_user(self, user: User) -> tuple[list[Notification], int]:

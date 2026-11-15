@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
+import { hrManagerManual } from './manuals/hrManager';
 import { COMMON_SECTIONS } from './manuals/common';
 import type { Manual, ManualSection } from './manuals';
 
@@ -26,7 +27,6 @@ const ROLE_LABELS: Record<string, string> = {
   senior_site_supervisor: 'Senior Site Supervisor',
   site_supervisor: 'Site Supervisor',
   hr_manager: 'HR Manager',
-  hr_executive: 'HR Executive',
   administrative_executive: 'Administrative Executive'
 };
 const PERMISSION_LABELS: Record<string, string> = {
@@ -51,6 +51,8 @@ const PERMISSION_LABELS: Record<string, string> = {
 const ALL_PERMISSION_KEYS = Object.keys(PERMISSION_LABELS);
 
 function manualFor(role: string, permissions: string[]): Manual | undefined {
+  const hrManual = role === 'hr_manager' ? hrManagerManual : null;
+  if (hrManual) return { ...hrManual, sections: [...COMMON_SECTIONS, ...hrManual.sections] };
   const roleLabel = ROLE_LABELS[role];
   if (!roleLabel) return undefined;
   const granted = new Set(permissions);
@@ -70,7 +72,7 @@ function manualFor(role: string, permissions: string[]): Manual | undefined {
       title: 'Access boundaries',
       icon: '🔒',
       content:
-        'A permission does not provide access to every record. Project, report, document, and evidence access is limited by the applicable business scope. HR Manager and HR Executive are role labels; no separate HR module is available in this portal.'
+        'A permission does not provide access to every record. Project, report, document, and evidence access is limited by the applicable business scope.'
     }
   ];
   return {
@@ -80,7 +82,9 @@ function manualFor(role: string, permissions: string[]): Manual | undefined {
     overview:
       'Your account can use the features listed below. Available actions remain subject to record ownership, workflow state, and project scope.',
     permissions: enabled.map((permission) => PERMISSION_LABELS[permission]),
-    limitations: missing.map((permission) => `Does not have the ${PERMISSION_LABELS[permission]} permission`),
+    limitations: missing.map(
+      (permission) => `Does not have the ${PERMISSION_LABELS[permission]} permission`
+    ),
     sections
   };
 }
@@ -190,7 +194,9 @@ function LimitationPills({ limitations }: { limitations: string[] }) {
   if (limitations.length === 0) {
     return (
       <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="text-sm text-green-700">✓ All permissions in the current matrix are granted.</p>
+        <p className="text-sm text-green-700">
+          ✓ All permissions in the current matrix are granted.
+        </p>
       </div>
     );
   }

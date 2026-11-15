@@ -1,24 +1,28 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 from time import monotonic
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.daily_report import DailyReport
+from app.models.hr import HrEmployee
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.schemas.hr import HrReportWindow
 from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
+from app.services.hr_reporting import count_report_credentials
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
+    PERMISSION_HR_COMPLIANCE_MANAGE,
     PERMISSION_SUPPLIERS_MANAGE,
     REPORT_APPROVER_ROLES,
     roles_with_permission,
@@ -265,6 +269,64 @@ async def _check_supplier_tds_expiry() -> str:
                 sent += 1
         await session.commit()
     return f"{sent} supplier TDS expiry notifications sent"
+
+
+@celery_app.task(
+    name="check_hr_credential_expiry",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def check_hr_credential_expiry() -> int:
+    return run_async_task(_check_hr_credential_expiry())
+
+
+async def _check_hr_credential_expiry() -> int:
+    days = get_settings().hr_reminder_window_days
+    if days is None:
+        return 0
+    now = business_now()
+    today = now.date()
+    start = datetime.combine(today, time.min, tzinfo=now.tzinfo)
+    end = datetime.combine(today + timedelta(days=1), time.min, tzinfo=now.tzinfo)
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_expiry'))"))
+        employees = select(HrEmployee.id).where(
+            HrEmployee.deleted_at.is_(None),
+            HrEmployee.employment_status.in_(
+                ("onboarding", "active", "on_probation", "on_leave", "notice_period")
+            ),
+        )
+        window = HrReportWindow(date_from=today, date_to=today + timedelta(days=days))
+        if not await count_report_credentials(session, employees, window):
+            return 0
+        already_notified = select(Notification.user_id).where(
+            Notification.notification_type == "hr_credential_expiry",
+            Notification.created_at >= start,
+            Notification.created_at < end,
+        )
+        recipients = (
+            await session.scalars(
+                select(User.id).where(
+                    User.role.in_(roles_with_permission(PERMISSION_HR_COMPLIANCE_MANAGE)),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                    User.id.not_in(already_notified),
+                )
+            )
+        ).all()
+        notifications = NotificationService(session)
+        for user_id in recipients:
+            await notifications.create(
+                user_id=user_id,
+                title="HR review reminder",
+                body="Open HR & Workforce to review upcoming credential deadlines.",
+                notification_type="hr_credential_expiry",
+                send_email=False,
+            )
+        await session.commit()
+        return len(recipients)
 
 
 async def _late_report_recipients(session, project_id) -> set:

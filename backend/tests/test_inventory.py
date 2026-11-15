@@ -510,7 +510,6 @@ async def test_request_project_lookup_and_write_share_active_role_and_membership
         "senior_site_supervisor",
         "site_supervisor",
         "hr_manager",
-        "hr_executive",
         "administrative_executive",
     )
     users_by_role = {role: await create_user(role) for role in roles}

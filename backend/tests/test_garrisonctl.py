@@ -14,8 +14,8 @@ PROJECT = "954ac3cf-71c2-4492-986e-5f98a5e9343d"
 BATCH = "ac033ed0-7643-4e31-9abf-9d647833af01"
 TOKEN = "test-only-bearer-do-not-print"
 ROLE_MATRIX = json.loads(Path(__file__).with_name("business_role_matrix.json").read_text())
-RETIRED_ROLE_KEYS = ROLE_MATRIX["retired_roles"]
-TARGET_ROLE_KEYS = tuple(ROLE_MATRIX["roles"])
+RETIRED_ROLE_KEYS = [*ROLE_MATRIX["retired_roles"], "hr_executive"]
+TARGET_ROLE_KEYS = tuple(role for role in ROLE_MATRIX["roles"] if role != "hr_executive")
 
 
 def invoke(args, handler=None):

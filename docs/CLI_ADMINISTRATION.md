@@ -43,6 +43,20 @@ For automation, provide an already issued short-lived bearer through `GARRISON_A
 
 Each command has `--help` and `--json`. Capabilities lists commands, argument requirements, permissions, execution scope, preview support and whether approval is required. Project membership labels are project context. Company permissions come from the user's account role.
 
+### Workforce administration
+
+Use the existing portal session with the HR permissions assigned to your account.
+`hr employees list`, `hr employees get`, `hr leave requests list`,
+`hr compliance expiring`, and `hr reports summary` use the same restricted API as
+the HR workspace. Mutations use the command's `--dry-run` and
+`--apply --expect` options. Treat workbook previews and document links as
+restricted records. See the [workforce guide](HR_WORKFORCE.md) for the account
+handoff and activation flow.
+
+Use `hr reports sites` to page through primary site IDs and
+`hr reports summary --project-id ID --department-id ID --date-from YYYY-MM-DD --date-to YYYY-MM-DD`
+to filter the report. Both dates are required when applying a date range.
+
 ### Inspect identities, roles and projects
 
 ```bash

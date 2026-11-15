@@ -8,6 +8,7 @@ from app.models.user import User
 from app.utils.exceptions import AppException, PermissionDeniedException
 from app.utils.permissions import (
     ALL_PERMISSIONS,
+    HR_PERMISSIONS,
     ROLE_LABELS,
     ROLE_PERMISSIONS,
     VALID_ROLES,
@@ -33,12 +34,38 @@ EXPECTED_GRANTS = {
 }
 
 
+HR_EXECUTIVE_GRANTS = {
+    "hr:employees:read",
+    "hr:employees:manage",
+    "hr:recruitment:manage",
+    "hr:onboarding:manage",
+    "hr:attendance:record",
+    "hr:leave:manage",
+    "hr:documents:manage",
+    "hr:compliance:manage",
+    "hr:requests:process",
+    "hr:reports:view",
+}
+HR_MANAGER_GRANTS = HR_EXECUTIVE_GRANTS | {
+    "hr:employees:sensitive",
+    "hr:attendance:approve",
+    "hr:leave:approve",
+    "hr:offboarding:manage",
+    "hr:policy:manage",
+}
+EFFECTIVE_GRANTS = {
+    **{role: grants for role, grants in EXPECTED_GRANTS.items() if role != "hr_executive"},
+    "hr_manager": (EXPECTED_GRANTS["hr_manager"] - {"users:manage", "audit:view", "documents:view"})
+    | HR_MANAGER_GRANTS,
+}
+
+
 def test_exact_role_and_permission_catalogues_match_independent_matrix() -> None:
-    assert set(VALID_ROLES) == set(MATRIX["roles"])
-    assert set(ROLE_PERMISSIONS) == set(MATRIX["roles"])
-    assert set(ROLE_LABELS) == set(MATRIX["roles"])
+    assert set(VALID_ROLES) == set(MATRIX["roles"]) - {"hr_executive"}
+    assert set(ROLE_PERMISSIONS) == set(MATRIX["roles"]) - {"hr_executive"}
+    assert set(ROLE_LABELS) == set(MATRIX["roles"]) - {"hr_executive"}
     assert ALL_PERMISSIONS == set(PERMISSIONS)
-    assert len(VALID_ROLES) == 10
+    assert len(VALID_ROLES) == 9
     assert len(ALL_PERMISSIONS) == 16
 
 
@@ -69,18 +96,17 @@ def test_all_160_source_decisions_and_role_totals_match() -> None:
     )
     role_totals = [sum(metadata["decisions"]) for metadata in MATRIX["roles"].values()]
     assert role_totals == MATRIX["expected_role_grants"]
-    assert ROLE_PERMISSIONS == EXPECTED_GRANTS
-    assert sum(len(grants) for grants in ROLE_PERMISSIONS.values()) == MATRIX["expected_grants"]
+    assert ROLE_PERMISSIONS == EFFECTIVE_GRANTS
 
 
 def test_frontend_matrix_matches_source_and_backend() -> None:
     frontend = json.loads(FRONTEND_MATRIX_PATH.read_text())
-    assert frontend["permissions"] == PERMISSIONS
+    assert frontend["permissions"] == PERMISSIONS + sorted(HR_PERMISSIONS)
     assert set(frontend["roles"]) == set(ROLE_PERMISSIONS)
     assert {role: set(grants) for role, grants in frontend["roles"].items()} == ROLE_PERMISSIONS
 
 
-@pytest.mark.parametrize("role", MATRIX["retired_roles"])
+@pytest.mark.parametrize("role", [*MATRIX["retired_roles"], "hr_executive"])
 def test_retired_roles_are_rejected_and_have_no_permissions(role: str) -> None:
     assert permissions_for_role(role) == []
     assert not has_permission(User(role=role), "users:manage")
@@ -95,7 +121,7 @@ def test_retired_roles_are_rejected_and_have_no_permissions(role: str) -> None:
 @pytest.mark.parametrize("role", sorted(VALID_ROLES))
 def test_every_target_role_validates_and_has_exact_permissions(role: str) -> None:
     assert validate_role(role) == role
-    assert set(permissions_for_role(role)) == EXPECTED_GRANTS[role]
+    assert set(permissions_for_role(role)) == EFFECTIVE_GRANTS[role]
 
 
 def test_permission_helpers_fail_closed_for_unknown_role_and_future_permission() -> None:
@@ -104,20 +130,20 @@ def test_permission_helpers_fail_closed_for_unknown_role_and_future_permission()
     director = User(role="managing_director")
     assert has_permission(director, "future:permission") is False
     assert has_permission(director, "hr:employees:read") is False
-    assert all("hr:employees:read" not in permissions for permissions in ROLE_PERMISSIONS.values())
+    assert not has_permission(User(role="hr_executive"), "hr:employees:read")
     with pytest.raises(PermissionDeniedException) as exc_info:
         ensure_permission(director, "future:permission")
     assert exc_info.value.status_code == 403
     assert exc_info.value.error_code == "PERMISSION_DENIED"
 
 
-def test_role_replacement_does_not_mount_an_unapproved_hr_module() -> None:
+def test_hr_routes_are_in_the_api_contract() -> None:
     paths = app.openapi()["paths"]
-    assert not any(path.startswith("/api/v1/hr/") for path in paths)
+    assert {"/api/v1/hr/employees", "/api/v1/hr/me"} <= paths.keys()
 
 
 def test_every_feature_permission_denial_is_explicit_for_each_role() -> None:
-    for role, grants in EXPECTED_GRANTS.items():
+    for role, grants in EFFECTIVE_GRANTS.items():
         actor = User(role=role)
-        for permission in PERMISSIONS:
+        for permission in ALL_PERMISSIONS | HR_PERMISSIONS:
             assert has_permission(actor, permission) is (permission in grants)

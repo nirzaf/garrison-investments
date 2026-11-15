@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import HttpUrl, SecretStr, model_validator
+from pydantic import Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.business_policy import DEFAULT_BUSINESS_CURRENCY, BusinessPolicy, BusinessPolicyResponse
@@ -32,6 +32,10 @@ class Settings(BaseSettings, BusinessPolicy):
     usesend_api_key: SecretStr | None = None
     exception_email_recipients: str = "admin@garrisons.lk"
     exception_email_enabled: bool | None = None
+    hr_encryption_key: SecretStr | None = None
+    hr_reminder_window_days: int | None = Field(default=None, ge=1, le=365)
+    hr_line_manager_review_enabled: bool = False
+    hr_self_time_submission_enabled: bool = False
     notification_retention_days: int = 90
 
     minio_endpoint: str = "localhost:9000"

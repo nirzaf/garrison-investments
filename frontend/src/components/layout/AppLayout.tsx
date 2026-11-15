@@ -71,6 +71,8 @@ const navItems: NavItem[] = [
   { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
   { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
   { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
+  { label: 'HR & Workforce', to: '/hr', permission: ['hr:employees:read', 'users:manage'], icon: BriefcaseBusiness },
+  { label: 'My HR', to: '/me/hr', icon: UserRound },
   { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
   { label: 'Approvals', to: '/approvals', icon: ShieldCheck },
   { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },

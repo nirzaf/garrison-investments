@@ -16,7 +16,6 @@ const ROLE_LABELS: Record<string, string> = {
   senior_site_supervisor: 'Senior Site Supervisor',
   site_supervisor: 'Site Supervisor',
   hr_manager: 'HR Manager',
-  hr_executive: 'HR Executive',
   administrative_executive: 'Administrative Executive'
 };
 const PERMISSION_LABELS: Record<string, string> = {
@@ -79,7 +78,10 @@ function PermissionMatrix({ currentRole }: { currentRole: string }) {
                     {granted ? (
                       <Check aria-label="Granted" className="mx-auto h-4 w-4 text-green-600" />
                     ) : (
-                      <Minus aria-label="Not granted" className="mx-auto h-4 w-4 text-theme-text-muted" />
+                      <Minus
+                        aria-label="Not granted"
+                        className="mx-auto h-4 w-4 text-theme-text-muted"
+                      />
                     )}
                   </td>
                 );
@@ -129,7 +131,9 @@ export function RolesPermissionsPage() {
             <div className="rounded-lg border-l-4 border-brand-500 bg-brand-50/50 p-5">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium text-theme-text-secondary">Your role:</span>
-                <StatusBadge tone="info">{ROLE_LABELS[currentRole] ?? 'Unrecognized role'}</StatusBadge>
+                <StatusBadge tone="info">
+                  {ROLE_LABELS[currentRole] ?? 'Unrecognized role'}
+                </StatusBadge>
               </div>
               <p className="mt-2 text-sm text-theme-text-secondary">
                 Your account has {user.permissions?.length ?? 0} of {PERMISSIONS.length} listed
@@ -139,7 +143,9 @@ export function RolesPermissionsPage() {
           ) : null}
 
           <section>
-            <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">Permission matrix</h3>
+            <h3 className="mb-3 text-lg font-semibold text-theme-text-primary">
+              Permission matrix
+            </h3>
             <div className="rounded-lg border border-theme-border bg-theme-card shadow-xs">
               <PermissionMatrix currentRole={currentRole} />
             </div>
@@ -168,13 +174,28 @@ export function RolesPermissionsPage() {
           <h3 className="text-lg font-semibold text-theme-text-primary">Access rules</h3>
           <ul className="list-inside list-disc space-y-2">
             <li>Each account has exactly one canonical business role.</li>
-            <li>Only the ten roles and sixteen permissions shown in the matrix are supported.</li>
-            <li>Retired role values, including the former admin role, are rejected and receive no permissions.</li>
-            <li>Permission grants do not bypass project membership, ownership, record state, or service checks.</li>
-            <li>Submit-only report authors can access their own permitted workflow without general report browsing.</li>
-            <li>HR Manager and HR Executive are role labels only; this portal does not provide separate HR modules.</li>
-            <li>Role changes and account activation changes require a current record version and revoke prior sessions.</li>
-            <li>The production account conversion requires a reviewed UUID-based maintenance manifest; this page does not migrate accounts.</li>
+            <li>The matrix shows the current portal roles and their permissions.</li>
+            <li>
+              Retired role values, including the former admin role, are rejected and receive no
+              permissions.
+            </li>
+            <li>
+              Permission grants do not bypass project membership, ownership, record state, or
+              service checks.
+            </li>
+            <li>
+              Submit-only report authors can access their own permitted workflow without general
+              report browsing.
+            </li>
+            <li>HR permissions control access to workforce records and sensitive fields.</li>
+            <li>
+              Role changes and account activation changes require a current record version and
+              revoke prior sessions.
+            </li>
+            <li>
+              The production account conversion requires a reviewed UUID-based maintenance manifest;
+              this page does not migrate accounts.
+            </li>
           </ul>
         </section>
       )}

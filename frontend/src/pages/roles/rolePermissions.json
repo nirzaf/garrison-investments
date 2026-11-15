@@ -15,45 +15,142 @@
     "suppliers:manage",
     "documents:view",
     "documents:manage",
-    "financial:view"
+    "financial:view",
+    "hr:attendance:approve",
+    "hr:attendance:record",
+    "hr:cases:restricted",
+    "hr:compliance:manage",
+    "hr:documents:manage",
+    "hr:employees:manage",
+    "hr:employees:read",
+    "hr:employees:sensitive",
+    "hr:leave:approve",
+    "hr:leave:manage",
+    "hr:offboarding:manage",
+    "hr:onboarding:manage",
+    "hr:payroll:approve",
+    "hr:payroll:prepare",
+    "hr:payroll:sensitive",
+    "hr:performance:manage",
+    "hr:policy:manage",
+    "hr:recruitment:manage",
+    "hr:reports:view",
+    "hr:requests:process",
+    "hr:training:manage"
   ],
   "roles": {
     "managing_director": [
-      "users:manage","users:read","projects:manage","projects:read","audit:view",
-      "dashboard:company","dashboard:scoped","reports:view","reports:submit","reports:approve",
-      "inventory:view","inventory:manage","suppliers:manage","documents:view","documents:manage","financial:view"
+      "users:manage",
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "audit:view",
+      "dashboard:company",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "reports:approve",
+      "inventory:view",
+      "inventory:manage",
+      "suppliers:manage",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
     ],
     "operations_director": [
-      "users:manage","users:read","projects:manage","projects:read","audit:view",
-      "dashboard:company","dashboard:scoped","reports:view","reports:submit","reports:approve",
-      "inventory:view","inventory:manage","suppliers:manage","documents:view","documents:manage","financial:view"
+      "users:manage",
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "audit:view",
+      "dashboard:company",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "reports:approve",
+      "inventory:view",
+      "inventory:manage",
+      "suppliers:manage",
+      "documents:view",
+      "documents:manage",
+      "financial:view"
     ],
     "group_project_manager": [
-      "users:read","projects:manage","projects:read","dashboard:scoped","reports:view","reports:submit",
-      "reports:approve","inventory:view","documents:view"
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "reports:approve",
+      "inventory:view",
+      "documents:view"
     ],
     "mep_project_manager": [
-      "users:read","projects:manage","projects:read","dashboard:scoped","reports:view","reports:submit",
-      "reports:approve","inventory:view","suppliers:manage","documents:view"
+      "users:read",
+      "projects:manage",
+      "projects:read",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:submit",
+      "reports:approve",
+      "inventory:view",
+      "suppliers:manage",
+      "documents:view"
     ],
     "quantity_surveyor": [
-      "users:read","dashboard:scoped","reports:submit","inventory:view","suppliers:manage","documents:view"
+      "users:read",
+      "dashboard:scoped",
+      "reports:submit",
+      "inventory:view",
+      "suppliers:manage",
+      "documents:view"
     ],
     "senior_site_supervisor": [
-      "users:read","projects:read","dashboard:scoped","reports:submit","inventory:view","documents:view"
+      "users:read",
+      "projects:read",
+      "dashboard:scoped",
+      "reports:submit",
+      "inventory:view",
+      "documents:view"
     ],
     "site_supervisor": [
-      "users:read","projects:read","dashboard:scoped","reports:submit","inventory:view","documents:view"
+      "users:read",
+      "projects:read",
+      "dashboard:scoped",
+      "reports:submit",
+      "inventory:view",
+      "documents:view"
     ],
     "hr_manager": [
-      "users:manage","users:read","audit:view","dashboard:company","dashboard:scoped",
-      "reports:view","reports:approve","documents:view"
-    ],
-    "hr_executive": [
-      "users:read","dashboard:scoped","reports:view","documents:view"
+      "users:read",
+      "dashboard:company",
+      "dashboard:scoped",
+      "reports:view",
+      "reports:approve",
+      "hr:attendance:approve",
+      "hr:attendance:record",
+      "hr:compliance:manage",
+      "hr:documents:manage",
+      "hr:employees:manage",
+      "hr:employees:read",
+      "hr:employees:sensitive",
+      "hr:leave:approve",
+      "hr:leave:manage",
+      "hr:offboarding:manage",
+      "hr:onboarding:manage",
+      "hr:policy:manage",
+      "hr:recruitment:manage",
+      "hr:reports:view",
+      "hr:requests:process"
     ],
     "administrative_executive": [
-      "users:read","dashboard:company","dashboard:scoped","inventory:view","suppliers:manage","documents:view"
+      "users:read",
+      "dashboard:company",
+      "dashboard:scoped",
+      "inventory:view",
+      "suppliers:manage",
+      "documents:view"
     ]
   }
 }

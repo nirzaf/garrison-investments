@@ -172,11 +172,12 @@ async def test_xlsx_preview_enforces_expanded_size_limit(monkeypatch) -> None:
 async def test_import_template_permissions_follow_the_domain_matrix() -> None:
     ImportService.ensure_template_access(User(role="mep_project_manager"), "suppliers")
     ImportService.ensure_template_access(User(role="managing_director"), "projects")
-    ImportService.ensure_template_access(User(role="hr_manager"), "users")
+    ImportService.ensure_template_access(User(role="managing_director"), "users")
 
     for role, template in (
         ("group_project_manager", "suppliers"),
         ("mep_project_manager", "projects"),
+        ("hr_manager", "users"),
         ("hr_manager", "materials"),
         ("hr_manager", "documents"),
         ("hr_manager", "boq"),

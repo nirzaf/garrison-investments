@@ -12,7 +12,7 @@ that the matrix does not define. The source-backed matrix and hashes are in
 | D02 | Report authoring without `reports:view` | Proposed source-aligned behavior: submitters can access only their own drafts and permitted evidence. | Implement narrowly; production acceptance remains pending. |
 | D03 | Project scope and initial commercial setup | Proposed: Managing Director and Operations Director have company resource scope; Group/MEP Project Managers are membership-scoped; initial priced project setup remains director-only. | No company-wide scope for dashboard-only roles. Business confirmation remains pending. |
 | D04 | Company and private document scope | Proposed: company-wide director scope; other roles need active project membership. Unscoped/company documents require explicit classification. | Do not broaden null-project document access. Business confirmation remains pending. |
-| D05 | User administration ceilings | Proposed: directors may manage any of the ten roles. HR Manager may administer only Group/MEP Project Manager, Quantity Surveyor, both site supervisor roles, HR Executive, and Administrative Executive. No self-role elevation; preserve one usable director account. | Enforce in API, imports, and CLI paths. Business confirmation remains pending. |
+| D05 | User administration ceilings | Directors approve and apply account changes. HR Managers request changes through the HR workflow and may review requests prepared by a different HR Manager. | Preserve one usable director account and prohibit self-role elevation. HR Manager is the single HR role. |
 | D06 | Financial confidentiality | Proposed: only roles granted `financial:view` may read finance and other monetary detail; omit withheld values rather than returning zero. | Finance writes remain denied for all roles because the matrix grants no write permission. Business confirmation remains pending. |
 | D07 | Operations without a permission key | No implied grants for finance writes, generic overrides, special backdating, purge/configuration, or non-report decisions. | Deny/remove unsupported operations. Business confirmation remains pending. |
 | D08 | Separation of duties | Proposed: no submitter self-approval; no override bypass. | Enforce in workflow services. Business confirmation remains pending. |
@@ -35,3 +35,11 @@ not verified identities for account assignment.
 The D02–D10 entries are implementation proposals, not signed business decisions.
 No production account, permission, database, or deployment change is authorized
 by this record.
+
+
+## HR workforce scope
+
+The HR implementation changes the earlier role-only D05 behavior for HR Manager.
+Direct platform user mutations remain with the two directors. HR uses the
+reviewed account handoff, and generic audit and project-document grants are
+separate from the HR workspace. See [HR and workforce](HR_WORKFORCE.md).

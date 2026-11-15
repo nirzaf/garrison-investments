@@ -167,11 +167,14 @@ async def test_user_state_preconditions_permissions_and_revocation() -> None:
         manager_headers = {"Authorization": f"Bearer {manager_token}"}
         self_read = await client.get(engineer_url, headers=engineer_headers)
         assert self_read.status_code == 200
-        assert not {
-            "password_hash",
-            "access_revision",
-            "refresh_token",
-        } & self_read.json().keys()
+        assert (
+            not {
+                "password_hash",
+                "access_revision",
+                "refresh_token",
+            }
+            & self_read.json().keys()
+        )
         engineer = (await client.get(engineer_url, headers=manager_headers)).json()
         assert engineer["permissions"] == permissions_for_role("quantity_surveyor")
         assert not {"password_hash", "access_revision", "refresh_token"} & engineer.keys()
@@ -193,7 +196,6 @@ async def test_user_state_preconditions_permissions_and_revocation() -> None:
             "senior_site_supervisor",
             "site_supervisor",
             "hr_manager",
-            "hr_executive",
             "administrative_executive",
         }
         update = {
@@ -328,7 +330,9 @@ async def test_concurrent_director_demotions_leave_one_active_director() -> None
                 assert target is not None
                 await UserService(session).update_user(
                     target_id,
-                    UserUpdateRequest(role="hr_executive", expected_updated_at=target.updated_at),
+                    UserUpdateRequest(
+                        role="administrative_executive", expected_updated_at=target.updated_at
+                    ),
                     actor,
                 )
                 return 200

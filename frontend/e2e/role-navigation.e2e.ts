@@ -6,12 +6,14 @@ import { expect, test, type Page } from '@playwright/test';
 
 const backendDirectory = fileURLToPath(new URL('../../backend/', import.meta.url));
 const commonLinks = {
+  'My HR': '/me/hr',
   Dashboard: '/dashboard',
   Approvals: '/approvals',
   'Roles & Permissions': '/roles',
   'User Manual': '/manual'
 };
 const guardedLinks = {
+  'HR & Workforce': '/hr',
   Projects: '/projects',
   Reports: '/reports/daily',
   'Supervisor updates': '/reports/supervisor-update',
@@ -57,7 +59,7 @@ const cases: RoleCase[] = [
   {
     role: 'managing_director',
     label: 'Managing Director',
-    links: [...companyLinks, 'Security', 'Audit', 'Imports'],
+    links: [...companyLinks, 'Security', 'Audit', 'Imports', 'HR & Workforce'],
     inbox: true,
     feature: 'Users',
     heading: 'Users',
@@ -67,7 +69,7 @@ const cases: RoleCase[] = [
   {
     role: 'operations_director',
     label: 'Operations Director',
-    links: [...companyLinks, 'Security', 'Audit', 'Imports'],
+    links: [...companyLinks, 'Security', 'Audit', 'Imports', 'HR & Workforce'],
     inbox: true,
     feature: 'Users',
     heading: 'Users',
@@ -77,7 +79,15 @@ const cases: RoleCase[] = [
   {
     role: 'group_project_manager',
     label: 'Group Project Manager',
-    links: ['Projects', 'Reports', 'Supervisor updates', 'Materials', 'Documents', 'Photos', 'Users'],
+    links: [
+      'Projects',
+      'Reports',
+      'Supervisor updates',
+      'Materials',
+      'Documents',
+      'Photos',
+      'Users'
+    ],
     inbox: true,
     feature: 'Projects',
     heading: 'Projects',
@@ -141,24 +151,21 @@ const cases: RoleCase[] = [
   {
     role: 'hr_manager',
     label: 'HR Manager',
-    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Analytics', 'Launch readiness', 'Security', 'Audit', 'Imports', 'Users'],
+    links: [
+      'Reports',
+      'Supervisor updates',
+      'Photos',
+      'Analytics',
+      'Launch readiness',
+      'Users',
+      'HR & Workforce'
+    ],
     inbox: true,
     feature: 'Users',
     heading: 'Users',
     action: 'Create user',
-    canAct: true,
-    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
-  },
-  {
-    role: 'hr_executive',
-    label: 'HR Executive',
-    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Users'],
-    inbox: false,
-    feature: 'Documents',
-    heading: 'Document Library',
-    action: 'Upload',
     canAct: false,
-    denied: { route: '/projects', api: '/api/v1/projects' }
+    denied: { route: '/finance', api: '/api/v1/finance/invoices' }
   },
   {
     role: 'administrative_executive',
@@ -216,14 +223,14 @@ test('an expired login code requires a new challenge before a session is restore
       (response) => response.url().endsWith('/api/v1/auth/login') && response.ok()
     );
     await page.getByRole('button', { name: 'Continue' }).click();
-    const result = await (await login).json() as { challenge_id: string; dev_otp: string };
+    const result = (await (await login).json()) as { challenge_id: string; dev_otp: string };
     await expect(page.getByText(/^Development code:/)).toBeVisible();
     return result;
   };
   const submitCode = async (code: string, status: number) => {
     await page.getByLabel('Verification code').fill(code);
-    const verification = page.waitForResponse(
-      (response) => response.url().endsWith('/api/v1/auth/verify-otp')
+    const verification = page.waitForResponse((response) =>
+      response.url().endsWith('/api/v1/auth/verify-otp')
     );
     await page.getByRole('button', { name: 'Verify and sign in' }).click();
     const response = await verification;
@@ -266,7 +273,9 @@ test('an expired login code requires a new challenge before a session is restore
   const restored = await (await refresh).json();
   expect(restored.user).toMatchObject({ id: verified.user.id, role: 'group_project_manager' });
   await expect(page).toHaveURL('/dashboard');
-  await expect((await sidebar(page)).getByRole('link', { name: 'Projects', exact: true })).toBeVisible();
+  await expect(
+    (await sidebar(page)).getByRole('link', { name: 'Projects', exact: true })
+  ).toBeVisible();
 });
 
 async function sidebar(page: Page) {
@@ -282,7 +291,8 @@ for (const roleCase of cases) {
     page,
     request
   }) => {
-    if (roleCase.role === 'site_supervisor') await page.setViewportSize({ width: 390, height: 844 });
+    if (roleCase.role === 'site_supervisor')
+      await page.setViewportSize({ width: 390, height: 844 });
     const token = await signIn(page, roleCase.role);
     await expect(page).toHaveURL('/dashboard');
 
@@ -293,7 +303,6 @@ for (const roleCase of cases) {
     expect((await roleOptions.json()).items.map((item: { role: string }) => item.role)).toEqual([
       'administrative_executive',
       'group_project_manager',
-      'hr_executive',
       'hr_manager',
       'managing_director',
       'mep_project_manager',

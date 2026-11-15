@@ -1,10 +1,9 @@
 # Roles and permissions
 
-The portal accepts exactly the ten role keys below. Their grants are the fixed
-16-key matrix in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
+The portal accepts exactly the ten role keys below. Their current portal and HR grants are defined in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
 and [the backend permission definitions](../backend/app/utils/permissions.py). The
 independent [business matrix test fixture](../backend/tests/business_role_matrix.json)
-checks the 160 source decisions. A role grant is only one authorization boundary:
+records the 160 historical source decisions. The HR specification changes selected grants for the two HR roles. A role grant is only one authorization boundary:
 services also check record ownership, project membership, state, and current account
 status.
 
@@ -20,7 +19,6 @@ status.
 | `senior_site_supervisor` | Senior Site Supervisor |
 | `site_supervisor` | Site Supervisor |
 | `hr_manager` | HR Manager |
-| `hr_executive` | HR Executive |
 | `administrative_executive` | Administrative Executive |
 
 The eight former role keys are retired. They are not aliases, valid login roles,
@@ -30,28 +28,40 @@ There is no technical administrator role or role-based bypass.
 
 ## Permission matrix
 
-| Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | HR Executive | Administrative Executive |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `users:manage` | ✓ | ✓ | | | | | | ✓ | | |
-| `users:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `projects:manage` | ✓ | ✓ | ✓ | ✓ | | | | | | |
-| `projects:read` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | | | |
-| `audit:view` | ✓ | ✓ | | | | | | ✓ | | |
-| `dashboard:company` | ✓ | ✓ | | | | | | ✓ | | ✓ |
-| `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | ✓ | |
-| `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
-| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | | |
-| `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | ✓ |
-| `inventory:manage` | ✓ | ✓ | | | | | | | | |
-| `suppliers:manage` | ✓ | ✓ | | ✓ | ✓ | | | | | ✓ |
-| `documents:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `documents:manage` | ✓ | ✓ | | | | | | | | |
-| `financial:view` | ✓ | ✓ | | | | | | | | |
+| Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | Administrative Executive |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `users:manage` | ✓ | ✓ | | | | | | | |
+| `users:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `projects:manage` | ✓ | ✓ | ✓ | ✓ | | | | | |
+| `projects:read` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | | |
+| `audit:view` | ✓ | ✓ | | | | | | | |
+| `dashboard:company` | ✓ | ✓ | | | | | | ✓ | ✓ |
+| `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | |
+| `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | |
+| `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| `inventory:manage` | ✓ | ✓ | | | | | | | |
+| `suppliers:manage` | ✓ | ✓ | | ✓ | ✓ | | | | ✓ |
+| `documents:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| `documents:manage` | ✓ | ✓ | | | | | | | |
+| `financial:view` | ✓ | ✓ | | | | | | | |
 
 MD = Managing Director; OD = Operations Director; Group PM = Group Project Manager; MEP PM = MEP Project Manager; QS =
 Quantity Surveyor. The grant sets are explicit: a permission does not imply another
 permission, and a role receives no future permission by default.
+
+## HR permissions
+
+HR Manager is the portal’s HR role and has permissions for standard employee records,
+recruitment, onboarding, attendance recording, leave processing, ordinary HR
+documents and compliance, service requests, and HR summaries. Only HR Manager
+receives sensitive employee, attendance approval, leave approval, HR policy and
+offboarding grants. Directory reads and private documents are separate from
+account administration. An HR Manager can authorize a linked direct manager to
+recommend specific time and leave requests when the company policy is enabled.
+The authorization applies to that reporting relationship and does not grant
+HR directory, document or final-decision permissions. See [HR and workforce](HR_WORKFORCE.md).
 
 ## Authorization rules
 
@@ -62,7 +72,7 @@ permission, and a role receives no future permission by default.
   authorization check. Current role, active state, access revision, ownership,
   membership, and workflow state are rechecked on protected actions.
 - User management uses target-role ceilings. Directors may manage the ten supported
-  roles. HR Manager cannot target a director or another HR Manager. Self-elevation,
+  roles directly. HR access requests require HR review and director fulfillment. Self-elevation,
   self-role change, self-deactivation, and self-password reset are blocked. Changes
   to access revoke refresh sessions and pending OTP challenges.
 - Imports require `users:manage` and the permission for that import domain.

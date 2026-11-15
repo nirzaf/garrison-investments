@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AppLayout } from './components/layout/AppLayout';
@@ -28,6 +29,13 @@ import { SecurityPage } from './pages/security/SecurityPage';
 import { SuppliersPage } from './pages/suppliers/SuppliersPage';
 import { ManualPage } from './pages/manual/ManualPage';
 
+const HRMePage = lazy(() =>
+  import('./pages/hr/HRMePage').then(({ HRMePage }) => ({ default: HRMePage }))
+);
+const HRWorkspacePage = lazy(() =>
+  import('./pages/hr/HRWorkspacePage').then(({ HRWorkspacePage }) => ({ default: HRWorkspacePage }))
+);
+
 function DailyReportsRoute() {
   const { user } = useAuth();
   return ['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ? (
@@ -53,6 +61,22 @@ function SupervisorUpdatesRoute() {
   );
 }
 
+function HRRoute({ selfService = false }: { selfService?: boolean }) {
+  const { user } = useAuth();
+  const identity = JSON.stringify([user?.id, user?.role, user?.permissions]);
+  return (
+    <Suspense fallback={<p role="status">Loading HR workspace…</p>}>
+      {selfService ? (
+        <HRMePage key={identity} />
+      ) : (
+        <RequirePermission permission={['hr:employees:read', 'users:manage']}>
+          <HRWorkspacePage key={identity} />
+        </RequirePermission>
+      )}
+    </Suspense>
+  );
+}
+
 export function App() {
   return (
     <Routes>
@@ -61,6 +85,9 @@ export function App() {
       <Route element={<AppLayout />}>
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/hr" element={<HRRoute />} />
+        <Route path="/hr/employees" element={<HRRoute />} />
+        <Route path="/me/hr" element={<HRRoute selfService />} />
         <Route path="/roles" element={<RolesPermissionsPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
@@ -168,10 +195,7 @@ export function App() {
             </RequirePermission>
           }
         />
-        <Route
-          path="/reports/supervisor-update"
-          element={<SupervisorUpdatesRoute />}
-        />
+        <Route path="/reports/supervisor-update" element={<SupervisorUpdatesRoute />} />
         <Route path="/approvals" element={<ApprovalInboxPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/manual" element={<ManualPage />} />

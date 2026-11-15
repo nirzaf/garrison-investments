@@ -4,7 +4,7 @@ This inventory defines the release scope for the Garrisons Construction Internal
 
 | Area | Release scope | Source |
 | --- | --- | --- |
-| Identity | Password and emailed OTP sign-in, session management, voluntary password change and recovery, a read-only profile, and authorized account and role administration for the ten-role catalogue | [Authentication routes](../backend/app/api/v1/auth.py), [role matrix](ROLES_AND_PERMISSIONS.md) |
+| Identity | Password and emailed OTP sign-in, session management, voluntary password change and recovery, a read-only profile, and authorized account and role administration | [Authentication routes](../backend/app/api/v1/auth.py), [role matrix](ROLES_AND_PERMISSIONS.md) |
 | Projects | Scoped project records, team assignment, BOQ and milestones, task dependencies, and schedule views | [Project routes](../backend/app/api/v1/projects.py), [frontend routes](../frontend/src/App.tsx) |
 | Site reporting | Supervisor updates, engineer verification through daily reports, reject/correct/resubmit and approval, and approved PDFs | [Reporting service](../backend/app/services/report_service.py), [reporting pages](../frontend/src/pages/reports/) |
 | Offline and media | Owned drafts, queued uploads and replay, conflict recovery, cumulative photo limits, protected file access, and eligible deletion/recovery | [Offline queue](../frontend/src/api/offlineQueue.ts), [photo service](../backend/app/services/photo_service.py) |

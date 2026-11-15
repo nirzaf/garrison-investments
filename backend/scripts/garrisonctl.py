@@ -18,6 +18,7 @@ from scripts import (
     garrisonctl_access,
     garrisonctl_auth,
     garrisonctl_data,
+    garrisonctl_hr,
     garrisonctl_ops,
 )
 from scripts.garrisonctl_common import (
@@ -87,6 +88,7 @@ def build_parser() -> Parser:
     garrisonctl_access.register(registry)
     garrisonctl_data.register(registry)
     garrisonctl_ops.register(registry)
+    garrisonctl_hr.register(registry)
     registry.add("health check", health, permission="public readiness")
     for command in ("config", "finance policy"):
         registry.add(

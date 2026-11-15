@@ -18,6 +18,7 @@ The portal connects daily site reporting with project oversight, document contro
 | Suppliers | Supplier register and compliance edits, deactivation that preserves history, technical data sheet (TDS) maintenance, and expiry reminders. |
 | Finance | Invoice details and attachments, a restricted supplier lookup, correction and resubmission for unpaid rejected invoices, project budget comparisons, and payments against approved invoices. The system tracks partial and full payment and checks the outstanding balance. |
 | Analytics and exports | Scoped analytics with filters for project, date range, location, and department where supported. Download project progress and material usage as XLSX files or a management summary as PDF. |
+| HR and workforce | Employee directory and organizational records, recruitment and onboarding, private documents, attendance and timesheets, leave, staff self-service, and controlled account provisioning and offboarding. See the [HR guide](docs/HR_WORKFORCE.md). |
 | Data imports | Downloadable templates, CSV and XLSX validation previews, synchronous and background processing, batch status, and import history for users, projects, suppliers, materials, BOQ, opening stock, and document metadata. Document binaries are uploaded through the document library. |
 | Notifications and guidance | Notification history with direct links to target workflows, unread counts, read and mute controls, email delivery through useSend or SMTP, role-specific in-app manuals, a permission reference, and a launch acceptance checklist. |
 | Offline and file reporting | Installable progressive web app (PWA), responsive screens, photo file selection, account-owned local drafts, and file uploads that resume after reconnecting. Valid daily report drafts can sync without files, and revision checks protect newer server changes. |
@@ -36,8 +37,7 @@ Each account has one role. Route permissions, project membership, record ownersh
 | Quantity Surveyor | Scoped dashboard, report submission, inventory viewing, supplier management, and document viewing. |
 | Senior Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
 | Site Supervisor | Assigned-project viewing, scoped dashboard, report submission, inventory viewing, and document viewing. |
-| HR Manager | User administration within role-assignment safeguards, audit access, company/scoped dashboards, report viewing and approval, and document viewing. |
-| HR Executive | User-directory reading, scoped dashboard, report viewing, and document viewing. |
+| HR Manager | Workforce oversight, HR reviews, protected employee records, company/scoped dashboards, and authorized site-report review. |
 | Administrative Executive | User-directory reading, company/scoped dashboards, inventory viewing, supplier management, and document viewing. |
 
 ## Architecture

@@ -259,15 +259,26 @@ describe('App route smoke tests', () => {
     expect(siteSupervisor).toContain('Supervisor Site Update');
   });
 
-  it('does not mount an HR workspace route as part of role replacement', () => {
-    const html = renderApp({
+  it('opens the HR workspace only for HR staff and account administrators', () => {
+    const hrManager = renderApp({
       route: '/hr',
       role: 'hr_manager',
-      permissions: ['users:manage', 'users:read', 'audit:view', 'dashboard:company']
+      permissions: ['hr:employees:read', 'hr:reports:view']
     });
+    expect(hrManager).toContain('Loading HR workspace');
+    const director = renderApp({
+      route: '/hr',
+      role: 'managing_director',
+      permissions: ['users:manage']
+    });
+    expect(director).toContain('Loading HR workspace');
 
-    expect(html).toContain('data-navigate-to="/dashboard"');
-    expect(html).not.toContain('HR &amp; Workforce Hub');
-    expect(html).not.toContain('HR &amp; Workforce');
+    const supervisor = renderApp({
+      route: '/hr',
+      role: 'site_supervisor',
+      permissions: ['reports:submit']
+    });
+    expect(supervisor).toContain('data-navigate-to="/dashboard"');
+    expect(supervisor).not.toContain('Loading HR workspace');
   });
 });

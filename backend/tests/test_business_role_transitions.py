@@ -1,4 +1,4 @@
-"""Service-level regression tests for canonical ten-role transitions and policy guards."""
+"""Service-level regression tests for canonical transitions and policy guards."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ RETIRED_ROLES = (
     "civil_supervisor",
     "store_keeper",
     "accounts",
+    "hr_executive",
 )
 HRM_ALLOWED_TARGETS = {
     "group_project_manager",
@@ -51,7 +52,6 @@ HRM_ALLOWED_TARGETS = {
     "quantity_surveyor",
     "senior_site_supervisor",
     "site_supervisor",
-    "hr_executive",
     "administrative_executive",
 }
 PROTECTED_TARGETS = {"managing_director", "operations_director", "hr_manager"}
@@ -150,7 +150,7 @@ def test_role_assignment_ceilings_match_policy() -> None:
             assert can_assign_user_role(director_role, retired_role) is False
 
     for target_role in HRM_ALLOWED_TARGETS:
-        assert can_assign_user_role("hr_manager", target_role) is True
+        assert can_assign_user_role("hr_manager", target_role) is False
     for protected_role in PROTECTED_TARGETS:
         assert can_assign_user_role("hr_manager", protected_role) is False
     for retired_role in RETIRED_ROLES:
@@ -194,22 +194,23 @@ async def test_hrm_cannot_mutate_or_assign_protected_roles(protected_role: str) 
 
 
 @pytest.mark.asyncio
-async def test_hrm_can_assign_allowed_targets_and_directors_can_manage_all_roles() -> None:
+async def test_only_directors_can_manage_portal_roles() -> None:
     snapshot = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
     hrm = _user("hr_manager", updated_at=snapshot)
     director = _user("managing_director", updated_at=snapshot)
     worker = _user("quantity_surveyor", updated_at=snapshot, access_revision=2)
-    hrm_target = _user("hr_executive", updated_at=snapshot, access_revision=3)
+    hrm_target = _user("administrative_executive", updated_at=snapshot, access_revision=3)
     service, auth_repo, session = _user_service([hrm, director, worker, hrm_target])
 
-    updated = await service.update_user(
-        worker.id,
-        UserUpdateRequest(role="site_supervisor", expected_updated_at=snapshot),
-        hrm,
-    )
-    assert updated.role == "site_supervisor"
-    assert updated.access_revision == 3
-    assert worker.id in auth_repo.revoked_user_ids
+    with pytest.raises(AppException) as denied:
+        await service.update_user(
+            worker.id,
+            UserUpdateRequest(role="site_supervisor", expected_updated_at=snapshot),
+            hrm,
+        )
+    assert denied.value.status_code == 403
+    assert worker.role == "quantity_surveyor"
+    assert worker.id not in auth_repo.revoked_user_ids
 
     promoted = await service.update_user(
         hrm_target.id,
@@ -219,7 +220,7 @@ async def test_hrm_can_assign_allowed_targets_and_directors_can_manage_all_roles
     assert promoted.role == "hr_manager"
     assert promoted.access_revision == 4
     assert hrm_target.id in auth_repo.revoked_user_ids
-    assert session.commits == 2
+    assert session.commits == 1
 
 
 @pytest.mark.asyncio
@@ -394,7 +395,7 @@ async def test_supervisor_updates_require_current_supervisor_role_and_ownership(
     today = date.today()
     sss = _user("senior_site_supervisor")
     ss = _user("site_supervisor")
-    demoted = _user("hr_executive")
+    demoted = _user("hr_manager")
 
     updates_store: dict[UUID, SupervisorUpdate] = {}
 
@@ -508,8 +509,6 @@ async def test_narrow_project_options_do_not_require_projects_read_or_leak_budge
 
     qs = _user("quantity_surveyor")
     ae = _user("administrative_executive")
-    hrm = _user("hr_manager")
-
     qs_options, total = await service.list_report_project_options(
         qs, search=None, limit=50, offset=0
     )
@@ -523,7 +522,7 @@ async def test_narrow_project_options_do_not_require_projects_read_or_leak_budge
         await service.list_report_project_options(ae, search=None, limit=50, offset=0)
     assert ae_report_exc.value.status_code == 403
 
-    for scoped_doc_reader in (qs, hrm, ae):
+    for scoped_doc_reader in (qs, ae):
         doc_options, doc_total = await service.list_document_project_options(
             scoped_doc_reader, search=None, limit=50, offset=0
         )
@@ -561,9 +560,10 @@ async def test_finance_is_read_only_for_directors_and_denied_for_other_roles() -
 
     for role in VALID_ROLES:
         actor = _user(role)
-        assert service._invoice_actions(
-            sample_invoice, actor, has_payments=False, own_approval=False
-        ) == []
+        assert (
+            service._invoice_actions(sample_invoice, actor, has_payments=False, own_approval=False)
+            == []
+        )
 
         with pytest.raises(AppException) as create_exc:
             await service.create_invoice(

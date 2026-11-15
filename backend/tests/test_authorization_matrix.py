@@ -33,7 +33,6 @@ ROLES = (
     "senior_site_supervisor",
     "site_supervisor",
     "hr_manager",
-    "hr_executive",
     "administrative_executive",
 )
 COMPANY_WIDE = ("managing_director", "operations_director")
@@ -50,7 +49,6 @@ REPORTS_LIST: dict[str, dict[str, int]] = {
     "senior_site_supervisor": {"own": 200, "other": 404, "none": 200},
     "site_supervisor": {"own": 200, "other": 404, "none": 200},
     "hr_manager": {"own": 200, "other": 404, "none": 200},
-    "hr_executive": {"own": 200, "other": 404, "none": 200},
     "administrative_executive": {"own": 403, "other": 403, "none": 403},
 }
 
@@ -64,7 +62,6 @@ REPORTS_GET: dict[str, dict[str, int]] = {
     "senior_site_supervisor": {"own": 404, "other": 404},
     "site_supervisor": {"own": 404, "other": 404},
     "hr_manager": {"own": 200, "other": 404},
-    "hr_executive": {"own": 200, "other": 404},
     "administrative_executive": {"own": 404, "other": 404},
 }
 

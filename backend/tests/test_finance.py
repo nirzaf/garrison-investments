@@ -164,7 +164,6 @@ async def test_finance_access_is_read_only_for_the_ten_role_catalogue() -> None:
         "senior_site_supervisor",
         "site_supervisor",
         "hr_manager",
-        "hr_executive",
         "administrative_executive",
     )
     users_by_role = {role: await create_user(role) for role in roles}

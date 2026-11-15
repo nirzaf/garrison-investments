@@ -103,7 +103,7 @@ def test_snapshot_requires_complete_coverage_and_exact_preconditions() -> None:
 
 
 def test_snapshot_requires_a_usable_director_after_mapping() -> None:
-    manifest = as_manifest(manifest_data(target_role="hr_executive"))
+    manifest = as_manifest(manifest_data(target_role="site_supervisor"))
     account = User(
         id=manifest.mappings[0].user_id,
         email="hidden@example.invalid",

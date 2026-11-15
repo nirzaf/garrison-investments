@@ -187,6 +187,8 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def audit_request_middleware(request: Request, call_next):
         response = await call_next(request)
+        if request.url.path.startswith(f"{get_settings().api_v1_prefix}/hr/"):
+            response.headers["Cache-Control"] = "no-store"
         await audit_authenticated_request(request, response)
         return response
 

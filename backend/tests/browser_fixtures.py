@@ -40,6 +40,8 @@ def configure() -> None:
         DEV_EXPOSE_OTP="true",
         AUTH_RATE_LIMIT_MAX_REQUESTS="60",
         EXCEPTION_EMAIL_ENABLED="false",
+        HR_LINE_MANAGER_REVIEW_ENABLED="true",
+        HR_SELF_TIME_SUBMISSION_ENABLED="true",
         LOG_LEVEL="WARNING",
         FRONTEND_BASE_URL="http://127.0.0.1:4325",
         SMTP_HOST="127.0.0.1",

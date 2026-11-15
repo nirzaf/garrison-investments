@@ -47,7 +47,9 @@ class UserService:
             offset=max(offset, 0),
         )
 
-    async def create_user(self, payload: UserCreateRequest, actor: User) -> User:
+    async def create_user(
+        self, payload: UserCreateRequest, actor: User, *, commit: bool = True
+    ) -> User:
         validate_password_policy(payload.temporary_password)
         target_role = validate_role(payload.role)
         await self._lock_managed_users(actor)
@@ -72,7 +74,10 @@ class UserService:
                 entity_id=user.id,
                 new_values={"email": user.email, "role": user.role},
             )
-            await self.session.commit()
+            if commit:
+                await self.session.commit()
+            else:
+                await self.session.flush()
         except IntegrityError as exc:
             await self.session.rollback()
             raise AppException(
@@ -88,7 +93,9 @@ class UserService:
             raise NotFoundException("User")
         return user
 
-    async def update_user(self, user_id: UUID, payload: UserUpdateRequest, actor: User) -> User:
+    async def update_user(
+        self, user_id: UUID, payload: UserUpdateRequest, actor: User, *, commit: bool = True
+    ) -> User:
         if ("role" in payload.model_fields_set or "is_active" in payload.model_fields_set) and (
             payload.expected_updated_at is None
         ):
@@ -171,7 +178,10 @@ class UserService:
                     "is_active": user.is_active,
                 },
             )
-            await self.session.commit()
+            if commit:
+                await self.session.commit()
+            else:
+                await self.session.flush()
         except IntegrityError as exc:
             await self.session.rollback()
             raise AppException(
