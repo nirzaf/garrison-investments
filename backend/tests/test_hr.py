@@ -38,7 +38,11 @@ from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.hr_crypto import encrypt_hr_value
-from app.tasks.maintenance import _check_hr_credential_expiry, _check_hr_service_request_sla
+from app.tasks.maintenance import (
+    _check_hr_credential_expiry,
+    _check_hr_probation_reviews,
+    _check_hr_service_request_sla,
+)
 from app.utils.exceptions import AppException
 from app.utils.time import business_today
 from scripts import garrisonctl
@@ -1014,6 +1018,119 @@ async def test_hr_e_recruitment_offer_and_onboarding() -> None:
                     headers=_auth(tok),
                 )
             ).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_probation_review_extends_then_confirms_with_current_revision(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    hr_id, hr_email, hr_password = await _create_portal_user("hr_manager")
+    staff_id, staff_email, staff_password = await _create_portal_user("site_supervisor")
+    today = business_today()
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, hr_password))
+        staff = _auth(await _login(client, staff_email, staff_password))
+        employee = await client.post(
+            "/api/v1/hr/employees",
+            json={
+                "employee_code": f"PROB-{uuid4().hex[:8]}",
+                "first_name": "Synthetic",
+                "last_name": "Probation",
+                "employment_category": "probation",
+            },
+            headers=hr,
+        )
+        assert employee.status_code == 201
+        employee_id = employee.json()["id"]
+        onboarding = await client.post(
+            "/api/v1/hr/onboarding",
+            json={
+                "employee_id": employee_id,
+                "start_date": (today - timedelta(days=30)).isoformat(),
+                "probation_end_date": today.isoformat(),
+            },
+            headers=hr,
+        )
+        assert onboarding.status_code == 201
+        case = onboarding.json()
+        outcome_url = f"/api/v1/hr/onboarding/{case['id']}/probation-review"
+        request = {
+            "outcome": "confirm",
+            "reason": "Checklist and work reviewed.",
+            "expected_employee_revision": case["employee_revision"],
+        }
+        assert (await client.post(outcome_url, json=request, headers=staff)).status_code == 403
+        assert (await client.post(outcome_url, json=request, headers=hr)).status_code == 409
+
+        for task in case["tasks"]:
+            complete = await client.patch(
+                f"/api/v1/hr/onboarding/tasks/{task['id']}",
+                json={"status": "completed", "evidence_notes": "Verified by HR."},
+                headers=hr,
+            )
+            assert complete.status_code == 200
+        assert complete.json()["status"] == "completed"
+        activated = await client.post(
+            f"/api/v1/hr/employees/{employee_id}/status",
+            json={
+                "status": "on_probation",
+                "expected_revision": complete.json()["employee_revision"],
+                "reason": "Onboarding complete.",
+            },
+            headers=hr,
+        )
+        assert activated.status_code == 200
+        request["expected_employee_revision"] = activated.json()["record_revision"]
+        async with AsyncSessionLocal() as session:
+            owned = await session.get(HrEmployee, UUID(employee_id))
+            assert owned is not None
+            owned.user_id = UUID(hr_id)
+            await session.commit()
+            assert (await client.post(outcome_url, json=request, headers=hr)).status_code == 403
+            owned.user_id = None
+            await session.commit()
+
+        monkeypatch.delenv("HR_PROBATION_REVIEW_REMINDER_DAYS", raising=False)
+        get_settings.cache_clear()
+        assert await _check_hr_probation_reviews() == 0
+        monkeypatch.setenv("HR_PROBATION_REVIEW_REMINDER_DAYS", "7")
+        get_settings.cache_clear()
+        assert await _check_hr_probation_reviews() > 0
+        assert await _check_hr_probation_reviews() == 0
+        async with AsyncSessionLocal() as session:
+            notice = await session.scalar(
+                select(Notification.id).where(
+                    Notification.user_id == UUID(staff_id),
+                    Notification.notification_type == "hr_probation_review",
+                )
+            )
+            assert notice is None
+
+        assert (await client.post(outcome_url, json=request, headers=hr)).status_code == 422
+        new_date = (today + timedelta(days=15)).isoformat()
+        extended = await client.post(
+            outcome_url,
+            json={**request, "outcome": "extend", "new_end_date": new_date},
+            headers=hr,
+        )
+        assert extended.status_code == 200
+        assert extended.json()["probation_end_date"] == new_date
+        assert extended.json()["employee_status"] == "on_probation"
+        confirm_request = {**request, "confirmed_category": "contract"}
+        assert (await client.post(outcome_url, json=confirm_request, headers=hr)).status_code == 409
+        confirm_request["expected_employee_revision"] = extended.json()["employee_revision"]
+        responses = await asyncio.gather(
+            *(client.post(outcome_url, json=confirm_request, headers=hr) for _ in range(2))
+        )
+        assert sorted(response.status_code for response in responses) == [200, 409]
+        confirmed = next(response.json() for response in responses if response.status_code == 200)
+        assert confirmed["employee_status"] == "active"
+        assert confirmed["employee_category"] == "contract"
+        history = await client.get(f"/api/v1/hr/employees/{employee_id}/history", headers=hr)
+        assert history.status_code == 200
+        assert [item["change_type"] for item in history.json()["items"]][:2] == [
+            "probation:confirm",
+            "probation:extend",
+        ]
 
 
 @pytest.mark.asyncio

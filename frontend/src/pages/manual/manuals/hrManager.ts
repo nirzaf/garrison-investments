@@ -47,6 +47,13 @@ export const hrManagerManual: Manual = {
         'Open Docs & Compliance and review a pending version. An approved replacement supersedes the active version.'
     },
     {
+      id: 'hr-probation-review',
+      title: 'Record a probation decision',
+      icon: '📋',
+      content:
+        'In Recruitment, open the completed onboarding case and start its dated probation period. To extend it, record the new end date and reason. To confirm employment, record the reason and choose the agreed employment category if the record still uses Probation. Use Offboarding for a separation.'
+    },
+    {
       id: 'hr-candidate-cv',
       title: 'Review a candidate CV',
       icon: '📄',

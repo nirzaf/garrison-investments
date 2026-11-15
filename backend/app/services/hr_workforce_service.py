@@ -890,6 +890,18 @@ class HrWorkforceService:
         return await self._serialize_onboarding_case(case)
 
     async def _serialize_onboarding_case(self, case: HrOnboardingCase) -> OnboardingCaseResponse:
+        employee_state = None
+        if case.probation_end_date:
+            employee_state = (
+                await self.session.execute(
+                    select(
+                        HrEmployee.employment_status,
+                        HrEmployee.record_revision,
+                        HrEmployee.employment_category,
+                        HrEmployee.full_name,
+                    ).where(HrEmployee.id == case.employee_id, HrEmployee.deleted_at.is_(None))
+                )
+            ).one_or_none()
         tasks = list(
             await self.session.scalars(
                 select(HrOnboardingTask)
@@ -904,6 +916,10 @@ class HrWorkforceService:
             status=case.status,
             start_date=case.start_date,
             probation_end_date=case.probation_end_date,
+            employee_name=employee_state[3] if employee_state else None,
+            employee_status=employee_state[0] if employee_state else None,
+            employee_revision=employee_state[1] if employee_state else None,
+            employee_category=employee_state[2] if employee_state else None,
             owner_user_id=case.owner_user_id,
             completion_notes=case.completion_notes,
             completed_at=case.completed_at,

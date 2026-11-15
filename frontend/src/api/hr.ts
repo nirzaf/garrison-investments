@@ -358,6 +358,17 @@ export async function createOnboardingCase(payload: HrSchemas['OnboardingCaseCre
   return data;
 }
 
+export async function recordProbationReview(
+  caseId: string,
+  payload: HrSchemas['ProbationReviewRequest']
+) {
+  const { data } = await apiClient.post<OnboardingCaseRecord>(
+    `/hr/onboarding/${caseId}/probation-review`,
+    payload
+  );
+  return data;
+}
+
 export async function updateOnboardingTask(
   taskId: string,
   payload: HrSchemas['OnboardingTaskUpdateRequest']

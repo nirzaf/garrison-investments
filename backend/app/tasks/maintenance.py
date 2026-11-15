@@ -4,11 +4,12 @@ from time import monotonic
 import structlog
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.daily_report import DailyReport
-from app.models.hr import HrEmployee, HrServiceRequest
+from app.models.hr import HrEmployee, HrOnboardingCase, HrServiceRequest
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -24,6 +25,7 @@ from app.tasks.celery_app import celery_app
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_HR_COMPLIANCE_MANAGE,
+    PERMISSION_HR_EMPLOYEES_SENSITIVE,
     PERMISSION_HR_REQUESTS_PROCESS,
     PERMISSION_SUPPLIERS_MANAGE,
     REPORT_APPROVER_ROLES,
@@ -343,6 +345,57 @@ async def _check_hr_service_request_sla() -> int:
             permission=PERMISSION_HR_REQUESTS_PROCESS,
             notification_type="hr_service_request_sla",
             body="Open HR & Workforce and review overdue service requests.",
+        )
+
+
+@celery_app.task(
+    name="check_hr_probation_reviews",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def check_hr_probation_reviews() -> int:
+    return run_async_task(_check_hr_probation_reviews())
+
+
+async def _check_hr_probation_reviews() -> int:
+    days = get_settings().hr_probation_review_reminder_days
+    if days is None:
+        return 0
+    now = business_now()
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_probation_reviews'))")
+        )
+        latest = aliased(HrOnboardingCase)
+        latest_case = (
+            select(latest.id)
+            .where(latest.employee_id == HrEmployee.id)
+            .order_by(latest.created_at.desc(), latest.id.desc())
+            .limit(1)
+            .correlate(HrEmployee)
+            .scalar_subquery()
+        )
+        due = (
+            select(HrEmployee.id)
+            .join(HrOnboardingCase, HrOnboardingCase.id == latest_case)
+            .where(
+                HrEmployee.deleted_at.is_(None),
+                HrEmployee.employment_status == "on_probation",
+                HrOnboardingCase.status == "completed",
+                HrOnboardingCase.probation_end_date <= now.date() + timedelta(days=days),
+            )
+        )
+        if not await session.scalar(select(due.exists())):
+            return 0
+        return await _send_daily_hr_reminders(
+            session,
+            now=now,
+            permission=PERMISSION_HR_EMPLOYEES_SENSITIVE,
+            notification_type="hr_probation_review",
+            body="Open HR & Workforce and review upcoming or overdue probation decisions.",
         )
 
 

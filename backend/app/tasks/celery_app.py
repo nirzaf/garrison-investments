@@ -89,6 +89,11 @@ if settings.hr_service_request_sla_days is not None:
         "task": "check_hr_service_request_sla",
         "schedule": crontab(hour=4, minute=30),
     }
+if settings.hr_probation_review_reminder_days is not None:
+    celery_app.conf.beat_schedule["check-hr-probation-review-daily"] = {
+        "task": "check_hr_probation_reviews",
+        "schedule": crontab(hour=4, minute=45),
+    }
 
 
 @setup_logging.connect

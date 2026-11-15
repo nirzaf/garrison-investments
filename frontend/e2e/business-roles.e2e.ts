@@ -613,6 +613,58 @@ test('candidate CVs stay private through upload, independent review and download
   expect(await download.failure()).toBeNull();
 });
 
+test('HR extends and confirms probation from a completed onboarding case', async ({
+  page,
+  request
+}) => {
+  const session = await signIn(page, seedAccount('hr_manager'));
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const code = `PROB-${Date.now()}`;
+  const employee = await request.post('/api/v1/hr/employees', {
+    headers,
+    data: {
+      employee_code: code,
+      first_name: 'Synthetic',
+      last_name: code,
+      employment_category: 'probation'
+    }
+  });
+  expect(employee.status()).toBe(201);
+  const isoDate = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const created = await request.post('/api/v1/hr/onboarding', {
+    headers,
+    data: {
+      employee_id: (await employee.json()).id,
+      start_date: isoDate(-30),
+      probation_end_date: isoDate(2)
+    }
+  });
+  expect(created.status()).toBe(201);
+  const { tasks } = (await created.json()) as { tasks: { id: string }[] };
+  for (const task of tasks) {
+    const completed = await request.patch(`/api/v1/hr/onboarding/tasks/${task.id}`, {
+      headers,
+      data: { status: 'completed', evidence_notes: 'Verified synthetic checklist.' }
+    });
+    expect(completed.status()).toBe(200);
+  }
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  const card = page.getByRole('article').filter({ hasText: `Synthetic ${code}` });
+  await card.getByRole('button', { name: 'Start probation', exact: true }).click();
+  await card.getByRole('combobox', { name: 'Probation outcome' }).selectOption('extend');
+  await card.getByLabel('New probation end date', { exact: true }).fill(isoDate(15));
+  await card.getByLabel('Probation review reason', { exact: true }).fill('Extended for further review.');
+  await card.getByRole('button', { name: 'Record probation decision' }).click();
+  await expect(card.getByText(`Probation end date ${isoDate(15)}`, { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await card.getByRole('combobox', { name: 'Confirmed employment category' }).selectOption('contract');
+  await card.getByLabel('Probation review reason', { exact: true }).fill('Confirmed based on documented results.');
+  await card.getByRole('button', { name: 'Record probation decision' }).click();
+  await expect(card.getByText('Employment active', { exact: true })).toBeVisible();
+});
+
 test('revoking the HR role clears the open HR workspace and prevents access after sign-in', async ({
   page,
   browser,

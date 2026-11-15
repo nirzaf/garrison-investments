@@ -151,6 +151,7 @@ from app.schemas.hr import (
     PositionListResponse,
     PositionResponse,
     PositionUpdateRequest,
+    ProbationReviewRequest,
     ReimbursementCreateRequest,
     ReimbursementDecisionRequest,
     ReimbursementListResponse,
@@ -1084,6 +1085,16 @@ async def update_onboarding_task(
     session: DbSession,
 ) -> OnboardingCaseResponse:
     return await HrService(session).update_onboarding_task(task_id, payload, actor)
+
+
+@router.post("/onboarding/{case_id}/probation-review", response_model=OnboardingCaseResponse)
+async def record_probation_review(
+    case_id: UUID,
+    payload: ProbationReviewRequest,
+    actor: CanAccessSensitive,
+    session: DbSession,
+) -> OnboardingCaseResponse:
+    return await HrService(session).record_probation_review(case_id, payload, actor)
 
 
 # --- HR Document Vault & Compliance ---

@@ -12773,10 +12773,54 @@
             "title": "Created At",
             "type": "string"
           },
+          "employee_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Category"
+          },
           "employee_id": {
             "format": "uuid",
             "title": "Employee Id",
             "type": "string"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          },
+          "employee_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Revision"
+          },
+          "employee_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Status"
           },
           "id": {
             "format": "uuid",
@@ -14861,6 +14905,66 @@
           }
         },
         "title": "PositionUpdateRequest",
+        "type": "object"
+      },
+      "ProbationReviewRequest": {
+        "properties": {
+          "confirmed_category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "permanent",
+                  "contract",
+                  "daily_wage",
+                  "intern",
+                  "consultant"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Category"
+          },
+          "expected_employee_revision": {
+            "minimum": 0.0,
+            "title": "Expected Employee Revision",
+            "type": "integer"
+          },
+          "new_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New End Date"
+          },
+          "outcome": {
+            "enum": [
+              "confirm",
+              "extend"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "expected_employee_revision",
+          "reason"
+        ],
+        "title": "ProbationReviewRequest",
         "type": "object"
       },
       "ProjectAnalyticsRow": {
@@ -30047,6 +30151,72 @@
           }
         ],
         "summary": "Update Onboarding Task",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/onboarding/{case_id}/probation-review": {
+      "post": {
+        "operationId": "record_probation_review_api_v1_hr_onboarding__case_id__probation_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbationReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Record Probation Review Api V1 Hr Onboarding  Case Id  Probation Review Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record Probation Review",
         "tags": [
           "HR & Workforce"
         ]

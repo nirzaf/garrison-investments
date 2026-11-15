@@ -30,10 +30,12 @@ from app.schemas.hr import (
     EmployeeSensitiveResponse,
     EmployeeStatusTransitionRequest,
     EmployeeUpdateRequest,
+    OnboardingCaseResponse,
     OrgChartNode,
     OrgChartResponse,
     PositionCreateRequest,
     PositionUpdateRequest,
+    ProbationReviewRequest,
 )
 from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.services.hr_crypto import decrypt_hr_value, encrypt_hr_value, mask_identifier
@@ -43,6 +45,7 @@ from app.services.user_service import UserService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_ONBOARDING_MANAGE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
     PERMISSION_USERS_MANAGE,
@@ -50,6 +53,7 @@ from app.utils.permissions import (
     validate_role,
 )
 from app.utils.security import utc_now
+from app.utils.time import business_today
 
 
 class HrService(HrWorkforceService):
@@ -688,6 +692,105 @@ class HrService(HrWorkforceService):
         )
         await self._commit_and_refresh(emp)
         return await self._serialize_employee_detail(emp)
+
+    async def record_probation_review(
+        self, case_id: UUID, payload: ProbationReviewRequest, actor: User
+    ) -> OnboardingCaseResponse:
+        if not has_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE):
+            raise PermissionDeniedException(PERMISSION_HR_ONBOARDING_MANAGE)
+        employee_id = await self.session.scalar(
+            select(HrOnboardingCase.employee_id).where(HrOnboardingCase.id == case_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Onboarding case")
+        emp = await self._require_employee(employee_id, for_update=True)
+        case = await self.session.scalar(
+            select(HrOnboardingCase).where(HrOnboardingCase.id == case_id).with_for_update()
+        )
+        if case is None:
+            raise NotFoundException("Onboarding case")
+        if emp.user_id == actor.id:
+            raise AppException("Employees cannot review their own probation.", status_code=403)
+        if emp.record_revision != payload.expected_employee_revision:
+            raise AppException(
+                "The employee changed. Reload the case before recording a decision.",
+                status_code=409,
+                error_code="REVISION_CONFLICT",
+            )
+        if (
+            case.status != "completed"
+            or not case.probation_end_date
+            or emp.employment_status != "on_probation"
+        ):
+            raise AppException(
+                "Select a completed onboarding case for an employee on probation.", status_code=409
+            )
+        latest_case = await self.session.scalar(
+            select(HrOnboardingCase.id)
+            .where(HrOnboardingCase.employee_id == emp.id)
+            .order_by(HrOnboardingCase.created_at.desc(), HrOnboardingCase.id.desc())
+            .limit(1)
+        )
+        if latest_case != case.id:
+            raise AppException(
+                "Review probation on the employee's latest onboarding case.", status_code=409
+            )
+        reason = payload.reason.strip()
+        if not reason:
+            raise AppException("A probation review reason is required.", status_code=422)
+        today = business_today()
+        previous = {
+            **self._employee_snapshot(emp),
+            "probation_end_date": case.probation_end_date.isoformat(),
+        }
+        if payload.outcome == "extend":
+            new_date = payload.new_end_date
+            if (
+                payload.confirmed_category is not None
+                or new_date is None
+                or new_date <= max(case.probation_end_date, today)
+            ):
+                raise AppException(
+                    "The new end date must be after the current end date and today.",
+                    status_code=422,
+                )
+            case.probation_end_date = new_date
+        else:
+            if payload.new_end_date is not None:
+                raise AppException("An end date is only needed for an extension.", status_code=422)
+            if emp.employment_category == "probation" and payload.confirmed_category is None:
+                raise AppException("Select the confirmed employment category.", status_code=422)
+            if payload.confirmed_category is not None:
+                emp.employment_category = payload.confirmed_category
+            emp.employment_status = "active"
+        emp.record_revision += 1
+        emp.updated_by_id = actor.id
+        self.session.add(
+            HrEmploymentHistory(
+                employee_id=emp.id,
+                change_type=f"probation:{payload.outcome}",
+                effective_date=today,
+                previous_snapshot=previous,
+                new_snapshot={
+                    **self._employee_snapshot(emp),
+                    "probation_end_date": case.probation_end_date.isoformat(),
+                },
+                reason=reason,
+                actor_user_id=actor.id,
+            )
+        )
+        await self.audit.record(
+            action="hr.probation.reviewed",
+            user_id=actor.id,
+            entity_type="hr_onboarding_cases",
+            entity_id=case.id,
+            new_values={
+                "outcome": payload.outcome,
+                "probation_end_date": case.probation_end_date.isoformat(),
+            },
+        )
+        await self._commit_and_refresh(case)
+        return await self._serialize_onboarding_case(case)
 
     async def list_employment_history(
         self, employee_id: UUID

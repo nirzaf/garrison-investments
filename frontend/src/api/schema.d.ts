@@ -1979,6 +1979,23 @@ export interface paths {
         patch: operations["update_onboarding_task_api_v1_hr_onboarding_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/v1/hr/onboarding/{case_id}/probation-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Probation Review */
+        post: operations["record_probation_review_api_v1_hr_onboarding__case_id__probation_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/org-chart": {
         parameters: {
             query?: never;
@@ -7681,11 +7698,19 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Employee Category */
+            employee_category?: string | null;
             /**
              * Employee Id
              * Format: uuid
              */
             employee_id: string;
+            /** Employee Name */
+            employee_name?: string | null;
+            /** Employee Revision */
+            employee_revision?: number | null;
+            /** Employee Status */
+            employee_status?: string | null;
             /**
              * Id
              * Format: uuid
@@ -8398,6 +8423,22 @@ export interface components {
             is_active?: boolean | null;
             /** Title */
             title?: string | null;
+        };
+        /** ProbationReviewRequest */
+        ProbationReviewRequest: {
+            /** Confirmed Category */
+            confirmed_category?: ("permanent" | "contract" | "daily_wage" | "intern" | "consultant") | null;
+            /** Expected Employee Revision */
+            expected_employee_revision: number;
+            /** New End Date */
+            new_end_date?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "confirm" | "extend";
+            /** Reason */
+            reason: string;
         };
         /** ProjectAnalyticsRow */
         ProjectAnalyticsRow: {
@@ -15249,6 +15290,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["OnboardingTaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingCaseResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    record_probation_review_api_v1_hr_onboarding__case_id__probation_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbationReviewRequest"];
             };
         };
         responses: {

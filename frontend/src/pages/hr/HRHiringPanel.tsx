@@ -16,6 +16,8 @@ import {
   listInterviews,
   listOffers,
   listOnboardingCases,
+  recordProbationReview,
+  transitionEmployeeStatus,
   updateApplicationStage,
   updateInterview,
   updateOnboardingTask,
@@ -24,6 +26,7 @@ import {
 } from '../../api/hr';
 import { hrButtonClass, hrInputClass } from './HRAccessForms';
 import { HRCandidateCVs } from './HRCandidateCVs';
+import { HRProbationReview } from './HRProbationReview';
 
 type HiringRecord = 'candidate' | 'application' | 'interview' | 'offer' | 'onboarding';
 type ReqStatus = Parameters<typeof decideRequisition>[1]['status'];
@@ -111,7 +114,8 @@ export function HRHiringPanel({
       if (kind === 'onboarding')
         await createOnboardingCase({
           employee_id: field('employee'),
-          start_date: field('date')
+          start_date: field('date'),
+          probation_end_date: field('probation_end_date') || null
         });
       form.reset();
     });
@@ -287,6 +291,10 @@ export function HRHiringPanel({
             <label>
               Start date <input name="date" type="date" className={hrInputClass} required />
             </label>
+            <label>
+              Probation end date
+              <input name="probation_end_date" type="date" className={hrInputClass} />
+            </label>
           </>
         )}
         <div>
@@ -411,10 +419,61 @@ export function HRHiringPanel({
           {data?.onboarding.items.map((row) => (
             <article key={row.id} className="space-y-2 rounded border border-theme-border p-3">
               <p>
-                {employees.find((employee) => employee.id === row.employee_id)?.full_name ??
+                {row.employee_name ??
+                  employees.find((employee) => employee.id === row.employee_id)?.full_name ??
                   row.employee_id}{' '}
                 · {row.status}
               </p>
+              {row.probation_end_date && <p>Probation end date {row.probation_end_date}</p>}
+              {row.probation_end_date && row.employee_status === 'active' && (
+                <p>Employment active</p>
+              )}
+              {row.status === 'completed' && canApprove && row.employee_revision != null && (
+                <>
+                  {row.employee_status === 'onboarding' && (
+                    <button
+                      type="button"
+                      className={hrButtonClass}
+                      disabled={pending}
+                      onClick={() => {
+                        const revision = row.employee_revision;
+                        if (revision == null) return;
+                        void change(
+                          () =>
+                            transitionEmployeeStatus(row.employee_id, {
+                              status: 'on_probation',
+                              expected_revision: revision,
+                              reason:
+                                'Completed onboarding and started the documented probation period.'
+                            }),
+                          true
+                        );
+                      }}
+                    >
+                      Start probation
+                    </button>
+                  )}
+                  {row.employee_status === 'on_probation' && (
+                    <HRProbationReview
+                      key={row.employee_revision}
+                      category={row.employee_category}
+                      pending={pending}
+                      onReview={(decision) => {
+                        if (row.employee_revision == null) return;
+                        const revision = row.employee_revision;
+                        void change(
+                          () =>
+                            recordProbationReview(row.id, {
+                              ...decision,
+                              expected_employee_revision: revision
+                            }),
+                          true
+                        );
+                      }}
+                    />
+                  )}
+                </>
+              )}
               {row.tasks?.map((task) => (
                 <div key={task.id}>
                   <p>

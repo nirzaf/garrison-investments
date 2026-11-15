@@ -751,6 +751,10 @@ class OnboardingCaseResponse(BaseModel):
     status: str
     start_date: date
     probation_end_date: date | None
+    employee_name: str | None = None
+    employee_status: str | None = None
+    employee_revision: int | None = None
+    employee_category: str | None = None
     owner_user_id: UUID | None
     completion_notes: str | None
     completed_at: datetime | None
@@ -764,6 +768,16 @@ class OnboardingCaseResponse(BaseModel):
 class OnboardingCaseListResponse(BaseModel):
     items: list[OnboardingCaseResponse]
     total: int
+
+
+class ProbationReviewRequest(BaseModel):
+    outcome: Literal["confirm", "extend"]
+    expected_employee_revision: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=500)
+    new_end_date: date | None = None
+    confirmed_category: (
+        Literal["permanent", "contract", "daily_wage", "intern", "consultant"] | None
+    ) = None
 
 
 # --- HR Document Vault & Compliance ---
