@@ -47,6 +47,13 @@ export const hrManagerManual: Manual = {
         'Open Docs & Compliance and review a pending version. An approved replacement supersedes the active version.'
     },
     {
+      id: 'hr-letter-preview',
+      title: 'Preview an employee letter',
+      icon: '📄',
+      content:
+        'Open Policies & Requests and find HR letters. Save a template, find the employee by name or code, choose both records and select Preview letter. Employee details come from the directory. Review the preview before sharing it through the request or personnel document workflow.'
+    },
+    {
       id: 'hr-calendar-review',
       title: 'Review and publish a work calendar',
       icon: '📅',

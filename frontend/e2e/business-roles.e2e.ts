@@ -519,6 +519,49 @@ test('HR Manager creates a draft in the workspace and it persists across reload'
   await expect(page.getByText(/not linked|no employee/i).first()).toBeVisible();
 });
 
+test('HR saves a letter template and previews it with employee records', async ({
+  page,
+  request
+}) => {
+  const session = await signIn(page, seedAccount('hr_manager'));
+  const code = `LETTER-${Date.now()}`;
+  const employee = await request.post('/api/v1/hr/employees', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: { employee_code: code, first_name: 'Synthetic', last_name: 'Letter Employee' }
+  });
+  expect(employee.status()).toBe(201);
+  const employeeId = (await employee.json()).id as string;
+
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Policies & Requests' }).click();
+  await page.getByLabel('Template code', { exact: true }).fill(code);
+  await page.getByLabel('Template name', { exact: true }).fill('Employment verification');
+  const subject = page.getByLabel('Letter subject template');
+  await subject.fill('Confirmation for {full_name');
+  await page
+    .getByLabel('Letter body template')
+    .fill('Employee {employee_code} requests {purpose}.');
+  await page.getByRole('button', { name: 'Save letter template' }).click();
+  await expect(page.getByText(/use named placeholders/i)).toBeVisible();
+  await expect(page.getByLabel('Template code', { exact: true })).toHaveValue(code);
+  await subject.fill('Confirmation for {full_name}');
+  await page.getByRole('button', { name: 'Save letter template' }).click();
+  await expect(page.getByText('Letter template saved.')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Policies & Requests' }).click();
+  await page.getByRole('combobox', { name: 'Letter template', exact: true }).selectOption({
+    label: `${code} · Employment verification`
+  });
+  await page.getByLabel('Find employee by name or code').fill(code);
+  await page.getByRole('button', { name: 'Find employee', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Letter employee', exact: true }).selectOption(employeeId);
+  await page.getByLabel('purpose', { exact: true }).fill('a staff record');
+  await page.getByRole('button', { name: 'Preview letter' }).click();
+  await expect(page.getByText('Confirmation for Synthetic Letter Employee')).toBeVisible();
+  await expect(page.getByText(`Employee ${code} requests a staff record.`)).toBeVisible();
+});
+
 test('revoking the HR role clears the open HR workspace and prevents access after sign-in', async ({
   page,
   browser,

@@ -63,6 +63,7 @@ import { HROffboarding } from './HROffboarding';
 import { HRSummaryPanel } from './HRSummaryPanel';
 import { HRTimePanel } from './HRTimePanel';
 import { HRHiringPanel } from './HRHiringPanel';
+import { HRLettersPanel } from './HRLettersPanel';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
@@ -1500,6 +1501,12 @@ export function HRWorkspacePage() {
 
       {tab === 'operations' && (
         <div className="grid gap-6 lg:grid-cols-2">
+          {(hasPerm('hr:policy:manage') || hasPerm('hr:requests:process')) && (
+            <HRLettersPanel
+              canCreate={hasPerm('hr:policy:manage')}
+              canRender={hasPerm('hr:requests:process') && hasPerm('hr:employees:read')}
+            />
+          )}
           <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
             <h3 className="text-base font-semibold">HR Policies ({policies.length})</h3>
             {hasPerm('hr:policy:manage') && (

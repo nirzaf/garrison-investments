@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from string import Formatter
 from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -2756,9 +2757,26 @@ class HrWorkforceService:
             ) from exc
         return ack
 
+    @staticmethod
+    def _validate_letter_template(*templates: str) -> None:
+        try:
+            for template in templates:
+                for _, field, spec, conversion in Formatter().parse(template):
+                    if field is not None and (
+                        not field.isascii() or not field.isidentifier() or spec or conversion
+                    ):
+                        raise ValueError
+        except ValueError as exc:
+            raise AppException(
+                "Use named placeholders such as {full_name} and double braces for literal braces.",
+                status_code=422,
+                error_code="INVALID_LETTER_TEMPLATE",
+            ) from exc
+
     async def create_letter_template(
         self, payload: LetterTemplateCreateRequest, actor: User
     ) -> HrLetterTemplate:
+        self._validate_letter_template(payload.subject_template, payload.body_template)
         tmpl = HrLetterTemplate(**payload.model_dump())
         self.session.add(tmpl)
         try:
@@ -2789,7 +2807,10 @@ class HrWorkforceService:
         self, payload: LetterGenerateRequest, actor: User
     ) -> LetterRenderResponse:
         tmpl = await self.session.scalar(
-            select(HrLetterTemplate).where(HrLetterTemplate.id == payload.template_id)
+            select(HrLetterTemplate).where(
+                HrLetterTemplate.id == payload.template_id,
+                HrLetterTemplate.is_active.is_(True),
+            )
         )
         if tmpl is None:
             raise NotFoundException("Letter template")
@@ -2798,13 +2819,20 @@ class HrWorkforceService:
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
         emp = await self._require_employee(payload.employee_id)
+        self._validate_letter_template(tmpl.subject_template, tmpl.body_template)
         context = {
             "employee_code": emp.employee_code,
             "full_name": emp.full_name,
             "join_date": emp.join_date.isoformat() if emp.join_date else "",
             "employment_status": emp.employment_status,
-            **payload.extra_vars,
         }
+        if context.keys() & payload.extra_vars.keys():
+            raise AppException(
+                "Employee fields are filled from the employee record.",
+                status_code=422,
+                error_code="LETTER_EMPLOYEE_FIELD_OVERRIDE",
+            )
+        context.update(payload.extra_vars)
         try:
             subject = tmpl.subject_template.format(**context)
             body = tmpl.body_template.format(**context)

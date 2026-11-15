@@ -2081,6 +2081,28 @@ async def test_hr_i_policies_letters_requests_and_offboarding() -> None:
         )
         assert rendered.status_code == 200
         assert "Exit User" in rendered.json()["body"]
+        override = await client.post(
+            "/api/v1/hr/letters/render",
+            json={
+                "template_id": tpl.json()["id"],
+                "employee_id": emp_id,
+                "extra_vars": {"full_name": "different employee"},
+            },
+            headers=_auth(hrm_tok),
+        )
+        assert override.status_code == 422
+        malformed = await client.post(
+            "/api/v1/hr/letter-templates",
+            json={
+                "code": f"LTR-{uuid4().hex[:4]}",
+                "name": "Invalid Template",
+                "letter_type": "custom",
+                "subject_template": "Employee {full_name",
+                "body_template": "Confirmation body.",
+            },
+            headers=_auth(hrm_tok),
+        )
+        assert malformed.status_code == 422
 
         # Offboarding clearance gate
         ob = await client.post(
