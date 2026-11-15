@@ -976,6 +976,13 @@ export async function submitMyServiceRequest(payload: HrSchemas['HrServiceReques
   return data;
 }
 
+export async function reopenMyServiceRequest(reqId: string, expectedUpdatedAt: string) {
+  const { data } = await apiClient.post<HrServiceRequestRecord>(`/hr/me/requests/${reqId}/reopen`, {
+    expected_updated_at: expectedUpdatedAt
+  } satisfies HrSchemas['HrServiceRequestReopenRequest']);
+  return data;
+}
+
 export async function listMyReimbursements() {
   const { data } =
     await apiClient.get<HrSchemas['ReimbursementListResponse']>('/hr/me/reimbursements');

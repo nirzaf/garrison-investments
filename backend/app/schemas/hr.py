@@ -4,7 +4,15 @@ from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # --- Enums / Literals ---
 
@@ -1468,6 +1476,11 @@ class HrServiceRequestResolveRequest(BaseModel):
     status: Literal["in_review", "approved", "completed", "rejected", "cancelled"]
     resolution_notes: str | None = None
     generated_document_id: UUID | None = None
+    expected_updated_at: AwareDatetime | None = None
+
+
+class HrServiceRequestReopenRequest(BaseModel):
+    expected_updated_at: AwareDatetime
 
 
 class HrServiceRequestResponse(BaseModel):

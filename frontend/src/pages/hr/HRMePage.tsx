@@ -14,6 +14,7 @@ import {
   listMyPolicies,
   listMyServiceRequests,
   requestMyAttendanceCorrection,
+  reopenMyServiceRequest,
   submitMyLeaveRequest,
   submitMyServiceRequest,
   updateMyHrProfile,
@@ -40,6 +41,7 @@ export function HRMePage() {
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
   const [serviceRequests, setServiceRequests] = useState<HrServiceRequestRecord[]>([]);
+  const [reopeningRequest, setReopeningRequest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -213,6 +215,22 @@ export function HRMePage() {
       await loadAll();
     } catch (err) {
       setError(formatApiError(err, 'Unable to submit HR service request.'));
+    }
+  }
+
+  async function reopenRequest(request: HrServiceRequestRecord) {
+    if (reopeningRequest) return;
+    setReopeningRequest(request.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await reopenMyServiceRequest(request.id, request.updated_at);
+      setServiceRequests((items) => items.map((item) => (item.id === result.id ? result : item)));
+      setNotice('HR service request reopened.');
+    } catch (err) {
+      setError(formatApiError(err, 'Unable to reopen HR service request.'));
+    } finally {
+      setReopeningRequest(null);
     }
   }
 
@@ -638,12 +656,38 @@ export function HRMePage() {
             </button>
           </form>
           <div className="mt-3 space-y-1 text-xs">
-            {serviceRequests.slice(0, 5).map((sr) => (
-              <div className="flex justify-between" key={sr.id}>
+            {serviceRequests.map((sr) => (
+              <div className="flex flex-wrap items-center gap-2" key={sr.id}>
                 <span>
                   {sr.request_code}: {sr.subject}
                 </span>
                 <StatusBadge tone="neutral">{sr.status}</StatusBadge>
+                {documents
+                  .filter((document) => document.id === sr.generated_document_id)
+                  .map((document) => (
+                    <button
+                      className="rounded border border-theme-border px-2 py-1"
+                      key={document.id}
+                      onClick={() => void handleDownloadDoc(document.id)}
+                      type="button"
+                    >
+                      Download response document
+                    </button>
+                  ))}
+                {sr.resolution_notes && (
+                  <p className="basis-full whitespace-pre-wrap">{sr.resolution_notes}</p>
+                )}
+                {['completed', 'rejected'].includes(sr.status) && (
+                  <button
+                    className="rounded border border-theme-border px-2 py-1"
+                    disabled={reopeningRequest !== null}
+                    onClick={() => void reopenRequest(sr)}
+                    aria-label={`Reopen request ${sr.request_code}`}
+                    type="button"
+                  >
+                    {reopeningRequest === sr.id ? 'Reopening…' : 'Reopen request'}
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -162,6 +162,8 @@ from app.utils.permissions import (
     PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
+    PERMISSION_HR_REQUESTS_PROCESS,
+    ensure_permission,
     has_permission,
 )
 from app.utils.security import utc_now
@@ -2854,11 +2856,24 @@ class HrWorkforceService:
     async def resolve_service_request(
         self, req_id: UUID, payload: HrServiceRequestResolveRequest, actor: User
     ) -> HrServiceRequest:
+        ensure_permission(actor, PERMISSION_HR_REQUESTS_PROCESS)
         req = await self.session.scalar(
-            select(HrServiceRequest).where(HrServiceRequest.id == req_id).with_for_update()
+            select(HrServiceRequest)
+            .where(HrServiceRequest.id == req_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if req is None:
             raise NotFoundException("HR service request")
+        if (
+            payload.expected_updated_at is not None
+            and req.updated_at != payload.expected_updated_at
+        ):
+            raise AppException(
+                "This request changed. Refresh it before applying changes.",
+                status_code=409,
+                error_code="HR_SERVICE_REQUEST_CONFLICT",
+            )
         allowed = {
             "open": {"in_review", "cancelled"},
             "in_review": {"approved", "completed", "rejected", "cancelled"},
@@ -2877,11 +2892,15 @@ class HrWorkforceService:
                 not doc.is_employee_visible
                 or doc.status != "active"
                 or doc.employee_id != req.employee_id
+                or doc.category != "ordinary"
             ):
                 raise NotFoundException("HR Document")
+        prior_status = req.status
         req.status = payload.status
-        req.resolution_notes = payload.resolution_notes
-        req.generated_document_id = payload.generated_document_id
+        if "resolution_notes" in payload.model_fields_set:
+            req.resolution_notes = payload.resolution_notes
+        if "generated_document_id" in payload.model_fields_set:
+            req.generated_document_id = payload.generated_document_id
         if payload.status in {"approved", "completed", "rejected"}:
             req.resolved_by_id = actor.id
             req.resolved_at = utc_now()
@@ -2892,6 +2911,42 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_hr_requests",
             entity_id=req.id,
+            old_values={"status": prior_status},
+            new_values={"status": req.status},
+        )
+        await self._commit_and_refresh(req)
+        return req
+
+    async def reopen_my_service_request(
+        self, req_id: UUID, expected_updated_at: datetime, actor: User
+    ) -> HrServiceRequest:
+        employee = await self._employee_for_user(actor)
+        req = await self.session.scalar(
+            select(HrServiceRequest)
+            .where(HrServiceRequest.id == req_id, HrServiceRequest.employee_id == employee.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if req is None:
+            raise NotFoundException("HR service request")
+        if req.updated_at != expected_updated_at or req.status not in {"completed", "rejected"}:
+            raise AppException(
+                "Only the current version of a completed or rejected request can be reopened.",
+                status_code=409,
+                error_code="HR_SERVICE_REQUEST_CONFLICT",
+            )
+        prior_status = req.status
+        req.status = "open"
+        req.assigned_to_id = None
+        req.resolved_by_id = None
+        req.resolved_at = None
+        await self.audit.record(
+            action="hr.service_request.reopened",
+            user_id=actor.id,
+            entity_type="hr_hr_requests",
+            entity_id=req.id,
+            old_values={"status": prior_status},
+            new_values={"status": req.status},
         )
         await self._commit_and_refresh(req)
         return req

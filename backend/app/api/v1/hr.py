@@ -82,6 +82,7 @@ from app.schemas.hr import (
     HrReportSiteListResponse,
     HrServiceRequestCreateRequest,
     HrServiceRequestListResponse,
+    HrServiceRequestReopenRequest,
     HrServiceRequestResolveRequest,
     HrServiceRequestResponse,
     HrSummaryReportResponse,
@@ -598,6 +599,19 @@ async def create_my_service_request(
     emp = await svc.require_self_employee(current_user)
     scoped = payload.model_copy(update={"employee_id": emp.id})
     req = await svc.create_service_request(scoped, current_user)
+    return HrServiceRequestResponse.model_validate(req)
+
+
+@router.post("/me/requests/{req_id}/reopen", response_model=HrServiceRequestResponse)
+async def reopen_my_service_request(
+    req_id: UUID,
+    payload: HrServiceRequestReopenRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> HrServiceRequestResponse:
+    req = await HrService(session).reopen_my_service_request(
+        req_id, payload.expected_updated_at, current_user
+    )
     return HrServiceRequestResponse.model_validate(req)
 
 

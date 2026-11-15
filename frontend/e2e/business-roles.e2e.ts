@@ -519,6 +519,69 @@ test('HR Manager creates a draft in the workspace and it persists across reload'
   await expect(page.getByText(/not linked|no employee/i).first()).toBeVisible();
 });
 
+test('revoking the HR role clears the open HR workspace and prevents access after sign-in', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const manager = seedAccount('hr_manager', director.projectId);
+  const session = await signIn(page, manager);
+  const hrHeaders = { Authorization: `Bearer ${session.accessToken}` };
+  const marker = `Revocation-${Date.now()}`;
+  const employee = await request.post('/api/v1/hr/employees', {
+    headers: hrHeaders,
+    data: { employee_code: marker, first_name: 'Synthetic', last_name: marker }
+  });
+  expect(employee.status()).toBe(201);
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Directory & Org' }).click();
+  const employeeRow = page.getByRole('row').filter({ hasText: marker });
+  await expect(employeeRow).toBeVisible();
+
+  const directorContext = await browser.newContext();
+  try {
+    const directorSession = await signIn(await directorContext.newPage(), director);
+    const headers = { Authorization: `Bearer ${directorSession.accessToken}` };
+    const users = await request.get('/api/v1/users', { headers, params: { email: manager.email } });
+    expect(users.status()).toBe(200);
+    const { items } = (await users.json()) as { items: Array<{ id: string; updated_at: string }> };
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(session.userId);
+    const changed = await request.patch(`/api/v1/users/${session.userId}`, {
+      headers,
+      data: { role: 'site_supervisor', expected_updated_at: items[0].updated_at }
+    });
+    expect(changed.status()).toBe(200);
+  } finally {
+    await directorContext.close();
+  }
+
+  const stale = await request.get('/api/v1/hr/employees', { headers: hrHeaders });
+  expect(stale.status()).toBe(401);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(employeeRow).toHaveCount(0);
+
+  const lowerPrivilege = await signIn(page, manager);
+  expect(lowerPrivilege.userId).toBe(session.userId);
+  await expect(page.getByRole('link', { name: 'HR & Workforce', exact: true })).toHaveCount(0);
+  const forbidden = await request.get('/api/v1/hr/employees', {
+    headers: { Authorization: `Bearer ${lowerPrivilege.accessToken}` }
+  });
+  expect(forbidden.status()).toBe(403);
+  const deniedPageRequests: string[] = [];
+  page.on('request', (outgoing) => {
+    const path = new URL(outgoing.url()).pathname;
+    if (path.startsWith('/api/v1/hr/')) deniedPageRequests.push(path);
+  });
+  await page.goto('/hr');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('heading', { name: 'HR & Workforce Hub' })).toHaveCount(0);
+  await expect(employeeRow).toHaveCount(0);
+  expect(deniedPageRequests).toEqual([]);
+});
+
 test('HR staff draft, approve and publish a calendar and download the aggregate summary', async ({
   page,
   browser,
@@ -795,7 +858,7 @@ test('a direct manager recommends self-submitted time and HR makes the final dec
   }
 });
 
-test('a linked employee submits and cancels their own leave in Chrome', async ({
+test('a linked employee manages their own leave and reopens a completed HR request', async ({
   browser,
   request
 }) => {
@@ -807,7 +870,8 @@ test('a linked employee submits and cancels their own leave in Chrome', async ({
   const workerContext = await browser.newContext();
   try {
     const directorSession = await signIn(await directorContext.newPage(), director);
-    const managerSession = await signIn(await managerContext.newPage(), manager);
+    const managerPage = await managerContext.newPage();
+    const managerSession = await signIn(managerPage, manager);
     const workerPage = await workerContext.newPage();
     const workerSession = await signIn(workerPage, worker);
     const managerHeaders = { Authorization: `Bearer ${managerSession.accessToken}` };
@@ -854,6 +918,28 @@ test('a linked employee submits and cancels their own leave in Chrome', async ({
       headers: { Authorization: `Bearer ${workerSession.accessToken}` }
     });
     expect(othersDirectory.status()).toBe(403);
+
+    const subject = `Synthetic service request ${unique}`;
+    await workerPage.getByPlaceholder('Subject', { exact: true }).fill(subject);
+    await workerPage.getByRole('button', { name: 'Submit request', exact: true }).click();
+    await expect(workerPage.getByText('HR service request submitted.', { exact: true })).toBeVisible();
+    await managerPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await managerPage.getByRole('button', { name: 'Policies & Requests' }).click();
+    const reviewCard = managerPage.getByText(subject).locator('..');
+    await reviewCard.getByRole('button', { name: 'Start review' }).click();
+    const response = 'Your synthetic request has been reviewed.';
+    await reviewCard.getByLabel('Response shared with the employee').fill(response);
+    await reviewCard.getByRole('button', { name: 'Complete request' }).click();
+    await expect(reviewCard).toContainText('(completed)');
+    await workerPage.reload();
+    const myRequest = workerPage.getByText(subject).locator('..');
+    await expect(myRequest).toContainText(response);
+    await myRequest.getByRole('button', { name: /Reopen request/ }).click();
+    await expect(workerPage.getByText('HR service request reopened.', { exact: true })).toBeVisible();
+    await workerPage.reload();
+    await expect(myRequest).toContainText('open');
+    await expect(myRequest).toContainText(response);
+    await expect(myRequest.getByRole('button', { name: /Reopen request/ })).toHaveCount(0);
   } finally {
     await directorContext.close();
     await managerContext.close();

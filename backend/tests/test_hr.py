@@ -1803,6 +1803,120 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hr_service_request_owner_can_reopen_with_current_version() -> None:
+    await skip_if_database_unavailable()
+    _, hr_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    _, director_email, _ = await _create_portal_user("managing_director", password)
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+        director = _auth(await _login(client, director_email, password))
+
+        async def linked_staff() -> tuple[dict[str, str], str]:
+            user_id, email, _ = await _create_portal_user("quantity_surveyor", password)
+            created = await client.post(
+                "/api/v1/hr/employees",
+                headers=hr,
+                json={
+                    "employee_code": f"REQ-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Request",
+                    "work_email": email,
+                    "employment_status": "active",
+                },
+            )
+            assert created.status_code == 201
+            employee_id = created.json()["id"]
+            linked = await client.post(
+                f"/api/v1/hr/employees/{employee_id}/link-account",
+                headers=director,
+                json={"user_id": user_id},
+            )
+            assert linked.status_code == 200
+            return _auth(await _login(client, email, password)), employee_id
+
+        owner, employee_id = await linked_staff()
+        other, _ = await linked_staff()
+        created = await client.post(
+            "/api/v1/hr/me/requests",
+            headers=owner,
+            json={"request_type": "employment_letter", "subject": "Synthetic confirmation"},
+        )
+        assert created.status_code == 201
+        request_id = created.json()["id"]
+        reopen = f"/api/v1/hr/me/requests/{request_id}/reopen"
+        resolve = f"/api/v1/hr/requests/{request_id}/resolve"
+        opened_version = {"expected_updated_at": created.json()["updated_at"]}
+        assert (await client.post(reopen, headers=owner, json=opened_version)).status_code == 409
+        assert (
+            await client.post(resolve, headers=owner, json={"status": "in_review"})
+        ).status_code == 403
+        review = await client.post(
+            resolve, headers=hr, json={**opened_version, "status": "in_review"}
+        )
+        assert review.status_code == 200
+
+        doc = await client.post(
+            "/api/v1/hr/documents",
+            headers=hr,
+            data={
+                "employee_id": employee_id,
+                "title": "Synthetic response",
+                "document_type": "other",
+                "category": "ordinary",
+                "is_employee_visible": "true",
+            },
+            files={"file": ("response.pdf", _pdf_bytes(), "application/pdf")},
+        )
+        assert doc.status_code == 201
+        doc_id = doc.json()["id"]
+        active = await client.post(
+            f"/api/v1/hr/documents/{doc_id}/versions/1/decision",
+            headers=reviewer,
+            json={"decision": "approve"},
+        )
+        assert active.status_code == 200
+        approved = await client.post(
+            resolve,
+            headers=reviewer,
+            json={
+                "status": "approved",
+                "expected_updated_at": review.json()["updated_at"],
+                "generated_document_id": doc_id,
+                "resolution_notes": "Synthetic response delivered.",
+            },
+        )
+        assert approved.status_code == 200
+        completed = await client.post(
+            resolve,
+            headers=hr,
+            json={"status": "completed", "expected_updated_at": approved.json()["updated_at"]},
+        )
+        assert completed.status_code == 200
+        assert completed.json()["generated_document_id"] == doc_id
+        assert completed.json()["resolution_notes"] == "Synthetic response delivered."
+        revision = {"expected_updated_at": completed.json()["updated_at"]}
+        assert (await client.post(reopen, headers=other, json=revision)).status_code == 404
+        assert (await client.post(reopen, headers=owner, json=opened_version)).status_code == 409
+        first, second = await asyncio.gather(
+            client.post(reopen, headers=owner, json=revision),
+            client.post(reopen, headers=owner, json=revision),
+        )
+        assert sorted([first.status_code, second.status_code]) == [200, 409]
+        assert (
+            await client.post(resolve, headers=hr, json={**opened_version, "status": "in_review"})
+        ).status_code == 409
+        requests = await client.get("/api/v1/hr/me/requests", headers=owner)
+        reopened = requests.json()["items"][0]
+        assert reopened["id"] == request_id
+        assert reopened["status"] == "open"
+        assert reopened["assigned_to_id"] is None
+        assert reopened["resolved_at"] is None
+        assert reopened["generated_document_id"] == doc_id
+
+
+@pytest.mark.asyncio
 async def test_hr_i_policies_letters_requests_and_offboarding() -> None:
     await skip_if_database_unavailable()
     _, admin_email, pw = await _create_portal_user("managing_director")

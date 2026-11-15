@@ -1771,6 +1771,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/me/requests/{req_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen My Service Request */
+        post: operations["reopen_my_service_request_api_v1_hr_me_requests__req_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/me/timesheets": {
         parameters: {
             query?: never;
@@ -6125,8 +6142,18 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** HrServiceRequestReopenRequest */
+        HrServiceRequestReopenRequest: {
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+        };
         /** HrServiceRequestResolveRequest */
         HrServiceRequestResolveRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Generated Document Id */
             generated_document_id?: string | null;
             /** Resolution Notes */
@@ -14697,6 +14724,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrServiceRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    reopen_my_service_request_api_v1_hr_me_requests__req_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HrServiceRequestReopenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

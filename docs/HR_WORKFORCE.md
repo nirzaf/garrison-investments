@@ -62,6 +62,12 @@ HR Manager role. The original workbook matrix remains a historical fixture.
   Where the employee has a linked user, fulfill the deactivation through the
   account queue before closing the case. Closure verifies the director's
   recorded action and that the account is inactive.
+- **Service requests.** In **Policies & Requests**, start review to assign the
+  request to yourself. Enter a response to share with the employee when you
+  complete it.
+  In **My HR**, employees can reopen their own completed or rejected request.
+  Reopening returns it to the unassigned queue and keeps any previously shared
+  document and the audit trail.
 
 Run `python -m scripts.garrisonctl hr --help` for available commands. See the
 [CLI guide](CLI_ADMINISTRATION.md) for authentication and mutation previews.
@@ -139,11 +145,14 @@ absence or decryption failure rejects access to encrypted values. Do not derive
 the key from the database password, JWT material or object-store credentials.
 An isolated recovery must restore the database and the referenced HR object
 versions and demonstrate decryption with the recovered key.
-A synthetic local rehearsal restored active and superseded HR documents
-byte-for-byte and confirmed that a wrong HR key blocks identifier decryption.
-That rehearsal used checksum-only format 1. Release acceptance requires the
-approved independent destination, authenticated format 2 and operator evidence
-described in the [recovery runbook](OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup--restore).
+A synthetic loopback rehearsal captured and published an authenticated format 2
+backup set, then fetched and restored it with the source object service stopped
+and the source database closed to new connections. It verified the bytes of
+active and superseded HR document versions, authorization after restore, and
+decryption of a synthetic identifier. A wrong HR key and a tampered backup
+artifact were rejected. Release acceptance still requires the approved off-host
+destination, production key custody and an operator-led exercise described in
+the [recovery runbook](OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup--restore).
 
 The retention default preserves HR rows and versions. Payroll, statutory
 calculation, compensation/benefits, disciplinary cases, performance and training

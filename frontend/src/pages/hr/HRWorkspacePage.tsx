@@ -127,6 +127,7 @@ export function HRWorkspacePage() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
   const [serviceReqs, setServiceReqs] = useState<HrServiceRequestRecord[]>([]);
+  const [requestResponses, setRequestResponses] = useState<Record<string, string>>({});
   const [offboarding, setOffboarding] = useState<OffboardingCaseRecord[]>([]);
 
   // Forms
@@ -1567,24 +1568,78 @@ export function HRWorkspacePage() {
             </h3>
             {serviceReqs.map((sr) => (
               <div
-                className="flex justify-between rounded border border-theme-border p-2.5 text-xs"
+                className="space-y-2 rounded border border-theme-border p-2.5 text-xs"
                 key={sr.id}
               >
                 <span>
-                  {sr.request_code} — {sr.subject}
+                  {sr.request_code} — {sr.subject} ({sr.status})
                 </span>
-                {['open', 'in_review', 'approved'].includes(sr.status) && (
-                  <button
-                    className="rounded bg-brand-600 px-2 py-1 text-white"
-                    onClick={() =>
-                      void resolveServiceRequest(sr.id, {
-                        status: sr.status === 'open' ? 'in_review' : 'completed'
-                      }).then(loadCore)
-                    }
-                    type="button"
+                {sr.description && <p className="whitespace-pre-wrap">{sr.description}</p>}
+                {sr.status === 'open' && (
+                  <div>
+                    <button
+                      className="rounded bg-brand-600 px-2 py-1 text-white"
+                      disabled={pending}
+                      onClick={() =>
+                        void runChange(
+                          () =>
+                            resolveServiceRequest(sr.id, {
+                              status: 'in_review',
+                              expected_updated_at: sr.updated_at
+                            }),
+                          'Unable to start HR service request review.'
+                        )
+                      }
+                      type="button"
+                    >
+                      Start review
+                    </button>
+                  </div>
+                )}
+                {['in_review', 'approved'].includes(sr.status) && (
+                  <form
+                    className="space-y-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const response = requestResponses[sr.id];
+                      void runChange(async () => {
+                        await resolveServiceRequest(sr.id, {
+                          status: 'completed',
+                          expected_updated_at: sr.updated_at,
+                          ...(response?.trim() ? { resolution_notes: response.trim() } : {})
+                        });
+                        setRequestResponses((current) => {
+                          const next = { ...current };
+                          delete next[sr.id];
+                          return next;
+                        });
+                      }, 'Unable to complete HR service request.');
+                    }}
                   >
-                    {sr.status === 'open' ? 'Start review' : 'Complete request'}
-                  </button>
+                    <label className="block">
+                      Response shared with the employee
+                      <textarea
+                        className="mt-1 block w-full rounded border border-theme-border bg-theme-input p-2"
+                        disabled={pending}
+                        maxLength={2000}
+                        onChange={(event) =>
+                          setRequestResponses((current) => ({
+                            ...current,
+                            [sr.id]: event.target.value
+                          }))
+                        }
+                        rows={2}
+                        value={requestResponses[sr.id] ?? sr.resolution_notes ?? ''}
+                      />
+                    </label>
+                    <button
+                      className="rounded bg-brand-600 px-2 py-1 text-white"
+                      disabled={pending}
+                      type="submit"
+                    >
+                      Complete request
+                    </button>
+                  </form>
                 )}
               </div>
             ))}

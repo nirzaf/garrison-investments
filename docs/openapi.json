@@ -8355,8 +8355,34 @@
         "title": "HrServiceRequestListResponse",
         "type": "object"
       },
+      "HrServiceRequestReopenRequest": {
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "HrServiceRequestReopenRequest",
+        "type": "object"
+      },
       "HrServiceRequestResolveRequest": {
         "properties": {
+          "expected_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Updated At"
+          },
           "generated_document_id": {
             "anyOf": [
               {
@@ -29041,6 +29067,72 @@
           }
         ],
         "summary": "Create My Service Request",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/me/requests/{req_id}/reopen": {
+      "post": {
+        "operationId": "reopen_my_service_request_api_v1_hr_me_requests__req_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "req_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Req Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HrServiceRequestReopenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HrServiceRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Reopen My Service Request Api V1 Hr Me Requests  Req Id  Reopen Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reopen My Service Request",
         "tags": [
           "HR & Workforce"
         ]
