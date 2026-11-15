@@ -1094,10 +1094,16 @@ async def list_hr_documents(
     actor: CanManageDocuments,
     session: DbSession,
     employee_id: Annotated[UUID | None, Query()] = None,
+    candidate_id: Annotated[UUID | None, Query()] = None,
     category: Annotated[str | None, Query()] = None,
+    document_type: Annotated[str | None, Query(max_length=40)] = None,
 ) -> HrDocumentListResponse:
     items, total = await HrService(session).list_hr_documents(
-        actor=actor, employee_id=employee_id, category=category
+        actor=actor,
+        employee_id=employee_id,
+        candidate_id=candidate_id,
+        category=category,
+        document_type=document_type,
     )
     return HrDocumentListResponse(items=items, total=total)
 

@@ -12868,7 +12868,9 @@ export interface operations {
         parameters: {
             query?: {
                 employee_id?: string | null;
+                candidate_id?: string | null;
                 category?: string | null;
+                document_type?: string | null;
             };
             header?: never;
             path?: never;

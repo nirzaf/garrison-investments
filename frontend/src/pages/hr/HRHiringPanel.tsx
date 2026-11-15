@@ -23,6 +23,7 @@ import {
   type RequisitionRecord
 } from '../../api/hr';
 import { hrButtonClass, hrInputClass } from './HRAccessForms';
+import { HRCandidateCVs } from './HRCandidateCVs';
 
 type HiringRecord = 'candidate' | 'application' | 'interview' | 'offer' | 'onboarding';
 type ReqStatus = Parameters<typeof decideRequisition>[1]['status'];
@@ -33,11 +34,15 @@ export function HRHiringPanel({
   requisitions,
   employees,
   canApprove,
+  canManageCVs,
+  reviewerId,
   reload
 }: {
   requisitions: RequisitionRecord[];
   employees: EmployeeDirectoryRecord[];
   canApprove: boolean;
+  canManageCVs: boolean;
+  reviewerId: string | undefined;
   reload: () => Promise<void>;
 }) {
   const client = useQueryClient();
@@ -141,6 +146,9 @@ export function HRHiringPanel({
         <p role="alert" className="text-red-700">
           {error}
         </p>
+      )}
+      {canManageCVs && (
+        <HRCandidateCVs candidates={data?.candidates.items ?? []} reviewerId={reviewerId} />
       )}
       <ul className="space-y-2">
         {requisitions.map((row) => (

@@ -562,6 +562,57 @@ test('HR saves a letter template and previews it with employee records', async (
   await expect(page.getByText(`Employee ${code} requests a staff record.`)).toBeVisible();
 });
 
+test('candidate CVs stay private through upload, independent review and download', async ({
+  page,
+  browser,
+  request
+}) => {
+  const uploader = seedAccount('hr_manager');
+  const session = await signIn(page, uploader);
+  const code = `CV-${Date.now()}`;
+  const create = await request.post('/api/v1/hr/candidates', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: { candidate_code: code, full_name: 'Synthetic CV Candidate' }
+  });
+  expect(create.status()).toBe(201);
+  const candidateId = (await create.json()).id as string;
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await page.getByRole('combobox', { name: 'CV candidate' }).selectOption(candidateId);
+  await page.getByLabel(/^CV file/).setInputFiles({
+    name: 'candidate.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF')
+  });
+  await page.getByRole('button', { name: 'Upload CV', exact: true }).click();
+  await expect(page.getByText('candidate.pdf · version 1 · pending')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve CV', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Download for review' })).toHaveCount(0);
+
+  const reviewContext = await browser.newContext();
+  try {
+    const reviewer = await reviewContext.newPage();
+    await signIn(reviewer, seedAccount('hr_manager', uploader.projectId));
+    await reviewer.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await reviewer.getByRole('button', { name: 'Recruitment', exact: true }).click();
+    await reviewer.getByRole('combobox', { name: 'CV candidate' }).selectOption(candidateId);
+    await expect(reviewer.getByRole('button', { name: 'Download for review' })).toBeVisible();
+    await reviewer.getByRole('button', { name: 'Approve CV', exact: true }).click();
+    await expect(reviewer.getByText('candidate.pdf · version 1 · active')).toBeVisible();
+  } finally {
+    await reviewContext.close();
+  }
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await page.getByRole('combobox', { name: 'CV candidate' }).selectOption(candidateId);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download CV', exact: true }).click()
+  ]);
+  expect(await download.failure()).toBeNull();
+});
+
 test('revoking the HR role clears the open HR workspace and prevents access after sign-in', async ({
   page,
   browser,

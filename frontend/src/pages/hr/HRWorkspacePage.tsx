@@ -1047,6 +1047,8 @@ export function HRWorkspacePage() {
             requisitions={requisitions}
             employees={employees}
             canApprove={hasPerm('hr:employees:sensitive')}
+            canManageCVs={hasPerm('hr:documents:manage') && hasPerm('hr:employees:sensitive')}
+            reviewerId={user?.id}
             reload={loadCore}
           />
         </div>

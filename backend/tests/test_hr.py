@@ -1133,6 +1133,91 @@ async def test_hr_f_document_vault_rbac_and_compliance() -> None:
         assert comp.status_code == 200
         assert any(item["record_id"] == ord_doc.json()["id"] for item in comp.json()["items"])
 
+        candidate = await client.post(
+            "/api/v1/hr/candidates",
+            json={"candidate_code": f"CV-{uuid4().hex[:8]}", "full_name": "Synthetic Candidate"},
+            headers=_auth(hrm_tok),
+        )
+        assert candidate.status_code == 201
+        candidate_id = candidate.json()["id"]
+        cv_metadata = {
+            "title": "Synthetic CV",
+            "document_type": "candidate_cv",
+            "candidate_id": candidate_id,
+        }
+        cv_file = {"file": ("candidate.pdf", _pdf_bytes("cv"), "application/pdf")}
+        assert (
+            await client.post(
+                "/api/v1/hr/documents",
+                data={**cv_metadata, "category": "ordinary"},
+                files=cv_file,
+                headers=_auth(hrm_tok),
+            )
+        ).status_code == 422
+        cv_metadata["category"] = "confidential"
+        uploads = await asyncio.gather(
+            *(
+                client.post(
+                    "/api/v1/hr/documents",
+                    data=cv_metadata,
+                    files=cv_file,
+                    headers=_auth(hrm_tok),
+                )
+                for _ in range(2)
+            )
+        )
+        assert sorted(response.status_code for response in uploads) == [201, 409]
+        cv = next(response for response in uploads if response.status_code == 201)
+        cv_id = cv.json()["id"]
+        assert cv.json()["candidate_id"] == candidate_id
+        candidates = await client.get(
+            "/api/v1/hr/candidates",
+            params={"search": candidate.json()["candidate_code"]},
+            headers=_auth(hrm_tok),
+        )
+        assert candidates.json()["items"][0]["resume_document_id"] == cv_id
+        listed = await client.get(
+            "/api/v1/hr/documents",
+            params={"candidate_id": candidate_id, "document_type": "candidate_cv"},
+            headers=_auth(hrm_tok),
+        )
+        assert [item["id"] for item in listed.json()["items"]] == [cv_id]
+        assert (
+            await client.get(
+                "/api/v1/hr/documents",
+                params={"candidate_id": str(uuid4())},
+                headers=_auth(hrm_tok),
+            )
+        ).json()["items"] == []
+        assert (
+            await client.get(
+                "/api/v1/hr/documents",
+                params={"candidate_id": candidate_id},
+                headers=_auth(hre_tok),
+            )
+        ).status_code == 403
+        cv_download = f"/api/v1/hr/documents/{cv_id}/download"
+        assert (
+            await client.get(cv_download, params={"version_number": 1}, headers=_auth(hrm_tok))
+        ).status_code == 404
+        review_link = await client.get(
+            cv_download, params={"version_number": 1}, headers=_auth(reviewer_tok)
+        )
+        assert review_link.status_code == 200
+        async with httpx.AsyncClient() as storage:
+            assert (await storage.get(review_link.json()["download_url"])).content == _pdf_bytes(
+                "cv"
+            )
+        assert (
+            await client.post(
+                f"/api/v1/hr/documents/{cv_id}/versions/1/decision",
+                json={"decision": "approve"},
+                headers=_auth(reviewer_tok),
+            )
+        ).status_code == 200
+        assert (await client.get(cv_download, headers=_auth(hrm_tok))).status_code == 200
+        assert (await client.get(cv_download, headers=_auth(hre_tok))).status_code == 403
+
 
 @pytest.mark.asyncio
 async def test_hr_g_calendars_attendance_timesheets_and_overtime() -> None:

@@ -47,6 +47,13 @@ export const hrManagerManual: Manual = {
         'Open Docs & Compliance and review a pending version. An approved replacement supersedes the active version.'
     },
     {
+      id: 'hr-candidate-cv',
+      title: 'Review a candidate CV',
+      icon: '📄',
+      content:
+        'Open Recruitment and find Candidate CVs. Select the candidate and upload the confidential file. A different HR Manager downloads the pending version for review and records the decision. Upload a replacement to keep the version history together.'
+    },
+    {
       id: 'hr-letter-preview',
       title: 'Preview an employee letter',
       icon: '📄',

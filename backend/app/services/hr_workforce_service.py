@@ -13,6 +13,7 @@ from minio import Minio
 from sqlalchemy import case, false, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.models.hr import (
@@ -973,12 +974,23 @@ class HrWorkforceService:
             raise AppException("Choose a single document owner.", status_code=422)
         if employee_id is not None:
             await self._require_employee(employee_id)
-        if candidate_id is not None and not await self.session.scalar(
-            select(HrCandidate.id).where(
+        is_cv = document_type.strip() == "candidate_cv"
+        if is_cv and (candidate_id is None or category != "confidential"):
+            raise AppException(
+                "A candidate CV requires a candidate and confidential access.", status_code=422
+            )
+        candidate = None
+        if candidate_id is not None:
+            candidate_query = select(HrCandidate).where(
                 HrCandidate.id == candidate_id, HrCandidate.deleted_at.is_(None)
             )
-        ):
-            raise NotFoundException("Candidate")
+            candidate = await self.session.scalar(
+                candidate_query.with_for_update() if is_cv else candidate_query
+            )
+            if candidate is None:
+                raise NotFoundException("Candidate")
+            if is_cv and candidate.resume_document_id:
+                raise AppException("Upload a new version of the existing CV.", status_code=409)
         if is_employee_visible and (category != "ordinary" or employee_id is None):
             raise AppException("Only ordinary employee documents can be shared.", status_code=422)
         if issue_date and expiry_date and expiry_date < issue_date:
@@ -1003,6 +1015,8 @@ class HrWorkforceService:
         )
         self.session.add(doc)
         await self.session.flush()
+        if is_cv and candidate is not None:
+            candidate.resume_document_id = doc.id
         return await self._store_hr_document_version(doc, file, actor, version_number=1)
 
     async def upload_hr_document_version(
@@ -1117,7 +1131,9 @@ class HrWorkforceService:
         *,
         actor: User,
         employee_id: UUID | None = None,
+        candidate_id: UUID | None = None,
         category: str | None = None,
+        document_type: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[HrDocumentResponse], int]:
@@ -1133,9 +1149,15 @@ class HrWorkforceService:
         if employee_id:
             stmt = stmt.where(HrDocument.employee_id == employee_id)
             count_stmt = count_stmt.where(HrDocument.employee_id == employee_id)
+        if candidate_id:
+            stmt = stmt.where(HrDocument.candidate_id == candidate_id)
+            count_stmt = count_stmt.where(HrDocument.candidate_id == candidate_id)
         if category:
             stmt = stmt.where(HrDocument.category == category)
             count_stmt = count_stmt.where(HrDocument.category == category)
+        if document_type:
+            stmt = stmt.where(HrDocument.document_type == document_type)
+            count_stmt = count_stmt.where(HrDocument.document_type == document_type)
         docs = list(
             await self.session.scalars(
                 stmt.order_by(HrDocument.created_at.desc()).limit(limit).offset(offset)
@@ -1207,13 +1229,27 @@ class HrWorkforceService:
         include_category: bool,
         version_number: int | None = None,
     ) -> HrDocumentDownloadResponse:
+        visible_version: ColumnElement[bool] = HrDocumentVersion.status.in_(
+            ["active", "superseded"] if include_category else ["active"]
+        )
+        if (
+            include_category
+            and version_number is not None
+            and doc.document_type == "candidate_cv"
+            and doc.candidate_id is not None
+            and doc.category == "confidential"
+            and has_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        ):
+            visible_version = or_(
+                visible_version,
+                (HrDocumentVersion.status == "pending")
+                & HrDocumentVersion.uploaded_by_id.is_distinct_from(actor.id),
+            )
         ver = await self.session.scalar(
             select(HrDocumentVersion).where(
                 HrDocumentVersion.document_id == doc.id,
                 HrDocumentVersion.version_number == (version_number or doc.current_version),
-                HrDocumentVersion.status.in_(
-                    ["active", "superseded"] if include_category else ["active"]
-                ),
+                visible_version,
             )
         )
         if ver is None:

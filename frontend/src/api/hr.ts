@@ -271,8 +271,10 @@ export async function decideRequisition(
   return data;
 }
 
-export async function listCandidates() {
-  const { data } = await apiClient.get<HrSchemas['CandidateListResponse']>('/hr/candidates');
+export async function listCandidates(search?: string) {
+  const { data } = await apiClient.get<HrSchemas['CandidateListResponse']>('/hr/candidates', {
+    params: { search }
+  });
   return data;
 }
 
@@ -369,7 +371,12 @@ export async function updateOnboardingTask(
 
 // --- Documents & Compliance ---
 
-export async function listHrDocuments(params?: { employee_id?: string; category?: string }) {
+export async function listHrDocuments(params?: {
+  employee_id?: string;
+  candidate_id?: string;
+  category?: string;
+  document_type?: string;
+}) {
   const { data } = await apiClient.get<HrSchemas['HrDocumentListResponse']>('/hr/documents', {
     params
   });
@@ -382,6 +389,7 @@ export async function uploadHrDocument(params: {
   document_type: string;
   category: string;
   employee_id?: string;
+  candidate_id?: string;
   expiry_date?: string;
   is_employee_visible?: boolean;
 }) {
@@ -391,6 +399,7 @@ export async function uploadHrDocument(params: {
   formData.append('document_type', params.document_type);
   formData.append('category', params.category);
   if (params.employee_id) formData.append('employee_id', params.employee_id);
+  if (params.candidate_id) formData.append('candidate_id', params.candidate_id);
   if (params.expiry_date) formData.append('expiry_date', params.expiry_date);
   formData.append('is_employee_visible', String(params.is_employee_visible ?? false));
   const { data } = await apiClient.post<HrDocumentRecord>('/hr/documents', formData, {
