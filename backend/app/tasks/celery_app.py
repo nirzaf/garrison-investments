@@ -84,6 +84,11 @@ if settings.hr_reminder_window_days is not None:
         "task": "check_hr_credential_expiry",
         "schedule": crontab(hour=4, minute=15),
     }
+if settings.hr_service_request_sla_days is not None:
+    celery_app.conf.beat_schedule["check-hr-service-request-sla-daily"] = {
+        "task": "check_hr_service_request_sla",
+        "schedule": crontab(hour=4, minute=30),
+    }
 
 
 @setup_logging.connect

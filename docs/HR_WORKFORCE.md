@@ -94,6 +94,13 @@ business date when a credential is due in that window. It reads ordinary
 credential records and sends no email, document link, employee detail, or count.
 An unset value leaves the task disabled.
 
+Service-request reminders are also opt-in. Set `HR_SERVICE_REQUEST_SLA_DAYS`
+in the worker and scheduler after HR approves the threshold. Open, in-review
+and approved requests count as overdue once that many 24-hour days have passed
+since submission. Reopening preserves the original submission time. The daily
+task sends each active account authorized to process requests one in-app
+reminder per business date. It sends no email, request details or links.
+
 ## Line-manager review and employee time submission
 
 `HR_LINE_MANAGER_REVIEW_ENABLED` and `HR_SELF_TIME_SUBMISSION_ENABLED` both

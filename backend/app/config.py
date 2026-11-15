@@ -34,6 +34,7 @@ class Settings(BaseSettings, BusinessPolicy):
     exception_email_enabled: bool | None = None
     hr_encryption_key: SecretStr | None = None
     hr_reminder_window_days: int | None = Field(default=None, ge=1, le=365)
+    hr_service_request_sla_days: int | None = Field(default=None, ge=1, le=365)
     hr_line_manager_review_enabled: bool = False
     hr_self_time_submission_enabled: bool = False
     notification_retention_days: int = 90

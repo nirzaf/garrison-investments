@@ -31,13 +31,14 @@ from app.models.hr import (
     HrEmployeePrivate,
     HrLeaveLedger,
     HrOnboardingCase,
+    HrServiceRequest,
 )
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.hr_crypto import encrypt_hr_value
-from app.tasks.maintenance import _check_hr_credential_expiry
+from app.tasks.maintenance import _check_hr_credential_expiry, _check_hr_service_request_sla
 from app.utils.exceptions import AppException
 from app.utils.time import business_today
 from scripts import garrisonctl
@@ -485,6 +486,90 @@ async def test_hr_credential_reminders_are_opt_in_private_and_deduplicated(monke
         for row in rows:
             assert row.reference_id is None and row.email_status is None
             assert marker not in f"{row.title} {row.body}"
+
+
+@pytest.mark.asyncio
+async def test_hr_service_request_sla_reminds_only_active_authorized_users(monkeypatch) -> None:
+    await skip_if_database_unavailable()
+    monkeypatch.delenv("HR_SERVICE_REQUEST_SLA_DAYS", raising=False)
+    get_settings.cache_clear()
+    enqueue = Mock()
+    monkeypatch.setattr("app.services.notification_service.send_email_notification.delay", enqueue)
+    manager, _, _ = await _create_portal_user("hr_manager")
+    director, _, _ = await _create_portal_user("managing_director")
+    inactive, _, _ = await _create_portal_user("hr_manager")
+    marker = f"REQ-{uuid4().hex[:8]}"
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as session:
+        inactive_user = await session.get(User, UUID(inactive))
+        assert inactive_user is not None
+        inactive_user.is_active = False
+        employee = HrEmployee(
+            employee_code=marker,
+            first_name="Synthetic",
+            last_name="Requester",
+            full_name="Synthetic Requester",
+            employment_status="active",
+        )
+        session.add(employee)
+        await session.flush()
+        eligible = HrServiceRequest(
+            request_code=marker,
+            employee_id=employee.id,
+            request_type="general_inquiry",
+            subject=marker,
+            status="completed",
+            created_at=now - timedelta(days=7),
+        )
+        recent = HrServiceRequest(
+            request_code=f"{marker}-RECENT",
+            employee_id=employee.id,
+            request_type="general_inquiry",
+            subject=marker,
+            status="in_review",
+            created_at=now - timedelta(days=7) + timedelta(seconds=1),
+        )
+        session.add_all([eligible, recent])
+        await session.commit()
+        request_id = eligible.id
+
+    assert await _check_hr_service_request_sla() == 0
+    monkeypatch.setenv("HR_SERVICE_REQUEST_SLA_DAYS", "7")
+    monkeypatch.setattr("app.tasks.maintenance.utc_now", lambda: now)
+    get_settings.cache_clear()
+    assert await _check_hr_service_request_sla() == 0
+
+    async with AsyncSessionLocal() as session:
+        request = await session.get(HrServiceRequest, request_id)
+        assert request is not None
+        request.status = "approved"
+        await session.commit()
+    runs = sorted(
+        await asyncio.gather(_check_hr_service_request_sla(), _check_hr_service_request_sla())
+    )
+    assert runs[0] == 0 and runs[1] >= 1
+    assert await _check_hr_service_request_sla() == 0
+    enqueue.assert_not_called()
+    tracked_users = [UUID(value) for value in (manager, director, inactive)]
+    async with AsyncSessionLocal() as session:
+        rows = (
+            await session.scalars(
+                select(Notification).where(
+                    Notification.user_id.in_(tracked_users),
+                    Notification.notification_type == "hr_service_request_sla",
+                )
+            )
+        ).all()
+        assert [str(row.user_id) for row in rows] == [manager]
+        assert rows[0].reference_id is None and rows[0].email_status is None
+        assert marker not in f"{rows[0].title} {rows[0].body}"
+        request = await session.get(HrServiceRequest, request_id)
+        assert request is not None
+        request.status = "completed"
+        recent_request = await session.get(HrServiceRequest, recent.id)
+        assert recent_request is not None
+        recent_request.status = "completed"
+        await session.commit()
 
 
 @pytest.mark.asyncio

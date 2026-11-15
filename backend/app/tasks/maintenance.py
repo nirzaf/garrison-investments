@@ -3,11 +3,12 @@ from time import monotonic
 
 import structlog
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.daily_report import DailyReport
-from app.models.hr import HrEmployee
+from app.models.hr import HrEmployee, HrServiceRequest
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
@@ -23,6 +24,7 @@ from app.tasks.celery_app import celery_app
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_HR_COMPLIANCE_MANAGE,
+    PERMISSION_HR_REQUESTS_PROCESS,
     PERMISSION_SUPPLIERS_MANAGE,
     REPORT_APPROVER_ROLES,
     roles_with_permission,
@@ -288,8 +290,6 @@ async def _check_hr_credential_expiry() -> int:
         return 0
     now = business_now()
     today = now.date()
-    start = datetime.combine(today, time.min, tzinfo=now.tzinfo)
-    end = datetime.combine(today + timedelta(days=1), time.min, tzinfo=now.tzinfo)
     async with AsyncSessionLocal() as session:
         await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_expiry'))"))
         employees = select(HrEmployee.id).where(
@@ -301,32 +301,88 @@ async def _check_hr_credential_expiry() -> int:
         window = HrReportWindow(date_from=today, date_to=today + timedelta(days=days))
         if not await count_report_credentials(session, employees, window):
             return 0
-        already_notified = select(Notification.user_id).where(
-            Notification.notification_type == "hr_credential_expiry",
-            Notification.created_at >= start,
-            Notification.created_at < end,
+        return await _send_daily_hr_reminders(
+            session,
+            now=now,
+            permission=PERMISSION_HR_COMPLIANCE_MANAGE,
+            notification_type="hr_credential_expiry",
+            body="Open HR & Workforce to review upcoming credential deadlines.",
         )
-        recipients = (
-            await session.scalars(
-                select(User.id).where(
-                    User.role.in_(roles_with_permission(PERMISSION_HR_COMPLIANCE_MANAGE)),
-                    User.is_active.is_(True),
-                    User.deleted_at.is_(None),
-                    User.id.not_in(already_notified),
-                )
+
+
+@celery_app.task(
+    name="check_hr_service_request_sla",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def check_hr_service_request_sla() -> int:
+    return run_async_task(_check_hr_service_request_sla())
+
+
+async def _check_hr_service_request_sla() -> int:
+    days = get_settings().hr_service_request_sla_days
+    if days is None:
+        return 0
+    cutoff = utc_now() - timedelta(days=days)
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_request_sla'))")
+        )
+        overdue = select(HrServiceRequest.id).where(
+            HrServiceRequest.status.in_(("open", "in_review", "approved")),
+            HrServiceRequest.created_at <= cutoff,
+        )
+        if not await session.scalar(select(overdue.exists())):
+            return 0
+        return await _send_daily_hr_reminders(
+            session,
+            now=business_now(),
+            permission=PERMISSION_HR_REQUESTS_PROCESS,
+            notification_type="hr_service_request_sla",
+            body="Open HR & Workforce and review overdue service requests.",
+        )
+
+
+async def _send_daily_hr_reminders(
+    session: AsyncSession,
+    *,
+    now: datetime,
+    permission: str,
+    notification_type: str,
+    body: str,
+) -> int:
+    today = now.date()
+    start = datetime.combine(today, time.min, tzinfo=now.tzinfo)
+    end = datetime.combine(today + timedelta(days=1), time.min, tzinfo=now.tzinfo)
+    already_notified = select(Notification.user_id).where(
+        Notification.notification_type == notification_type,
+        Notification.created_at >= start,
+        Notification.created_at < end,
+    )
+    recipients = (
+        await session.scalars(
+            select(User.id).where(
+                User.role.in_(roles_with_permission(permission)),
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                User.id.not_in(already_notified),
             )
-        ).all()
-        notifications = NotificationService(session)
-        for user_id in recipients:
-            await notifications.create(
-                user_id=user_id,
-                title="HR review reminder",
-                body="Open HR & Workforce to review upcoming credential deadlines.",
-                notification_type="hr_credential_expiry",
-                send_email=False,
-            )
-        await session.commit()
-        return len(recipients)
+        )
+    ).all()
+    notifications = NotificationService(session)
+    for user_id in recipients:
+        await notifications.create(
+            user_id=user_id,
+            title="HR review reminder",
+            body=body,
+            notification_type=notification_type,
+            send_email=False,
+        )
+    await session.commit()
+    return len(recipients)
 
 
 async def _late_report_recipients(session, project_id) -> set:
