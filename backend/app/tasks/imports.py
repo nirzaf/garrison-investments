@@ -118,7 +118,9 @@ async def _run_import_async(
                         )
                         .values(status="processing")
                     )
-                    await session.commit()
+                # End the batch-only transaction before the service takes the
+                # actor lock. A concurrent delivery may already hold that lock.
+                await session.commit()
             result = await ImportService(session).run_import(
                 template_type=template_type,
                 file_name=file_name,

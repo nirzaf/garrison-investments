@@ -181,7 +181,9 @@ class ImportService:
         else:
             # The completed marker and imported rows commit together. A second
             # delivery waits here until it can see the first delivery's result.
-            existing_batch = await self.session.get(ImportBatch, batch_id, with_for_update=True)
+            existing_batch = await self.session.get(
+                ImportBatch, batch_id, with_for_update=True, populate_existing=True
+            )
             if existing_batch is None or existing_batch.deleted_at is not None:
                 raise NotFoundException("Import batch")
             if (
@@ -193,6 +195,12 @@ class ImportService:
             if batch.status == "completed":
                 await self.session.commit()
                 return self._batch_response(batch)
+            if batch.status not in {"queued", "processing"}:
+                raise AppException(
+                    "Queued import is no longer eligible for processing.",
+                    status_code=409,
+                    error_code="IMPORT_BATCH_NOT_ELIGIBLE",
+                )
         rows = self._parse(template_type, content)
         errors = await self._validate_for_import(template_type, rows, actor)
         batch.status = "failed" if errors else "completed"
