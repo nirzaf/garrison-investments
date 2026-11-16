@@ -244,6 +244,7 @@ jobs:
         run: |
           # Run 43902036278 measured 180s/525s of Chrome test time.
           # The list moves individual HR tests. Its complement covers new tests.
+          # Two workers per shard exhausted the shared host in run 43948823590.
           case "$BROWSER_SHARD" in
             1) selection=--test-list ;;
             2) selection=--test-list-invert ;;
