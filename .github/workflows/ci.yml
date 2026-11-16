@@ -250,7 +250,7 @@ jobs:
             *) exit 2 ;;
           esac
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
+            npm run test:browser -- --fully-parallel --workers=1 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
       - name: Remove the test S3 container
         if: always()
         run: |
