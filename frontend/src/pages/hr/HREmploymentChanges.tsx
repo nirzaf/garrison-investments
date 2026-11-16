@@ -5,6 +5,7 @@ import { formatApiError } from '../../api/errors';
 import {
   applyEmploymentChange,
   decideEmploymentChange,
+  dueEmploymentChangesKey,
   getEmployee,
   listEmployees,
   listEmploymentChanges,
@@ -122,6 +123,7 @@ export function HREmploymentChanges({
           }),
     onSuccess: async (row) => {
       await client.invalidateQueries({ queryKey: key });
+      await client.invalidateQueries({ queryKey: dueEmploymentChangesKey });
       if (row.status === 'applied') {
         await client.invalidateQueries({ queryKey: periodKey });
         await refreshEmployee();

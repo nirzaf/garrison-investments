@@ -27,19 +27,19 @@ two-role proposal is superseded by the single HR Manager decision.
 | P01 · HR-001–004, HR-007 · organization and employee records | **Implemented and locally verified for directory, profile and name-correction workflows.** Current employees' name corrections use independent review. Private-vault and My HR edits verify the same employee revision. See Slice 27. | Verify business use of older employment periods with missing start dates. Operational use requires authorized accounts and dedicated encryption key custody. |
 | P02 · HR-005/006 · workbook and access | **Implemented paths; unverified live.** `hr_workbook.py` previews and applies drafts, and the HR access workflow uses the user service for director fulfillment. Browser and CLI expose the workflow. See `test_hr_c_three_party_access_requests_and_session_revocation` and `test_hr_d_workbook_preview_and_idempotent_apply`. | The recovered account-role workbook matches the supplied digest. Its identity and role dispositions remain in the restricted reconciliation plan. Verify the approved personnel roster, account identities and final access outside Git. Verify retry creates no duplicate draft/request and neither linking nor a reporting line adds project access. |
 | P03 · HR-008–011 · recruitment and onboarding | **Portal and CLI workflows verified locally.** Requisitions, CVs, applications, interviews, offers and onboarding are available in both interfaces. Offer versions can pin reviewed confidential PDFs. Internal interview invitations and cancellations use generic in-app notices. The terminal also records onboarding checklist and probation decisions. See Slices 28–30 and 33–41. | Verify with approved release test records. Confirm operational retention and correspondence wording. |
-| P04 · HR-002/011 · employment changes | **Partial.** Reviewed transfers, promotions, category amendments and version-bound contract renewals apply on or after their effective date with one history entry. Manager transfer clears the former review authority. `HRProbationReview` handles confirmation and extensions. | Reviewed rehiring now records a new period and onboarding checklist. An approved automatic activation schedule and production business acceptance remain open. |
-| P05 · HR-007/013 · workforce planning | **Implemented and locally verified for whole-shift allocations.** `HRWorkCalendar` resolves published calendars and shifts. `HRRoster` allocates the resolved shift to a project and keeps cancellation history. `hr_project_assignment.py` handles project access separately. See Slice 25. | Verify representative rosters with the business before production activation. The local workflow assigns a single published workday or shift per employee and date. |
+| P04 · HR-002/011 · employment changes | **Partial.** Reviewed transfers, promotions, category amendments and version-bound contract renewals apply on or after their effective date with one history entry. The portal and CLI list due changes and flag mismatched employee revisions. Manager transfer clears the former review authority. `HRProbationReview` handles confirmation and extensions. | Reviewed rehiring now records a new period and onboarding checklist. An approved automatic activation schedule and production business acceptance remain open. |
+| P05 · HR-007/013 · workforce planning | **Implemented and locally verified for whole-shift allocations.** `HRWorkCalendar` resolves published calendars and shifts. The portal and CLI allocate the resolved shift to a project and keep cancellation history. `hr_project_assignment.py` handles project access separately. See Slices 25 and 71. | Verify representative rosters with the business before production activation. The local workflow assigns a single published workday or shift per employee and date. |
 | P06 · HR-014/015 · attendance and time | **Implemented and locally verified for time capture, review and locked time export.** The payroll preparer can preview and export reconciled time for an explicit roster. Pending overtime prevents timesheet lock. See Slice 26. | Verify overnight and partial punch behavior against approved rules. Employee submissions and manager recommendations need approved opt-in settings and verified links. Production payroll authorization and roster coverage review remain open. |
-| P07 · HR-016/017 · leave | **Partial.** Published schedules determine units. Dated policies require independent HR review. HR can post reviewed accrual, catch up across closed months, and roll over the year from the ledger, including explicit policy-authorized expiry of excess days. The scheduled worker can post designated policies, including independently approved calendar-day proration. See Slices 42–43. | Specify destination-year carry expiry rules, audited corrections to closed years, and payroll handoff. Confirm policy selection and publish missing work calendar periods before activation. |
-| P08 · HR-012/018 · documents, policies and letters | **Versioned files and policy editions implemented and locally verified.** Policies link to the exact approved files and maintain separate acknowledgement receipts after replacement. `HRLettersPanel` keeps encrypted drafts for independent issuance. See Slice 31. | Reconcile any legacy policy file links. Confirm company templates, the approved compensation source for salary letters, retention and any delivery to former employees. |
+| P07 · HR-016/017 · leave | **Partial.** Published schedules determine units. Dated policies require independent HR review. HR can post reviewed accrual, catch up across closed months, and roll over the year from the ledger, including explicit policy-authorized expiry of excess days. The scheduled worker can post designated policies, including independently approved calendar-day proration. Payroll exports reconciled paid and unpaid units, splitting new approvals on retained work dates. HR can reconcile missing cross-month dates using independently reviewed evidence. Reversal verifies the original debit and preserves approved payroll. See Slices 42–45, 66, 69 and 73. | Specify how leave debits consume carry-in, destination-year carry expiry rules and audited corrections to closed years. Reconcile affected live records from their historical evidence. Confirm policy selection and publish missing work calendar periods before activation. |
+| P08 · HR-012/018 · documents, policies and letters | **Versioned files and policy editions implemented and locally verified.** Policies link to the exact approved files and maintain separate acknowledgement receipts after replacement. `HRLettersPanel` keeps encrypted drafts for independent issuance. Salary confirmations bind the current independently approved compensation term. See Slices 31 and 72. | Reconcile any legacy policy file links. Confirm the production templates, compensation records and authorized reviewers, retention and any delivery to former employees. |
 | P09 · HR-018 · service requests | **Implemented and locally verified for handoffs and response letters.** HR can assign active requests, the assignee can complete one with a same-employee issued letter, and overdue reminders follow the eligible assignee. My HR keeps the exact letter visible on reopening. | Confirm the live SLA threshold and routing. Verify representative sensitive responses and templates with business UAT. |
-| P10 · HR-021/022 · compensation and obligations | **Partial and role gated.** `create_compensation_term`, `create_employee_benefit` and `decide_reimbursement` implement parts of the domain. | Define independent review, effective compensation changes, receipts, advances and traceable approved obligations. Verify overlap, duplicate claim/recovery and no general finance posting. Duties and applicable policy need approval. |
-| P11 · HR-023 · payroll and settlement | **Partial and role gated.** An explicit roster and approved base-only policy produce a frozen encrypted snapshot. Independent approval binds to the reviewed digest and locks the payroll period. The approver can publish employee-scoped payslips and register a balanced, reproducible internal Finance export. The settlement API and CLI reconcile failed, partial, duplicate and reversed external outcomes. | Add the remaining approved earnings and deductions, approved execution mapping and live settlement sign-off. Verify against separately approved worked examples, authority and currency rules. |
+| P10 · HR-021/022 · compensation and obligations | **Implemented for restricted operator workflows.** The directory supports capped policies, dated coverage, private receipt review, reimbursement approval and external settlement. Advances track external disbursements and repayments through the API, CLI and directory. Compensation has independent review and effective-date history. See Slices 46–55. | Verify business policy and duties, reconcile legacy claims, and confirm payout mapping and recovery policy before activation. |
+| P11 · HR-023 · payroll and settlement | **Partial and role gated.** The payroll portal proposes and independently approves monthly policies tied to a controlled record with validated worked examples, captures reviewed earnings and deductions, prepares an explicit-roster run, and rechecks compensation and attached time and leave evidence when approving the frozen snapshot. The portal, API and CLI publish or expose payslips, register an internal Finance export and reconcile external outcomes. A separate reviewer closes the locked period after payslips and reconciliation. See Slices 56–64 and 74–77. | Supply the actual approved policy and worked examples. Agree and implement Finance execution, recovery and replacement statement handling for reviewed corrections. Verify payout mapping, currency, authorized operators and production reconciliation. |
 | P12 · HR-019/020 · development and learning | **Implemented and locally verified.** HR configures mandatory training, verifies exact certificate versions and opens participant-scoped reviews with optional cycle ratings. Employees and authorized managers acknowledge goals and submit assessments. HR records handoffs, calibrates and appends corrections. See Slices 21–24. | Supply the company’s approved cycle labels where ratings are required. Verify production reminder routing and business acceptance. |
 | P13 · HR-024 · employee relations | **Partial and role gated.** `create_hr_case`, `list_hr_cases` and `close_hr_case` cover basic restricted case operations. | Design participant and conflict checks before assigning case authority, then add evidence, investigation, decision and appeal paths. Verify denied discovery and downloads across case participants. Confirm engagement scope separately. |
 | P14 · HR-025 · separation and custody | **Implemented and locally verified.** Offboarding requires director access cutoff, IT handover, inventory custody and independent Finance settlement review. Explicit rehire preserves prior periods and uses independent approval. See Slices 17–20. | Verify physical handover, settlement evidence policy, director assignments and authorization in business UAT. Production activation remains open. |
-| P15 · HR-026–028 · reporting and CLI | **Partial.** `hr_reporting.py`, `HRSummaryPanel` and `garrisonctl_hr.py` cover aggregate exports and multiple HR administrative workflows. | Add terminal coverage for the remaining recruitment, time, document decision and other accepted lifecycle commands as their slices land. Verify read/preview/apply/readback, actor-bound plans, export totals and field scope. |
-| P16 · HR-029/030 · reliability and handover | **Synthetic recovery verified; operational acceptance pending.** HR reminders use existing tasks. An isolated restore at revision 042 recovered HR records, exact file versions and encrypted data. See Slice 32. | Run the recovery and migration procedure with the approved off-host destination, key custody, retained data and measured recovery targets. Record retention policy and business acceptance separately. Preserve retain-only audit mode and technical CI/CD. |
+| P15 · HR-026–028 · reporting and CLI | **Partial.** `hr_reporting.py`, `HRSummaryPanel` and `garrisonctl_hr.py` cover aggregate exports and multiple HR administrative workflows, including recruitment, time records, document decisions, work calendar review and roster allocation. See Slices 65 and 68–71 for recent coverage. | Compare the remaining terminal coverage with the accepted lifecycle workflows. Verify read/preview/apply/readback, actor-bound plans, export totals and field scope. |
+| P16 · HR-029/030 · reliability and handover | **Synthetic recovery verified; operational acceptance pending.** HR reminders use existing tasks. Isolated restores at revision 042 and 057 recovered encrypted HR records, exact file versions and payroll evidence. See Slices 32 and 64. | Run the recovery and migration procedure with the approved off-host destination, key custody, retained data and measured recovery targets. Record retention policy and business acceptance separately. Preserve retain-only audit mode and technical CI/CD. |
 
 Paths in the [workforce guide](HR_WORKFORCE.md#core-workflows) lead to the router,
 services, frontend and role definitions. [CLI administration](CLI_ADMINISTRATION.md#workforce-administration)
@@ -1010,3 +1010,704 @@ approved a prorating policy and posted 0.50 days for a mid-month hire while
 retaining the full-year credits for the original employee. An isolated
 upgrade from revision 044 preserved 14 historic receipts and five policies.
 The downgrade rehearsal refused to remove a retained prorated receipt.
+
+## Slice 44 · reconciled leave inputs for payroll
+
+The payroll preparer can preview approved leave for an explicit roster and
+download the exact reviewed CSV through the API or `garrisonctl`. A leave
+approval must reconcile to its ledger debit. A cancellation after approval
+must reconcile to its reversal. The CSV records paid and unpaid quantities
+without names, reasons, attachments or rates. It covers roster employees with
+no approved leave and blocks an export when inputs are pending or inconsistent.
+Requests spanning two periods require approved daily allocations before they
+can be exported. Quantities are input evidence for payroll.
+
+Four focused tests passed against disposable services, including stale download
+after cancellation, a mismatched debit, cross-period requests, digest stability
+and private file handling. Ruff, mypy, the OpenAPI contract, generated types
+and the frontend build passed locally. The API and terminal change has no
+schema migration on its own. Production verification and policy-backed
+deductions remain open.
+
+## Slice 45 · approved leave across payroll periods
+
+Revision `202605310047` retains scheduled work dates on leave submissions.
+Approval rejects a changed schedule, including a change that preserves the
+total number of days. Once approved, later calendar edits cannot change the
+payroll split. Payroll verifies the full approval against the ledger, then
+exports only the approved dates and units in its period. Legacy approvals
+retain their original totals. A legacy approval crossing a payroll boundary
+requires verified date evidence before export.
+
+All 46 tests in the HR API and CLI suite passed with disposable PostgreSQL and
+Redis at revision `202605310047`. The regression verified exact allocations
+across two periods, half-day handling, moved holidays before and after
+approval, and rejection of invalid or absent date evidence. Ruff, mypy,
+generated TypeScript checks and the frontend build passed. The migration
+and app changes remain local.
+
+## Slice 46 · reimbursement evidence and independent decisions
+
+The API restricts claims to the existing payroll permissions. New claims
+keep their submitter and approved receipt version. Per-employee locking and
+idempotency prevent duplicate submissions, including copies of the same
+receipt for an open, approved or paid claim. Changed details under an
+existing key return a conflict. Only independent actors can review and
+record external settlement. Recording settlement preserves the approval
+and appends an audit event. No live permission grant or Finance mutation
+was introduced.
+
+All 47 HR API and CLI tests passed against disposable PostgreSQL and Redis at
+revision `202605310049`. The new regression covered wrong-employee and
+unapproved receipts, nonprivate files, exact decimal amounts, concurrent
+submissions and decisions, replay conflicts and immutable approval.
+Ruff, mypy, OpenAPI, generated TypeScript and the frontend build passed.
+Production rollout, policy configuration and the Finance handoff remain open.
+
+## Slice 47 · independent compensation approval
+
+Authorized actors can propose encrypted terms and independently approve or
+reject each proposal. Payroll reads only approved terms and keeps its
+calculated snapshot unchanged. HR history marks the approved term effective
+on the business date. Backdated terms that would affect locked payroll are
+refused. Masked history is the default, and explicit access to private terms
+and review reasons is audited.
+
+All 47 HR API and CLI tests passed against disposable PostgreSQL and Redis.
+The payroll regression exercised draft exclusion, self-approval denial,
+future and duplicate dates, private rejection reasons, and locked payroll.
+The upgrade from revision 049 to 051 preserved a legacy term's ciphertext
+and history. A downgrade rehearsal refused to discard reviewed evidence.
+Ruff, mypy, OpenAPI, generated TypeScript and the frontend build passed.
+Production rollout remained open.
+
+## Slice 48 · compensation proposals and review in the portal
+
+The employee directory shows compensation history to actors with restricted
+payroll access. Salary, allowances and rejection reasons are loaded only
+after revealing a specific term. The panel clears the private view when
+closed or when changing employees. A second operator can approve or reject
+the revealed proposal through the same API, and reviewed terms persist
+through reload. The browser fixture grants the two existing permissions only
+inside the disposable test server.
+
+The PostgreSQL regression checked a scoped reveal and rejected a term
+belonging to a different employee. The Chrome scenario exercised input
+validation, preserved the amount after a rejected submission, blocked the
+maker's review controls, and confirmed independent approval and masked
+history after reload. All 47 HR API and CLI tests passed. Three Chrome
+scenarios passed, including employee profile editing and HR access
+revocation. Ruff, mypy, OpenAPI, API types and the frontend build passed.
+No migration was needed for this portal change.
+
+## Slice 49 · reimbursement payable and Finance reconciliation
+
+Approved claims produce a deterministic private payable reference with an
+opaque employee ID and the exact amount, currency and approval timestamp.
+Settlement confirms the external reference, reviewed payable digest and
+exact full amount and currency. The original approval stays intact. The
+terminal verifies the digest, saves an owner-only copy for unpaid claims,
+and supports a private preview, apply and readback for settlement. No
+invoice, payment or bank transfer is created. An outcome short of full
+settlement leaves the claim approved and outstanding.
+
+All 48 HR API and CLI tests passed on disposable services. The tests covered
+denied or premature handoff, stable reference after settlement, stale or
+changed confirmation, amount and currency mismatches, restricted terminal
+output, and unchanged Finance invoice and payment counts. Ruff, mypy,
+OpenAPI, generated TypeScript and the frontend build passed. No schema
+migration was needed. External execution mapping and live activation remain
+open.
+
+## Slice 50 · approved reimbursement ceilings
+
+Restricted operators can propose a ceiling and currency on a benefit type.
+A separate actor approves the policy before an employee can receive capped,
+dated coverage. New claims bind to that assignment. Pending approvals
+reserve the limit. Paid claims continue to count. Rejection and cancellation
+free the reserved amount. Coverage dates are inclusive and overlapping
+assignments for one employee and benefit type are refused.
+
+All 48 HR API and CLI tests passed. The PostgreSQL regression exercised
+exact boundary acceptance, concurrent claims competing for the remaining
+limit, rejection releasing the reservation, and denied assignment or claim
+against unapproved, out-of-window or other-employee coverage. The isolated
+051 to 053 upgrade preserved legacy claims and benefit types. Downgrade
+refused to discard new coverage evidence. Ruff, mypy, OpenAPI, generated
+types and the frontend build passed. Policy values and production activation
+remain open.
+
+## Slice 51 · advances and external repayment evidence
+
+The restricted API supports advance submission, independent approval,
+digest-bound external disbursement, recorded repayments and protected
+readback. Approved policies must explicitly allow advances. An open
+advance reserves its full principal against the same dated ceiling as
+reimbursements until fully repaid. Duplicate repayment evidence is safe to
+retry. A repayment above the outstanding balance is refused.
+
+The full HR suite passed all 48 tests. The final focused run covered
+independent approval and disbursement, same-key replay, recovery races,
+overpayment, closed balances and the resulting reimbursement capacity.
+Invoice and payment counts stayed unchanged. The isolated upgrade to 054
+preserved the previous policy values with advances disabled. The downgrade
+refused to discard advance evidence. Ruff, mypy, OpenAPI, generated
+TypeScript and the frontend build passed. Production activation and
+deduction policies remain open.
+
+## Slice 52 · advance operations in the CLI
+
+`garrisonctl hr advance` supports discovery, private record export,
+submission, decision, disbursement and repayment. Write previews bind the
+actor, environment, private input and reviewed state. The terminal prints
+record identifiers and status. It writes amounts and external evidence only
+to an explicitly requested owner-only file. Each mutation checks API
+readback for the expected state or evidence.
+
+All 49 HR API and CLI tests passed. The CLI focused test covered private
+input permissions, missing approval permission, changed state or
+confirmation fields, replay-safe submission, owner-only output and
+ambiguous readback after a write. The command help, Ruff and mypy passed.
+The CLI requires no new database revision. Production activation remains
+open.
+
+## Slice 53 · employee advances in the portal
+
+Permitted directory users can open an employee's advance records, select
+approved benefit coverage, submit and independently review a request.
+The panel can export the approved payable and lets a separate operator
+record external disbursement and repayments.
+
+All 49 HR API and CLI tests passed. Two Chrome workflows passed with the
+isolated API and database. The advance scenario verified that validation
+preserves the amount, the submitter cannot approve, the approver cannot
+confirm disbursement, the payable download matches the approved record,
+and the paid balance and repayment reference persist after reload.
+The compensation review scenario passed in the same Chrome run.
+Ruff, mypy, OpenAPI, TypeScript and the frontend build also passed.
+No schema migration was needed for this panel.
+
+## Slice 54 · capped benefit policy administration in the portal
+
+Authorized directory users can propose a capped benefit policy, specify its
+currency and opt in to advances. An independent reviewer can inspect and
+approve the proposal. The employee's coverage form lists approved policies
+and records dated assignments. The advance picker uses the same approved
+policy and coverage records.
+
+All 49 HR API and CLI tests passed. In Chrome, the maker proposed a policy,
+the checker approved it, and the maker assigned coverage through the portal.
+An overlapping assignment was refused and the entered dates survived.
+The scenario used that coverage for an advance, verified its ceiling, and
+read back full repayment after reload. The compensation workflow passed
+in the same run. Ruff, mypy, OpenAPI, TypeScript and the frontend build
+passed. No schema migration was needed for the panel.
+
+## Slice 55 · reimbursement operations in the portal
+
+The directory supports private receipt upload, independent receipt review,
+claim submission under approved coverage, exact pinned evidence retrieval,
+independent claim decisions, payable export and external settlement.
+The uploader cannot download the pending receipt through the new review
+path. A separate reviewer with both the document and payroll permissions
+can access that exact pending version.
+
+All 49 HR API and CLI tests and two Chrome workflows passed. The new
+scenario checked the pending and pinned receipt bytes, the maker/checker
+controls, the payable digest, the rejected wrong-amount settlement and
+the persisted external reference after reload. The advance workflow passed
+in the same Chrome run. OpenAPI, generated types and the frontend build
+passed. No new schema migration was needed for the panel.
+
+## Slice 56 · payroll review and payslip publication in the portal
+
+Authorized operators can open a period, create a run under an approved
+base-salary policy and calculate it using an explicit roster. A separate
+reviewer opens the private snapshot by run ID, confirms its digest to lock
+the period, and publishes employee-scoped payslips. Production permissions
+remain role gated.
+
+All 49 HR API and CLI tests passed, and the targeted PostgreSQL payroll
+regression passed on rerun. Two Chrome workflows passed. The new scenario
+checked duplicate roster entry rejection, masked totals before explicit
+review, maker/checker separation, digest-bound approval and the employee's
+published net amount. The existing payslip and access-boundary scenario
+passed after updating its fixture to independently approve compensation.
+Ruff, mypy, OpenAPI, TypeScript and the frontend build passed. The portal
+change required no migration.
+
+## Slice 57 · payroll Finance handoff and reconciliation in the portal
+
+An authorized payroll reviewer can open the Finance handoff from a reviewed
+approved snapshot. The original approver registers the snapshot and CSV
+digests. The browser hashes the downloaded bytes before saving the
+registered CSV. Authorized reviewers can inspect exported payment balances
+and paged event history, then record an external confirmation, failure or
+reversal. Retrying the same form submission reuses its event ID while the
+form is open. This uses the existing API and requires no schema migration
+or new production permission grants.
+
+The isolated HR suite passed 49 tests. Three targeted payroll tests passed
+on rerun. Two Chrome scenarios passed on the final portal changes. The
+payroll scenario verified the downloaded CSV schema, exact amount and
+checksum, recorded a partial payment, rejected an overpayment without
+clearing the form, reversed the original payment and read the reconciliation
+back after reload. The employee payslip access scenario also passed.
+Frontend lint, the generated API type check and the build passed. The
+failure-outcome option uses the existing settlement contract and was not
+exercised in Chrome.
+
+## Slice 58 · payroll policy proposal and review in the portal
+
+A payroll preparer proposes a monthly base-salary policy with an explicit
+currency, rounding method and deduction fraction. A separate approver opens
+the saved policy by ID, inspects its exact calculation rules and approves
+it. The preparer can then select it for a payroll run. The policy-detail
+route requires approval permission and returns `Cache-Control: no-store`.
+This uses existing policy records and approval rules. No migration,
+production permission grant or statutory rate is included.
+
+All 49 isolated HR tests passed. The focused PostgreSQL rerun additionally
+verified exact rule readback, no-store, forbidden access for a preparer
+without approval permission, and not-found behavior. Two Chrome scenarios
+passed. The payroll scenario proposed the policy, confirmed the proposer
+could not approve via UI or direct API, independently approved as the
+reviewer, reloaded and calculated from the approved policy. It also
+exercised the previous payslip and Finance handoff. Ruff, targeted mypy,
+OpenAPI, generated API types, frontend lint and build passed.
+
+## Slice 59 · independently reviewed payroll earnings and deductions
+
+Revision 055 creates an additive adjustment table for policies that
+explicitly enable reviewed inputs. A preparer submits an earning or
+deduction with an opaque evidence reference and an idempotent UUID.
+A different authorized reviewer approves or rejects the exact entry.
+The period and run locks serialize proposals and decisions with
+calculation. Only approved entries go into the encrypted snapshot.
+Pending entries and an omitted employee with an approved entry block
+calculation. The policy rate applies to base salary. Approved fixed
+earnings increase gross and approved fixed deductions increase total
+deductions. There are no new statutory rates or automatic imports.
+
+All 49 HR tests passed. The focused PostgreSQL regression also passed on
+rerun and checked exact totals, request replay, changed payload and duplicate
+evidence conflicts, unauthorized access, stale review, excluded rejected
+inputs and frozen evidence. Two Chrome scenarios passed after disambiguating
+the test selectors. Chrome exercised proposing and independently approving
+an earning and a deduction, reviewing their frozen breakdown and publishing
+the employee payslip. Ruff, targeted mypy, OpenAPI, TypeScript and the
+frontend build passed. An isolated PostgreSQL database upgraded through
+revision 055. Production migration and activation remain pending.
+
+## Slice 60 · close reconciled payroll
+
+The portal and CLI close an approved run after its exact payslips are
+published and every positive payment is reconciled. Zero-net payroll
+uses the deterministic checksum of its empty payment file and does not
+need export registration. Under the existing run and period locks, the
+closure binds the reviewed snapshot, CSV and immutable event set to one
+receipt. An identical retry returns the receipt. Existing settlement,
+export and payslip reads stay available. New settlement events against a
+closed run are rejected until a correction workflow is available.
+
+All 49 isolated HR tests passed, followed by the new targeted CLI test.
+PostgreSQL coverage verified pending-balance refusal, independent authority,
+a stale digest, concurrent close replay, zero-net closure, late reversal
+refusal and continued file access. Chrome passed two scenarios including
+final payment, closure, reload and employee payslip readback. The CLI test
+confirmed stale-plan rejection and receipt readback without payroll line
+details. Ruff, mypy, OpenAPI, generated types, frontend lint and build
+passed. Revision 056 ran on the isolated database. Production remains
+unverified for this slice.
+
+## Slice 61 · review payroll time and leave inputs in the portal
+
+The preparer can open the time and leave previews for the selected draft
+run's period and exact roster. Pending or inconsistent records are shown
+with their employee and source IDs. Clean sources show reconciled hours
+or days and support an exact CSV download checked against the preview
+digest. Changing roster membership discards the prior review. The UI uses
+the existing source APIs and requires no migration. The preview does not
+apply overtime or unpaid leave rates to wages.
+
+Ten targeted payroll tests and two Chrome scenarios passed. Chrome
+observed a missing locked timesheet, cleared the preview by editing the
+roster, then refreshed against a locked timesheet with independently
+approved overtime. Both source CSVs matched the displayed checksums and
+omitted private notes. The same scenario continued through calculation,
+payslip publication, settlement and closure. Frontend lint, generated type
+check and build passed. HR is the confirmed business owner; its approved
+policy reference remains unconfirmed. Production has not been changed.
+
+## Slice 62 · freeze reviewed payroll source evidence
+
+The preparer can include time and leave review in the calculation command
+from the portal or CLI. Both inputs must reconcile against the reviewed
+digests for the exact roster. Source reads use the existing locks without
+committing; stale evidence rejects calculation before the snapshot is
+saved. An identical retry reuses the snapshot and a changed source
+selection conflicts. The existing encrypted snapshot stores the two
+reviewed CSVs and summary totals. A sensitive payroll reviewer can
+download the frozen bytes through an audited, no-store endpoint. This
+requires no migration and does not introduce new wage formulas.
+
+Ten targeted payroll tests and two Chrome workflows passed. Chrome
+checked stale and changed calculation commands, exact retry, protected
+source downloads, and byte-for-byte retention after a new live overtime
+request. A focused CLI rerun checked both digests are sent together.
+Ruff, mypy, OpenAPI, generated API types, frontend lint and build passed.
+
+## Slice 63 · review corrections to closed payroll
+
+Preparers can propose corrected gross and deduction amounts for a line
+in a closed run. The encrypted proposal references the exact original
+snapshot and the current approved correction when one exists. A separate
+reviewer approves or rejects the exact proposal. Approved successors
+preserve the prior approved correction as their baseline. The portal
+shows both amounts and the net delta. The original payroll snapshot,
+employee payslip, Finance CSV and settlement history remain intact.
+Payment execution, overpayment recovery and corrected statement issuance
+remain open. Slice 64 adds correction CLI operations.
+
+Ten targeted payroll tests passed. The PostgreSQL run exercised revision
+057, stale baseline and digest rejection, proposal and decision replay,
+self-review denial, a second approved correction and unchanged historical
+payslip, export and snapshot. Two Chrome workflows passed, including
+proposal, separate approval, persistence after reload and original
+employee payslip access. Ruff, mypy, OpenAPI, generated API types,
+frontend lint and build passed. Production has not been changed.
+
+## Slice 64 · payroll correction CLI and recovery rehearsal
+
+The CLI lists, reads, proposes and decides closed payroll corrections.
+Proposal amounts and the evidence reference are read from an owner-only
+file. The write previews bind the actor, original snapshot, reviewed
+baseline and proposal or decision digest. Write responses include a
+verified receipt and omit the private amounts and evidence reference.
+The new exact-record route enforces sensitive permission and confirms
+the correction belongs to the requested closed run and line.
+
+The 51-test HR suite passed, including CLI owner-only input, stale
+baseline refusal, self-review refusal and receipt readback. The API test
+verified authorized exact read, no-store, forbidden access and an unknown
+correction. Two Chrome scenarios passed. Whole-backend Ruff and mypy,
+OpenAPI, generated API types, frontend lint, 50 frontend tests and build
+passed.
+
+The populated synthetic PostgreSQL 18 database was dumped and restored
+at revision 057 into a distinct disposable database after the source
+stopped accepting connections. Application readback reproduced the
+correction, closure, payslip publication, snapshot, frozen time/leave and
+Finance CSV digests. The wrong HR key raised the expected 503
+decryption error. This rehearsal verified database records and key
+behavior on one machine. Off-host recovery, production key custody and
+the release-candidate production restore remain open.
+
+## Slice 65 · attendance, timesheet and overtime CLI
+
+HR time administrators can list, read, create and decide attendance
+entries, attendance corrections, timesheets and overtime requests from
+the CLI. Create and review read an owner-only JSON file, bind previews to
+the signed-in actor and request, and read back the saved status. Review
+also binds the current record and sends its revision where supported by
+the existing decision contract. New record-detail endpoints retain the
+existing attendance read permission and return no-store responses.
+Write receipts omit private notes. No migration was needed.
+
+The 55-test HR suite passed. PostgreSQL covered exact detail reads,
+missing records and denied reads for all four record types. CLI tests
+covered private-file requirements, stale-plan rejection and receipt
+readback for each command group. Two Chrome scenarios passed. The
+payroll scenario created overtime and a timesheet through the real CLI,
+approved both as a different actor, locked the timesheet and reconciled
+the resulting period in the portal. Backend lint and mypy, generated
+OpenAPI and TypeScript, frontend lint, 50 Vitest cases and build passed.
+
+## Slice 66 · reconcile legacy work dates for cross-month leave
+
+HR can propose exact historical work dates for a previously approved
+cross-month request with missing dates. A different reviewer approves
+or rejects that exact proposal. The service verifies the original debit,
+approved units and request revision, and refuses to change source dates
+when an approved payroll run already covers that employee and date
+range. Approval retains the dates without posting another debit or
+recalculating the historic calendar. Revision 058 creates an empty
+evidence table and performs no backfill.
+
+All 55 HR tests passed. The focused PostgreSQL rerun checked a payroll
+lock that appeared after the proposal, revision and digest checks,
+independent authority, exact replay and the restored month split with
+one unchanged debit. Two Chrome workflows passed, with the historical
+date workflow passing again after the focused rerun. Chrome exercised
+invalid units, separate approval and readback after reload. Ruff, mypy,
+OpenAPI, generated types, frontend lint and build passed. Production data
+and policy have not been changed.
+
+## Slice 67 · integrated HR regression and populated migration rehearsal
+
+A disposable PostgreSQL 18 database at revision 013 was seeded with a
+synthetic employee, approved cross-month leave and its debit, encrypted
+compensation, an existing benefit and a reimbursement. The complete
+upgrade to revision 058 preserved the projected original IDs, status,
+amounts, approval fields and encrypted compensation bytes. The upgraded
+application decrypted the compensation term, kept missing legacy work
+dates explicit, and created no advance, adjustment, closure, correction
+or leave evidence records by inference.
+
+The complete local backend suite passed in two isolated CI-equivalent
+shards. The JUnit reports covered 306 and 621 unique tests, with no
+failures, skips or overlap. An earlier unsharded run exposed an SMTP
+test that inherited the local useSend transport setting. The fixture
+now selects SMTP explicitly. All 67 Chrome scenarios passed. The final
+browser manifest covers 31 and 36 cases without overlap or omissions.
+Local timings project a more balanced Chrome split. The next self-hosted
+run still needs to measure CI wall time. Compose configuration and
+deployment script syntax checks passed.
+
+The database fixture was synthetic. No production database, keys, roles
+or deployment were modified. HR's approved policy, authorized operator
+assignments, Finance's operational correction process, and the actual
+production maintenance and recovery verification remain open.
+
+## Slice 68 · company policy editions and employee acknowledgments in the CLI
+
+Company policy publication now has an actor-bound CLI preview that pins the
+edition, predecessor, and checksum of the exact approved attachment. Linked
+employees can list and read their visible editions, download the pinned
+file into a new owner-only path, and acknowledge the named version. The
+employee-owned download response includes the registered size and hash so
+the CLI can verify the bytes. Historical acknowledged editions keep their
+own attachments and receipts. This change requires no migration.
+
+The 56-test HR suite and two Chrome workflows passed. The policy workflow
+published the replacement through the CLI, downloaded the exact original
+file using the employee account, and retained separate receipts across
+reload. Focused tests refused a changed attachment plan, a mismatched
+edition, and altered bytes. Backend lint and mypy, OpenAPI, generated
+TypeScript, frontend lint and build passed. Production was unchanged.
+
+## Slice 69 · discover and reconcile missing historical leave dates
+
+HR can find approved, full-day cross-month leave with missing work dates in
+the portal and CLI. Requests covered by approved payroll explicitly require
+the payroll correction workflow. The CLI supports proposal and independent
+review using previews that bind the actor, affected request and expected
+state. The original leave debit is preserved. No new migration is required.
+
+All 56 HR tests passed on disposable PostgreSQL. One Chrome workflow passed
+through candidate discovery, CLI proposal and independent approval, and
+readback after reload. Reconciliation of live records remains open pending
+the historical evidence for each affected request.
+
+## Slice 70 · work calendar administration in the CLI
+
+HR can read calendars, create and revise drafts, submit, review, and publish
+through the existing work calendar API. Writes bind the signed-in actor,
+request and current revision to the preview. The CLI reads back the
+resulting revision and status. Approval still requires a different HR
+Manager from the creator and submitter. No migration is required.
+
+Two calendar tests passed on disposable PostgreSQL. The Chrome scenario
+passed through a portal draft, CLI create and revision, stale-plan and
+self-approval rejection, independent CLI approval, and portal publication.
+CLI readback and an attendance import confirmed the published calendar was
+available to the existing time workflow.
+
+## Slice 71 · roster allocation and cancellation in the CLI
+
+HR can list and inspect allocations, assign a published shift, and cancel
+an allocation using an actor-bound preview and saved-record verification.
+The create preview binds the request identifiers and date. The server
+resolves the shift when it applies the allocation. The exact read uses
+the existing attendance permission and disables caching. Write receipts
+omit names and cancellation reasons. No migration is required.
+
+The PostgreSQL regression passed exact and denied reads, preserved overnight
+overlap enforcement and retained cancellation history. The Chrome workflow
+passed portal and CLI allocation and cancellation, idempotent allocation
+replay and reload. Backend lint and typing, OpenAPI and generated types,
+and frontend lint and build passed.
+
+## Slice 72 · salary confirmation from approved compensation
+
+Salary confirmation drafts use the current independently approved
+compensation term for base salary, currency and pay frequency. The draft
+retains the term reference and verifies it again at issuance. Only HR
+Managers with payroll-sensitive access can prepare or review a salary
+confirmation. The linked employee can read their own issued letter. Text
+remains encrypted, and the audit records the source reference without
+logging the salary or letter text.
+
+All 57 HR tests passed on disposable PostgreSQL. Coverage included blocked
+caller-supplied salary values, a future term, a source change with identical
+pay, independent review, permission revocation and recipient isolation.
+Two Chrome workflows passed for salary and ordinary letters. The populated
+058 to 060 upgrade preserved an existing letter and validated the new
+source reference. Production templates, data, operators and migration
+execution remain open.
+
+## Slice 73 · reverse approved leave against the original debit
+
+HR can reverse approved leave from the portal with a reason. The service
+verifies the exact debit before adding a single reversing credit. The
+audit identifies the original debit and the approval or reversal checks
+for approved payroll under the payroll lock. The employee can see the
+result and reason in My HR. No migration is required.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL. The regressions
+covered missing reasons, a mismatched debit, denied employee reversal,
+concurrent reversals, and blocked changes for approved payroll.
+Two Chrome workflows passed after correcting My HR to show the cancellation
+reason after reload. The legacy dates review remained available. Lint,
+typing, frontend build and the OpenAPI check passed.
+
+## Slice 74 · verify attached payroll evidence at approval
+
+The API reproduced an approval after the run's attached leave evidence
+changed through a reversal. Approval now locks the snapshot roster and
+reconciles both attached sources against their frozen digests. A conflict
+leaves the run calculated and the period open. The earlier snapshot and
+its files stay available for authorized review. The recheck runs inside the
+approval transaction and uses the existing approval and sensitive grants.
+Source previews retain their separate preparation permission.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL. The regression
+proved that a leave reversal blocks approval by a reviewer without the
+preparation grant and that the original file is unchanged. In Chrome, a
+pending overtime request blocked approval. After the request was rejected,
+the matching snapshot was approved and the original payroll workflow
+completed through payslip publication, Finance reconciliation and closure.
+The legacy leave evidence workflow also passed in Chrome.
+
+## Slice 75 · verify compensation at payroll approval
+
+Approval checks roster eligibility and the exact approved compensation term
+used for each employee. A superseded term leaves the original snapshot
+readable and the period open for a new run. The recheck uses the same
+employee locks as calculation and source reconciliation.
+
+The API reproduced approval of a superseded term before the change. The
+regression now rejects it even when the replacement has the same amount.
+Two replacement snapshots use the updated term, and only one can lock the
+period. All 60 HR and accrual tests passed on disposable PostgreSQL. The
+salary confirmation and payroll-to-settlement Chrome workflows passed.
+Backend lint, typing and the OpenAPI check passed.
+
+## Slice 76 · retain the controlled payroll policy record
+
+The policy form records the restricted system's opaque document identifier,
+version, effective date and approved decision reference. The reviewer sees
+these before independent approval. Calculation rejects use before the
+effective date and keeps the record in the encrypted snapshot. Existing
+policies and legacy API clients retain compatibility.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL. The API test
+rejects a URL in place of the identifier and an approved policy effective
+after the period start. A populated upgrade from 060 to 061 preserved the
+preexisting policy and rules. Backend and frontend static, contract and
+build checks passed. The Chrome payroll workflow verified entry, independent
+review, snapshot readback and completion through Finance reconciliation.
+
+## Slice 77 · validate worked examples before payroll policy approval
+
+The controlled record accepts one to twelve synthetic examples. The same
+Decimal calculation computes examples and payroll lines. The service
+checks gross, deductions and net and leaves a mismatched policy pending.
+The independent reviewer sees the retained examples, and the snapshot
+stores them with the controlled source. The existing JSONB field holds
+the examples.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL. The API
+rejected an incorrect expected net at approval and retained the draft.
+The Chrome payroll workflow entered and reviewed an adjustment example and
+completed through settlement. Lint, typing, OpenAPI and build checks passed.
+
+## Slice 78 · correct a pending payroll policy draft
+
+The original preparer can revise a pending controlled policy under the
+same ID. Revisions and approvals serialize on the policy row. A reviewer
+submits the version they opened so an intervening correction returns a
+conflict. Existing approved policies retain their content and reference.
+The new draft workflow uses the existing timestamp and requires no
+schema migration.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL, including
+non-owner edits, stale edits and approvals, and edits after approval.
+Chrome verified a failed worked example, correction by the preparer,
+rejection of the previous review version, and approval after reopening.
+The scenario continued through Finance reconciliation. Lint, typing,
+OpenAPI, generated types and build checks passed.
+
+## Slice 79 · integrated payroll candidate verification
+
+The local worktree based on `c4a61cd` passed all 929 backend tests
+across the two CI-equivalent PostgreSQL shards, all 50 frontend tests,
+and all 68 Google Chrome scenarios. JUnit reports showed no failures or
+skips. The populated 013-to-061 upgrade preserved the seeded employee,
+leave debit, benefit and claim history and decrypted the original
+compensation record. Frontend lint, generated contract, build, Compose
+configuration and deployment shell syntax checks passed.
+
+Retiming the Chrome cases moved one existing scenario from the slower
+selector to the faster one. The 33/35 selectors contain all 68 cases
+without overlap. The estimated test-time sums are 171.40 and 170.84
+seconds. Measure actual runner wall time when this worktree is published.
+
+The last published `main` had green self-hosted CI on `c4a61cd`.
+Its production workflow stopped before deployment because schema
+revisions require maintenance. These local results do not establish
+production payroll acceptance or authorize a database change.
+
+## Slice 80 · find reviewed employment changes due for application
+
+The HR portal and CLI list approved changes that have reached their
+effective date, based on the configured business date. The list is
+paginated, omits proposal reasons and values, and identifies employee
+revisions that have changed since review. The existing employee detail
+and apply workflow still checks that an exact change remains current.
+The queue requires existing sensitive employee access and no migration.
+
+All 60 HR and accrual tests passed on disposable PostgreSQL. The API
+coverage checked future and applied exclusion, pagination, restricted
+access and stale revision status. Chrome found an approved change from
+the queue, inspected its employee, applied it and confirmed it left the
+queue. The same browser scenario verified the real CLI listing and
+existing apply command. Lint, typing, contracts and build passed.
+
+## Slice 81 · rehearse account provisioning and credential delivery
+
+A disposable PostgreSQL and Redis environment exercised the real user
+creation, role readback and authentication APIs. The managing director
+issued separate CLI previews and applied them for two synthetic accounts
+with different roles. A second create for the same email was refused.
+The configured application mail service sent an individual synthetic
+temporary password to each recipient through a loopback SMTP sink.
+Each account authenticated with its own password and the OTP received by
+the sink. The API did not expose a development OTP. The HR account had
+directory access and the site supervisor received a denial. A rejected
+SMTP recipient surfaced as a delivery error.
+
+This rehearsal used synthetic recipients and an SMTP sink. Production
+sender delivery and live account creation remain unexecuted. The supplied
+roster includes display names, emails and role columns. Creating any
+account missing from the production directory also requires its approved
+employee code and phone value. Existing accounts can be reconciled with
+their existing identifiers. The restricted roster and all generated
+credentials stayed outside Git.
+
+## Slice 82 · payroll policy CLI review
+
+Payroll preparers can propose and correct a controlled policy from a
+private JSON file. An independent reviewer can save the exact policy to
+a new owner-only file. Approval validates the review digest and the
+current record revision. Receipts omit rules, restricted references and
+worked-example amounts.
+
+All 76 targeted HR, accrual and CLI tests passed on disposable
+PostgreSQL. The Chrome payroll workflow passed with actual CLI proposal,
+private review download, correction, stale review rejection, independent
+approval and readback, followed by the portal settlement workflow. Ruff,
+mypy, frontend lint and browser TypeScript checks passed.
+
+The production policy reference, approved examples and operational
+assignments remain unconfirmed. This slice used synthetic policy data.

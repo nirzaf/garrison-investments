@@ -1,10 +1,10 @@
 import json
 from collections.abc import Callable
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 from fastapi.responses import Response
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
@@ -45,12 +45,20 @@ from app.schemas.hr import (
     CertificationListResponse,
     CertificationResponse,
     CompensationTermCreateRequest,
+    CompensationTermDecisionRequest,
     CompensationTermListResponse,
     CompensationTermResponse,
     DepartmentCreateRequest,
     DepartmentListResponse,
     DepartmentResponse,
     DepartmentUpdateRequest,
+    DueEmploymentChangeList,
+    EmployeeAdvanceDecision,
+    EmployeeAdvanceDisbursement,
+    EmployeeAdvanceListResponse,
+    EmployeeAdvancePayment,
+    EmployeeAdvanceRequest,
+    EmployeeAdvanceResponse,
     EmployeeBenefitCreateRequest,
     EmployeeBenefitListResponse,
     EmployeeBenefitResponse,
@@ -116,6 +124,11 @@ from app.schemas.hr import (
     LeaveAccrualRequest,
     LeaveAccrualResponse,
     LeaveBalanceListResponse,
+    LeaveDateEvidenceCandidates,
+    LeaveDateEvidenceCreate,
+    LeaveDateEvidenceDecision,
+    LeaveDateEvidencePage,
+    LeaveDateEvidenceResponse,
     LeaveLedgerAdjustRequest,
     LeaveLedgerEntryResponse,
     LeavePolicyCreateRequest,
@@ -148,6 +161,7 @@ from app.schemas.hr import (
     ManagerReviewItemResponse,
     ManagerReviewKind,
     ManagerReviewListResponse,
+    MyPolicyFileResponse,
     MyPolicyListResponse,
     OffboardingCaseListResponse,
     OffboardingCaseResponse,
@@ -174,13 +188,26 @@ from app.schemas.hr import (
     OvertimeRequestListResponse,
     OvertimeRequestResponse,
     OvertimeSelfCreateRequest,
+    PayrollAdjustmentCreate,
+    PayrollAdjustmentList,
+    PayrollAdjustmentResponse,
+    PayrollAdjustmentReview,
+    PayrollClosureRequest,
+    PayrollClosureResponse,
+    PayrollCorrectionCreate,
+    PayrollCorrectionDecision,
+    PayrollCorrectionPage,
+    PayrollCorrectionResponse,
     PayrollExportConfirmRequest,
     PayrollExportPreview,
     PayrollExportReceipt,
+    PayrollLeaveInputPreview,
     PayrollPeriodCreateRequest,
     PayrollPeriodListResponse,
     PayrollPeriodResponse,
+    PayrollPolicyApproveRequest,
     PayrollPolicyCreateRequest,
+    PayrollPolicyDraftUpdateRequest,
     PayrollPolicyListResponse,
     PayrollPolicyResponse,
     PayrollRunApproveRequest,
@@ -193,6 +220,7 @@ from app.schemas.hr import (
     PayrollSettlementEventsResponse,
     PayrollSettlementRequest,
     PayrollSettlementSummary,
+    PayrollSnapshotCalculateRequest,
     PayrollTimeDownloadRequest,
     PayrollTimeInputPreview,
     PayslipDetail,
@@ -214,6 +242,9 @@ from app.schemas.hr import (
     ReimbursementCreateRequest,
     ReimbursementDecisionRequest,
     ReimbursementListResponse,
+    ReimbursementOperatorListResponse,
+    ReimbursementOperatorResponse,
+    ReimbursementPayableResponse,
     ReimbursementResponse,
     RequisitionCreateRequest,
     RequisitionDecisionRequest,
@@ -269,6 +300,13 @@ from app.schemas.projects import ProjectOptionListResponse
 from app.services.audit_service import AuditService
 from app.services.hr_attendance_import import MAX_ATTENDANCE_CSV_BYTES, review_attendance_csv
 from app.services.hr_leave_accrual import process_leave_accrual, process_leave_accrual_catch_up
+from app.services.hr_leave_date_evidence import (
+    decide_leave_date_evidence,
+    list_leave_date_evidence,
+    list_missing_leave_dates,
+    propose_leave_date_evidence,
+    read_leave_date_evidence,
+)
 from app.services.hr_leave_rollover import process_leave_rollover
 from app.services.hr_manager_review import (
     can_review_direct_reports,
@@ -276,12 +314,19 @@ from app.services.hr_manager_review import (
     recommend_request,
 )
 from app.services.hr_offboarding_custody import list_offboarding_custody, record_offboarding_custody
+from app.services.hr_payroll_correction import (
+    decide_payroll_correction,
+    list_payroll_corrections,
+    propose_payroll_correction,
+    read_payroll_correction,
+)
 from app.services.hr_payroll_export import (
     download_payroll_export,
     preview_payroll_export,
     register_payroll_export,
 )
 from app.services.hr_payroll_settlement import (
+    close_payroll_period,
     list_payroll_settlement_events,
     read_payroll_settlement_event,
     record_payroll_settlement,
@@ -294,9 +339,13 @@ from app.services.hr_payroll_snapshot import (
     list_employee_payslips,
     publish_payslips,
     read_employee_payslip,
+    read_frozen_payroll_source,
+    read_payroll_adjustments,
     read_payroll_snapshot,
+    review_payroll_adjustment,
+    submit_payroll_adjustment,
 )
-from app.services.hr_payroll_time import payroll_time_inputs
+from app.services.hr_payroll_time import payroll_leave_inputs, payroll_time_inputs
 from app.services.hr_performance import (
     get_performance_review,
     list_performance_reviews,
@@ -751,10 +800,10 @@ async def list_my_policies(
     return await HrService(session).list_self_policies(current_user)
 
 
-@router.get("/me/policies/{policy_id}/download", response_model=HrDocumentDownloadResponse)
+@router.get("/me/policies/{policy_id}/download", response_model=MyPolicyFileResponse)
 async def download_my_policy(
     policy_id: UUID, current_user: CurrentUser, session: DbSession, response: Response
-) -> HrDocumentDownloadResponse:
+) -> MyPolicyFileResponse:
     response.headers["Cache-Control"] = "no-store"
     return await HrService(session).get_self_policy_download_url(policy_id, current_user)
 
@@ -811,8 +860,9 @@ async def reopen_my_service_request(
 
 @router.get("/me/reimbursements", response_model=ReimbursementListResponse)
 async def list_my_reimbursements(
-    current_user: CanReadPayrollSensitive, session: DbSession
+    current_user: CanReadPayrollSensitive, session: DbSession, response: Response
 ) -> ReimbursementListResponse:
+    response.headers["Cache-Control"] = "no-store"
     svc = HrService(session)
     emp = await svc.require_self_employee(current_user)
     rows, total = await svc.list_reimbursements(employee_id=emp.id)
@@ -826,11 +876,13 @@ async def create_my_reimbursement(
     payload: ReimbursementCreateRequest,
     current_user: CanReadPayrollSensitive,
     session: DbSession,
+    response: Response,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ReimbursementResponse:
-    svc = HrService(session)
-    emp = await svc.require_self_employee(current_user)
-    scoped = payload.model_copy(update={"employee_id": emp.id})
-    claim = await svc.create_reimbursement(scoped, current_user)
+    response.headers["Cache-Control"] = "no-store"
+    claim = await HrService(session).create_reimbursement(
+        payload, current_user, idempotency_key=idempotency_key, own_claim=True
+    )
     return ReimbursementResponse.model_validate(claim)
 
 
@@ -998,6 +1050,15 @@ async def list_employment_changes(
     return EmploymentChangeListResponse(
         items=[EmploymentChangeResponse.model_validate(row) for row in rows], total=total
     )
+
+
+@router.get("/employment-changes/due", response_model=DueEmploymentChangeList)
+async def list_due_employment_changes(
+    _: CanAccessSensitive, session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> DueEmploymentChangeList:
+    return await HrService(session).list_due_employment_changes(limit, offset)
 
 
 @router.post(
@@ -1825,6 +1886,15 @@ async def list_roster(
     )
 
 
+@router.get("/roster/{allocation_id}", response_model=RosterAllocationResponse)
+async def read_roster_allocation(
+    allocation_id: UUID, response: Response, _: CanRecordAttendance, session: DbSession
+) -> RosterAllocationResponse:
+    row = await HrService(session).get_roster_allocation(allocation_id)
+    response.headers["Cache-Control"] = "no-store"
+    return RosterAllocationResponse.model_validate(row)
+
+
 @router.post(
     "/roster", response_model=RosterAllocationResponse, status_code=status.HTTP_201_CREATED
 )
@@ -1975,6 +2045,16 @@ async def create_attendance_correction(
     return AttendanceCorrectionResponse.model_validate(row)
 
 
+@router.get("/attendance/corrections/{correction_id}", response_model=AttendanceCorrectionResponse)
+async def read_attendance_correction(
+    correction_id: UUID, _: CanRecordAttendance, session: DbSession, response: Response
+) -> AttendanceCorrectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return AttendanceCorrectionResponse.model_validate(
+        await HrService(session).get_attendance_correction(correction_id)
+    )
+
+
 @router.post(
     "/attendance/corrections/{correction_id}/decision",
     response_model=AttendanceCorrectionResponse,
@@ -1987,6 +2067,16 @@ async def decide_attendance_correction(
 ) -> AttendanceCorrectionResponse:
     row = await HrService(session).decide_attendance_correction(correction_id, payload, actor)
     return AttendanceCorrectionResponse.model_validate(row)
+
+
+@router.get("/attendance/{entry_id}", response_model=AttendanceEntryResponse)
+async def read_attendance_entry(
+    entry_id: UUID, _: CanRecordAttendance, session: DbSession, response: Response
+) -> AttendanceEntryResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return AttendanceEntryResponse.model_validate(
+        await HrService(session).get_attendance_entry(entry_id)
+    )
 
 
 @router.get("/timesheets", response_model=TimesheetListResponse)
@@ -2007,6 +2097,16 @@ async def create_timesheet(
 ) -> TimesheetResponse:
     row = await HrService(session).create_timesheet(payload, actor)
     return TimesheetResponse.model_validate(row)
+
+
+@router.get("/timesheets/{timesheet_id}", response_model=TimesheetResponse)
+async def read_timesheet(
+    timesheet_id: UUID, _: CanRecordAttendance, session: DbSession, response: Response
+) -> TimesheetResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return TimesheetResponse.model_validate(
+        await HrService(session).get_timesheet(timesheet_id)
+    )
 
 
 @router.post("/timesheets/{timesheet_id}/decision", response_model=TimesheetResponse)
@@ -2040,6 +2140,16 @@ async def create_overtime_request(
 ) -> OvertimeRequestResponse:
     row = await HrService(session).create_overtime_request(payload, actor)
     return OvertimeRequestResponse.model_validate(row)
+
+
+@router.get("/overtime/{overtime_id}", response_model=OvertimeRequestResponse)
+async def read_overtime(
+    overtime_id: UUID, _: CanRecordAttendance, session: DbSession, response: Response
+) -> OvertimeRequestResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return OvertimeRequestResponse.model_validate(
+        await HrService(session).get_overtime_request(overtime_id)
+    )
 
 
 @router.post("/overtime/{overtime_id}/decision", response_model=OvertimeRequestResponse)
@@ -2218,6 +2328,66 @@ async def decide_leave_request(
 ) -> LeaveRequestResponse:
     row = await HrService(session).decide_leave_request(leave_request_id, payload, actor)
     return LeaveRequestResponse.model_validate(row)
+
+
+@router.get("/leave/date-evidence/candidates", response_model=LeaveDateEvidenceCandidates)
+async def find_legacy_leave_dates(
+    actor: CanManageLeave, session: DbSession, response: Response,
+    employee_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LeaveDateEvidenceCandidates:
+    response.headers["Cache-Control"] = "no-store"
+    return await list_missing_leave_dates(
+        session, actor, employee_id=employee_id, limit=limit, offset=offset,
+    )
+
+
+@router.get(
+    "/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidencePage
+)
+async def read_legacy_leave_dates(
+    request_id: UUID, actor: CanManageLeave, session: DbSession, response: Response,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LeaveDateEvidencePage:
+    response.headers["Cache-Control"] = "no-store"
+    return await list_leave_date_evidence(session, request_id, actor, limit=limit, offset=offset)
+
+
+@router.post(
+    "/leave/requests/{request_id}/date-evidence", response_model=LeaveDateEvidenceResponse
+)
+async def propose_legacy_leave_dates(
+    request_id: UUID, payload: LeaveDateEvidenceCreate, actor: CanManageLeave,
+    session: DbSession, response: Response,
+) -> LeaveDateEvidenceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await propose_leave_date_evidence(session, request_id, payload, actor)
+
+
+@router.get(
+    "/leave/requests/{request_id}/date-evidence/{proposal_id}",
+    response_model=LeaveDateEvidenceResponse,
+)
+async def show_legacy_leave_date_proposal(
+    request_id: UUID, proposal_id: UUID, actor: CanManageLeave,
+    session: DbSession, response: Response,
+) -> LeaveDateEvidenceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await read_leave_date_evidence(session, request_id, proposal_id, actor)
+
+
+@router.post(
+    "/leave/requests/{request_id}/date-evidence/{proposal_id}/decision",
+    response_model=LeaveDateEvidenceResponse,
+)
+async def decide_legacy_leave_dates(
+    request_id: UUID, proposal_id: UUID, payload: LeaveDateEvidenceDecision,
+    actor: CanApproveLeave, session: DbSession, response: Response,
+) -> LeaveDateEvidenceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await decide_leave_date_evidence(session, request_id, proposal_id, payload, actor)
 
 
 # --- Policies, Letter Templates, Service Requests ---
@@ -2750,8 +2920,9 @@ async def create_certification(
 
 @router.get("/benefits/types", response_model=BenefitTypeListResponse)
 async def list_benefit_types(
-    _: CanReadPayrollSensitive, session: DbSession
+    _: CanReadPayrollSensitive, session: DbSession, response: Response
 ) -> BenefitTypeListResponse:
+    response.headers["Cache-Control"] = "no-store"
     rows, total = await HrService(session).list_benefit_types()
     return BenefitTypeListResponse(
         items=[BenefitTypeResponse.model_validate(r) for r in rows], total=total
@@ -2762,9 +2933,22 @@ async def list_benefit_types(
     "/benefits/types", response_model=BenefitTypeResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_benefit_type(
-    payload: BenefitTypeCreateRequest, actor: CanReadPayrollSensitive, session: DbSession
+    payload: BenefitTypeCreateRequest,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
 ) -> BenefitTypeResponse:
+    response.headers["Cache-Control"] = "no-store"
     row = await HrService(session).create_benefit_type(payload, actor)
+    return BenefitTypeResponse.model_validate(row)
+
+
+@router.post("/benefits/types/{benefit_type_id}/approve", response_model=BenefitTypeResponse)
+async def approve_benefit_policy(
+    benefit_type_id: UUID, actor: CanApprovePayroll, session: DbSession, response: Response
+) -> BenefitTypeResponse:
+    response.headers["Cache-Control"] = "no-store"
+    row = await HrService(session).approve_benefit_policy(benefit_type_id, actor)
     return BenefitTypeResponse.model_validate(row)
 
 
@@ -2772,8 +2956,10 @@ async def create_benefit_type(
 async def list_employee_benefits(
     _: CanReadPayrollSensitive,
     session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
 ) -> EmployeeBenefitListResponse:
+    response.headers["Cache-Control"] = "no-store"
     rows, total = await HrService(session).list_employee_benefits(employee_id=employee_id)
     return EmployeeBenefitListResponse(
         items=[EmployeeBenefitResponse.model_validate(r) for r in rows], total=total
@@ -2786,43 +2972,147 @@ async def list_employee_benefits(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_employee_benefit(
-    payload: EmployeeBenefitCreateRequest, actor: CanReadPayrollSensitive, session: DbSession
+    payload: EmployeeBenefitCreateRequest,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
 ) -> EmployeeBenefitResponse:
+    response.headers["Cache-Control"] = "no-store"
     row = await HrService(session).create_employee_benefit(payload, actor)
     return EmployeeBenefitResponse.model_validate(row)
 
 
-@router.get("/reimbursements", response_model=ReimbursementListResponse)
+@router.get("/advances", response_model=EmployeeAdvanceListResponse)
+async def list_advances(
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+    employee_id: Annotated[UUID, Query()],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EmployeeAdvanceListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    items, total = await HrService(session).list_advances(
+        employee_id, actor, limit=limit, offset=offset
+    )
+    return EmployeeAdvanceListResponse(items=items, total=total)
+
+
+@router.post("/advances", response_model=EmployeeAdvanceResponse, status_code=201)
+async def submit_advance(
+    payload: EmployeeAdvanceRequest,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> EmployeeAdvanceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).submit_advance(payload, actor, idempotency_key=idempotency_key)
+
+
+@router.get("/advances/{advance_id}", response_model=EmployeeAdvanceResponse)
+async def read_advance(
+    advance_id: UUID, actor: CanReadPayrollSensitive, session: DbSession, response: Response
+) -> EmployeeAdvanceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).read_advance(advance_id, actor)
+
+
+@router.post("/advances/{advance_id}/decision", response_model=EmployeeAdvanceResponse)
+async def decide_advance(
+    advance_id: UUID,
+    payload: EmployeeAdvanceDecision,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
+) -> EmployeeAdvanceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).decide_advance(advance_id, payload, actor)
+
+
+@router.post("/advances/{advance_id}/disburse", response_model=EmployeeAdvanceResponse)
+async def disburse_advance(
+    advance_id: UUID,
+    payload: EmployeeAdvanceDisbursement,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
+) -> EmployeeAdvanceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).disburse_advance(advance_id, payload, actor)
+
+
+@router.post("/advances/{advance_id}/repayments", response_model=EmployeeAdvanceResponse)
+async def recover_advance(
+    advance_id: UUID,
+    payload: EmployeeAdvancePayment,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
+) -> EmployeeAdvanceResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).recover_advance(advance_id, payload, actor)
+
+
+@router.get("/reimbursements", response_model=ReimbursementOperatorListResponse)
 async def list_reimbursements(
     _: CanReadPayrollSensitive,
     session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
-) -> ReimbursementListResponse:
-    rows, total = await HrService(session).list_reimbursements(employee_id=employee_id)
-    return ReimbursementListResponse(
-        items=[ReimbursementResponse.model_validate(r) for r in rows], total=total
+    limit: Annotated[int | None, Query(ge=1, le=50)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ReimbursementOperatorListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    rows, total = await HrService(session).list_reimbursements(
+        employee_id=employee_id, limit=limit, offset=offset
+    )
+    return ReimbursementOperatorListResponse(
+        items=[ReimbursementOperatorResponse.model_validate(r) for r in rows], total=total
     )
 
 
 @router.post(
-    "/reimbursements", response_model=ReimbursementResponse, status_code=status.HTTP_201_CREATED
+    "/reimbursements",
+    response_model=ReimbursementOperatorResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_reimbursement(
-    payload: ReimbursementCreateRequest, actor: CanReadPayrollSensitive, session: DbSession
-) -> ReimbursementResponse:
-    row = await HrService(session).create_reimbursement(payload, actor)
-    return ReimbursementResponse.model_validate(row)
+    payload: ReimbursementCreateRequest,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ReimbursementOperatorResponse:
+    response.headers["Cache-Control"] = "no-store"
+    row = await HrService(session).create_reimbursement(
+        payload, actor, idempotency_key=idempotency_key
+    )
+    return ReimbursementOperatorResponse.model_validate(row)
 
 
-@router.post("/reimbursements/{claim_id}/decision", response_model=ReimbursementResponse)
+@router.post("/reimbursements/{claim_id}/decision", response_model=ReimbursementOperatorResponse)
 async def decide_reimbursement(
     claim_id: UUID,
     payload: ReimbursementDecisionRequest,
     actor: CanApprovePayroll,
     session: DbSession,
-) -> ReimbursementResponse:
+    response: Response,
+) -> ReimbursementOperatorResponse:
+    response.headers["Cache-Control"] = "no-store"
     row = await HrService(session).decide_reimbursement(claim_id, payload, actor)
-    return ReimbursementResponse.model_validate(row)
+    return ReimbursementOperatorResponse.model_validate(row)
+
+
+@router.get("/reimbursements/{claim_id}/payable", response_model=ReimbursementPayableResponse)
+async def get_reimbursement_payable(
+    claim_id: UUID,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+) -> ReimbursementPayableResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).read_reimbursement_payable(claim_id, actor)
 
 
 @router.get("/compensation/{employee_id}", response_model=CompensationTermListResponse)
@@ -2830,10 +3120,13 @@ async def list_compensation(
     employee_id: UUID,
     actor: CanReadPayrollSensitive,
     session: DbSession,
+    response: Response,
     reveal_sensitive: Annotated[bool, Query()] = False,
+    term_id: Annotated[UUID | None, Query()] = None,
 ) -> CompensationTermListResponse:
+    response.headers["Cache-Control"] = "no-store"
     items, total = await HrService(session).list_compensation_terms(
-        employee_id=employee_id, actor=actor, reveal_sensitive=reveal_sensitive
+        employee_id=employee_id, actor=actor, reveal_sensitive=reveal_sensitive, term_id=term_id
     )
     return CompensationTermListResponse(items=items, total=total)
 
@@ -2842,9 +3135,25 @@ async def list_compensation(
     "/compensation", response_model=CompensationTermResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_compensation(
-    payload: CompensationTermCreateRequest, actor: CanReadPayrollSensitive, session: DbSession
+    payload: CompensationTermCreateRequest,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
 ) -> CompensationTermResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).create_compensation_term(payload, actor)
+
+
+@router.post("/compensation/{term_id}/decision", response_model=CompensationTermResponse)
+async def decide_compensation(
+    term_id: UUID,
+    payload: CompensationTermDecisionRequest,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    response: Response,
+) -> CompensationTermResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).decide_compensation_term(term_id, payload, actor)
 
 
 @router.get("/payroll/policies", response_model=PayrollPolicyListResponse)
@@ -2867,11 +3176,37 @@ async def create_payroll_policy(
     return PayrollPolicyResponse.model_validate(row)
 
 
+@router.get("/payroll/policies/{policy_id}", response_model=PayrollPolicyResponse)
+async def get_payroll_policy(
+    policy_id: UUID, actor: CurrentUser, session: DbSession, response: Response
+) -> PayrollPolicyResponse:
+    response.headers["Cache-Control"] = "no-store"
+    can_approve = has_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+    if not can_approve and not has_permission(actor, PERMISSION_HR_PAYROLL_PREPARE):
+        raise PermissionDeniedException("read payroll policy")
+    policy = await HrService(session).get_payroll_policy(policy_id)
+    if not can_approve and policy.approved_by_id != actor.id:
+        raise PermissionDeniedException("read payroll policy")
+    return PayrollPolicyResponse.model_validate(policy)
+
+
+@router.put("/payroll/policies/{policy_id}/draft", response_model=PayrollPolicyResponse)
+async def update_payroll_policy_draft(
+    policy_id: UUID, payload: PayrollPolicyDraftUpdateRequest,
+    actor: CanPreparePayroll, session: DbSession,
+) -> PayrollPolicyResponse:
+    row = await HrService(session).update_payroll_policy_draft(policy_id, payload, actor)
+    return PayrollPolicyResponse.model_validate(row)
+
+
 @router.post("/payroll/policies/{policy_id}/approve", response_model=PayrollPolicyResponse)
 async def approve_payroll_policy(
-    policy_id: UUID, actor: CanApprovePayroll, session: DbSession
+    policy_id: UUID, actor: CanApprovePayroll, session: DbSession,
+    payload: PayrollPolicyApproveRequest | None = None,
 ) -> PayrollPolicyResponse:
-    row = await HrService(session).approve_payroll_policy(policy_id, actor)
+    row = await HrService(session).approve_payroll_policy(
+        policy_id, actor, expected_updated_at=payload.expected_updated_at if payload else None
+    )
     return PayrollPolicyResponse.model_validate(row)
 
 
@@ -2940,6 +3275,51 @@ async def download_payroll_time_inputs(
     )
 
 
+@router.post(
+    "/payroll/periods/{period_id}/leave-inputs/preview",
+    response_model=PayrollLeaveInputPreview,
+)
+async def preview_payroll_leave_inputs(
+    period_id: UUID,
+    payload: PayrollRunCalculateRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
+    response: Response,
+) -> PayrollLeaveInputPreview:
+    result, _ = await payroll_leave_inputs(session, period_id, payload.employee_ids, actor)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post(
+    "/payroll/periods/{period_id}/leave-inputs.csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+async def download_payroll_leave_inputs(
+    period_id: UUID,
+    payload: PayrollTimeDownloadRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
+) -> Response:
+    result, content = await payroll_leave_inputs(
+        session,
+        period_id,
+        payload.employee_ids,
+        actor,
+        expected_csv_sha256=payload.expected_csv_sha256,
+    )
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="payroll-leave-{period_id}.csv"',
+            "X-Payroll-Export-SHA256": result.csv_sha256 or "",
+        },
+    )
+
+
 @router.get("/payroll/runs", response_model=PayrollRunListResponse)
 async def list_payroll_runs(_: CanPreparePayroll, session: DbSession) -> PayrollRunListResponse:
     rows, total = await HrService(session).list_payroll_runs()
@@ -2965,19 +3345,73 @@ async def read_payroll_run(
     return PayrollRunResponse.model_validate(await get_payroll_run(session, run_id))
 
 
+@router.get("/payroll/runs/{run_id}/adjustments", response_model=PayrollAdjustmentList)
+async def list_run_adjustments(
+    run_id: UUID, actor: CanReadPayrollSensitive, session: DbSession, response: Response
+) -> PayrollAdjustmentList:
+    response.headers["Cache-Control"] = "no-store"
+    return await read_payroll_adjustments(session, run_id, actor)
+
+
+@router.post("/payroll/runs/{run_id}/adjustments", response_model=PayrollAdjustmentResponse)
+async def propose_run_adjustment(
+    run_id: UUID, payload: PayrollAdjustmentCreate, actor: CanPreparePayroll,
+    session: DbSession, response: Response,
+) -> PayrollAdjustmentResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await submit_payroll_adjustment(session, run_id, payload, actor)
+
+
+@router.post(
+    "/payroll/runs/{run_id}/adjustments/{adjustment_id}/decision",
+    response_model=PayrollAdjustmentResponse,
+)
+async def decide_run_adjustment(
+    run_id: UUID, adjustment_id: UUID, payload: PayrollAdjustmentReview, actor: CanApprovePayroll,
+    session: DbSession, response: Response,
+) -> PayrollAdjustmentResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await review_payroll_adjustment(session, run_id, adjustment_id, payload, actor)
+
+
 @router.post("/payroll/runs/{run_id}/calculate", response_model=PayrollRunResponse)
 async def calculate_payroll_run(
-    run_id: UUID, payload: PayrollRunCalculateRequest, actor: CanPreparePayroll, session: DbSession
+    run_id: UUID, payload: PayrollSnapshotCalculateRequest,
+    actor: CanPreparePayroll, session: DbSession,
 ) -> PayrollRunResponse:
-    row = await calculate_payroll_snapshot(session, run_id, payload.employee_ids, actor)
+    row = await calculate_payroll_snapshot(
+        session, run_id, payload.employee_ids, actor, source_evidence=payload.source_evidence
+    )
     return PayrollRunResponse.model_validate(row)
 
 
 @router.get("/payroll/runs/{run_id}/snapshot", response_model=PayrollRunSnapshotResponse)
 async def get_payroll_snapshot(
-    run_id: UUID, actor: CanReadPayrollSensitive, session: DbSession
+    run_id: UUID, actor: CanReadPayrollSensitive, session: DbSession, response: Response
 ) -> PayrollRunSnapshotResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await read_payroll_snapshot(session, run_id, actor)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/snapshot/sources/{source}",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+async def download_frozen_payroll_source(
+    run_id: UUID, source: Literal["time", "leave"], actor: CanReadPayrollSensitive,
+    session: DbSession,
+) -> Response:
+    content, digest = await read_frozen_payroll_source(session, run_id, source, actor)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="payroll-{source}-{run_id}.csv"',
+            "X-Payroll-Export-SHA256": digest,
+        },
+    )
 
 
 @router.post("/payroll/runs/{run_id}/approve", response_model=PayrollRunResponse)
@@ -3032,9 +3466,69 @@ async def download_run_payment_export(
 
 @router.get("/payroll/runs/{run_id}/settlements", response_model=PayrollSettlementSummary)
 async def get_payroll_settlement_summary(
-    run_id: UUID, actor: CanApprovePayroll, session: DbSession
+    run_id: UUID, actor: CanApprovePayroll, session: DbSession, response: Response
 ) -> PayrollSettlementSummary:
+    response.headers["Cache-Control"] = "no-store"
     return await summarize_payroll_settlements(session, run_id, actor)
+
+
+@router.post("/payroll/runs/{run_id}/close", response_model=PayrollClosureResponse)
+async def close_run_period(
+    run_id: UUID, payload: PayrollClosureRequest, actor: CanApprovePayroll,
+    session: DbSession, response: Response,
+) -> PayrollClosureResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await close_payroll_period(session, run_id, payload, actor)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/lines/{line_id}/corrections", response_model=PayrollCorrectionPage
+)
+async def get_run_payroll_corrections(
+    run_id: UUID, line_id: UUID, actor: CanReadPayrollSensitive, session: DbSession,
+    response: Response, limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PayrollCorrectionPage:
+    response.headers["Cache-Control"] = "no-store"
+    return await list_payroll_corrections(
+        session, run_id, line_id, actor, limit=limit, offset=offset
+    )
+
+
+@router.post(
+    "/payroll/runs/{run_id}/lines/{line_id}/corrections",
+    response_model=PayrollCorrectionResponse,
+)
+async def propose_run_payroll_correction(
+    run_id: UUID, line_id: UUID, payload: PayrollCorrectionCreate, actor: CanPreparePayroll,
+    session: DbSession, response: Response,
+) -> PayrollCorrectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await propose_payroll_correction(session, run_id, line_id, payload, actor)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}",
+    response_model=PayrollCorrectionResponse,
+)
+async def show_run_payroll_correction(
+    run_id: UUID, line_id: UUID, correction_id: UUID, actor: CanReadPayrollSensitive,
+    session: DbSession, response: Response,
+) -> PayrollCorrectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await read_payroll_correction(session, run_id, line_id, correction_id, actor)
+
+
+@router.post(
+    "/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}/decision",
+    response_model=PayrollCorrectionResponse,
+)
+async def decide_run_payroll_correction(
+    run_id: UUID, line_id: UUID, correction_id: UUID, payload: PayrollCorrectionDecision,
+    actor: CanApprovePayroll, session: DbSession, response: Response,
+) -> PayrollCorrectionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await decide_payroll_correction(session, run_id, line_id, correction_id, payload, actor)
 
 
 @router.get(

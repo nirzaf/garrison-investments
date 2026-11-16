@@ -60,7 +60,10 @@ def test_usesend_never_sends_key_to_unencrypted_endpoint() -> None:
 
 def test_smtp_failure_raises_a_transport_error() -> None:
     with (
-        patch("app.services.email_service.get_settings", return_value=Settings()),
+        patch(
+            "app.services.email_service.get_settings",
+            return_value=Settings(usesend_api_url=None, usesend_api_key=None),
+        ),
         patch(
             "app.services.email_service.smtplib.SMTP",
             side_effect=smtplib.SMTPConnectError(421, b"Service unavailable"),

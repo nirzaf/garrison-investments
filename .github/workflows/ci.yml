@@ -242,18 +242,15 @@ jobs:
           BROWSER_SHARD: ${{ matrix.shard }}
           BROWSER_TEST_PREBUILT: "true"
         run: |
-          # Balance by measured test time. The complement also picks up new test files.
-          # Run 43536923181 measured 208.76s/128.11s after moving finance/import.
-          # The prior assignment projects 173.26s/163.60s on those file timings;
-          # restore it and compare another run because per-test timings varied sharply.
-          group='/(approval-delegation|daily-report|offline-isolation|role-navigation|user-role|supervisor-draft)\.e2e\.ts$'
+          # Run 43902036278 measured 180s/525s of Chrome test time.
+          # The list moves individual HR tests. Its complement covers new tests.
           case "$BROWSER_SHARD" in
-            1) filter="$group" ;;
-            2) filter="^(?!.*$group)" ;;
+            1) selection=--test-list ;;
+            2) selection=--test-list-invert ;;
             *) exit 2 ;;
           esac
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$filter"
+            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
       - name: Remove the test S3 container
         if: always()
         run: |

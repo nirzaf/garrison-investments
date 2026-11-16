@@ -657,6 +657,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/advances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Advances */
+        get: operations["list_advances_api_v1_hr_advances_get"];
+        put?: never;
+        /** Submit Advance */
+        post: operations["submit_advance_api_v1_hr_advances_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/advances/{advance_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Advance */
+        get: operations["read_advance_api_v1_hr_advances__advance_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/advances/{advance_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Advance */
+        post: operations["decide_advance_api_v1_hr_advances__advance_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/advances/{advance_id}/disburse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disburse Advance */
+        post: operations["disburse_advance_api_v1_hr_advances__advance_id__disburse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/advances/{advance_id}/repayments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Advance */
+        post: operations["recover_advance_api_v1_hr_advances__advance_id__repayments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/applications": {
         parameters: {
             query?: never;
@@ -814,6 +900,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/attendance/corrections/{correction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Attendance Correction */
+        get: operations["read_attendance_correction_api_v1_hr_attendance_corrections__correction_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/attendance/corrections/{correction_id}/decision": {
         parameters: {
             query?: never;
@@ -859,6 +962,23 @@ export interface paths {
         put?: never;
         /** Preview Attendance Import */
         post: operations["preview_attendance_import_api_v1_hr_attendance_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/attendance/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Attendance Entry */
+        get: operations["read_attendance_entry_api_v1_hr_attendance__entry_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -912,6 +1032,23 @@ export interface paths {
         put?: never;
         /** Create Benefit Type */
         post: operations["create_benefit_type_api_v1_hr_benefits_types_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/benefits/types/{benefit_type_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Benefit Policy */
+        post: operations["approve_benefit_policy_api_v1_hr_benefits_types__benefit_type_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1103,6 +1240,23 @@ export interface paths {
         get: operations["list_compensation_api_v1_hr_compensation__employee_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/compensation/{term_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Compensation */
+        post: operations["decide_compensation_api_v1_hr_compensation__term_id__decision_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1523,6 +1677,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/employment-changes/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Due Employment Changes */
+        get: operations["list_due_employment_changes_api_v1_hr_employment_changes_due_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/goals": {
         parameters: {
             query?: never;
@@ -1747,6 +1918,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/leave/date-evidence/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find Legacy Leave Dates */
+        get: operations["find_legacy_leave_dates_api_v1_hr_leave_date_evidence_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/leave/employees/{employee_id}/units": {
         parameters: {
             query?: never;
@@ -1862,6 +2050,58 @@ export interface paths {
         put?: never;
         /** Decide Leave Request */
         post: operations["decide_leave_request_api_v1_hr_leave_requests__leave_request_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Legacy Leave Dates */
+        get: operations["read_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_get"];
+        put?: never;
+        /** Propose Legacy Leave Dates */
+        post: operations["propose_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Legacy Leave Date Proposal */
+        get: operations["show_legacy_leave_date_proposal_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence/{proposal_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Legacy Leave Dates */
+        post: operations["decide_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__decision_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2783,6 +3023,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/overtime/{overtime_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Overtime */
+        get: operations["read_overtime_api_v1_hr_overtime__overtime_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/overtime/{overtime_id}/decision": {
         parameters: {
             query?: never;
@@ -2812,6 +3069,40 @@ export interface paths {
         put?: never;
         /** Create Payroll Period */
         post: operations["create_payroll_period_api_v1_hr_payroll_periods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/periods/{period_id}/leave-inputs.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download Payroll Leave Inputs */
+        post: operations["download_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_csv_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/periods/{period_id}/leave-inputs/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Payroll Leave Inputs */
+        post: operations["preview_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2870,6 +3161,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/payroll/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Policy */
+        get: operations["get_payroll_policy_api_v1_hr_payroll_policies__policy_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/payroll/policies/{policy_id}/approve": {
         parameters: {
             query?: never;
@@ -2881,6 +3189,23 @@ export interface paths {
         put?: never;
         /** Approve Payroll Policy */
         post: operations["approve_payroll_policy_api_v1_hr_payroll_policies__policy_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/policies/{policy_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Payroll Policy Draft */
+        put: operations["update_payroll_policy_draft_api_v1_hr_payroll_policies__policy_id__draft_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2922,6 +3247,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/payroll/runs/{run_id}/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Run Adjustments */
+        get: operations["list_run_adjustments_api_v1_hr_payroll_runs__run_id__adjustments_get"];
+        put?: never;
+        /** Propose Run Adjustment */
+        post: operations["propose_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/adjustments/{adjustment_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Run Adjustment */
+        post: operations["decide_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments__adjustment_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/payroll/runs/{run_id}/approve": {
         parameters: {
             query?: never;
@@ -2950,6 +3310,75 @@ export interface paths {
         put?: never;
         /** Calculate Payroll Run */
         post: operations["calculate_payroll_run_api_v1_hr_payroll_runs__run_id__calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Run Period */
+        post: operations["close_run_period_api_v1_hr_payroll_runs__run_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run Payroll Corrections */
+        get: operations["get_run_payroll_corrections_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_get"];
+        put?: never;
+        /** Propose Run Payroll Correction */
+        post: operations["propose_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Run Payroll Correction */
+        get: operations["show_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Run Payroll Correction */
+        post: operations["decide_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__decision_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3069,6 +3498,23 @@ export interface paths {
         };
         /** Get Payroll Snapshot */
         get: operations["get_payroll_snapshot_api_v1_hr_payroll_runs__run_id__snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/snapshot/sources/{source}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Frozen Payroll Source */
+        get: operations["download_frozen_payroll_source_api_v1_hr_payroll_runs__run_id__snapshot_sources__source__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3244,6 +3690,23 @@ export interface paths {
         put?: never;
         /** Decide Reimbursement */
         post: operations["decide_reimbursement_api_v1_hr_reimbursements__claim_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/reimbursements/{claim_id}/payable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reimbursement Payable */
+        get: operations["get_reimbursement_payable_api_v1_hr_reimbursements__claim_id__payable_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3493,6 +3956,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/roster/{allocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Roster Allocation */
+        get: operations["read_roster_allocation_api_v1_hr_roster__allocation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/roster/{allocation_id}/cancel": {
         parameters: {
             query?: never;
@@ -3557,6 +4037,23 @@ export interface paths {
         put?: never;
         /** Create Timesheet */
         post: operations["create_timesheet_api_v1_hr_timesheets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/timesheets/{timesheet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Timesheet */
+        get: operations["read_timesheet_api_v1_hr_timesheets__timesheet_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5643,12 +6140,21 @@ export interface components {
         };
         /** BenefitTypeCreateRequest */
         BenefitTypeCreateRequest: {
+            /**
+             * Allows Advances
+             * @default false
+             */
+            allows_advances: boolean;
             /** Category */
             category: string;
             /** Code */
             code: string;
             /** Name */
             name: string;
+            /** Reimbursement Ceiling */
+            reimbursement_ceiling?: number | string | null;
+            /** Reimbursement Currency */
+            reimbursement_currency?: string | null;
             /**
              * Requires Policy Approval
              * @default true
@@ -5664,6 +6170,12 @@ export interface components {
         };
         /** BenefitTypeResponse */
         BenefitTypeResponse: {
+            /** Allows Advances */
+            allows_advances: boolean;
+            /** Approved At */
+            approved_at: string | null;
+            /** Approved By Id */
+            approved_by_id: string | null;
             /** Category */
             category: string;
             /** Code */
@@ -5682,6 +6194,12 @@ export interface components {
             is_active: boolean;
             /** Name */
             name: string;
+            /** Proposed By Id */
+            proposed_by_id: string | null;
+            /** Reimbursement Ceiling */
+            reimbursement_ceiling: string | null;
+            /** Reimbursement Currency */
+            reimbursement_currency: string | null;
             /** Requires Policy Approval */
             requires_policy_approval: boolean;
         };
@@ -6168,6 +6686,16 @@ export interface components {
              */
             pay_frequency: "monthly" | "biweekly" | "weekly" | "daily";
         };
+        /** CompensationTermDecisionRequest */
+        CompensationTermDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "reject";
+            /** Reason */
+            reason?: string | null;
+        };
         /** CompensationTermListResponse */
         CompensationTermListResponse: {
             /** Items */
@@ -6177,6 +6705,12 @@ export interface components {
         };
         /** CompensationTermResponse */
         CompensationTermResponse: {
+            /** Allowances Json */
+            allowances_json?: {
+                [key: string]: unknown;
+            } | null;
+            /** Approval Status */
+            approval_status: string;
             /** Approved At */
             approved_at: string | null;
             /** Approved By Id */
@@ -6211,6 +6745,10 @@ export interface components {
             is_current: boolean;
             /** Pay Frequency */
             pay_frequency: string;
+            /** Proposed By Id */
+            proposed_by_id: string | null;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
         };
         /** ComplianceItemResponse */
         ComplianceItemResponse: {
@@ -6664,6 +7202,174 @@ export interface components {
             uploaded_by: string | null;
             /** Version */
             version: number;
+        };
+        /** DueEmploymentChange */
+        DueEmploymentChange: {
+            /**
+             * Change Type
+             * @enum {string}
+             */
+            change_type: "transfer" | "promotion" | "category_amendment" | "contract_renewal" | "rehire" | "profile_correction";
+            /**
+             * Effective Date
+             * Format: date
+             */
+            effective_date: string;
+            /** Employee Code */
+            employee_code: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Matches */
+            revision_matches: boolean;
+        };
+        /** DueEmploymentChangeList */
+        DueEmploymentChangeList: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Items */
+            items: components["schemas"]["DueEmploymentChange"][];
+            /** Total */
+            total: number;
+        };
+        /** EmployeeAdvanceDecision */
+        EmployeeAdvanceDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected" | "cancelled";
+        };
+        /** EmployeeAdvanceDisbursement */
+        EmployeeAdvanceDisbursement: {
+            /** Amount */
+            amount: number | string;
+            /** Currency */
+            currency: string;
+            /** Expected Payable Sha256 */
+            expected_payable_sha256: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Reference */
+            reference: string;
+        };
+        /** EmployeeAdvanceListResponse */
+        EmployeeAdvanceListResponse: {
+            /** Items */
+            items: components["schemas"]["EmployeeAdvanceResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** EmployeeAdvancePayment */
+        EmployeeAdvancePayment: {
+            /** Amount */
+            amount: number | string;
+            /** Currency */
+            currency: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Reference */
+            reference: string;
+        };
+        /** EmployeeAdvanceRecovery */
+        EmployeeAdvanceRecovery: {
+            /** Amount */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Reference */
+            reference: string;
+        };
+        /** EmployeeAdvanceRequest */
+        EmployeeAdvanceRequest: {
+            /** Amount */
+            amount: number | string;
+            /**
+             * Benefit Assignment Id
+             * Format: uuid
+             */
+            benefit_assignment_id: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Requested On
+             * Format: date
+             */
+            requested_on: string;
+        };
+        /** EmployeeAdvanceResponse */
+        EmployeeAdvanceResponse: {
+            /** Amount */
+            amount: string;
+            /**
+             * Benefit Assignment Id
+             * Format: uuid
+             */
+            benefit_assignment_id: string;
+            /** Currency */
+            currency: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /** Disbursed On */
+            disbursed_on: string | null;
+            /** Disbursement Reference */
+            disbursement_reference: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Payable Sha256 */
+            payable_sha256: string | null;
+            /** Recovered */
+            recovered: string;
+            /** Recoveries */
+            recoveries: components["schemas"]["EmployeeAdvanceRecovery"][];
+            /**
+             * Requested On
+             * Format: date
+             */
+            requested_on: string;
+            /** Status */
+            status: string;
+            /**
+             * Submitted By Id
+             * Format: uuid
+             */
+            submitted_by_id: string;
         };
         /** EmployeeBenefitCreateRequest */
         EmployeeBenefitCreateRequest: {
@@ -8470,6 +9176,130 @@ export interface components {
             /** Items */
             items: components["schemas"]["LeaveBalanceItem"][];
         };
+        /** LeaveDateEvidenceCandidate */
+        LeaveDateEvidenceCandidate: {
+            /** Approved Units */
+            approved_units: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Requires Payroll Correction */
+            requires_payroll_correction: boolean;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** LeaveDateEvidenceCandidates */
+        LeaveDateEvidenceCandidates: {
+            /** Items */
+            items: components["schemas"]["LeaveDateEvidenceCandidate"][];
+            /** Total */
+            total: number;
+        };
+        /** LeaveDateEvidenceCreate */
+        LeaveDateEvidenceCreate: {
+            /** Evidence Reference */
+            evidence_reference: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Proposal Id
+             * Format: uuid
+             */
+            proposal_id: string;
+            /** Work Dates */
+            work_dates: string[];
+        };
+        /** LeaveDateEvidenceDecision */
+        LeaveDateEvidenceDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Expected Digest */
+            expected_digest: string;
+        };
+        /** LeaveDateEvidencePage */
+        LeaveDateEvidencePage: {
+            /** Approved Units */
+            approved_units: string;
+            /** Can Propose */
+            can_propose: boolean;
+            /** Can Review */
+            can_review: boolean;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Items */
+            items: components["schemas"]["LeaveDateEvidenceResponse"][];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Request Revision */
+            request_revision: number;
+            /** Requires Payroll Correction */
+            requires_payroll_correction: boolean;
+            /** Scheduled Work Dates */
+            scheduled_work_dates: string[] | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Total */
+            total: number;
+        };
+        /** LeaveDateEvidenceResponse */
+        LeaveDateEvidenceResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /** Digest */
+            digest: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Request Revision */
+            request_revision: number;
+            /** Status */
+            status: string;
+            /**
+             * Submitted By Id
+             * Format: uuid
+             */
+            submitted_by_id: string;
+            /** Work Dates */
+            work_dates: string[];
+        };
         /** LeaveLedgerAdjustRequest */
         LeaveLedgerAdjustRequest: {
             /** Days Delta */
@@ -9460,6 +10290,26 @@ export interface components {
             /** To Location Id */
             to_location_id: string | null;
         };
+        /** MyPolicyFileResponse */
+        MyPolicyFileResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Download Url */
+            download_url: string;
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** File Name */
+            file_name: string;
+            /** File Size */
+            file_size: number | null;
+            /** Sha256 Checksum */
+            sha256_checksum: string | null;
+            /** Version Number */
+            version_number: number;
+        };
         /** MyPolicyListResponse */
         MyPolicyListResponse: {
             /** Items */
@@ -10246,6 +11096,249 @@ export interface components {
             /** Reference Number */
             reference_number: string | null;
         };
+        /** PayrollAdjustmentCreate */
+        PayrollAdjustmentCreate: {
+            /**
+             * Adjustment Id
+             * Format: uuid
+             */
+            adjustment_id: string;
+            /** Amount */
+            amount: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earning" | "deduction";
+        };
+        /** PayrollAdjustmentList */
+        PayrollAdjustmentList: {
+            /** Can Review */
+            can_review: boolean;
+            /** Can Submit */
+            can_submit: boolean;
+            /** Items */
+            items: components["schemas"]["PayrollAdjustmentResponse"][];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** PayrollAdjustmentResponse */
+        PayrollAdjustmentResponse: {
+            /** Amount */
+            amount: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /** Digest */
+            digest: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earning" | "deduction";
+            /** Status */
+            status: string;
+            /**
+             * Submitted By Id
+             * Format: uuid
+             */
+            submitted_by_id: string;
+        };
+        /** PayrollAdjustmentReview */
+        PayrollAdjustmentReview: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Expected Digest */
+            expected_digest: string;
+        };
+        /** PayrollClosureRequest */
+        PayrollClosureRequest: {
+            /** Expected Csv Sha256 */
+            expected_csv_sha256: string;
+            /** Expected Settlement Digest */
+            expected_settlement_digest: string;
+            /** Expected Snapshot Digest */
+            expected_snapshot_digest: string;
+        };
+        /** PayrollClosureResponse */
+        PayrollClosureResponse: {
+            /**
+             * Closed At
+             * Format: date-time
+             */
+            closed_at: string;
+            /**
+             * Closed By Id
+             * Format: uuid
+             */
+            closed_by_id: string;
+            /** Csv Sha256 */
+            csv_sha256: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Settlement Digest */
+            settlement_digest: string;
+            /** Snapshot Digest */
+            snapshot_digest: string;
+        };
+        /** PayrollControlledPolicyRecord */
+        "PayrollControlledPolicyRecord-Input": {
+            /** Approval Reference */
+            approval_reference: string;
+            /** Document Reference */
+            document_reference: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Version */
+            version: string;
+            /** Worked Examples */
+            worked_examples: components["schemas"]["PayrollPolicyWorkedExample-Input"][];
+        };
+        /** PayrollControlledPolicyRecord */
+        "PayrollControlledPolicyRecord-Output": {
+            /** Approval Reference */
+            approval_reference: string;
+            /** Document Reference */
+            document_reference: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Version */
+            version: string;
+            /** Worked Examples */
+            worked_examples: components["schemas"]["PayrollPolicyWorkedExample-Output"][];
+        };
+        /** PayrollCorrectionAmounts */
+        PayrollCorrectionAmounts: {
+            /** Deductions */
+            deductions: string;
+            /** Gross */
+            gross: string;
+            /** Net */
+            net: string;
+        };
+        /** PayrollCorrectionCreate */
+        PayrollCorrectionCreate: {
+            /**
+             * Correction Id
+             * Format: uuid
+             */
+            correction_id: string;
+            /** Deductions */
+            deductions: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /** Expected Previous Id */
+            expected_previous_id: string | null;
+            /** Expected Snapshot Digest */
+            expected_snapshot_digest: string;
+            /** Gross */
+            gross: string;
+        };
+        /** PayrollCorrectionDecision */
+        PayrollCorrectionDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Expected Digest */
+            expected_digest: string;
+        };
+        /** PayrollCorrectionPage */
+        PayrollCorrectionPage: {
+            baseline: components["schemas"]["PayrollCorrectionAmounts"];
+            /** Currency */
+            currency: string;
+            /** Current Correction Id */
+            current_correction_id: string | null;
+            /** Items */
+            items: components["schemas"]["PayrollCorrectionResponse"][];
+            /**
+             * Line Id
+             * Format: uuid
+             */
+            line_id: string;
+            /** Total */
+            total: number;
+        };
+        /** PayrollCorrectionResponse */
+        PayrollCorrectionResponse: {
+            baseline: components["schemas"]["PayrollCorrectionAmounts"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /** Digest */
+            digest: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Line Id
+             * Format: uuid
+             */
+            line_id: string;
+            /** Net Delta */
+            net_delta: string;
+            /** Previous Id */
+            previous_id: string | null;
+            proposed: components["schemas"]["PayrollCorrectionAmounts"];
+            /** Snapshot Digest */
+            snapshot_digest: string;
+            /** Status */
+            status: string;
+            /**
+             * Submitted By Id
+             * Format: uuid
+             */
+            submitted_by_id: string;
+        };
         /** PayrollExportConfirmRequest */
         PayrollExportConfirmRequest: {
             /** Expected Csv Sha256 */
@@ -10303,6 +11396,69 @@ export interface components {
             run_id: string;
             /** Snapshot Digest */
             snapshot_digest: string;
+        };
+        /** PayrollFrozenSources */
+        PayrollFrozenSources: {
+            /** Leave Sha256 */
+            leave_sha256: string;
+            /** Overtime Hours */
+            overtime_hours: string;
+            /** Paid Days */
+            paid_days: string;
+            /** Regular Hours */
+            regular_hours: string;
+            /** Time Sha256 */
+            time_sha256: string;
+            /** Unpaid Days */
+            unpaid_days: string;
+        };
+        /** PayrollLeaveInputIssue */
+        PayrollLeaveInputIssue: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "pending_leave" | "leave_crosses_period" | "leave_ledger_mismatch" | "leave_work_dates_mismatch" | "overlapping_leave";
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** PayrollLeaveInputPreview */
+        PayrollLeaveInputPreview: {
+            /** Approved Request Count */
+            approved_request_count: number;
+            /** Csv Sha256 */
+            csv_sha256: string | null;
+            /** Employee Count */
+            employee_count: number;
+            /** Issues */
+            issues: components["schemas"]["PayrollLeaveInputIssue"][];
+            /** Paid Days */
+            paid_days: string | null;
+            /**
+             * Payroll Period Id
+             * Format: uuid
+             */
+            payroll_period_id: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Unpaid Days */
+            unpaid_days: string | null;
         };
         /** PayrollPeriodCreateRequest */
         PayrollPeriodCreateRequest: {
@@ -10363,14 +11519,38 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** PayrollPolicyApproveRequest */
+        PayrollPolicyApproveRequest: {
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+        };
         /** PayrollPolicyCreateRequest */
         PayrollPolicyCreateRequest: {
             /** Code */
             code: string;
+            controlled_record?: components["schemas"]["PayrollControlledPolicyRecord-Input"] | null;
             /** Name */
             name: string;
             /** Rules Json */
             rules_json?: {
+                [key: string]: unknown;
+            };
+        };
+        /** PayrollPolicyDraftUpdateRequest */
+        PayrollPolicyDraftUpdateRequest: {
+            controlled_record: components["schemas"]["PayrollControlledPolicyRecord-Input"];
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+            /** Name */
+            name: string;
+            /** Rules Json */
+            rules_json: {
                 [key: string]: unknown;
             };
         };
@@ -10389,6 +11569,7 @@ export interface components {
             approved_by_id: string | null;
             /** Code */
             code: string;
+            controlled_record?: components["schemas"]["PayrollControlledPolicyRecord-Output"] | null;
             /**
              * Created At
              * Format: date-time
@@ -10409,6 +11590,53 @@ export interface components {
             };
             /** Second Approved By Id */
             second_approved_by_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** PayrollPolicyWorkedExample */
+        "PayrollPolicyWorkedExample-Input": {
+            /** Base Salary */
+            base_salary: number | string;
+            /**
+             * Earnings
+             * @default 0.00
+             */
+            earnings: number | string;
+            /** Expected Deductions */
+            expected_deductions: number | string;
+            /** Expected Gross */
+            expected_gross: number | string;
+            /** Expected Net */
+            expected_net: number | string;
+            /**
+             * Extra Deductions
+             * @default 0.00
+             */
+            extra_deductions: number | string;
+        };
+        /** PayrollPolicyWorkedExample */
+        "PayrollPolicyWorkedExample-Output": {
+            /** Base Salary */
+            base_salary: string;
+            /**
+             * Earnings
+             * @default 0.00
+             */
+            earnings: string;
+            /** Expected Deductions */
+            expected_deductions: string;
+            /** Expected Gross */
+            expected_gross: string;
+            /** Expected Net */
+            expected_net: string;
+            /**
+             * Extra Deductions
+             * @default 0.00
+             */
+            extra_deductions: string;
         };
         /** PayrollRunApproveRequest */
         PayrollRunApproveRequest: {
@@ -10473,11 +11701,16 @@ export interface components {
         };
         /** PayrollRunSnapshotResponse */
         PayrollRunSnapshotResponse: {
+            /** Approved By Id */
+            approved_by_id: string | null;
             /**
              * Calculation Basis
-             * @constant
+             * @enum {string}
              */
-            calculation_basis: "base_salary_only";
+            calculation_basis: "base_salary_only" | "base_salary_with_reviewed_adjustments";
+            /** Closed At */
+            closed_at?: string | null;
+            controlled_policy_record?: components["schemas"]["PayrollControlledPolicyRecord-Output"] | null;
             /** Currency */
             currency: string;
             /** Deductions */
@@ -10514,6 +11747,8 @@ export interface components {
              * Format: uuid
              */
             policy_id: string;
+            /** Prepared By Id */
+            prepared_by_id: string | null;
             /** Rounding */
             rounding: string;
             /**
@@ -10521,6 +11756,7 @@ export interface components {
              * Format: uuid
              */
             run_id: string;
+            source_evidence?: components["schemas"]["PayrollFrozenSources"] | null;
             /** Status */
             status: string;
         };
@@ -10622,6 +11858,7 @@ export interface components {
         };
         /** PayrollSettlementSummary */
         PayrollSettlementSummary: {
+            closure?: components["schemas"]["PayrollClosureResponse"] | null;
             /** Csv Sha256 */
             csv_sha256: string;
             /** Currency */
@@ -10641,9 +11878,19 @@ export interface components {
              * Format: uuid
              */
             run_id: string;
+            /** Settlement Digest */
+            settlement_digest: string;
+        };
+        /** PayrollSnapshotCalculateRequest */
+        PayrollSnapshotCalculateRequest: {
+            /** Employee Ids */
+            employee_ids: string[];
+            source_evidence?: components["schemas"]["PayrollSourceEvidenceRequest"] | null;
         };
         /** PayrollSnapshotLine */
         PayrollSnapshotLine: {
+            /** Adjustments */
+            adjustments?: components["schemas"]["PayrollAdjustmentResponse"][];
             /** Deductions */
             deductions: string;
             /**
@@ -10665,6 +11912,13 @@ export interface components {
              * Format: uuid
              */
             term_id: string;
+        };
+        /** PayrollSourceEvidenceRequest */
+        PayrollSourceEvidenceRequest: {
+            /** Leave Sha256 */
+            leave_sha256: string;
+            /** Time Sha256 */
+            time_sha256: string;
         };
         /** PayrollTimeDownloadRequest */
         PayrollTimeDownloadRequest: {
@@ -11626,6 +12880,11 @@ export interface components {
             /** Amount */
             amount: number | string;
             /**
+             * Benefit Assignment Id
+             * Format: uuid
+             */
+            benefit_assignment_id: string;
+            /**
              * Claim Date
              * Format: date
              */
@@ -11641,8 +12900,13 @@ export interface components {
             description: string;
             /** Employee Id */
             employee_id?: string | null;
-            /** Receipt Document Id */
-            receipt_document_id?: string | null;
+            /**
+             * Receipt Document Id
+             * Format: uuid
+             */
+            receipt_document_id: string;
+            /** Receipt Version Number */
+            receipt_version_number: number;
         };
         /** ReimbursementDecisionRequest */
         ReimbursementDecisionRequest: {
@@ -11651,8 +12915,16 @@ export interface components {
              * @enum {string}
              */
             decision: "approved" | "rejected" | "paid" | "cancelled";
+            /** Expected Payable Sha256 */
+            expected_payable_sha256?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Settled Amount */
+            settled_amount?: number | string | null;
+            /** Settled Currency */
+            settled_currency?: string | null;
+            /** Settlement Reference */
+            settlement_reference?: string | null;
         };
         /** ReimbursementListResponse */
         ReimbursementListResponse: {
@@ -11661,10 +12933,19 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** ReimbursementResponse */
-        ReimbursementResponse: {
+        /** ReimbursementOperatorListResponse */
+        ReimbursementOperatorListResponse: {
+            /** Items */
+            items: components["schemas"]["ReimbursementOperatorResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** ReimbursementOperatorResponse */
+        ReimbursementOperatorResponse: {
             /** Amount */
             amount: string;
+            /** Benefit Assignment Id */
+            benefit_assignment_id: string | null;
             /** Claim Code */
             claim_code: string;
             /**
@@ -11701,6 +12982,102 @@ export interface components {
             id: string;
             /** Receipt Document Id */
             receipt_document_id: string | null;
+            /** Receipt Version Id */
+            receipt_version_id: string | null;
+            /** Settlement Reference */
+            settlement_reference: string | null;
+            /** Status */
+            status: string;
+            /** Submitted By Id */
+            submitted_by_id: string | null;
+        };
+        /** ReimbursementPayable */
+        ReimbursementPayable: {
+            /** Amount */
+            amount: string;
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /**
+             * Claim Id
+             * Format: uuid
+             */
+            claim_id: string;
+            /** Currency */
+            currency: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Payable Reference */
+            payable_reference: string;
+            /**
+             * Version
+             * @default reimbursement-payable-v1
+             * @constant
+             */
+            version: "reimbursement-payable-v1";
+        };
+        /** ReimbursementPayableResponse */
+        ReimbursementPayableResponse: {
+            reference: components["schemas"]["ReimbursementPayable"];
+            /** Reference Sha256 */
+            reference_sha256: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "paid";
+        };
+        /** ReimbursementResponse */
+        ReimbursementResponse: {
+            /** Amount */
+            amount: string;
+            /** Benefit Assignment Id */
+            benefit_assignment_id: string | null;
+            /** Claim Code */
+            claim_code: string;
+            /**
+             * Claim Date
+             * Format: date
+             */
+            claim_date: string;
+            /** Claim Type */
+            claim_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /** Decision Notes */
+            decision_notes: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Receipt Document Id */
+            receipt_document_id: string | null;
+            /** Receipt Version Id */
+            receipt_version_id: string | null;
+            /** Settlement Reference */
+            settlement_reference: string | null;
             /** Status */
             status: string;
         };
@@ -14958,6 +16335,210 @@ export interface operations {
             };
         };
     };
+    list_advances_api_v1_hr_advances_get: {
+        parameters: {
+            query: {
+                employee_id: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_advance_api_v1_hr_advances_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeAdvanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_advance_api_v1_hr_advances__advance_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                advance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_advance_api_v1_hr_advances__advance_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                advance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeAdvanceDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    disburse_advance_api_v1_hr_advances__advance_id__disburse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                advance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeAdvanceDisbursement"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    recover_advance_api_v1_hr_advances__advance_id__repayments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                advance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmployeeAdvancePayment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeAdvanceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_applications_api_v1_hr_applications_get: {
         parameters: {
             query?: {
@@ -15394,6 +16975,37 @@ export interface operations {
             };
         };
     };
+    read_attendance_correction_api_v1_hr_attendance_corrections__correction_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceCorrectionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     decide_attendance_correction_api_v1_hr_attendance_corrections__correction_id__decision_post: {
         parameters: {
             query?: never;
@@ -15482,6 +17094,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttendanceImportPreviewResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_attendance_entry_api_v1_hr_attendance__entry_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttendanceEntryResponse"];
                 };
             };
             /** @description Invalid request */
@@ -15638,6 +17281,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenefitTypeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    approve_benefit_policy_api_v1_hr_benefits_types__benefit_type_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                benefit_type_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16113,6 +17787,7 @@ export interface operations {
         parameters: {
             query?: {
                 reveal_sensitive?: boolean;
+                term_id?: string | null;
             };
             header?: never;
             path: {
@@ -16129,6 +17804,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompensationTermListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_compensation_api_v1_hr_compensation__term_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                term_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompensationTermDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompensationTermResponse"];
                 };
             };
             /** @description Invalid request */
@@ -17153,6 +18863,38 @@ export interface operations {
             };
         };
     };
+    list_due_employment_changes_api_v1_hr_employment_changes_due_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DueEmploymentChangeList"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_goals_api_v1_hr_goals_get: {
         parameters: {
             query?: {
@@ -17679,6 +19421,39 @@ export interface operations {
             };
         };
     };
+    find_legacy_leave_dates_api_v1_hr_leave_date_evidence_candidates_get: {
+        parameters: {
+            query?: {
+                employee_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveDateEvidenceCandidates"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     quote_employee_leave_units_api_v1_hr_leave_employees__employee_id__units_get: {
         parameters: {
             query: {
@@ -17964,6 +19739,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveDateEvidencePage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveDateEvidenceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveDateEvidenceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    show_legacy_leave_date_proposal_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveDateEvidenceResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveDateEvidenceDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveDateEvidenceResponse"];
                 };
             };
             /** @description Invalid request */
@@ -18980,7 +20892,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HrDocumentDownloadResponse"];
+                    "application/json": components["schemas"]["MyPolicyFileResponse"];
                 };
             };
             /** @description Invalid request */
@@ -19026,7 +20938,9 @@ export interface operations {
     create_my_reimbursement_api_v1_hr_me_reimbursements_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -20149,6 +22063,37 @@ export interface operations {
             };
         };
     };
+    read_overtime_api_v1_hr_overtime__overtime_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                overtime_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OvertimeRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     decide_overtime_request_api_v1_hr_overtime__overtime_id__decision_post: {
         parameters: {
             query?: never;
@@ -20233,6 +22178,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PayrollPeriodResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    download_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollTimeDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollRunCalculateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollLeaveInputPreview"];
                 };
             };
             /** @description Invalid request */
@@ -20378,7 +22393,7 @@ export interface operations {
             };
         };
     };
-    approve_payroll_policy_api_v1_hr_payroll_policies__policy_id__approve_post: {
+    get_payroll_policy_api_v1_hr_payroll_policies__policy_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -20388,6 +22403,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPolicyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    approve_payroll_policy_api_v1_hr_payroll_policies__policy_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PayrollPolicyApproveRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollPolicyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    update_payroll_policy_draft_api_v1_hr_payroll_policies__policy_id__draft_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollPolicyDraftUpdateRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -20502,6 +22587,108 @@ export interface operations {
             };
         };
     };
+    list_run_adjustments_api_v1_hr_payroll_runs__run_id__adjustments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollAdjustmentList"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollAdjustmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollAdjustmentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments__adjustment_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                adjustment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollAdjustmentReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollAdjustmentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     approve_payroll_run_api_v1_hr_payroll_runs__run_id__approve_post: {
         parameters: {
             query?: never;
@@ -20548,7 +22735,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PayrollRunCalculateRequest"];
+                "application/json": components["schemas"]["PayrollSnapshotCalculateRequest"];
             };
         };
         responses: {
@@ -20559,6 +22746,182 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PayrollRunResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    close_run_period_api_v1_hr_payroll_runs__run_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollClosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollClosureResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_run_payroll_corrections_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    show_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                line_id: string;
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                line_id: string;
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollCorrectionDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollCorrectionResponse"];
                 };
             };
             /** @description Invalid request */
@@ -20855,6 +23218,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PayrollRunSnapshotResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    download_frozen_payroll_source_api_v1_hr_payroll_runs__run_id__snapshot_sources__source__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                source: "time" | "leave";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Invalid request */
@@ -21194,6 +23589,8 @@ export interface operations {
         parameters: {
             query?: {
                 employee_id?: string | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -21207,7 +23604,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReimbursementListResponse"];
+                    "application/json": components["schemas"]["ReimbursementOperatorListResponse"];
                 };
             };
             /** @description Invalid request */
@@ -21224,7 +23621,9 @@ export interface operations {
     create_reimbursement_api_v1_hr_reimbursements_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -21240,7 +23639,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReimbursementResponse"];
+                    "application/json": components["schemas"]["ReimbursementOperatorResponse"];
                 };
             };
             /** @description Invalid request */
@@ -21275,7 +23674,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReimbursementResponse"];
+                    "application/json": components["schemas"]["ReimbursementOperatorResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_reimbursement_payable_api_v1_hr_reimbursements__claim_id__payable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReimbursementPayableResponse"];
                 };
             };
             /** @description Invalid request */
@@ -21915,6 +24345,37 @@ export interface operations {
             };
         };
     };
+    read_roster_allocation_api_v1_hr_roster__allocation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterAllocationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     cancel_roster_allocation_api_v1_hr_roster__allocation_id__cancel_post: {
         parameters: {
             query?: never;
@@ -22092,6 +24553,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimesheetResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_timesheet_api_v1_hr_timesheets__timesheet_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                timesheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

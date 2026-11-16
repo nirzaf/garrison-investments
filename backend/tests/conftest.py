@@ -5,26 +5,29 @@ from pathlib import Path
 
 import pytest
 
-# Median module runtimes in milliseconds from CI runs 43293023176,
-# 43359757307, 43375671327, and 43379155322, rounded to the nearest 100 ms.
-# The capture wrapper entry below is refreshed from runs 43587573918 and 43599068234.
+# Module test times from both backend reports in CI run 43902036278, rounded
+# to the nearest 100 ms. Keep measured weights for modules above three seconds.
 SLOW_MODULE_MS = {
-    "tests/test_capture_recovery_wrapper.py": 177_200,
-    "tests/test_scope_authorization.py": 12_500,
-    "tests/test_daily_reports.py": 11_800,
-    "tests/test_authorization_matrix.py": 11_500,
-    "tests/test_session_revocation.py": 8_900,
-    "tests/test_auth.py": 8_700,
-    "tests/test_delegation_guards.py": 6_300,
-    "tests/test_photos.py": 5_900,
-    "tests/test_idempotency.py": 5_600,
-    "tests/test_finance.py": 5_200,
-    "tests/test_report_payment_concurrency.py": 4_400,
-    "tests/test_inventory.py": 4_000,
-    "tests/test_projects.py": 3_900,
-    "tests/test_repair_offline_duplicates.py": 2_900,
-    "tests/test_documents.py": 2_800,
-    "tests/test_inventory_accounting.py": 2_700,
+    "tests/test_capture_recovery_wrapper.py": 168_500,
+    "tests/test_hr.py": 37_800,
+    "tests/test_release_rollback.py": 25_800,
+    "tests/test_scope_authorization.py": 23_500,
+    "tests/test_authorization_matrix.py": 22_300,
+    "tests/test_daily_reports.py": 15_500,
+    "tests/test_auth.py": 12_200,
+    "tests/test_photos.py": 10_800,
+    "tests/test_session_revocation.py": 10_400,
+    "tests/test_inventory.py": 8_800,
+    "tests/test_idempotency.py": 8_200,
+    "tests/test_projects.py": 7_400,
+    "tests/test_report_payment_concurrency.py": 6_400,
+    "tests/test_garrisonctl.py": 5_000,
+    "tests/test_repair_offline_duplicates.py": 4_900,
+    "tests/test_documents.py": 4_900,
+    "tests/test_release_contract.py": 4_200,
+    "tests/test_inventory_accounting.py": 4_200,
+    "tests/test_delegation_guards.py": 3_900,
+    "tests/test_supervisor_updates.py": 3_300,
 }
 
 

@@ -32,6 +32,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.config import get_settings
 from app.models.activity_log import ActivityLog
 from app.models.hr import (
+    HrAdvanceRecovery,
     HrApplication,
     HrAttendanceCorrection,
     HrAttendanceEntry,
@@ -45,6 +46,7 @@ from app.models.hr import (
     HrDocument,
     HrDocumentVersion,
     HrEmployee,
+    HrEmployeeAdvance,
     HrEmployeeBenefit,
     HrEmploymentHistory,
     HrEmploymentPeriod,
@@ -64,6 +66,7 @@ from app.models.hr import (
     HrOnboardingCase,
     HrOnboardingTask,
     HrOvertimeRequest,
+    HrPayrollLine,
     HrPayrollPeriod,
     HrPayrollPolicy,
     HrPayrollRun,
@@ -106,8 +109,15 @@ from app.schemas.hr import (
     CertificationCreateRequest,
     ClearanceStepResponse,
     CompensationTermCreateRequest,
+    CompensationTermDecisionRequest,
     CompensationTermResponse,
     ComplianceItemResponse,
+    EmployeeAdvanceDecision,
+    EmployeeAdvanceDisbursement,
+    EmployeeAdvancePayment,
+    EmployeeAdvanceRecovery,
+    EmployeeAdvanceRequest,
+    EmployeeAdvanceResponse,
     EmployeeBenefitCreateRequest,
     ExpiringComplianceResponse,
     GoalCreateRequest,
@@ -147,6 +157,7 @@ from app.schemas.hr import (
     LetterRenderResponse,
     LetterSummary,
     LetterTemplateCreateRequest,
+    MyPolicyFileResponse,
     MyPolicyListResponse,
     MyPolicyResponse,
     OffboardingCaseResponse,
@@ -165,6 +176,7 @@ from app.schemas.hr import (
     OvertimeRequestCreateRequest,
     PayrollPeriodCreateRequest,
     PayrollPolicyCreateRequest,
+    PayrollPolicyDraftUpdateRequest,
     PayrollRunCreateRequest,
     PolicyAcknowledgementResponse,
     PolicyAcknowledgeRequest,
@@ -172,6 +184,8 @@ from app.schemas.hr import (
     PolicyDocumentResponse,
     ReimbursementCreateRequest,
     ReimbursementDecisionRequest,
+    ReimbursementPayable,
+    ReimbursementPayableResponse,
     RequisitionCreateRequest,
     RequisitionDecisionRequest,
     ReviewCreateRequest,
@@ -204,6 +218,10 @@ from app.services.hr_crypto import (
     validate_hr_document_file,
 )
 from app.services.hr_leave_accrual import ensure_leave_year_open
+from app.services.hr_leave_date_evidence import (
+    require_approved_leave_debit,
+    require_unlocked_leave_payroll,
+)
 from app.services.hr_manager_review import (
     REVIEW_EMPLOYMENT_STATES,
     eligible_reviewer,
@@ -217,8 +235,9 @@ from app.services.hr_offboarding_custody import (
     confirmed_access_revocation,
     require_custody_clearance,
 )
-from app.services.hr_payroll_snapshot import lock_payroll_periods, validate_payroll_rules
+from app.services.hr_payroll_snapshot import lock_payroll_periods, validate_payroll_policy
 from app.services.hr_separation_settlement import FINANCE_AREA, require_settlement_clearance
+from app.services.idempotency import bind, resolve_or_reserve, validate_key
 from app.services.notification_service import NotificationService
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
@@ -226,6 +245,7 @@ from app.utils.permissions import (
     PERMISSION_HR_CASES_RESTRICTED,
     PERMISSION_HR_DOCUMENTS_MANAGE,
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
     PERMISSION_HR_REQUESTS_PROCESS,
@@ -240,6 +260,26 @@ from app.utils.time import business_today
 RESTRICTED_DOC_CATEGORIES = {"confidential", "medical", "compensation", "disciplinary"}
 SIGNED_URL_SECONDS = 300
 WORKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def _stored_leave_fields(request: HrLeaveRequest) -> LeaveRequestFields:
+    period: Literal["morning", "afternoon"] | None
+    if request.half_day_period == "morning":
+        period = "morning"
+    elif request.half_day_period == "afternoon":
+        period = "afternoon"
+    elif request.half_day_period is None:
+        period = None
+    else:
+        raise AppException("The request has an invalid half-day period.", status_code=422)
+    return LeaveRequestFields(
+        leave_type_id=request.leave_type_id,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        is_half_day=request.is_half_day,
+        half_day_period=period,
+        attachment_document_id=request.attachment_document_id,
+    )
 
 
 class HrWorkforceService:
@@ -2075,10 +2115,21 @@ class HrWorkforceService:
         if (
             include_category
             and version_number is not None
-            and doc.document_type in {"candidate_cv", "candidate_offer"}
-            and doc.candidate_id is not None
-            and doc.category == "confidential"
-            and has_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+            and (
+                (
+                    doc.document_type in {"candidate_cv", "candidate_offer"}
+                    and doc.candidate_id is not None
+                    and doc.category == "confidential"
+                    and has_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+                )
+                or (
+                    doc.document_type == "reimbursement_receipt"
+                    and doc.employee_id is not None
+                    and doc.category == "compensation"
+                    and has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+                    and has_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+                )
+            )
         ):
             visible_version = or_(
                 visible_version,
@@ -2507,6 +2558,12 @@ class HrWorkforceService:
         )
         return list(rows), total or 0
 
+    async def get_roster_allocation(self, allocation_id: UUID) -> HrRosterAllocation:
+        row = await self.session.get(HrRosterAllocation, allocation_id)
+        if row is None:
+            raise NotFoundException("Roster allocation")
+        return row
+
     @staticmethod
     def _roster_instant(day: date, local_time: time, zone: ZoneInfo) -> datetime:
         local = datetime.combine(day, local_time.replace(tzinfo=None))
@@ -2850,6 +2907,12 @@ class HrWorkforceService:
             )
         await self.session.commit()
 
+    async def get_attendance_entry(self, record_id: UUID) -> HrAttendanceEntry:
+        row = await self.session.get(HrAttendanceEntry, record_id)
+        if row is None:
+            raise NotFoundException("Attendance entry")
+        return row
+
     async def decide_attendance(
         self, entry_id: UUID, payload: AttendanceReviewRequest, actor: User
     ) -> HrAttendanceEntry:
@@ -2969,6 +3032,12 @@ class HrWorkforceService:
         )
         await self._commit_and_refresh(corr)
         return corr
+
+    async def get_attendance_correction(self, record_id: UUID) -> HrAttendanceCorrection:
+        row = await self.session.get(HrAttendanceCorrection, record_id)
+        if row is None:
+            raise NotFoundException("Attendance correction")
+        return row
 
     async def decide_attendance_correction(
         self, correction_id: UUID, payload: AttendanceCorrectionDecisionRequest, actor: User
@@ -3182,6 +3251,12 @@ class HrWorkforceService:
         await self._commit_and_refresh(ts)
         return ts
 
+    async def get_timesheet(self, record_id: UUID) -> HrTimesheet:
+        row = await self.session.get(HrTimesheet, record_id)
+        if row is None:
+            raise NotFoundException("Timesheet")
+        return row
+
     async def decide_timesheet(
         self, timesheet_id: UUID, payload: TimesheetDecisionRequest, actor: User
     ) -> HrTimesheet:
@@ -3309,6 +3384,12 @@ class HrWorkforceService:
         )
         await self._commit_and_refresh(ot)
         return ot
+
+    async def get_overtime_request(self, record_id: UUID) -> HrOvertimeRequest:
+        row = await self.session.get(HrOvertimeRequest, record_id)
+        if row is None:
+            raise NotFoundException("Overtime request")
+        return row
 
     async def decide_overtime_request(
         self, ot_id: UUID, payload: OvertimeDecisionRequest, actor: User
@@ -3693,13 +3774,14 @@ class HrWorkforceService:
         return lt
 
     async def get_leave_units(self, employee: HrEmployee, payload: LeaveUnitsQuery) -> Decimal:
-        return await self._calculate_leave_units(
+        units, _ = await self._calculate_leave_schedule(
             employee, payload, await self._active_leave_type(payload.leave_type_id)
         )
+        return units
 
-    async def _calculate_leave_units(
+    async def _calculate_leave_schedule(
         self, employee: HrEmployee, payload: LeaveUnitsQuery, lt: HrLeaveType
-    ) -> Decimal:
+    ) -> tuple[Decimal, list[date]]:
         calendar_days = (payload.end_date - payload.start_date).days + 1
         if calendar_days <= 0 or payload.start_date.year != payload.end_date.year:
             raise AppException(
@@ -3712,18 +3794,19 @@ class HrWorkforceService:
             raise AppException("A half-day period requires half-day leave.", status_code=422)
         if payload.is_half_day and not lt.allow_half_day:
             raise AppException("This leave type does not allow half days.", status_code=422)
-        workdays = await self._count_leave_workdays(employee, payload.start_date, calendar_days)
-        if workdays == 0:
+        workdays = await self._leave_work_dates(employee, payload.start_date, calendar_days)
+        if not workdays:
             raise AppException(
                 "The requested dates have no scheduled workdays.",
                 status_code=422,
                 error_code="NO_LEAVE_WORKDAYS",
             )
-        return Decimal("0.50") if payload.is_half_day else Decimal(workdays)
+        units = Decimal("0.50") if payload.is_half_day else Decimal(len(workdays))
+        return units, workdays
 
-    async def _count_leave_workdays(
+    async def _leave_work_dates(
         self, employee: HrEmployee, start: date, calendar_days: int
-    ) -> int:
+    ) -> list[date]:
         # One query for at most one calendar year. Resolve each date independently
         # so revisions and shift assignments can change within a request.
         offsets = func.generate_series(0, calendar_days - 1).table_valued("n").render_derived()
@@ -3776,7 +3859,7 @@ class HrWorkforceService:
             )
             .order_by(schedule.c.work_date)
         )
-        workdays = 0
+        workdays = []
         for day, work_days, holiday_id in rows:
             if work_days is None:
                 raise AppException(
@@ -3785,17 +3868,17 @@ class HrWorkforceService:
                     error_code="LEAVE_SCHEDULE_MISSING",
                 )
             if holiday_id is None and WORKDAYS[day.weekday()] in work_days:
-                workdays += 1
+                workdays.append(day)
         return workdays
 
     async def _validate_leave_request(
         self, payload: LeaveRequestFields, target_emp: HrEmployee, actor: User
-    ) -> Decimal:
+    ) -> tuple[Decimal, list[date]]:
         await ensure_leave_year_open(
             self.session, target_emp.id, payload.leave_type_id, payload.start_date.year
         )
         lt = await self._active_leave_type(payload.leave_type_id)
-        units = await self._calculate_leave_units(target_emp, payload, lt)
+        units, workdays = await self._calculate_leave_schedule(target_emp, payload, lt)
         if payload.days_requested is not None and payload.days_requested != units:
             raise AppException(
                 f"The published schedule counts {units} leave days. Check the dates and try again.",
@@ -3817,7 +3900,7 @@ class HrWorkforceService:
                     raise NotFoundException("HR Document")
             else:
                 self._ensure_hr_doc_access(doc, actor)
-        return units
+        return units, workdays
 
     async def create_leave_request(
         self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
@@ -3826,7 +3909,7 @@ class HrWorkforceService:
         target_emp = await self._require_employee(employee_id, for_update=True)
         if own_request:
             self._verify_self_request(target_emp, actor)
-        units = await self._validate_leave_request(payload, target_emp, actor)
+        units, workdays = await self._validate_leave_request(payload, target_emp, actor)
         if payload.submit_immediately:
             await self._ensure_no_leave_overlap(target_emp.id, payload.start_date, payload.end_date)
         req = HrLeaveRequest(
@@ -3835,6 +3918,7 @@ class HrWorkforceService:
             start_date=payload.start_date,
             end_date=payload.end_date,
             days_requested=units,
+            scheduled_work_dates=workdays if payload.submit_immediately else None,
             is_half_day=payload.is_half_day,
             half_day_period=payload.half_day_period,
             reason=payload.reason,
@@ -3880,7 +3964,7 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="INVALID_STATE",
             )
-        units = await self._validate_leave_request(payload, employee, actor)
+        units, workdays = await self._validate_leave_request(payload, employee, actor)
         await self._ensure_no_leave_overlap(
             employee.id, payload.start_date, payload.end_date, exclude=req.id
         )
@@ -3889,6 +3973,7 @@ class HrWorkforceService:
         req.start_date = payload.start_date
         req.end_date = payload.end_date
         req.days_requested = units
+        req.scheduled_work_dates = workdays
         req.is_half_day = payload.is_half_day
         req.half_day_period = payload.half_day_period
         req.reason = payload.reason
@@ -3934,6 +4019,9 @@ class HrWorkforceService:
         *,
         own_request: bool = False,
     ) -> HrLeaveRequest:
+        if not own_request and payload.decision in {"approved", "cancelled"}:
+            # Payroll approval and leave evidence take the same lock before employee rows.
+            await lock_payroll_periods(self.session)
         req = await self.session.scalar(
             select(HrLeaveRequest).where(HrLeaveRequest.id == leave_request_id).with_for_update()
         )
@@ -3958,33 +4046,15 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="INVALID_STATE",
             )
-        if payload.decision == "approved" or (
-            payload.decision == "cancelled" and prev_status == "approved"
-        ):
+        reversal = payload.decision == "cancelled" and prev_status == "approved"
+        if payload.decision == "approved" or reversal:
             await ensure_leave_year_open(
                 self.session, req.employee_id, req.leave_type_id, req.start_date.year
             )
+            await require_unlocked_leave_payroll(self.session, req)
         if payload.decision == "submitted":
-            period: Literal["morning", "afternoon"] | None
-            if req.half_day_period == "morning":
-                period = "morning"
-            elif req.half_day_period == "afternoon":
-                period = "afternoon"
-            elif req.half_day_period is None:
-                period = None
-            else:
-                raise AppException("The draft has an invalid half-day period.", status_code=422)
-            req.days_requested = await self._validate_leave_request(
-                LeaveRequestFields(
-                    leave_type_id=req.leave_type_id,
-                    start_date=req.start_date,
-                    end_date=req.end_date,
-                    is_half_day=req.is_half_day,
-                    half_day_period=period,
-                    attachment_document_id=req.attachment_document_id,
-                ),
-                emp,
-                actor,
+            req.days_requested, req.scheduled_work_dates = await self._validate_leave_request(
+                _stored_leave_fields(req), emp, actor
             )
             await self._ensure_no_leave_overlap(
                 emp.id, req.start_date, req.end_date, exclude=req.id
@@ -3992,7 +4062,7 @@ class HrWorkforceService:
             await start_manager_review(self.session, req, emp)
         if payload.decision == "rejected" and not (payload.notes or "").strip():
             raise AppException("Rejection requires a reason.", status_code=422)
-        if payload.decision in {"approved", "rejected"} and (
+        if (payload.decision in {"approved", "rejected"} or reversal) and (
             emp.user_id == actor.id or req.requested_by_id == actor.id
         ):
             raise AppException(
@@ -4004,14 +4074,25 @@ class HrWorkforceService:
             await require_manager_recommendation(
                 self.session, req, emp, actor, payload.expected_revision
             )
+        reversed_debit_id = None
+        decision_notes = payload.notes
         if payload.decision == "approved":
-            lt = await self.session.scalar(
-                select(HrLeaveType).where(HrLeaveType.id == req.leave_type_id)
+            lt = await self._active_leave_type(req.leave_type_id)
+            units, workdays = await self._calculate_leave_schedule(
+                emp, _stored_leave_fields(req), lt
             )
-            if (
-                lt
-                and lt.is_paid
-                and not await self._leave_allows_negative_balance(req, emp.employment_category)
+            if units != req.days_requested or (
+                req.scheduled_work_dates is not None and req.scheduled_work_dates != workdays
+            ):
+                raise AppException(
+                    "The work schedule changed after submission. "
+                    "Reject the request so it can be resubmitted.",
+                    status_code=409,
+                    error_code="LEAVE_SCHEDULE_CHANGED",
+                )
+            req.scheduled_work_dates = workdays
+            if lt.is_paid and not await self._leave_allows_negative_balance(
+                req, emp.employment_category
             ):
                 yr = req.start_date.year
                 current_bal = await self._leave_balance(req.employee_id, req.leave_type_id, yr)
@@ -4034,7 +4115,15 @@ class HrWorkforceService:
                     actor_user_id=actor.id,
                 )
             )
-        elif payload.decision == "cancelled" and prev_status == "approved":
+        elif reversal:
+            reason = (payload.notes or "").strip()
+            if not reason or len(reason) > 500:
+                raise AppException(
+                    "Supply a cancellation reason of 1 to 500 characters for approved leave.",
+                    status_code=422,
+                )
+            decision_notes = reason
+            reversed_debit_id = await require_approved_leave_debit(self.session, req)
             self.session.add(
                 HrLeaveLedger(
                     employee_id=req.employee_id,
@@ -4051,13 +4140,14 @@ class HrWorkforceService:
         req.status = payload.decision
         req.decided_by_id = actor.id
         req.decided_at = utc_now()
-        req.decision_notes = payload.notes
+        req.decision_notes = decision_notes
         req.record_revision += 1
         await self.audit.record(
             action=f"hr.leave_request.{payload.decision}",
             user_id=actor.id,
             entity_type="hr_leave_requests",
             entity_id=req.id,
+            new_values={"reversed_debit_id": str(reversed_debit_id)} if reversed_debit_id else None,
         )
         await self._commit_and_refresh(req)
         return req
@@ -4211,7 +4301,7 @@ class HrWorkforceService:
 
     async def get_self_policy_download_url(
         self, policy_id: UUID, actor: User
-    ) -> HrDocumentDownloadResponse:
+    ) -> MyPolicyFileResponse:
         employee = await self._employee_for_user(actor)
         policy = await self.session.scalar(
             select(HrPolicyDocument).where(
@@ -4232,13 +4322,26 @@ class HrWorkforceService:
         doc = await self._company_policy_file(policy.document_id, policy.document_version_number)
         if doc is None:
             raise NotFoundException("Policy file")
-        return await self._presign_document_version(
+        version = await self.session.scalar(
+            select(HrDocumentVersion).where(
+                HrDocumentVersion.document_id == doc.id,
+                HrDocumentVersion.version_number == policy.document_version_number,
+            )
+        )
+        if version is None:
+            raise NotFoundException("Policy document version")
+        link = await self._presign_document_version(
             doc,
             actor,
             action="hr.policy.document_downloaded",
             include_category=False,
             version_number=policy.document_version_number,
             allow_superseded=True,
+        )
+        return MyPolicyFileResponse(
+            **link.model_dump(),
+            file_size=version.file_size,
+            sha256_checksum=version.sha256_checksum,
         )
 
     @staticmethod
@@ -4380,7 +4483,7 @@ class HrWorkforceService:
 
     async def _letter_text(
         self, payload: LetterGenerateRequest, actor: User, emp: HrEmployee
-    ) -> tuple[HrLetterTemplate, str, str]:
+    ) -> tuple[HrLetterTemplate, str, str, UUID | None]:
         tmpl = await self.session.scalar(
             select(HrLetterTemplate).where(
                 HrLetterTemplate.id == payload.template_id,
@@ -4390,6 +4493,9 @@ class HrWorkforceService:
         )
         if tmpl is None:
             raise NotFoundException("Letter template")
+        if tmpl.letter_type == "salary_confirmation":
+            self._require_letter_manager(actor)
+            ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
         if tmpl.requires_hr_manager and not has_permission(
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
@@ -4407,14 +4513,51 @@ class HrWorkforceService:
             "join_date": emp.join_date.isoformat() if emp.join_date else "",
             "employment_status": emp.employment_status,
         }
-        if context.keys() & payload.extra_vars.keys():
+        compensation_fields = (
+            {"base_salary", "salary_currency", "pay_frequency"}
+            if tmpl.letter_type == "salary_confirmation"
+            else set()
+        )
+        if (context.keys() | compensation_fields) & payload.extra_vars.keys():
             raise AppException(
-                "Employee fields are filled from the employee record.",
+                "Employee and compensation fields are filled from approved records.",
                 status_code=422,
                 error_code="LETTER_EMPLOYEE_FIELD_OVERRIDE",
             )
+        term_id = None
+        if tmpl.letter_type == "salary_confirmation":
+            fields = {
+                field
+                for template in (tmpl.subject_template, tmpl.body_template)
+                for _, field, _, _ in Formatter().parse(template)
+                if field
+            }
+            if not compensation_fields <= fields:
+                raise AppException(
+                    "The salary template must include base salary, currency and pay frequency.",
+                    status_code=422,
+                )
+            terms = await self._compensation_history(emp.id)
+            term_id = self._current_compensation(terms)
+            if term_id is None:
+                raise AppException(
+                    "No independently approved current compensation term.", status_code=409
+                )
+            term = next(term for term in terms if term.id == term_id)
+            if term.proposed_by_id is None or term.proposed_by_id == term.approved_by_id:
+                raise AppException(
+                    "The current term has no independent approval record.", status_code=409
+                )
+            salary = decrypt_hr_value(term.base_salary_encrypted)
+            if not salary:
+                raise AppException(
+                    "The approved compensation term has no salary value.", status_code=409
+                )
+            context.update(
+                base_salary=salary, salary_currency=term.currency, pay_frequency=term.pay_frequency
+            )
         context.update(payload.extra_vars)
-        return tmpl, *self._format_letter_text(tmpl, context)
+        return tmpl, *self._format_letter_text(tmpl, context), term_id
 
     @staticmethod
     def _format_letter_text(tmpl: HrLetterTemplate, context: dict[str, str]) -> tuple[str, str]:
@@ -4433,13 +4576,13 @@ class HrWorkforceService:
 
     @staticmethod
     def _letter_digest(
-        actor: User, employee_id: UUID, revision: int, template_id: UUID, subject: str, body: str
+        actor: User, employee_id: UUID, revision: int, template_id: UUID, subject: str, body: str,
+        term_id: UUID | None = None,
     ) -> str:
-        return hashlib.sha256(
-            json.dumps(
-                [str(actor.id), str(employee_id), revision, str(template_id), subject, body]
-            ).encode()
-        ).hexdigest()
+        fields = [str(actor.id), str(employee_id), revision, str(template_id), subject, body]
+        if term_id is not None:
+            fields.append(str(term_id))
+        return hashlib.sha256(json.dumps(fields).encode()).hexdigest()
 
     @staticmethod
     def _require_letter_manager(actor: User) -> None:
@@ -4450,11 +4593,10 @@ class HrWorkforceService:
         self, payload: LetterGenerateRequest, actor: User
     ) -> LetterRenderResponse:
         emp = await self._require_employee(payload.employee_id)
-        tmpl, subject, body = await self._letter_text(payload, actor, emp)
-        # Salary letters require an authoritative compensation source before issuance.
+        tmpl, subject, body, term_id = await self._letter_text(payload, actor, emp)
         digest = (
-            self._letter_digest(actor, emp.id, emp.record_revision, tmpl.id, subject, body)
-            if actor.role == ROLE_HR_MANAGER and tmpl.letter_type != "salary_confirmation"
+            self._letter_digest(actor, emp.id, emp.record_revision, tmpl.id, subject, body, term_id)
+            if actor.role == ROLE_HR_MANAGER
             else None
         )
         await self.audit.record(
@@ -4462,7 +4604,10 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_employees",
             entity_id=emp.id,
-            new_values={"template_code": tmpl.code},
+            new_values={
+                "template_code": tmpl.code,
+                **({"compensation_term_id": str(term_id)} if term_id else {}),
+            },
         )
         await self.session.commit()
         return LetterRenderResponse(
@@ -4507,6 +4652,8 @@ class HrWorkforceService:
             ):
                 template = await self.session.get(HrLetterTemplate, existing.template_id)
                 assert template is not None
+                if existing.compensation_term_id is not None:
+                    ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
                 detail = self._letter_detail(existing, template.name, actor)
                 digest = self._letter_digest(
                     actor,
@@ -4515,16 +4662,15 @@ class HrWorkforceService:
                     template.id,
                     detail.subject,
                     detail.body,
+                    existing.compensation_term_id,
                 )
                 if digest == payload.expected_digest:
                     return detail
             raise AppException("The letter draft reference is already used.", status_code=409)
-        tmpl, subject, body = await self._letter_text(payload, actor, emp)
-        if tmpl.letter_type == "salary_confirmation":
-            raise AppException(
-                "Salary confirmation requires an approved compensation source.", status_code=409
-            )
-        digest = self._letter_digest(actor, emp.id, emp.record_revision, tmpl.id, subject, body)
+        tmpl, subject, body, term_id = await self._letter_text(payload, actor, emp)
+        digest = self._letter_digest(
+            actor, emp.id, emp.record_revision, tmpl.id, subject, body, term_id
+        )
         if digest != payload.expected_digest:
             raise AppException("The letter preview changed. Review it again.", status_code=409)
         row = HrIssuedLetter(
@@ -4532,6 +4678,7 @@ class HrWorkforceService:
             employee_id=emp.id,
             template_id=tmpl.id,
             employee_revision=emp.record_revision,
+            compensation_term_id=term_id,
             content_encrypted=encrypt_hr_value(json.dumps([subject, body])),
             prepared_by=actor.id,
         )
@@ -4553,7 +4700,12 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_issued_letters",
             entity_id=row.id,
-            new_values={"template_id": str(row.template_id), "employee_id": str(row.employee_id)},
+            new_values={
+                "template_id": str(row.template_id),
+                "employee_id": str(row.employee_id),
+                **({"compensation_term_id": str(row.compensation_term_id)}
+                   if row.compensation_term_id else {}),
+            },
         )
 
     async def _letter_employee(self, employee_id: UUID | None, actor: User) -> HrEmployee:
@@ -4573,6 +4725,8 @@ class HrWorkforceService:
     ) -> LetterListResponse:
         emp = await self._letter_employee(employee_id, actor)
         filters = [HrIssuedLetter.employee_id == emp.id]
+        if employee_id is not None and not has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE):
+            filters.append(HrIssuedLetter.compensation_term_id.is_(None))
         if employee_id is None or issued_only:
             filters.append(HrIssuedLetter.status == "issued")
         rows = await self.session.execute(
@@ -4603,12 +4757,23 @@ class HrWorkforceService:
         )
         if employee_id is None:
             query = query.where(HrIssuedLetter.status == "issued")
+        elif not has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE):
+            query = query.where(HrIssuedLetter.compensation_term_id.is_(None))
         result = (await self.session.execute(query)).one_or_none()
         if result is None:
             raise NotFoundException("HR letter")
         row, name = result
         reviewer = actor if employee_id is not None and emp.user_id != actor.id else None
-        return self._letter_detail(row, name, reviewer)
+        detail = self._letter_detail(row, name, reviewer)
+        if row.compensation_term_id is not None:
+            await self.audit.record(
+                action="hr.letter.salary_viewed",
+                user_id=actor.id,
+                entity_type="hr_issued_letters",
+                entity_id=row.id,
+            )
+            await self.session.commit()
+        return detail
 
     async def decide_letter(
         self, employee_id: UUID, letter_id: UUID, payload: LetterDecisionRequest, actor: User
@@ -4626,6 +4791,10 @@ class HrWorkforceService:
         if result is None:
             raise NotFoundException("HR letter")
         row, name = result
+        if row.compensation_term_id is not None and not has_permission(
+            actor, PERMISSION_HR_PAYROLL_SENSITIVE
+        ):
+            raise NotFoundException("HR letter")
         if actor.id in (row.prepared_by, emp.user_id):
             raise PermissionDeniedException("independent HR letter review")
         reason = (payload.reason or "").strip()
@@ -4640,6 +4809,12 @@ class HrWorkforceService:
                 return self._letter_detail(row, name, actor)
             raise AppException("The letter already has a final decision.", status_code=409)
         if payload.decision == "issued":
+            if row.compensation_term_id is not None and row.compensation_term_id != (
+                self._current_compensation(await self._compensation_history(emp.id))
+            ):
+                raise AppException(
+                    "The approved compensation changed. Prepare a new draft.", status_code=409
+                )
             if emp.record_revision != row.employee_revision:
                 raise AppException("Employee data changed. Prepare a new draft.", status_code=409)
             if emp.user_id is None or emp.employment_status not in REVIEW_EMPLOYMENT_STATES:
@@ -5047,13 +5222,14 @@ class HrWorkforceService:
                     status_code=422,
                 )
             self._require_letter_manager(actor)
-            issued = await self.session.scalar(
-                select(HrIssuedLetter.id).where(
-                    HrIssuedLetter.id == letter_id,
-                    HrIssuedLetter.employee_id == req.employee_id,
-                    HrIssuedLetter.status == "issued",
-                )
+            issued_query = select(HrIssuedLetter.id).where(
+                HrIssuedLetter.id == letter_id,
+                HrIssuedLetter.employee_id == req.employee_id,
+                HrIssuedLetter.status == "issued",
             )
+            if not has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE):
+                issued_query = issued_query.where(HrIssuedLetter.compensation_term_id.is_(None))
+            issued = await self.session.scalar(issued_query)
             if issued is None:
                 raise NotFoundException("Issued HR letter")
         prior_status = req.status
@@ -5859,7 +6035,23 @@ class HrWorkforceService:
     async def create_benefit_type(
         self, payload: BenefitTypeCreateRequest, actor: User
     ) -> HrBenefitType:
-        bt = HrBenefitType(**payload.model_dump())
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        if (payload.reimbursement_ceiling is None) != (payload.reimbursement_currency is None):
+            raise AppException("Set both the ceiling and its currency.", status_code=422)
+        if payload.reimbursement_ceiling is not None and not payload.requires_policy_approval:
+            raise AppException(
+                "A reimbursement ceiling requires independent approval.", status_code=422
+            )
+        if payload.allows_advances and payload.reimbursement_ceiling is None:
+            raise AppException("An advance requires a benefit ceiling.", status_code=422)
+        code = payload.code.strip().upper()
+        if not code:
+            raise AppException("Provide a benefit code.", status_code=422)
+        bt = HrBenefitType(
+            **payload.model_dump(exclude={"code"}),
+            code=code,
+            proposed_by_id=actor.id if payload.reimbursement_ceiling is not None else None,
+        )
         self.session.add(bt)
         try:
             await self.session.flush()
@@ -5877,6 +6069,35 @@ class HrWorkforceService:
             ) from exc
         return bt
 
+    async def approve_benefit_policy(self, benefit_type_id: UUID, actor: User) -> HrBenefitType:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        benefit = await self.session.get(HrBenefitType, benefit_type_id, with_for_update=True)
+        if benefit is None or not benefit.is_active:
+            raise NotFoundException("Benefit type")
+        if (
+            benefit.reimbursement_ceiling is None
+            or benefit.reimbursement_currency is None
+            or benefit.proposed_by_id is None
+        ):
+            raise AppException("Configure a ceiling and currency before approval.", status_code=409)
+        if benefit.proposed_by_id == actor.id:
+            raise PermissionDeniedException("Independent benefit policy approval")
+        if benefit.approved_at is not None:
+            if benefit.approved_by_id != actor.id:
+                raise AppException("This benefit policy is already approved.", status_code=409)
+            return benefit
+        benefit.approved_by_id = actor.id
+        benefit.approved_at = utc_now()
+        await self.audit.record(
+            action="hr.benefit_type.reimbursement_policy_approved",
+            user_id=actor.id,
+            entity_type="hr_benefit_types",
+            entity_id=benefit.id,
+        )
+        await self._commit_and_refresh(benefit)
+        return benefit
+
     async def list_benefit_types(self) -> tuple[list[HrBenefitType], int]:
         rows = list(
             await self.session.scalars(select(HrBenefitType).order_by(HrBenefitType.code.asc()))
@@ -5886,7 +6107,30 @@ class HrWorkforceService:
     async def create_employee_benefit(
         self, payload: EmployeeBenefitCreateRequest, actor: User
     ) -> HrEmployeeBenefit:
-        await self._require_employee(payload.employee_id)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        await self._require_employee(payload.employee_id, for_update=True)
+        benefit = await self.session.get(HrBenefitType, payload.benefit_type_id)
+        if benefit is None or not benefit.is_active:
+            raise NotFoundException("Benefit type")
+        if benefit.reimbursement_ceiling is not None:
+            self._approved_benefit_ceiling(benefit)
+            if payload.effective_to is None:
+                raise AppException("A capped benefit needs an end date.", status_code=422)
+        if payload.effective_to is not None and payload.effective_to < payload.effective_from:
+            raise AppException("Enter the benefit dates in order.", status_code=422)
+        overlap = select(HrEmployeeBenefit.id).where(
+            HrEmployeeBenefit.employee_id == payload.employee_id,
+            HrEmployeeBenefit.benefit_type_id == payload.benefit_type_id,
+            HrEmployeeBenefit.status == "active",
+            or_(
+                HrEmployeeBenefit.effective_to.is_(None),
+                HrEmployeeBenefit.effective_to >= payload.effective_from,
+            ),
+        )
+        if payload.effective_to is not None:
+            overlap = overlap.where(HrEmployeeBenefit.effective_from <= payload.effective_to)
+        if await self.session.scalar(overlap.limit(1)) is not None:
+            raise AppException("This benefit overlaps existing coverage.", status_code=409)
         eb = HrEmployeeBenefit(**payload.model_dump())
         self.session.add(eb)
         await self.session.flush()
@@ -5910,26 +6154,453 @@ class HrWorkforceService:
         )
         return rows, len(rows)
 
-    async def create_reimbursement(
-        self, payload: ReimbursementCreateRequest, actor: User
-    ) -> HrReimbursementClaim:
-        emp = (
-            await self._require_employee(payload.employee_id)
-            if payload.employee_id
-            else await self._employee_for_user(actor)
+    @staticmethod
+    def _approved_benefit_ceiling(benefit: HrBenefitType) -> Decimal:
+        if (
+            not benefit.is_active
+            or benefit.reimbursement_ceiling is None
+            or benefit.reimbursement_ceiling <= 0
+            or benefit.reimbursement_currency is None
+            or benefit.proposed_by_id is None
+            or benefit.approved_by_id is None
+            or benefit.approved_by_id == benefit.proposed_by_id
+            or benefit.approved_at is None
+        ):
+            raise AppException(
+                "This benefit lacks an approved reimbursement ceiling.", status_code=409
+            )
+        return benefit.reimbursement_ceiling
+
+    async def _ensure_benefit_coverage(
+        self,
+        assignment_id: UUID | None,
+        employee_id: UUID,
+        claim_type: str | None,
+        claim_date: date,
+        amount: Decimal,
+        currency: str,
+        *,
+        exclude_claim_id: UUID | None = None,
+        exclude_advance_id: UUID | None = None,
+    ) -> None:
+        # Submission, approval and benefit assignment all hold the employee lock.
+        if assignment_id is None:
+            raise AppException(
+                "Reconcile the claim against approved benefit coverage.", status_code=409
+            )
+        row = (
+            await self.session.execute(
+                select(HrEmployeeBenefit, HrBenefitType)
+                .join(HrBenefitType, HrBenefitType.id == HrEmployeeBenefit.benefit_type_id)
+                .where(
+                    HrEmployeeBenefit.id == assignment_id,
+                    HrEmployeeBenefit.employee_id == employee_id,
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise NotFoundException("Benefit coverage")
+        assignment, benefit = row
+        ceiling = self._approved_benefit_ceiling(benefit)
+        if (
+            assignment.status != "active"
+            or assignment.effective_to is None
+            or not assignment.effective_from <= claim_date <= assignment.effective_to
+            or (claim_type is not None and claim_type != benefit.code)
+            or (claim_type is None and not benefit.allows_advances)
+            or currency != benefit.reimbursement_currency
+        ):
+            raise AppException(
+                "The request falls outside the approved benefit coverage.", status_code=409
+            )
+        totals = select(func.sum(HrReimbursementClaim.amount)).where(
+            HrReimbursementClaim.benefit_assignment_id == assignment.id,
+            HrReimbursementClaim.status.in_(("submitted", "approved", "paid")),
         )
+        if exclude_claim_id is not None:
+            totals = totals.where(HrReimbursementClaim.id != exclude_claim_id)
+        reserved = await self.session.scalar(totals) or Decimal("0")
+        advances = select(func.sum(HrEmployeeAdvance.amount)).where(
+            HrEmployeeAdvance.benefit_assignment_id == assignment.id,
+            HrEmployeeAdvance.status.in_(("submitted", "approved", "disbursed")),
+        )
+        if exclude_advance_id is not None:
+            advances = advances.where(HrEmployeeAdvance.id != exclude_advance_id)
+        open_principal = await self.session.scalar(advances) or Decimal("0")
+        if reserved + open_principal + amount > ceiling:
+            raise AppException(
+                "The request exceeds the remaining coverage ceiling.",
+                status_code=409,
+                error_code="BENEFIT_CEILING_EXCEEDED",
+            )
+
+    async def _locked_advance(self, advance_id: UUID) -> tuple[HrEmployeeAdvance, HrEmployee]:
+        employee_id = await self.session.scalar(
+            select(HrEmployeeAdvance.employee_id).where(HrEmployeeAdvance.id == advance_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Employee advance")
+        employee = await self._require_employee(employee_id, for_update=True)
+        advance = await self.session.get(HrEmployeeAdvance, advance_id, populate_existing=True)
+        if advance is None:
+            raise NotFoundException("Employee advance")
+        return advance, employee
+
+    @staticmethod
+    def _advance_digest(advance: HrEmployeeAdvance) -> str | None:
+        if advance.status not in {"approved", "disbursed", "settled"} or advance.decided_at is None:
+            return None
+        payload = [
+            "employee-advance-v1",
+            str(advance.id),
+            str(advance.employee_id),
+            str(advance.benefit_assignment_id),
+            format(advance.amount, ".2f"),
+            advance.currency,
+            advance.decided_at.astimezone(UTC).isoformat(),
+        ]
+        return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode()).hexdigest()
+
+    async def _advance_response(self, advance: HrEmployeeAdvance) -> EmployeeAdvanceResponse:
+        await self.session.flush()
+        recoveries = list(
+            await self.session.scalars(
+                select(HrAdvanceRecovery)
+                .where(HrAdvanceRecovery.advance_id == advance.id)
+                .order_by(HrAdvanceRecovery.occurred_on, HrAdvanceRecovery.id)
+            )
+        )
+        recovered = sum((item.amount for item in recoveries), Decimal("0.00"))
+        return EmployeeAdvanceResponse(
+            id=advance.id,
+            employee_id=advance.employee_id,
+            benefit_assignment_id=advance.benefit_assignment_id,
+            requested_on=advance.requested_on,
+            amount=advance.amount,
+            currency=advance.currency,
+            status=advance.status,
+            submitted_by_id=advance.submitted_by_id,
+            decided_by_id=advance.decided_by_id,
+            decided_at=advance.decided_at,
+            payable_sha256=self._advance_digest(advance),
+            disbursed_on=advance.disbursed_on,
+            disbursement_reference=advance.disbursement_reference,
+            recovered=recovered,
+            outstanding=advance.amount - recovered if advance.disbursed_on else Decimal("0.00"),
+            recoveries=[EmployeeAdvanceRecovery.model_validate(item) for item in recoveries],
+        )
+
+    async def _record_advance(
+        self, advance: HrEmployeeAdvance, actor: User, action: str
+    ) -> EmployeeAdvanceResponse:
+        await self.audit.record(
+            action=f"hr.advance.{action}",
+            user_id=actor.id,
+            entity_type="hr_employee_advances",
+            entity_id=advance.id,
+        )
+        result = await self._advance_response(advance)
+        await self.session.commit()
+        return result
+
+    async def submit_advance(
+        self, payload: EmployeeAdvanceRequest, actor: User, *, idempotency_key: str | None
+    ) -> EmployeeAdvanceResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        key = validate_key(idempotency_key)
+        if key is None:
+            raise AppException("Supply an Idempotency-Key for this advance.", status_code=422)
+        await self._require_employee(payload.employee_id, for_update=True)
+        route = "hr.employee_advance"
+        existing_id = await resolve_or_reserve(self.session, key=key, user_id=actor.id, route=route)
+        if existing_id is not None:
+            prior = await self.session.get(HrEmployeeAdvance, existing_id)
+            if prior is None or any(
+                getattr(prior, field) != value for field, value in payload.model_dump().items()
+            ):
+                raise AppException("This key belongs to a different advance.", status_code=409)
+            return await self._advance_response(prior)
+        await self._ensure_benefit_coverage(
+            payload.benefit_assignment_id,
+            payload.employee_id,
+            None,
+            payload.requested_on,
+            payload.amount,
+            payload.currency,
+        )
+        advance = HrEmployeeAdvance(**payload.model_dump(), submitted_by_id=actor.id)
+        self.session.add(advance)
+        await self.session.flush()
+        await bind(
+            self.session,
+            key=key,
+            user_id=actor.id,
+            route=route,
+            resource_type="hr_employee_advance",
+            resource_id=advance.id,
+        )
+        return await self._record_advance(advance, actor, "submitted")
+
+    async def read_advance(self, advance_id: UUID, actor: User) -> EmployeeAdvanceResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        advance, _ = await self._locked_advance(advance_id)
+        return await self._record_advance(advance, actor, "read")
+
+    async def list_advances(
+        self, employee_id: UUID, actor: User, *, limit: int, offset: int
+    ) -> tuple[list[EmployeeAdvanceResponse], int]:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        await self._require_employee(employee_id, for_update=True)
+        scope = HrEmployeeAdvance.employee_id == employee_id
+        rows = list(
+            await self.session.scalars(
+                select(HrEmployeeAdvance)
+                .where(scope)
+                .order_by(HrEmployeeAdvance.created_at.desc(), HrEmployeeAdvance.id)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        total = await self.session.scalar(
+            select(func.count()).select_from(HrEmployeeAdvance).where(scope)
+        )
+        await self.audit.record(
+            action="hr.advance.listed",
+            user_id=actor.id,
+            entity_type="hr_employees",
+            entity_id=employee_id,
+        )
+        items = [await self._advance_response(row) for row in rows]
+        await self.session.commit()
+        return items, total or 0
+
+    async def decide_advance(
+        self, advance_id: UUID, payload: EmployeeAdvanceDecision, actor: User
+    ) -> EmployeeAdvanceResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        advance, employee = await self._locked_advance(advance_id)
+        if actor.id in {advance.submitted_by_id, employee.user_id}:
+            raise PermissionDeniedException("Independent advance approval")
+        if advance.status != "submitted":
+            raise AppException("Only submitted advances can be decided.", status_code=409)
+        if payload.decision == "approved":
+            await self._ensure_benefit_coverage(
+                advance.benefit_assignment_id,
+                advance.employee_id,
+                None,
+                advance.requested_on,
+                advance.amount,
+                advance.currency,
+                exclude_advance_id=advance.id,
+            )
+        advance.status = payload.decision
+        advance.decided_by_id = actor.id
+        advance.decided_at = utc_now()
+        return await self._record_advance(advance, actor, payload.decision)
+
+    async def disburse_advance(
+        self, advance_id: UUID, payload: EmployeeAdvanceDisbursement, actor: User
+    ) -> EmployeeAdvanceResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        advance, employee = await self._locked_advance(advance_id)
+        if actor.id in {advance.submitted_by_id, advance.decided_by_id, employee.user_id}:
+            raise PermissionDeniedException("Independent advance disbursement confirmation")
+        reference = payload.reference.strip()
+        if (
+            not reference
+            or payload.expected_payable_sha256 != self._advance_digest(advance)
+            or (payload.amount, payload.currency) != (advance.amount, advance.currency)
+        ):
+            raise AppException("Disbursement must match the approved advance.", status_code=409)
+        if advance.status in {"disbursed", "settled"} and (
+            advance.disbursement_reference,
+            advance.disbursed_on,
+        ) == (reference, payload.occurred_on):
+            return await self._advance_response(advance)
+        approval_date = (
+            advance.decided_at.astimezone(ZoneInfo(get_settings().business_timezone)).date()
+            if advance.decided_at
+            else None
+        )
+        if (
+            advance.status != "approved"
+            or approval_date is None
+            or not max(advance.requested_on, approval_date)
+            <= payload.occurred_on
+            <= business_today()
+        ):
+            raise AppException("The advance cannot be disbursed on this date.", status_code=409)
+        advance.status = "disbursed"
+        advance.disbursement_reference = reference
+        advance.disbursed_on = payload.occurred_on
+        return await self._record_advance(advance, actor, "disbursement_recorded")
+
+    async def recover_advance(
+        self, advance_id: UUID, payload: EmployeeAdvancePayment, actor: User
+    ) -> EmployeeAdvanceResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        advance, employee = await self._locked_advance(advance_id)
+        if actor.id in {advance.submitted_by_id, advance.decided_by_id, employee.user_id}:
+            raise PermissionDeniedException("Independent advance recovery confirmation")
+        reference = payload.reference.strip()
+        if (
+            not reference
+            or reference == advance.disbursement_reference
+            or advance.disbursed_on is None
+            or not advance.disbursed_on <= payload.occurred_on <= business_today()
+            or payload.currency != advance.currency
+        ):
+            raise AppException(
+                "Repayment must match the funded advance and currency.", status_code=409
+            )
+        current = await self._advance_response(advance)
+        prior = next((item for item in current.recoveries if item.reference == reference), None)
+        if prior is not None:
+            if (prior.amount, prior.occurred_on) == (payload.amount, payload.occurred_on):
+                return current
+            raise AppException(
+                "This repayment reference already has different details.", status_code=409
+            )
+        if advance.status != "disbursed" or payload.amount > current.outstanding:
+            raise AppException("The repayment exceeds the outstanding principal.", status_code=409)
+        self.session.add(
+            HrAdvanceRecovery(
+                advance_id=advance.id,
+                recorded_by_id=actor.id,
+                reference=reference,
+                occurred_on=payload.occurred_on,
+                amount=payload.amount,
+            )
+        )
+        if payload.amount == current.outstanding:
+            advance.status = "settled"
+        return await self._record_advance(advance, actor, "repayment_recorded")
+
+    async def create_reimbursement(
+        self,
+        payload: ReimbursementCreateRequest,
+        actor: User,
+        *,
+        idempotency_key: str | None,
+        own_claim: bool = False,
+    ) -> HrReimbursementClaim:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        key = validate_key(idempotency_key)
+        if key is None:
+            raise AppException("Supply an Idempotency-Key for this claim.", status_code=422)
+        emp = (
+            await self._require_employee(payload.employee_id, for_update=True)
+            if payload.employee_id and not own_claim
+            else await self._employee_for_user(actor, for_update=True)
+        )
+        if own_claim and payload.employee_id not in {None, emp.id}:
+            raise NotFoundException("Employee")
+        route = "hr.reimbursement.self" if own_claim else "hr.reimbursement"
+        claim_type = payload.claim_type.strip().upper()
+        existing_id = await resolve_or_reserve(self.session, key=key, user_id=actor.id, route=route)
+        if existing_id is not None:
+            existing = await self.session.get(HrReimbursementClaim, existing_id)
+            if (
+                existing is None
+                or existing.employee_id != emp.id
+                or existing.receipt_version_id is None
+            ):
+                raise AppException("This key belongs to a different claim.", status_code=409)
+            existing_version = await self.session.get(
+                HrDocumentVersion, existing.receipt_version_id
+            )
+            if (
+                existing_version is None
+                or existing_version.document_id != payload.receipt_document_id
+                or existing_version.version_number != payload.receipt_version_number
+                or existing.benefit_assignment_id != payload.benefit_assignment_id
+                or (
+                    existing.claim_type,
+                    existing.claim_date,
+                    existing.amount,
+                    existing.currency,
+                    existing.description,
+                )
+                != (
+                    claim_type,
+                    payload.claim_date,
+                    payload.amount,
+                    payload.currency,
+                    payload.description,
+                )
+            ):
+                raise AppException("This key belongs to a different claim.", status_code=409)
+            return existing
+
+        await self._ensure_benefit_coverage(
+            payload.benefit_assignment_id,
+            emp.id,
+            claim_type,
+            payload.claim_date,
+            payload.amount,
+            payload.currency,
+        )
+        document = await self._get_hr_document(payload.receipt_document_id, for_update=True)
+        if (
+            document.employee_id != emp.id
+            or document.category != "compensation"
+            or document.document_type != "reimbursement_receipt"
+            or document.status != "active"
+        ):
+            raise NotFoundException("Reimbursement receipt")
+        self._ensure_hr_doc_access(document, actor)
+        receipt = await self.session.scalar(
+            select(HrDocumentVersion).where(
+                HrDocumentVersion.document_id == document.id,
+                HrDocumentVersion.version_number == payload.receipt_version_number,
+                HrDocumentVersion.status == "active",
+            )
+        )
+        if receipt is None or document.current_version != payload.receipt_version_number:
+            raise AppException("Select the current approved receipt version.", status_code=409)
+        already_claimed = await self.session.scalar(
+            select(HrReimbursementClaim.id)
+            .outerjoin(
+                HrDocumentVersion, HrDocumentVersion.id == HrReimbursementClaim.receipt_version_id
+            )
+            .where(
+                HrReimbursementClaim.employee_id == emp.id,
+                HrReimbursementClaim.status.in_(("submitted", "approved", "paid")),
+                or_(
+                    HrReimbursementClaim.receipt_document_id == document.id,
+                    HrDocumentVersion.sha256_checksum == receipt.sha256_checksum,
+                ),
+            )
+            .limit(1)
+        )
+        if already_claimed is not None:
+            raise AppException("This receipt is already associated with a claim.", status_code=409)
         claim = HrReimbursementClaim(
             claim_code=f"CLM-{uuid4().hex[:8].upper()}",
             employee_id=emp.id,
-            claim_type=payload.claim_type,
+            claim_type=claim_type,
+            benefit_assignment_id=payload.benefit_assignment_id,
             claim_date=payload.claim_date,
             amount=payload.amount,
             currency=payload.currency,
             description=payload.description,
             receipt_document_id=payload.receipt_document_id,
+            receipt_version_id=receipt.id,
+            submitted_by_id=actor.id,
         )
         self.session.add(claim)
         await self.session.flush()
+        await bind(
+            self.session,
+            key=key,
+            user_id=actor.id,
+            route=route,
+            resource_type="hr_reimbursement_claim",
+            resource_id=claim.id,
+        )
         await self.audit.record(
             action="hr.reimbursement.submitted",
             user_id=actor.id,
@@ -5939,18 +6610,136 @@ class HrWorkforceService:
         await self._commit_and_refresh(claim)
         return claim
 
+    @staticmethod
+    def _reimbursement_payable(claim: HrReimbursementClaim) -> ReimbursementPayableResponse:
+        if (
+            claim.status not in {"approved", "paid"}
+            or claim.submitted_by_id is None
+            or claim.receipt_version_id is None
+            or claim.decided_at is None
+            or claim.decided_by_id is None
+            or claim.decided_by_id == claim.submitted_by_id
+        ):
+            raise AppException(
+                "Only independently approved claims have a payable.", status_code=409
+            )
+        reference = ReimbursementPayable(
+            claim_id=claim.id,
+            payable_reference=claim.claim_code,
+            employee_id=claim.employee_id,
+            amount=claim.amount,
+            currency=claim.currency,
+            approved_at=claim.decided_at.astimezone(UTC),
+        )
+        encoded = json.dumps(
+            reference.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        return ReimbursementPayableResponse(
+            reference=reference,
+            reference_sha256=hashlib.sha256(encoded).hexdigest(),
+            status="paid" if claim.status == "paid" else "approved",
+        )
+
+    async def read_reimbursement_payable(
+        self, claim_id: UUID, actor: User
+    ) -> ReimbursementPayableResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        claim = await self.session.get(HrReimbursementClaim, claim_id)
+        if claim is None:
+            raise NotFoundException("Reimbursement claim")
+        result = self._reimbursement_payable(claim)
+        await self.audit.record(
+            action="hr.reimbursement.payable_read",
+            user_id=actor.id,
+            entity_type="hr_reimbursement_claims",
+            entity_id=claim.id,
+        )
+        await self.session.commit()
+        return result
+
     async def decide_reimbursement(
         self, claim_id: UUID, payload: ReimbursementDecisionRequest, actor: User
     ) -> HrReimbursementClaim:
-        claim = await self.session.scalar(
-            select(HrReimbursementClaim).where(HrReimbursementClaim.id == claim_id)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        employee_id = await self.session.scalar(
+            select(HrReimbursementClaim.employee_id).where(HrReimbursementClaim.id == claim_id)
         )
+        if employee_id is None:
+            raise NotFoundException("Reimbursement claim")
+        employee = await self._require_employee(employee_id, for_update=True)
+        claim = await self.session.get(HrReimbursementClaim, claim_id, populate_existing=True)
         if claim is None:
             raise NotFoundException("Reimbursement claim")
+        if actor.id in {employee.user_id, claim.submitted_by_id}:
+            raise PermissionDeniedException("Independent reimbursement review")
+        if claim.submitted_by_id is None or claim.receipt_version_id is None:
+            raise AppException(
+                "Reconcile the legacy claim evidence before review.", status_code=409
+            )
+        reference = (payload.settlement_reference or "").strip()
+        if payload.decision == "paid":
+            ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+            if (
+                not reference
+                or payload.expected_payable_sha256 is None
+                or payload.settled_amount is None
+                or payload.settled_currency is None
+            ):
+                raise AppException(
+                    "Supply the external reference, reviewed payable digest, amount and currency.",
+                    status_code=422,
+                )
+            if actor.id == claim.decided_by_id:
+                raise PermissionDeniedException("Independent settlement confirmation")
+            payable = self._reimbursement_payable(claim)
+            if payable.reference_sha256 != payload.expected_payable_sha256:
+                raise AppException(
+                    "The payable does not match the reviewed reference.", status_code=409
+                )
+            if (payload.settled_amount, payload.settled_currency) != (claim.amount, claim.currency):
+                raise AppException(
+                    "The external amount and currency must match the payable.", status_code=409
+                )
+            if claim.status == "paid" and claim.settlement_reference == reference:
+                return claim
+            if claim.status != "approved" or claim.decided_by_id is None:
+                raise AppException("Only approved claims may be settled.", status_code=409)
+            claim.settlement_reference = reference
+        else:
+            if any(
+                value is not None
+                for value in (
+                    payload.settlement_reference,
+                    payload.expected_payable_sha256,
+                    payload.settled_amount,
+                    payload.settled_currency,
+                )
+            ):
+                raise AppException(
+                    "Settlement references require a paid decision.", status_code=422
+                )
+            if claim.status != "submitted":
+                raise AppException("Only submitted claims may be decided.", status_code=409)
+            if payload.decision == "approved":
+                await self._ensure_benefit_coverage(
+                    claim.benefit_assignment_id,
+                    claim.employee_id,
+                    claim.claim_type,
+                    claim.claim_date,
+                    claim.amount,
+                    claim.currency,
+                    exclude_claim_id=claim.id,
+                )
+            if payload.decision in {"rejected", "cancelled"} and not (payload.notes or "").strip():
+                raise AppException("Provide a reason for this decision.", status_code=422)
+            claim.decided_by_id = actor.id
+            claim.decided_at = utc_now()
+            claim.decision_notes = payload.notes
         claim.status = payload.decision
-        claim.decided_by_id = actor.id
-        claim.decided_at = utc_now()
-        claim.decision_notes = payload.notes
         await self.audit.record(
             action=f"hr.reimbursement.{payload.decision}",
             user_id=actor.id,
@@ -5961,31 +6750,87 @@ class HrWorkforceService:
         return claim
 
     async def list_reimbursements(
-        self, *, employee_id: UUID | None = None
+        self, *, employee_id: UUID | None = None, limit: int | None = None, offset: int = 0
     ) -> tuple[list[HrReimbursementClaim], int]:
         stmt = select(HrReimbursementClaim)
         if employee_id:
             stmt = stmt.where(HrReimbursementClaim.employee_id == employee_id)
+        total = await self.session.scalar(select(func.count()).select_from(stmt.subquery()))
         rows = list(
-            await self.session.scalars(stmt.order_by(HrReimbursementClaim.claim_date.desc()))
+            await self.session.scalars(
+                stmt.order_by(HrReimbursementClaim.claim_date.desc(), HrReimbursementClaim.id)
+                .limit(limit)
+                .offset(offset)
+            )
         )
-        return rows, len(rows)
+        return rows, total or 0
+
+    @staticmethod
+    def _compensation_term_response(
+        term: HrCompensationTerm, *, current: bool = False, reveal_sensitive: bool = False
+    ) -> CompensationTermResponse:
+        allowances = decrypt_hr_value(term.allowances_encrypted) if reveal_sensitive else None
+        return CompensationTermResponse(
+            id=term.id,
+            employee_id=term.employee_id,
+            effective_from=term.effective_from,
+            pay_frequency=term.pay_frequency,
+            currency=term.currency,
+            base_salary_masked="********",
+            base_salary_plain=decrypt_hr_value(term.base_salary_encrypted)
+            if reveal_sensitive
+            else None,
+            allowances_json=json.loads(allowances) if allowances else None,
+            is_current=current,
+            approval_status=term.approval_status,
+            proposed_by_id=term.proposed_by_id,
+            rejection_reason=decrypt_hr_value(term.rejection_reason_encrypted)
+            if reveal_sensitive
+            else None,
+            approved_by_id=term.approved_by_id,
+            approved_at=term.approved_at,
+            created_at=term.created_at,
+        )
+
+    async def _compensation_history(self, employee_id: UUID) -> list[HrCompensationTerm]:
+        return list(
+            await self.session.scalars(
+                select(HrCompensationTerm)
+                .where(HrCompensationTerm.employee_id == employee_id)
+                .order_by(HrCompensationTerm.effective_from.desc(), HrCompensationTerm.id)
+            )
+        )
+
+    @staticmethod
+    def _current_compensation(terms: list[HrCompensationTerm]) -> UUID | None:
+        today = business_today()
+        effective = [
+            term
+            for term in terms
+            if term.approval_status == "approved"
+            and term.approved_at is not None
+            and term.approved_by_id is not None
+            and term.effective_from <= today
+        ]
+        if not effective or (
+            len(effective) > 1 and effective[0].effective_from == effective[1].effective_from
+        ):
+            return None
+        return effective[0].id
 
     async def create_compensation_term(
         self, payload: CompensationTermCreateRequest, actor: User
     ) -> CompensationTermResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
         await self._require_employee(payload.employee_id, for_update=True)
-        # Supersede prior current terms
-        prev_rows = list(
-            await self.session.scalars(
-                select(HrCompensationTerm).where(
-                    HrCompensationTerm.employee_id == payload.employee_id,
-                    HrCompensationTerm.is_current.is_(True),
-                )
-            )
-        )
-        for prev in prev_rows:
-            prev.is_current = False
+        terms = await self._compensation_history(payload.employee_id)
+        if any(term.approval_status == "proposed" for term in terms):
+            raise AppException("Decide the existing compensation proposal first.", status_code=409)
+        if any(
+            term.approval_status == "approved" and term.effective_from == payload.effective_from
+            for term in terms
+        ):
+            raise AppException("A compensation term already starts on this date.", status_code=409)
 
         term = HrCompensationTerm(
             employee_id=payload.employee_id,
@@ -5993,72 +6838,133 @@ class HrWorkforceService:
             pay_frequency=payload.pay_frequency,
             currency=payload.currency,
             base_salary_encrypted=encrypt_hr_value(payload.base_salary) or "",
-            base_salary_masked=mask_identifier(payload.base_salary) or "****",
+            base_salary_masked="********",
             allowances_encrypted=encrypt_hr_value(json.dumps(payload.allowances_json))
             if payload.allowances_json
             else None,
-            is_current=True,
-            approved_by_id=actor.id,
-            approved_at=utc_now(),
+            is_current=False,
+            approval_status="proposed",
+            proposed_by_id=actor.id,
         )
         self.session.add(term)
         await self.session.flush()
         await self.audit.record(
-            action="hr.compensation.updated",
+            action="hr.compensation.proposed",
             user_id=actor.id,
             entity_type="hr_compensation_terms",
             entity_id=term.id,
         )
         await self.session.commit()
-        return CompensationTermResponse(
-            id=term.id,
-            employee_id=term.employee_id,
-            effective_from=term.effective_from,
-            pay_frequency=term.pay_frequency,
-            currency=term.currency,
-            base_salary_masked=term.base_salary_masked,
-            base_salary_plain=None,
-            is_current=term.is_current,
-            approved_by_id=term.approved_by_id,
-            approved_at=term.approved_at,
-            created_at=term.created_at,
+        return self._compensation_term_response(term)
+
+    async def decide_compensation_term(
+        self, term_id: UUID, payload: CompensationTermDecisionRequest, actor: User
+    ) -> CompensationTermResponse:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        employee_id = await self.session.scalar(
+            select(HrCompensationTerm.employee_id).where(HrCompensationTerm.id == term_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Compensation term")
+        if payload.decision == "approve":
+            # Payroll also locks periods before locking employees.
+            await lock_payroll_periods(self.session)
+        employee = await self._require_employee(employee_id, for_update=True)
+        terms = await self._compensation_history(employee.id)
+        term = next((record for record in terms if record.id == term_id), None)
+        if term is None:
+            raise NotFoundException("Compensation term")
+        if term.proposed_by_id is None or actor.id in {term.proposed_by_id, employee.user_id}:
+            raise PermissionDeniedException("Independent compensation review")
+        if term.approval_status != "proposed":
+            raise AppException("Only proposed compensation terms can be decided.", status_code=409)
+
+        if payload.decision == "approve":
+            approved = [record for record in terms if record.approval_status == "approved"]
+            if any(record.effective_from == term.effective_from for record in approved):
+                raise AppException(
+                    "A compensation term already starts on this date.", status_code=409
+                )
+            locked_period = (
+                select(HrPayrollPeriod.id)
+                .join(HrPayrollRun, HrPayrollRun.payroll_period_id == HrPayrollPeriod.id)
+                .join(HrPayrollLine, HrPayrollLine.payroll_run_id == HrPayrollRun.id)
+                .where(
+                    HrPayrollLine.employee_id == employee.id,
+                    HrPayrollRun.status == "approved",
+                    HrPayrollPeriod.status == "locked",
+                    HrPayrollPeriod.period_end >= term.effective_from,
+                )
+                .limit(1)
+            )
+            next_start = min(
+                (
+                    row.effective_from
+                    for row in approved
+                    if row.effective_from > term.effective_from
+                ),
+                default=None,
+            )
+            if next_start is not None:
+                locked_period = locked_period.where(HrPayrollPeriod.period_start < next_start)
+            if await self.session.scalar(locked_period):
+                raise AppException(
+                    "This change affects locked payroll. Use an approved correction process.",
+                    status_code=409,
+                )
+            term.approval_status = "approved"
+            term.approved_by_id = actor.id
+            term.approved_at = utc_now()
+            # Keep the stored latest-approval flag compatible with existing rows.
+            latest = next(row for row in terms if row.approval_status == "approved")
+            for row in terms:
+                row.is_current = row.id == latest.id
+        else:
+            if not (payload.reason or "").strip():
+                raise AppException("Give a reason for rejecting the proposal.", status_code=422)
+            term.rejection_reason_encrypted = encrypt_hr_value(payload.reason)
+            term.approval_status = "rejected"
+
+        await self.audit.record(
+            action=f"hr.compensation.{term.approval_status}",
+            user_id=actor.id,
+            entity_type="hr_compensation_terms",
+            entity_id=term.id,
+        )
+        await self.session.commit()
+        return self._compensation_term_response(
+            term, current=term.id == self._current_compensation(terms)
         )
 
     async def list_compensation_terms(
-        self, *, employee_id: UUID, actor: User, reveal_sensitive: bool = False
+        self,
+        *,
+        employee_id: UUID,
+        actor: User,
+        reveal_sensitive: bool = False,
+        term_id: UUID | None = None,
     ) -> tuple[list[CompensationTermResponse], int]:
-        rows = list(
-            await self.session.scalars(
-                select(HrCompensationTerm)
-                .where(HrCompensationTerm.employee_id == employee_id)
-                .order_by(HrCompensationTerm.effective_from.desc())
-            )
-        )
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        rows = await self._compensation_history(employee_id)
+        current = self._current_compensation(rows)
+        if term_id is not None:
+            rows = [row for row in rows if row.id == term_id]
+            if not rows:
+                raise NotFoundException("Compensation term")
         if reveal_sensitive:
             await self.audit.record(
                 action="hr.compensation.revealed",
                 user_id=actor.id,
-                entity_type="hr_employees",
-                entity_id=employee_id,
+                entity_type="hr_compensation_terms" if term_id else "hr_employees",
+                entity_id=term_id or employee_id,
             )
             await self.session.commit()
         return [
-            CompensationTermResponse(
-                id=t.id,
-                employee_id=t.employee_id,
-                effective_from=t.effective_from,
-                pay_frequency=t.pay_frequency,
-                currency=t.currency,
-                base_salary_masked=t.base_salary_masked,
-                base_salary_plain=decrypt_hr_value(t.base_salary_encrypted)
-                if reveal_sensitive
-                else None,
-                is_current=t.is_current,
-                approved_by_id=t.approved_by_id,
-                approved_at=t.approved_at,
-                created_at=t.created_at,
+            self._compensation_term_response(
+                term, current=term.id == current, reveal_sensitive=reveal_sensitive
             )
-            for t in rows
+            for term in rows
         ], len(rows)
 
     async def create_payroll_policy(
@@ -6068,6 +6974,11 @@ class HrWorkforceService:
             code=payload.code.strip(),
             name=payload.name.strip(),
             rules_json=payload.rules_json,
+            controlled_record=(
+                payload.controlled_record.model_dump(mode="json")
+                if payload.controlled_record
+                else None
+            ),
             is_approved=False,
             approved_by_id=actor.id,
         )
@@ -6090,12 +7001,52 @@ class HrWorkforceService:
             ) from exc
         return pol
 
-    async def approve_payroll_policy(self, policy_id: UUID, actor: User) -> HrPayrollPolicy:
+    async def get_payroll_policy(self, policy_id: UUID) -> HrPayrollPolicy:
+        policy = await self.session.get(HrPayrollPolicy, policy_id)
+        if policy is None:
+            raise NotFoundException("Payroll policy")
+        return policy
+
+    async def _lock_payroll_policy(self, policy_id: UUID) -> HrPayrollPolicy:
         pol = await self.session.scalar(
             select(HrPayrollPolicy).where(HrPayrollPolicy.id == policy_id).with_for_update()
         )
         if pol is None:
             raise NotFoundException("Payroll policy")
+        return pol
+
+    async def update_payroll_policy_draft(
+        self, policy_id: UUID, payload: PayrollPolicyDraftUpdateRequest, actor: User
+    ) -> HrPayrollPolicy:
+        pol = await self._lock_payroll_policy(policy_id)
+        if pol.approved_by_id != actor.id:
+            raise PermissionDeniedException("edit this payroll policy")
+        if pol.is_approved or pol.controlled_record is None:
+            raise AppException(
+                "Only pending controlled payroll policies can be edited.", status_code=409
+            )
+        if pol.updated_at != payload.expected_updated_at:
+            raise AppException("The payroll policy changed. Reload the draft.", status_code=409)
+        name = payload.name.strip()
+        if len(name) < 2:
+            raise AppException("Enter a policy name of at least two characters.", status_code=422)
+        pol.name = name
+        pol.rules_json = payload.rules_json
+        pol.controlled_record = payload.controlled_record.model_dump(mode="json")
+        pol.updated_at = utc_now()
+        await self.audit.record(
+            action="hr.payroll_policy.draft_updated",
+            user_id=actor.id,
+            entity_type="hr_payroll_policies",
+            entity_id=pol.id,
+        )
+        await self._commit_and_refresh(pol)
+        return pol
+
+    async def approve_payroll_policy(
+        self, policy_id: UUID, actor: User, *, expected_updated_at: datetime | None = None
+    ) -> HrPayrollPolicy:
+        pol = await self._lock_payroll_policy(policy_id)
         if not pol.rules_json:
             raise AppException(
                 "Payroll policy rules_json must define calculation formulas before approval.",
@@ -6112,7 +7063,13 @@ class HrWorkforceService:
             if pol.second_approved_by_id == actor.id:
                 return pol
             raise AppException("This payroll policy already has a final approval.", status_code=409)
-        validate_payroll_rules(pol.rules_json)
+        if pol.controlled_record is not None and pol.updated_at != expected_updated_at:
+            raise AppException(
+                "The payroll policy changed or its review version is missing. Open it again.",
+                status_code=409,
+                error_code="PAYROLL_POLICY_REVIEW_STALE",
+            )
+        validate_payroll_policy(pol)
         pol.second_approved_by_id = actor.id
         pol.is_approved = True
         pol.approved_at = utc_now()

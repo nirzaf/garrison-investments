@@ -534,10 +534,15 @@ export async function listHrDocuments(params?: {
   document_type?: string;
   limit?: number;
   offset?: number;
-}) {
+}, signal?: AbortSignal) {
   const { data } = await apiClient.get<HrSchemas['HrDocumentListResponse']>('/hr/documents', {
-    params
+    params, signal
   });
+  return data;
+}
+
+export async function getHrDocument(documentId: string) {
+  const { data } = await apiClient.get<HrDocumentRecord>(`/hr/documents/${documentId}`);
   return data;
 }
 
@@ -879,6 +884,33 @@ export async function adjustLeaveLedger(payload: HrSchemas['LeaveLedgerAdjustReq
   return data;
 }
 
+export type LeaveDateEvidenceCreate = HrSchemas['LeaveDateEvidenceCreate'];
+export type LeaveDateEvidenceDecision = HrSchemas['LeaveDateEvidenceDecision'];
+
+export async function listMissingLeaveDates(offset: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['LeaveDateEvidenceCandidates']>(
+    '/hr/leave/date-evidence/candidates', { params: { limit: 20, offset }, signal }
+  );
+  return data;
+}
+
+export async function readLeaveDateEvidence(requestId: string, offset: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['LeaveDateEvidencePage']>(
+    `/hr/leave/requests/${requestId}/date-evidence`, { params: { limit: 20, offset }, signal }
+  );
+  return data;
+}
+
+export async function proposeLeaveDateEvidence(requestId: string, payload: LeaveDateEvidenceCreate) {
+  await apiClient.post(`/hr/leave/requests/${requestId}/date-evidence`, payload);
+}
+
+export async function decideLeaveDateEvidence(
+  requestId: string, proposalId: string, payload: LeaveDateEvidenceDecision
+) {
+  await apiClient.post(`/hr/leave/requests/${requestId}/date-evidence/${proposalId}/decision`, payload);
+}
+
 export async function listLeaveRequests() {
   const { data } = await apiClient.get<HrSchemas['LeaveRequestListResponse']>('/hr/leave/requests');
   return data;
@@ -1085,9 +1117,23 @@ export async function createPayrollPolicy(payload: HrSchemas['PayrollPolicyCreat
   return data;
 }
 
-export async function approvePayrollPolicy(policyId: string) {
+export async function readPayrollPolicy(policyId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<PayrollPolicyRecord>(`/hr/payroll/policies/${policyId}`, { signal });
+  return data;
+}
+
+export async function updatePayrollPolicyDraft(
+  policyId: string, payload: HrSchemas['PayrollPolicyDraftUpdateRequest']
+) {
+  const { data } = await apiClient.put<PayrollPolicyRecord>(
+    `/hr/payroll/policies/${policyId}/draft`, payload
+  );
+  return data;
+}
+
+export async function approvePayrollPolicy(policyId: string, expectedUpdatedAt: string) {
   const { data } = await apiClient.post<PayrollPolicyRecord>(
-    `/hr/payroll/policies/${policyId}/approve`
+    `/hr/payroll/policies/${policyId}/approve`, { expected_updated_at: expectedUpdatedAt }
   );
   return data;
 }
@@ -1113,14 +1159,168 @@ export async function createPayrollRun(payload: HrSchemas['PayrollRunCreateReque
   return data;
 }
 
-export async function calculatePayrollRun(runId: string) {
-  const { data } = await apiClient.post<PayrollRunRecord>(`/hr/payroll/runs/${runId}/calculate`);
+export type PayrollSourceEvidence = HrSchemas['PayrollSourceEvidenceRequest'];
+
+export async function calculatePayrollRun(
+  runId: string, employeeIds: string[], sourceEvidence?: PayrollSourceEvidence
+) {
+  const { data } = await apiClient.post<PayrollRunRecord>(`/hr/payroll/runs/${runId}/calculate`, {
+    employee_ids: employeeIds,
+    source_evidence: sourceEvidence
+  } satisfies HrSchemas['PayrollSnapshotCalculateRequest']);
   return data;
 }
 
-export async function approvePayrollRun(runId: string) {
-  const { data } = await apiClient.post<PayrollRunRecord>(`/hr/payroll/runs/${runId}/approve`);
+export async function approvePayrollRun(runId: string, digest: string) {
+  const { data } = await apiClient.post<PayrollRunRecord>(`/hr/payroll/runs/${runId}/approve`, {
+    expected_snapshot_digest: digest
+  } satisfies HrSchemas['PayrollRunApproveRequest']);
   return data;
+}
+
+export type PayrollAdjustmentCreate = HrSchemas['PayrollAdjustmentCreate'];
+
+export async function readPayrollAdjustments(runId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['PayrollAdjustmentList']>(
+    `/hr/payroll/runs/${runId}/adjustments`, { signal }
+  );
+  return data;
+}
+
+export async function proposePayrollAdjustment(runId: string, payload: PayrollAdjustmentCreate) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/adjustments`, payload);
+}
+
+export async function reviewPayrollAdjustment(
+  runId: string, adjustmentId: string, payload: HrSchemas['PayrollAdjustmentReview']
+) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/adjustments/${adjustmentId}/decision`, payload);
+}
+
+export type PayrollSnapshot = HrSchemas['PayrollRunSnapshotResponse'];
+
+export async function readPayrollSnapshot(runId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<PayrollSnapshot>(`/hr/payroll/runs/${runId}/snapshot`, { signal });
+  return data;
+}
+
+export async function publishPayrollPayslips(runId: string, digest: string) {
+  const { data } = await apiClient.post<HrSchemas['PayslipPublicationResponse']>(
+    `/hr/payroll/runs/${runId}/publish-payslips`,
+    { expected_snapshot_digest: digest } satisfies HrSchemas['PayrollRunApproveRequest']
+  );
+  return data;
+}
+
+export type PayrollSettlementRequest = HrSchemas['PayrollSettlementRequest'];
+
+export async function previewPayrollExport(runId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['PayrollExportPreview']>(
+    `/hr/payroll/runs/${runId}/payment-export/preview`, { signal }
+  );
+  return data;
+}
+
+export async function registerPayrollExport(runId: string, payload: HrSchemas['PayrollExportConfirmRequest']) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/payment-export`, payload);
+}
+
+export type PayrollInputSource = 'time' | 'leave';
+export type PayrollInputPreviews = {
+  time: HrSchemas['PayrollTimeInputPreview'];
+  leave: HrSchemas['PayrollLeaveInputPreview'];
+};
+
+export async function previewPayrollInputs<Source extends PayrollInputSource>(
+  source: Source, periodId: string, employeeIds: string[], signal: AbortSignal
+) {
+  const { data } = await apiClient.post<PayrollInputPreviews[Source]>(
+    `/hr/payroll/periods/${periodId}/${source}-inputs/preview`, { employee_ids: employeeIds }, { signal }
+  );
+  if (data.payroll_period_id !== periodId || data.employee_count !== employeeIds.length) {
+    throw new Error('The payroll preview does not match the requested period or roster.');
+  }
+  return data;
+}
+
+export async function downloadPayrollInputs(
+  source: PayrollInputSource, periodId: string, employeeIds: string[], digest: string, signal: AbortSignal
+) {
+  const { data } = await apiClient.post<ArrayBuffer>(
+    `/hr/payroll/periods/${periodId}/${source}-inputs.csv`,
+    { employee_ids: employeeIds, expected_csv_sha256: digest },
+    { responseType: 'arraybuffer', signal }
+  );
+  return verifiedPayrollCsv(data, digest);
+}
+
+export async function downloadFrozenPayrollInput(
+  runId: string, source: PayrollInputSource, digest: string, signal: AbortSignal
+) {
+  const { data } = await apiClient.get<ArrayBuffer>(`/hr/payroll/runs/${runId}/snapshot/sources/${source}`, {
+    responseType: 'arraybuffer', signal
+  });
+  return verifiedPayrollCsv(data, digest);
+}
+
+export async function downloadPayrollExport(runId: string, digest: string) {
+  const { data } = await apiClient.get<ArrayBuffer>(`/hr/payroll/runs/${runId}/payment-export`, {
+    responseType: 'arraybuffer'
+  });
+  return verifiedPayrollCsv(data, digest);
+}
+
+async function verifiedPayrollCsv(data: ArrayBuffer, digest: string) {
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  const actual = Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  if (actual !== digest) throw new Error('The file checksum differs from the reviewed export.');
+  return new Blob([data], { type: 'text/csv' });
+}
+
+export async function readPayrollSettlement(runId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['PayrollSettlementSummary']>(
+    `/hr/payroll/runs/${runId}/settlements`, { signal }
+  );
+  return data;
+}
+
+export type PayrollCorrectionCreate = HrSchemas['PayrollCorrectionCreate'];
+export type PayrollCorrectionDecision = HrSchemas['PayrollCorrectionDecision'];
+
+export async function listPayrollCorrections(runId: string, lineId: string, offset: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['PayrollCorrectionPage']>(
+    `/hr/payroll/runs/${runId}/lines/${lineId}/corrections`, { params: { offset, limit: 20 }, signal }
+  );
+  return data;
+}
+
+export async function proposePayrollCorrection(runId: string, lineId: string, payload: PayrollCorrectionCreate) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/lines/${lineId}/corrections`, payload);
+}
+
+export async function decidePayrollCorrection(
+  runId: string, lineId: string, id: string, payload: PayrollCorrectionDecision
+) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/lines/${lineId}/corrections/${id}/decision`, payload);
+}
+
+export async function closePayrollPeriod(runId: string, payload: HrSchemas['PayrollClosureRequest']) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/close`, payload);
+}
+
+export async function listPayrollSettlementEvents(
+  runId: string, paymentReference: string, offset: number, signal: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['PayrollSettlementEventsResponse']>(
+    `/hr/payroll/runs/${runId}/settlements/events`, {
+      params: { payment_reference: paymentReference, offset, limit: 20 }, signal
+    }
+  );
+  return data;
+}
+
+export async function recordPayrollSettlement(runId: string, payload: PayrollSettlementRequest) {
+  await apiClient.post(`/hr/payroll/runs/${runId}/settlements/events`, payload);
 }
 
 export async function listHrCases() {
@@ -1340,8 +1540,192 @@ export async function listMyReimbursements() {
   return data;
 }
 
-export async function submitMyReimbursement(payload: HrSchemas['ReimbursementCreateRequest']) {
-  const { data } = await apiClient.post<ReimbursementRecord>('/hr/me/reimbursements', payload);
+export async function submitMyReimbursement(
+  payload: HrSchemas['ReimbursementCreateRequest'],
+  idempotencyKey: string
+) {
+  const { data } = await apiClient.post<ReimbursementRecord>('/hr/me/reimbursements', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
+  return data;
+}
+
+export type ReimbursementClaim = HrSchemas['ReimbursementOperatorResponse'];
+export type ReimbursementPayable = HrSchemas['ReimbursementPayableResponse'];
+
+export async function listReimbursements(employeeId: string, offset: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['ReimbursementOperatorListResponse']>(
+    '/hr/reimbursements', { params: { employee_id: employeeId, offset, limit: 20 }, signal }
+  );
+  return data;
+}
+
+export async function submitReimbursement(
+  payload: HrSchemas['ReimbursementCreateRequest'], idempotencyKey: string
+) {
+  const { data } = await apiClient.post<ReimbursementClaim>('/hr/reimbursements', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
+  return data;
+}
+
+export async function decideReimbursement(
+  id: string, payload: HrSchemas['ReimbursementDecisionRequest']
+) {
+  const { data } = await apiClient.post<ReimbursementClaim>(`/hr/reimbursements/${id}/decision`, payload);
+  return data;
+}
+
+export async function getReimbursementPayable(id: string) {
+  const { data } = await apiClient.get<ReimbursementPayable>(`/hr/reimbursements/${id}/payable`);
+  return data;
+}
+
+export type CompensationTerm = HrSchemas['CompensationTermResponse'];
+
+export type EmployeeAdvance = HrSchemas['EmployeeAdvanceResponse'];
+export type BenefitType = HrSchemas['BenefitTypeResponse'];
+export type EmployeeBenefit = HrSchemas['EmployeeBenefitResponse'];
+
+export function isApprovedBenefitPolicy(type: BenefitType) {
+  return Boolean(
+    type.is_active && type.reimbursement_ceiling && type.reimbursement_currency &&
+    type.approved_at && type.proposed_by_id && type.approved_by_id &&
+    type.proposed_by_id !== type.approved_by_id
+  );
+}
+
+export async function listBenefitTypes(signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['BenefitTypeListResponse']>(
+    '/hr/benefits/types', { signal }
+  );
+  return data.items;
+}
+
+export async function listEmployeeBenefits(employeeId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['EmployeeBenefitListResponse']>(
+    '/hr/benefits/assignments', { params: { employee_id: employeeId }, signal }
+  );
+  return data.items;
+}
+
+export async function proposeBenefitType(payload: HrSchemas['BenefitTypeCreateRequest']) {
+  const { data } = await apiClient.post<BenefitType>('/hr/benefits/types', payload);
+  return data;
+}
+
+export async function approveBenefitType(typeId: string) {
+  const { data } = await apiClient.post<BenefitType>(`/hr/benefits/types/${typeId}/approve`);
+  return data;
+}
+
+export async function assignEmployeeBenefit(payload: HrSchemas['EmployeeBenefitCreateRequest']) {
+  const { data } = await apiClient.post<EmployeeBenefit>('/hr/benefits/assignments', payload);
+  return data;
+}
+
+export async function listEmployeeAdvances(employeeId: string, offset: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['EmployeeAdvanceListResponse']>('/hr/advances', {
+    params: { employee_id: employeeId, offset, limit: 20 }, signal
+  });
+  return data;
+}
+
+export async function getEmployeeAdvance(advanceId: string, signal: AbortSignal) {
+  const { data } = await apiClient.get<EmployeeAdvance>(`/hr/advances/${advanceId}`, { signal });
+  return data;
+}
+
+export async function listEmployeeCappedCoverage(employeeId: string, signal: AbortSignal) {
+  const [types, assignments] = await Promise.all([
+    listBenefitTypes(signal),
+    listEmployeeBenefits(employeeId, signal)
+  ]);
+  const byId = new Map(types.map((type) => [type.id, type]));
+  return assignments.flatMap((assignment) => {
+    if (assignment.employee_id !== employeeId || assignment.status !== 'active') return [];
+    const benefit = byId.get(assignment.benefit_type_id);
+    if (!benefit || !isApprovedBenefitPolicy(benefit) ||
+      !benefit.reimbursement_currency || !assignment.effective_to) return [];
+    return [{
+      id: assignment.id,
+      name: benefit.name,
+      code: benefit.code,
+      allowsAdvances: benefit.allows_advances,
+      currency: benefit.reimbursement_currency,
+      from: assignment.effective_from,
+      to: assignment.effective_to
+    }];
+  });
+}
+
+export async function listEmployeeAdvanceCoverage(employeeId: string, signal: AbortSignal) {
+  return (await listEmployeeCappedCoverage(employeeId, signal)).filter((item) => item.allowsAdvances);
+}
+
+export async function submitEmployeeAdvance(
+  payload: HrSchemas['EmployeeAdvanceRequest'], idempotencyKey: string
+) {
+  const { data } = await apiClient.post<EmployeeAdvance>('/hr/advances', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
+  return data;
+}
+
+export async function decideEmployeeAdvance(
+  advanceId: string, payload: HrSchemas['EmployeeAdvanceDecision']
+) {
+  const { data } = await apiClient.post<EmployeeAdvance>(`/hr/advances/${advanceId}/decision`, payload);
+  return data;
+}
+
+export async function confirmAdvanceDisbursement(
+  advanceId: string, payload: HrSchemas['EmployeeAdvanceDisbursement']
+) {
+  const { data } = await apiClient.post<EmployeeAdvance>(`/hr/advances/${advanceId}/disburse`, payload);
+  return data;
+}
+
+export async function recordAdvanceRepayment(
+  advanceId: string, payload: HrSchemas['EmployeeAdvancePayment']
+) {
+  const { data } = await apiClient.post<EmployeeAdvance>(`/hr/advances/${advanceId}/repayments`, payload);
+  return data;
+}
+
+export async function listCompensationTerms(employeeId: string, signal?: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['CompensationTermListResponse']>(
+    `/hr/compensation/${employeeId}`,
+    { signal }
+  );
+  return data.items;
+}
+
+export async function revealCompensationTerm(
+  employeeId: string,
+  termId: string,
+  signal: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['CompensationTermListResponse']>(
+    `/hr/compensation/${employeeId}`,
+    { params: { term_id: termId, reveal_sensitive: true }, signal }
+  );
+  return data.items.find((term) => term.id === termId && term.employee_id === employeeId);
+}
+
+export async function proposeCompensationTerm(payload: HrSchemas['CompensationTermCreateRequest']) {
+  const { data } = await apiClient.post<CompensationTerm>('/hr/compensation', payload);
+  return data;
+}
+
+export async function decideCompensationTerm(
+  termId: string,
+  payload: HrSchemas['CompensationTermDecisionRequest']
+) {
+  const { data } = await apiClient.post<CompensationTerm>(
+    `/hr/compensation/${termId}/decision`,
+    payload
+  );
   return data;
 }
 
@@ -1387,6 +1771,15 @@ export async function decideHrLetter(
 
 function employmentChangesPath(employeeId: string) {
   return `/hr/employees/${employeeId}/employment-changes`;
+}
+
+export const dueEmploymentChangesKey = ['hr', 'employment-changes-due'] as const;
+
+export async function listDueEmploymentChanges(offset: number, limit: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['DueEmploymentChangeList']>(
+    '/hr/employment-changes/due', { params: { offset, limit }, signal }
+  );
+  return data;
 }
 
 export async function listEmploymentChanges(employeeId: string, offset: number, limit: number) {

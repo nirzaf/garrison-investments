@@ -1,0 +1,16 @@
+approval-delegation.e2e.ts
+daily-report.e2e.ts
+offline-isolation.e2e.ts
+role-navigation.e2e.ts
+supervisor-draft.e2e.ts
+user-role.e2e.ts
+business-roles.e2e.ts › a linked employee manages their own leave and reopens a completed HR request
+business-roles.e2e.ts › HR previews and retains a letter for independent issuance and employee retrieval
+business-roles.e2e.ts › HR issues a salary confirmation from approved compensation
+business-roles.e2e.ts › employee and manager complete a scoped performance review with HR calibration
+business-roles.e2e.ts › HR closes offboarding and independently reviews rehire
+business-roles.e2e.ts › employees can open their own published payslip in My HR
+business-roles.e2e.ts › HR independently corrects an employee name and stale My HR edits are rejected
+business-roles.e2e.ts › HR extends and confirms probation from a completed onboarding case
+business-roles.e2e.ts › a direct manager recommends self-submitted time and HR makes the final decision
+business-roles.e2e.ts › payroll operators lock a reviewed snapshot and publish its employee payslip

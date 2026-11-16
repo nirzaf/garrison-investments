@@ -2833,6 +2833,11 @@
       },
       "BenefitTypeCreateRequest": {
         "properties": {
+          "allows_advances": {
+            "default": false,
+            "title": "Allows Advances",
+            "type": "boolean"
+          },
           "category": {
             "maxLength": 40,
             "minLength": 2,
@@ -2850,6 +2855,33 @@
             "minLength": 2,
             "title": "Name",
             "type": "string"
+          },
+          "reimbursement_ceiling": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reimbursement Ceiling"
+          },
+          "reimbursement_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reimbursement Currency"
           },
           "requires_policy_approval": {
             "default": true,
@@ -2888,6 +2920,34 @@
       },
       "BenefitTypeResponse": {
         "properties": {
+          "allows_advances": {
+            "title": "Allows Advances",
+            "type": "boolean"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By Id"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -2914,6 +2974,40 @@
             "title": "Name",
             "type": "string"
           },
+          "proposed_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed By Id"
+          },
+          "reimbursement_ceiling": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reimbursement Ceiling"
+          },
+          "reimbursement_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reimbursement Currency"
+          },
           "requires_policy_approval": {
             "title": "Requires Policy Approval",
             "type": "boolean"
@@ -2926,6 +3020,12 @@
           "category",
           "requires_policy_approval",
           "is_active",
+          "reimbursement_ceiling",
+          "reimbursement_currency",
+          "allows_advances",
+          "proposed_by_id",
+          "approved_by_id",
+          "approved_at",
           "created_at"
         ],
         "title": "BenefitTypeResponse",
@@ -4307,14 +4407,13 @@
             "title": "Allowances Json"
           },
           "base_salary": {
-            "maxLength": 40,
-            "minLength": 1,
+            "pattern": "^[0-9]{1,16}(\\.[0-9]{1,2})?$",
             "title": "Base Salary",
             "type": "string"
           },
           "currency": {
             "default": "LKR",
-            "maxLength": 10,
+            "pattern": "^[A-Z]{3}$",
             "title": "Currency",
             "type": "string"
           },
@@ -4348,6 +4447,35 @@
         "title": "CompensationTermCreateRequest",
         "type": "object"
       },
+      "CompensationTermDecisionRequest": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "CompensationTermDecisionRequest",
+        "type": "object"
+      },
       "CompensationTermListResponse": {
         "properties": {
           "items": {
@@ -4371,6 +4499,22 @@
       },
       "CompensationTermResponse": {
         "properties": {
+          "allowances_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowances Json"
+          },
+          "approval_status": {
+            "title": "Approval Status",
+            "type": "string"
+          },
           "approved_at": {
             "anyOf": [
               {
@@ -4441,6 +4585,29 @@
           "pay_frequency": {
             "title": "Pay Frequency",
             "type": "string"
+          },
+          "proposed_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed By Id"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
           }
         },
         "required": [
@@ -4451,6 +4618,8 @@
           "currency",
           "base_salary_masked",
           "is_current",
+          "approval_status",
+          "proposed_by_id",
           "approved_by_id",
           "approved_at",
           "created_at"
@@ -5800,6 +5969,410 @@
           "approval_comments"
         ],
         "title": "DocumentVersionResponse",
+        "type": "object"
+      },
+      "DueEmploymentChange": {
+        "properties": {
+          "change_type": {
+            "enum": [
+              "transfer",
+              "promotion",
+              "category_amendment",
+              "contract_renewal",
+              "rehire",
+              "profile_correction"
+            ],
+            "title": "Change Type",
+            "type": "string"
+          },
+          "effective_date": {
+            "format": "date",
+            "title": "Effective Date",
+            "type": "string"
+          },
+          "employee_code": {
+            "title": "Employee Code",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision_matches": {
+            "title": "Revision Matches",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "employee_id",
+          "employee_code",
+          "change_type",
+          "effective_date",
+          "revision_matches"
+        ],
+        "title": "DueEmploymentChange",
+        "type": "object"
+      },
+      "DueEmploymentChangeList": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DueEmploymentChange"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of",
+          "items",
+          "total"
+        ],
+        "title": "DueEmploymentChangeList",
+        "type": "object"
+      },
+      "EmployeeAdvanceDecision": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "EmployeeAdvanceDecision",
+        "type": "object"
+      },
+      "EmployeeAdvanceDisbursement": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "expected_payable_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected Payable Sha256",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "reference": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "occurred_on",
+          "amount",
+          "currency",
+          "expected_payable_sha256"
+        ],
+        "title": "EmployeeAdvanceDisbursement",
+        "type": "object"
+      },
+      "EmployeeAdvanceListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EmployeeAdvanceListResponse",
+        "type": "object"
+      },
+      "EmployeeAdvancePayment": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "reference": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "occurred_on",
+          "amount",
+          "currency"
+        ],
+        "title": "EmployeeAdvancePayment",
+        "type": "object"
+      },
+      "EmployeeAdvanceRecovery": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "occurred_on",
+          "amount"
+        ],
+        "title": "EmployeeAdvanceRecovery",
+        "type": "object"
+      },
+      "EmployeeAdvanceRequest": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "benefit_assignment_id": {
+            "format": "uuid",
+            "title": "Benefit Assignment Id",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "requested_on": {
+            "format": "date",
+            "title": "Requested On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "benefit_assignment_id",
+          "requested_on",
+          "amount",
+          "currency"
+        ],
+        "title": "EmployeeAdvanceRequest",
+        "type": "object"
+      },
+      "EmployeeAdvanceResponse": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "benefit_assignment_id": {
+            "format": "uuid",
+            "title": "Benefit Assignment Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "disbursed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursed On"
+          },
+          "disbursement_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursement Reference"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outstanding": {
+            "title": "Outstanding",
+            "type": "string"
+          },
+          "payable_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payable Sha256"
+          },
+          "recovered": {
+            "title": "Recovered",
+            "type": "string"
+          },
+          "recoveries": {
+            "items": {
+              "$ref": "#/components/schemas/EmployeeAdvanceRecovery"
+            },
+            "title": "Recoveries",
+            "type": "array"
+          },
+          "requested_on": {
+            "format": "date",
+            "title": "Requested On",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by_id": {
+            "format": "uuid",
+            "title": "Submitted By Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "employee_id",
+          "benefit_assignment_id",
+          "requested_on",
+          "amount",
+          "currency",
+          "status",
+          "submitted_by_id",
+          "decided_by_id",
+          "decided_at",
+          "payable_sha256",
+          "disbursed_on",
+          "disbursement_reference",
+          "recovered",
+          "outstanding",
+          "recoveries"
+        ],
+        "title": "EmployeeAdvanceResponse",
         "type": "object"
       },
       "EmployeeBenefitCreateRequest": {
@@ -11644,6 +12217,296 @@
         "title": "LeaveBalanceListResponse",
         "type": "object"
       },
+      "LeaveDateEvidenceCandidate": {
+        "properties": {
+          "approved_units": {
+            "title": "Approved Units",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "requires_payroll_correction": {
+            "title": "Requires Payroll Correction",
+            "type": "boolean"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "employee_id",
+          "start_date",
+          "end_date",
+          "approved_units",
+          "requires_payroll_correction"
+        ],
+        "title": "LeaveDateEvidenceCandidate",
+        "type": "object"
+      },
+      "LeaveDateEvidenceCandidates": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaveDateEvidenceCandidate"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "LeaveDateEvidenceCandidates",
+        "type": "object"
+      },
+      "LeaveDateEvidenceCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$",
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "work_dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "maxItems": 366,
+            "minItems": 1,
+            "title": "Work Dates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "work_dates",
+          "evidence_reference",
+          "proposal_id",
+          "expected_revision"
+        ],
+        "title": "LeaveDateEvidenceCreate",
+        "type": "object"
+      },
+      "LeaveDateEvidenceDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "expected_digest"
+        ],
+        "title": "LeaveDateEvidenceDecision",
+        "type": "object"
+      },
+      "LeaveDateEvidencePage": {
+        "properties": {
+          "approved_units": {
+            "title": "Approved Units",
+            "type": "string"
+          },
+          "can_propose": {
+            "title": "Can Propose",
+            "type": "boolean"
+          },
+          "can_review": {
+            "title": "Can Review",
+            "type": "boolean"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LeaveDateEvidenceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "request_revision": {
+            "title": "Request Revision",
+            "type": "integer"
+          },
+          "requires_payroll_correction": {
+            "title": "Requires Payroll Correction",
+            "type": "boolean"
+          },
+          "scheduled_work_dates": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "date",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Work Dates"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "request_revision",
+          "start_date",
+          "end_date",
+          "approved_units",
+          "scheduled_work_dates",
+          "requires_payroll_correction",
+          "can_propose",
+          "can_review",
+          "items",
+          "total"
+        ],
+        "title": "LeaveDateEvidencePage",
+        "type": "object"
+      },
+      "LeaveDateEvidenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "evidence_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$",
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "request_revision": {
+            "title": "Request Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by_id": {
+            "format": "uuid",
+            "title": "Submitted By Id",
+            "type": "string"
+          },
+          "work_dates": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "maxItems": 366,
+            "minItems": 1,
+            "title": "Work Dates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "work_dates",
+          "evidence_reference",
+          "id",
+          "request_revision",
+          "status",
+          "digest",
+          "submitted_by_id",
+          "decided_by_id",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "LeaveDateEvidenceResponse",
+        "type": "object"
+      },
       "LeaveLedgerAdjustRequest": {
         "properties": {
           "days_delta": {
@@ -14232,6 +15095,64 @@
         "title": "MovementResponse",
         "type": "object"
       },
+      "MyPolicyFileResponse": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "file_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size"
+          },
+          "sha256_checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256 Checksum"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "version_number",
+          "file_name",
+          "download_url",
+          "expires_in_seconds",
+          "file_size",
+          "sha256_checksum"
+        ],
+        "title": "MyPolicyFileResponse",
+        "type": "object"
+      },
       "MyPolicyListResponse": {
         "properties": {
           "items": {
@@ -16762,6 +17683,599 @@
         "title": "PaymentResponse",
         "type": "object"
       },
+      "PayrollAdjustmentCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment_id": {
+            "format": "uuid",
+            "title": "Adjustment Id",
+            "type": "string"
+          },
+          "amount": {
+            "pattern": "^(?:0|[1-9][0-9]{0,15})(?:\\.[0-9]{1,2})?$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "evidence_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$",
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "earning",
+              "deduction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "amount",
+          "evidence_reference",
+          "adjustment_id",
+          "employee_id"
+        ],
+        "title": "PayrollAdjustmentCreate",
+        "type": "object"
+      },
+      "PayrollAdjustmentList": {
+        "properties": {
+          "can_review": {
+            "title": "Can Review",
+            "type": "boolean"
+          },
+          "can_submit": {
+            "title": "Can Submit",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollAdjustmentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "can_submit",
+          "can_review",
+          "items"
+        ],
+        "title": "PayrollAdjustmentList",
+        "type": "object"
+      },
+      "PayrollAdjustmentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "pattern": "^(?:0|[1-9][0-9]{0,15})(?:\\.[0-9]{1,2})?$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "evidence_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$",
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "earning",
+              "deduction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by_id": {
+            "format": "uuid",
+            "title": "Submitted By Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "amount",
+          "evidence_reference",
+          "id",
+          "employee_id",
+          "status",
+          "submitted_by_id",
+          "decided_by_id",
+          "decided_at",
+          "digest"
+        ],
+        "title": "PayrollAdjustmentResponse",
+        "type": "object"
+      },
+      "PayrollAdjustmentReview": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "expected_digest"
+        ],
+        "title": "PayrollAdjustmentReview",
+        "type": "object"
+      },
+      "PayrollClosureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_csv_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Csv Sha256",
+            "type": "string"
+          },
+          "expected_settlement_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Settlement Digest",
+            "type": "string"
+          },
+          "expected_snapshot_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Snapshot Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_snapshot_digest",
+          "expected_csv_sha256",
+          "expected_settlement_digest"
+        ],
+        "title": "PayrollClosureRequest",
+        "type": "object"
+      },
+      "PayrollClosureResponse": {
+        "properties": {
+          "closed_at": {
+            "format": "date-time",
+            "title": "Closed At",
+            "type": "string"
+          },
+          "closed_by_id": {
+            "format": "uuid",
+            "title": "Closed By Id",
+            "type": "string"
+          },
+          "csv_sha256": {
+            "title": "Csv Sha256",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "settlement_digest": {
+            "title": "Settlement Digest",
+            "type": "string"
+          },
+          "snapshot_digest": {
+            "title": "Snapshot Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "closed_by_id",
+          "snapshot_digest",
+          "csv_sha256",
+          "settlement_digest",
+          "closed_at"
+        ],
+        "title": "PayrollClosureResponse",
+        "type": "object"
+      },
+      "PayrollControlledPolicyRecord-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$",
+            "title": "Approval Reference",
+            "type": "string"
+          },
+          "document_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$",
+            "title": "Document Reference",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+            "title": "Version",
+            "type": "string"
+          },
+          "worked_examples": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollPolicyWorkedExample-Input"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Worked Examples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_reference",
+          "version",
+          "effective_from",
+          "approval_reference",
+          "worked_examples"
+        ],
+        "title": "PayrollControlledPolicyRecord",
+        "type": "object"
+      },
+      "PayrollControlledPolicyRecord-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$",
+            "title": "Approval Reference",
+            "type": "string"
+          },
+          "document_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$",
+            "title": "Document Reference",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+            "title": "Version",
+            "type": "string"
+          },
+          "worked_examples": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollPolicyWorkedExample-Output"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Worked Examples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_reference",
+          "version",
+          "effective_from",
+          "approval_reference",
+          "worked_examples"
+        ],
+        "title": "PayrollControlledPolicyRecord",
+        "type": "object"
+      },
+      "PayrollCorrectionAmounts": {
+        "properties": {
+          "deductions": {
+            "title": "Deductions",
+            "type": "string"
+          },
+          "gross": {
+            "title": "Gross",
+            "type": "string"
+          },
+          "net": {
+            "title": "Net",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gross",
+          "deductions",
+          "net"
+        ],
+        "title": "PayrollCorrectionAmounts",
+        "type": "object"
+      },
+      "PayrollCorrectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "correction_id": {
+            "format": "uuid",
+            "title": "Correction Id",
+            "type": "string"
+          },
+          "deductions": {
+            "pattern": "^(?:0|[1-9][0-9]{0,15})(?:\\.[0-9]{1,2})?$",
+            "title": "Deductions",
+            "type": "string"
+          },
+          "evidence_reference": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$",
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "expected_previous_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Previous Id"
+          },
+          "expected_snapshot_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Snapshot Digest",
+            "type": "string"
+          },
+          "gross": {
+            "pattern": "^(?:0|[1-9][0-9]{0,15})(?:\\.[0-9]{1,2})?$",
+            "title": "Gross",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_snapshot_digest",
+          "correction_id",
+          "expected_previous_id",
+          "gross",
+          "deductions",
+          "evidence_reference"
+        ],
+        "title": "PayrollCorrectionCreate",
+        "type": "object"
+      },
+      "PayrollCorrectionDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "expected_digest"
+        ],
+        "title": "PayrollCorrectionDecision",
+        "type": "object"
+      },
+      "PayrollCorrectionPage": {
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/PayrollCorrectionAmounts"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "current_correction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Correction Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollCorrectionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "line_id",
+          "currency",
+          "current_correction_id",
+          "baseline",
+          "items",
+          "total"
+        ],
+        "title": "PayrollCorrectionPage",
+        "type": "object"
+      },
+      "PayrollCorrectionResponse": {
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/PayrollCorrectionAmounts"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "evidence_reference": {
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "net_delta": {
+            "title": "Net Delta",
+            "type": "string"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
+          },
+          "proposed": {
+            "$ref": "#/components/schemas/PayrollCorrectionAmounts"
+          },
+          "snapshot_digest": {
+            "title": "Snapshot Digest",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by_id": {
+            "format": "uuid",
+            "title": "Submitted By Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "line_id",
+          "previous_id",
+          "snapshot_digest",
+          "digest",
+          "status",
+          "currency",
+          "baseline",
+          "proposed",
+          "net_delta",
+          "evidence_reference",
+          "submitted_by_id",
+          "decided_by_id",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "PayrollCorrectionResponse",
+        "type": "object"
+      },
       "PayrollExportConfirmRequest": {
         "additionalProperties": false,
         "properties": {
@@ -16893,6 +18407,159 @@
         "title": "PayrollExportReceipt",
         "type": "object"
       },
+      "PayrollFrozenSources": {
+        "additionalProperties": false,
+        "properties": {
+          "leave_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Leave Sha256",
+            "type": "string"
+          },
+          "overtime_hours": {
+            "title": "Overtime Hours",
+            "type": "string"
+          },
+          "paid_days": {
+            "title": "Paid Days",
+            "type": "string"
+          },
+          "regular_hours": {
+            "title": "Regular Hours",
+            "type": "string"
+          },
+          "time_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Time Sha256",
+            "type": "string"
+          },
+          "unpaid_days": {
+            "title": "Unpaid Days",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_sha256",
+          "leave_sha256",
+          "regular_hours",
+          "overtime_hours",
+          "paid_days",
+          "unpaid_days"
+        ],
+        "title": "PayrollFrozenSources",
+        "type": "object"
+      },
+      "PayrollLeaveInputIssue": {
+        "properties": {
+          "code": {
+            "enum": [
+              "pending_leave",
+              "leave_crosses_period",
+              "leave_ledger_mismatch",
+              "leave_work_dates_mismatch",
+              "overlapping_leave"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "employee_id",
+          "request_id",
+          "code"
+        ],
+        "title": "PayrollLeaveInputIssue",
+        "type": "object"
+      },
+      "PayrollLeaveInputPreview": {
+        "properties": {
+          "approved_request_count": {
+            "title": "Approved Request Count",
+            "type": "integer"
+          },
+          "csv_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csv Sha256"
+          },
+          "employee_count": {
+            "title": "Employee Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollLeaveInputIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "paid_days": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Days"
+          },
+          "payroll_period_id": {
+            "format": "uuid",
+            "title": "Payroll Period Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "unpaid_days": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpaid Days"
+          }
+        },
+        "required": [
+          "payroll_period_id",
+          "period_start",
+          "period_end",
+          "employee_count",
+          "approved_request_count",
+          "paid_days",
+          "unpaid_days",
+          "csv_sha256",
+          "issues"
+        ],
+        "title": "PayrollLeaveInputPreview",
+        "type": "object"
+      },
       "PayrollPeriodCreateRequest": {
         "properties": {
           "pay_date": {
@@ -16995,6 +18662,20 @@
         "title": "PayrollPeriodResponse",
         "type": "object"
       },
+      "PayrollPolicyApproveRequest": {
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "PayrollPolicyApproveRequest",
+        "type": "object"
+      },
       "PayrollPolicyCreateRequest": {
         "properties": {
           "code": {
@@ -17002,6 +18683,16 @@
             "minLength": 1,
             "title": "Code",
             "type": "string"
+          },
+          "controlled_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollControlledPolicyRecord-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "maxLength": 160,
@@ -17020,6 +18711,38 @@
           "name"
         ],
         "title": "PayrollPolicyCreateRequest",
+        "type": "object"
+      },
+      "PayrollPolicyDraftUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "controlled_record": {
+            "$ref": "#/components/schemas/PayrollControlledPolicyRecord-Input"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "rules_json": {
+            "additionalProperties": true,
+            "title": "Rules Json",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "rules_json",
+          "controlled_record",
+          "expected_updated_at"
+        ],
+        "title": "PayrollPolicyDraftUpdateRequest",
         "type": "object"
       },
       "PayrollPolicyListResponse": {
@@ -17073,6 +18796,16 @@
             "title": "Code",
             "type": "string"
           },
+          "controlled_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollControlledPolicyRecord-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -17107,6 +18840,11 @@
               }
             ],
             "title": "Second Approved By Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -17118,9 +18856,136 @@
           "approved_by_id",
           "second_approved_by_id",
           "approved_at",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "title": "PayrollPolicyResponse",
+        "type": "object"
+      },
+      "PayrollPolicyWorkedExample-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "base_salary": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Base Salary"
+          },
+          "earnings": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0.00",
+            "title": "Earnings"
+          },
+          "expected_deductions": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Expected Deductions"
+          },
+          "expected_gross": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Expected Gross"
+          },
+          "expected_net": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Expected Net"
+          },
+          "extra_deductions": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0.00",
+            "title": "Extra Deductions"
+          }
+        },
+        "required": [
+          "base_salary",
+          "expected_gross",
+          "expected_deductions",
+          "expected_net"
+        ],
+        "title": "PayrollPolicyWorkedExample",
+        "type": "object"
+      },
+      "PayrollPolicyWorkedExample-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "base_salary": {
+            "title": "Base Salary",
+            "type": "string"
+          },
+          "earnings": {
+            "default": "0.00",
+            "title": "Earnings",
+            "type": "string"
+          },
+          "expected_deductions": {
+            "title": "Expected Deductions",
+            "type": "string"
+          },
+          "expected_gross": {
+            "title": "Expected Gross",
+            "type": "string"
+          },
+          "expected_net": {
+            "title": "Expected Net",
+            "type": "string"
+          },
+          "extra_deductions": {
+            "default": "0.00",
+            "title": "Extra Deductions",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_salary",
+          "expected_gross",
+          "expected_deductions",
+          "expected_net"
+        ],
+        "title": "PayrollPolicyWorkedExample",
         "type": "object"
       },
       "PayrollRunApproveRequest": {
@@ -17325,10 +19190,47 @@
       },
       "PayrollRunSnapshotResponse": {
         "properties": {
+          "approved_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By Id"
+          },
           "calculation_basis": {
-            "const": "base_salary_only",
+            "enum": [
+              "base_salary_only",
+              "base_salary_with_reviewed_adjustments"
+            ],
             "title": "Calculation Basis",
             "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "controlled_policy_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollControlledPolicyRecord-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "currency": {
             "title": "Currency",
@@ -17393,6 +19295,18 @@
             "title": "Policy Id",
             "type": "string"
           },
+          "prepared_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared By Id"
+          },
           "rounding": {
             "title": "Rounding",
             "type": "string"
@@ -17402,6 +19316,16 @@
             "title": "Run Id",
             "type": "string"
           },
+          "source_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollFrozenSources"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -17410,6 +19334,8 @@
         "required": [
           "run_id",
           "status",
+          "prepared_by_id",
+          "approved_by_id",
           "payslips_published_at",
           "digest",
           "policy_id",
@@ -17630,6 +19556,16 @@
       },
       "PayrollSettlementSummary": {
         "properties": {
+          "closure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollClosureResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "csv_sha256": {
             "title": "Csv Sha256",
             "type": "string"
@@ -17665,6 +19601,10 @@
             "format": "uuid",
             "title": "Run Id",
             "type": "string"
+          },
+          "settlement_digest": {
+            "title": "Settlement Digest",
+            "type": "string"
           }
         },
         "required": [
@@ -17675,13 +19615,51 @@
           "net_paid",
           "outstanding",
           "fully_reconciled",
+          "settlement_digest",
           "payments"
         ],
         "title": "PayrollSettlementSummary",
         "type": "object"
       },
+      "PayrollSnapshotCalculateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "employee_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Employee Ids",
+            "type": "array"
+          },
+          "source_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayrollSourceEvidenceRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "employee_ids"
+        ],
+        "title": "PayrollSnapshotCalculateRequest",
+        "type": "object"
+      },
       "PayrollSnapshotLine": {
         "properties": {
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/PayrollAdjustmentResponse"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
           "deductions": {
             "title": "Deductions",
             "type": "string"
@@ -17719,6 +19697,27 @@
           "net"
         ],
         "title": "PayrollSnapshotLine",
+        "type": "object"
+      },
+      "PayrollSourceEvidenceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "leave_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Leave Sha256",
+            "type": "string"
+          },
+          "time_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Time Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_sha256",
+          "leave_sha256"
+        ],
+        "title": "PayrollSourceEvidenceRequest",
         "type": "object"
       },
       "PayrollTimeDownloadRequest": {
@@ -20754,6 +22753,11 @@
             ],
             "title": "Amount"
           },
+          "benefit_assignment_id": {
+            "format": "uuid",
+            "title": "Benefit Assignment Id",
+            "type": "string"
+          },
           "claim_date": {
             "format": "date",
             "title": "Claim Date",
@@ -20767,11 +22771,12 @@
           },
           "currency": {
             "default": "LKR",
-            "maxLength": 10,
+            "pattern": "^[A-Z]{3}$",
             "title": "Currency",
             "type": "string"
           },
           "description": {
+            "maxLength": 2000,
             "minLength": 2,
             "title": "Description",
             "type": "string"
@@ -20789,23 +22794,24 @@
             "title": "Employee Id"
           },
           "receipt_document_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Receipt Document Id"
+            "format": "uuid",
+            "title": "Receipt Document Id",
+            "type": "string"
+          },
+          "receipt_version_number": {
+            "minimum": 1.0,
+            "title": "Receipt Version Number",
+            "type": "integer"
           }
         },
         "required": [
           "claim_type",
+          "benefit_assignment_id",
           "claim_date",
           "amount",
-          "description"
+          "description",
+          "receipt_document_id",
+          "receipt_version_number"
         ],
         "title": "ReimbursementCreateRequest",
         "type": "object"
@@ -20822,9 +22828,22 @@
             "title": "Decision",
             "type": "string"
           },
+          "expected_payable_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Payable Sha256"
+          },
           "notes": {
             "anyOf": [
               {
+                "maxLength": 1000,
                 "type": "string"
               },
               {
@@ -20832,6 +22851,46 @@
               }
             ],
             "title": "Notes"
+          },
+          "settled_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Amount"
+          },
+          "settled_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Currency"
+          },
+          "settlement_reference": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Reference"
           }
         },
         "required": [
@@ -20861,11 +22920,44 @@
         "title": "ReimbursementListResponse",
         "type": "object"
       },
-      "ReimbursementResponse": {
+      "ReimbursementOperatorListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReimbursementOperatorResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ReimbursementOperatorListResponse",
+        "type": "object"
+      },
+      "ReimbursementOperatorResponse": {
         "properties": {
           "amount": {
             "title": "Amount",
             "type": "string"
+          },
+          "benefit_assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benefit Assignment Id"
           },
           "claim_code": {
             "title": "Claim Code",
@@ -20950,6 +23042,266 @@
             ],
             "title": "Receipt Document Id"
           },
+          "receipt_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Version Id"
+          },
+          "settlement_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Reference"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By Id"
+          }
+        },
+        "required": [
+          "id",
+          "claim_code",
+          "employee_id",
+          "claim_type",
+          "benefit_assignment_id",
+          "claim_date",
+          "amount",
+          "currency",
+          "description",
+          "receipt_document_id",
+          "receipt_version_id",
+          "settlement_reference",
+          "status",
+          "decided_by_id",
+          "decided_at",
+          "decision_notes",
+          "created_at",
+          "submitted_by_id"
+        ],
+        "title": "ReimbursementOperatorResponse",
+        "type": "object"
+      },
+      "ReimbursementPayable": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "title": "Approved At",
+            "type": "string"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "payable_reference": {
+            "title": "Payable Reference",
+            "type": "string"
+          },
+          "version": {
+            "const": "reimbursement-payable-v1",
+            "default": "reimbursement-payable-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "payable_reference",
+          "employee_id",
+          "amount",
+          "currency",
+          "approved_at"
+        ],
+        "title": "ReimbursementPayable",
+        "type": "object"
+      },
+      "ReimbursementPayableResponse": {
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/ReimbursementPayable"
+          },
+          "reference_sha256": {
+            "title": "Reference Sha256",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "paid"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "reference_sha256",
+          "status"
+        ],
+        "title": "ReimbursementPayableResponse",
+        "type": "object"
+      },
+      "ReimbursementResponse": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "benefit_assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benefit Assignment Id"
+          },
+          "claim_code": {
+            "title": "Claim Code",
+            "type": "string"
+          },
+          "claim_date": {
+            "format": "date",
+            "title": "Claim Date",
+            "type": "string"
+          },
+          "claim_type": {
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "decision_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Notes"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "receipt_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Document Id"
+          },
+          "receipt_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Version Id"
+          },
+          "settlement_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Reference"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -20960,11 +23312,14 @@
           "claim_code",
           "employee_id",
           "claim_type",
+          "benefit_assignment_id",
           "claim_date",
           "amount",
           "currency",
           "description",
           "receipt_document_id",
+          "receipt_version_id",
+          "settlement_reference",
           "status",
           "decided_by_id",
           "decided_at",
@@ -29035,6 +31390,409 @@
         ]
       }
     },
+    "/api/v1/hr/advances": {
+      "get": {
+        "operationId": "list_advances_api_v1_hr_advances_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Employee Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Advances Api V1 Hr Advances Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Advances",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
+      "post": {
+        "operationId": "submit_advance_api_v1_hr_advances_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeAdvanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Advance Api V1 Hr Advances Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Advance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/advances/{advance_id}": {
+      "get": {
+        "operationId": "read_advance_api_v1_hr_advances__advance_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "advance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Advance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Advance Api V1 Hr Advances  Advance Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Advance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/advances/{advance_id}/decision": {
+      "post": {
+        "operationId": "decide_advance_api_v1_hr_advances__advance_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "advance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Advance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeAdvanceDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Advance Api V1 Hr Advances  Advance Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Advance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/advances/{advance_id}/disburse": {
+      "post": {
+        "operationId": "disburse_advance_api_v1_hr_advances__advance_id__disburse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "advance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Advance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeAdvanceDisbursement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Disburse Advance Api V1 Hr Advances  Advance Id  Disburse Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Disburse Advance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/advances/{advance_id}/repayments": {
+      "post": {
+        "operationId": "recover_advance_api_v1_hr_advances__advance_id__repayments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "advance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Advance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeAdvancePayment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeAdvanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Recover Advance Api V1 Hr Advances  Advance Id  Repayments Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recover Advance",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/applications": {
       "get": {
         "operationId": "list_applications_api_v1_hr_applications_get",
@@ -29984,6 +32742,62 @@
         ]
       }
     },
+    "/api/v1/hr/attendance/corrections/{correction_id}": {
+      "get": {
+        "operationId": "read_attendance_correction_api_v1_hr_attendance_corrections__correction_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceCorrectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Attendance Correction Api V1 Hr Attendance Corrections  Correction Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Attendance Correction",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/attendance/corrections/{correction_id}/decision": {
       "post": {
         "operationId": "decide_attendance_correction_api_v1_hr_attendance_corrections__correction_id__decision_post",
@@ -30153,6 +32967,62 @@
           }
         ],
         "summary": "Preview Attendance Import",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/attendance/{entry_id}": {
+      "get": {
+        "operationId": "read_attendance_entry_api_v1_hr_attendance__entry_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceEntryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Attendance Entry Api V1 Hr Attendance  Entry Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Attendance Entry",
         "tags": [
           "HR & Workforce"
         ]
@@ -30430,6 +33300,62 @@
           }
         ],
         "summary": "Create Benefit Type",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/benefits/types/{benefit_type_id}/approve": {
+      "post": {
+        "operationId": "approve_benefit_policy_api_v1_hr_benefits_types__benefit_type_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "benefit_type_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Benefit Type Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenefitTypeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Approve Benefit Policy Api V1 Hr Benefits Types  Benefit Type Id  Approve Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Benefit Policy",
         "tags": [
           "HR & Workforce"
         ]
@@ -31273,6 +34199,23 @@
               "title": "Reveal Sensitive",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "term_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Term Id"
+            }
           }
         ],
         "responses": {
@@ -31311,6 +34254,72 @@
           }
         ],
         "summary": "List Compensation",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/compensation/{term_id}/decision": {
+      "post": {
+        "operationId": "decide_compensation_api_v1_hr_compensation__term_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "term_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Term Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompensationTermDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompensationTermResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Compensation Api V1 Hr Compensation  Term Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Compensation",
         "tags": [
           "HR & Workforce"
         ]
@@ -33396,6 +36405,75 @@
         ]
       }
     },
+    "/api/v1/hr/employment-changes/due": {
+      "get": {
+        "operationId": "list_due_employment_changes_api_v1_hr_employment_changes_due_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DueEmploymentChangeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Due Employment Changes Api V1 Hr Employment Changes Due Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Due Employment Changes",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/goals": {
       "get": {
         "operationId": "list_goals_api_v1_hr_goals_get",
@@ -34349,6 +37427,92 @@
         ]
       }
     },
+    "/api/v1/hr/leave/date-evidence/candidates": {
+      "get": {
+        "operationId": "find_legacy_leave_dates_api_v1_hr_leave_date_evidence_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveDateEvidenceCandidates"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Find Legacy Leave Dates Api V1 Hr Leave Date Evidence Candidates Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Find Legacy Leave Dates",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/leave/employees/{employee_id}/units": {
       "get": {
         "operationId": "quote_employee_leave_units_api_v1_hr_leave_employees__employee_id__units_get",
@@ -34929,6 +38093,291 @@
           }
         ],
         "summary": "Decide Leave Request",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence": {
+      "get": {
+        "operationId": "read_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveDateEvidencePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Legacy Leave Dates Api V1 Hr Leave Requests  Request Id  Date Evidence Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Legacy Leave Dates",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
+      "post": {
+        "operationId": "propose_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveDateEvidenceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveDateEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Legacy Leave Dates Api V1 Hr Leave Requests  Request Id  Date Evidence Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Legacy Leave Dates",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence/{proposal_id}": {
+      "get": {
+        "operationId": "show_legacy_leave_date_proposal_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveDateEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Show Legacy Leave Date Proposal Api V1 Hr Leave Requests  Request Id  Date Evidence  Proposal Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Show Legacy Leave Date Proposal",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/leave/requests/{request_id}/date-evidence/{proposal_id}/decision": {
+      "post": {
+        "operationId": "decide_legacy_leave_dates_api_v1_hr_leave_requests__request_id__date_evidence__proposal_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveDateEvidenceDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveDateEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Legacy Leave Dates Api V1 Hr Leave Requests  Request Id  Date Evidence  Proposal Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Legacy Leave Dates",
         "tags": [
           "HR & Workforce"
         ]
@@ -36728,7 +40177,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HrDocumentDownloadResponse"
+                  "$ref": "#/components/schemas/MyPolicyFileResponse"
                 }
               }
             },
@@ -36809,6 +40258,24 @@
       },
       "post": {
         "operationId": "create_my_reimbursement_api_v1_hr_me_reimbursements_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -38995,6 +42462,62 @@
         ]
       }
     },
+    "/api/v1/hr/overtime/{overtime_id}": {
+      "get": {
+        "operationId": "read_overtime_api_v1_hr_overtime__overtime_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "overtime_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Overtime Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OvertimeRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Overtime Api V1 Hr Overtime  Overtime Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Overtime",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/overtime/{overtime_id}/decision": {
       "post": {
         "operationId": "decide_overtime_request_api_v1_hr_overtime__overtime_id__decision_post",
@@ -39152,6 +42675,138 @@
           }
         ],
         "summary": "Create Payroll Period",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/periods/{period_id}/leave-inputs.csv": {
+      "post": {
+        "operationId": "download_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_csv_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollTimeDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Download Payroll Leave Inputs Api V1 Hr Payroll Periods  Period Id  Leave Inputs Csv Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Payroll Leave Inputs",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/periods/{period_id}/leave-inputs/preview": {
+      "post": {
+        "operationId": "preview_payroll_leave_inputs_api_v1_hr_payroll_periods__period_id__leave_inputs_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "period_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Period Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollRunCalculateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollLeaveInputPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Preview Payroll Leave Inputs Api V1 Hr Payroll Periods  Period Id  Leave Inputs Preview Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Payroll Leave Inputs",
         "tags": [
           "HR & Workforce"
         ]
@@ -39385,6 +43040,62 @@
         ]
       }
     },
+    "/api/v1/hr/payroll/policies/{policy_id}": {
+      "get": {
+        "operationId": "get_payroll_policy_api_v1_hr_payroll_policies__policy_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Payroll Policy Api V1 Hr Payroll Policies  Policy Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Payroll Policy",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/payroll/policies/{policy_id}/approve": {
       "post": {
         "operationId": "approve_payroll_policy_api_v1_hr_payroll_policies__policy_id__approve_post",
@@ -39400,6 +43111,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PayrollPolicyApproveRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -39436,6 +43164,72 @@
           }
         ],
         "summary": "Approve Payroll Policy",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/policies/{policy_id}/draft": {
+      "put": {
+        "operationId": "update_payroll_policy_draft_api_v1_hr_payroll_policies__policy_id__draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollPolicyDraftUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Update Payroll Policy Draft Api V1 Hr Payroll Policies  Policy Id  Draft Put"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Payroll Policy Draft",
         "tags": [
           "HR & Workforce"
         ]
@@ -39593,6 +43387,202 @@
         ]
       }
     },
+    "/api/v1/hr/payroll/runs/{run_id}/adjustments": {
+      "get": {
+        "operationId": "list_run_adjustments_api_v1_hr_payroll_runs__run_id__adjustments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollAdjustmentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Run Adjustments Api V1 Hr Payroll Runs  Run Id  Adjustments Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Run Adjustments",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
+      "post": {
+        "operationId": "propose_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollAdjustmentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollAdjustmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Run Adjustment Api V1 Hr Payroll Runs  Run Id  Adjustments Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Run Adjustment",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/adjustments/{adjustment_id}/decision": {
+      "post": {
+        "operationId": "decide_run_adjustment_api_v1_hr_payroll_runs__run_id__adjustments__adjustment_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "adjustment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adjustment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollAdjustmentReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollAdjustmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Run Adjustment Api V1 Hr Payroll Runs  Run Id  Adjustments  Adjustment Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Run Adjustment",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/payroll/runs/{run_id}/approve": {
       "post": {
         "operationId": "approve_payroll_run_api_v1_hr_payroll_runs__run_id__approve_post",
@@ -39678,7 +43668,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PayrollRunCalculateRequest"
+                "$ref": "#/components/schemas/PayrollSnapshotCalculateRequest"
               }
             }
           },
@@ -39720,6 +43710,397 @@
           }
         ],
         "summary": "Calculate Payroll Run",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/close": {
+      "post": {
+        "operationId": "close_run_period_api_v1_hr_payroll_runs__run_id__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollClosureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollClosureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Close Run Period Api V1 Hr Payroll Runs  Run Id  Close Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close Run Period",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections": {
+      "get": {
+        "operationId": "get_run_payroll_corrections_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Line Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollCorrectionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Run Payroll Corrections Api V1 Hr Payroll Runs  Run Id  Lines  Line Id  Corrections Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run Payroll Corrections",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
+      "post": {
+        "operationId": "propose_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Line Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollCorrectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollCorrectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Run Payroll Correction Api V1 Hr Payroll Runs  Run Id  Lines  Line Id  Corrections Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Propose Run Payroll Correction",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}": {
+      "get": {
+        "operationId": "show_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Line Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollCorrectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Show Run Payroll Correction Api V1 Hr Payroll Runs  Run Id  Lines  Line Id  Corrections  Correction Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Show Run Payroll Correction",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections/{correction_id}/decision": {
+      "post": {
+        "operationId": "decide_run_payroll_correction_api_v1_hr_payroll_runs__run_id__lines__line_id__corrections__correction_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Line Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "correction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayrollCorrectionDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayrollCorrectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Run Payroll Correction Api V1 Hr Payroll Runs  Run Id  Lines  Line Id  Corrections  Correction Id  Decision Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decide Run Payroll Correction",
         "tags": [
           "HR & Workforce"
         ]
@@ -40300,6 +44681,75 @@
           }
         ],
         "summary": "Get Payroll Snapshot",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/payroll/runs/{run_id}/snapshot/sources/{source}": {
+      "get": {
+        "operationId": "download_frozen_payroll_source_api_v1_hr_payroll_runs__run_id__snapshot_sources__source__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "enum": [
+                "time",
+                "leave"
+              ],
+              "title": "Source",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Download Frozen Payroll Source Api V1 Hr Payroll Runs  Run Id  Snapshot Sources  Source  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Frozen Payroll Source",
         "tags": [
           "HR & Workforce"
         ]
@@ -40929,6 +45379,35 @@
               ],
               "title": "Employee Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 50,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -40936,7 +45415,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReimbursementListResponse"
+                  "$ref": "#/components/schemas/ReimbursementOperatorListResponse"
                 }
               }
             },
@@ -40973,6 +45452,24 @@
       },
       "post": {
         "operationId": "create_reimbursement_api_v1_hr_reimbursements_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -40988,7 +45485,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReimbursementResponse"
+                  "$ref": "#/components/schemas/ReimbursementOperatorResponse"
                 }
               }
             },
@@ -41054,7 +45551,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReimbursementResponse"
+                  "$ref": "#/components/schemas/ReimbursementOperatorResponse"
                 }
               }
             },
@@ -41085,6 +45582,62 @@
           }
         ],
         "summary": "Decide Reimbursement",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/reimbursements/{claim_id}/payable": {
+      "get": {
+        "operationId": "get_reimbursement_payable_api_v1_hr_reimbursements__claim_id__payable_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReimbursementPayableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Reimbursement Payable Api V1 Hr Reimbursements  Claim Id  Payable Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Reimbursement Payable",
         "tags": [
           "HR & Workforce"
         ]
@@ -42428,6 +46981,62 @@
         ]
       }
     },
+    "/api/v1/hr/roster/{allocation_id}": {
+      "get": {
+        "operationId": "read_roster_allocation_api_v1_hr_roster__allocation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "allocation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Allocation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RosterAllocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Roster Allocation Api V1 Hr Roster  Allocation Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Roster Allocation",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/roster/{allocation_id}/cancel": {
       "post": {
         "operationId": "cancel_roster_allocation_api_v1_hr_roster__allocation_id__cancel_post",
@@ -42785,6 +47394,62 @@
           }
         ],
         "summary": "Create Timesheet",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/timesheets/{timesheet_id}": {
+      "get": {
+        "operationId": "read_timesheet_api_v1_hr_timesheets__timesheet_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "timesheet_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Timesheet Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimesheetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Timesheet Api V1 Hr Timesheets  Timesheet Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Timesheet",
         "tags": [
           "HR & Workforce"
         ]

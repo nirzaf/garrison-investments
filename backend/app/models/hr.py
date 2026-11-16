@@ -21,7 +21,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -874,6 +874,11 @@ class HrIssuedLetter(TimestampMixin, Base):
         ForeignKey("hr_letter_templates.id", ondelete="RESTRICT")
     )
     employee_revision: Mapped[int]
+    compensation_term_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "hr_compensation_terms.id", name="fk_hr_letter_compensation_term", ondelete="RESTRICT"
+        )
+    )
     content_encrypted: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(12), server_default="draft")
     prepared_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
@@ -1290,6 +1295,7 @@ class HrLeaveRequest(HrManagerRecommendationMixin, TimestampMixin, Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     days_requested: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    scheduled_work_dates: Mapped[list[date] | None] = mapped_column(ARRAY(Date), nullable=True)
     is_half_day: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     half_day_period: Mapped[str | None] = mapped_column(String(20), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1309,6 +1315,32 @@ class HrLeaveRequest(HrManagerRecommendationMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class HrLeaveDateEvidence(Base):
+    __tablename__ = "hr_leave_date_evidence"
+    __table_args__ = (
+        Index("ix_hr_leave_date_evidence_request_created", "request_id", "created_at", "id"),
+        CheckConstraint(
+            "(status = 'submitted' AND decided_by_id IS NULL AND decided_at IS NULL) OR "
+            "(status IN ('approved', 'rejected') AND decided_by_id IS NOT NULL "
+            "AND decided_at IS NOT NULL AND decided_by_id <> submitted_by_id)",
+            name="leave_date_evidence_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_requests.id", ondelete="RESTRICT")
+    )
+    ledger_id: Mapped[UUID] = mapped_column(ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"))
+    request_revision: Mapped[int] = mapped_column(Integer)
+    detail_encrypted: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), server_default="submitted")
+    submitted_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HrLeaveLedger(TimestampMixin, Base):
@@ -1746,6 +1778,16 @@ class HrBenefitType(TimestampMixin, Base):
         Boolean, nullable=False, server_default=text("true")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    reimbursement_ceiling: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    reimbursement_currency: Mapped[str | None] = mapped_column(String(3))
+    allows_advances: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    proposed_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", name="fk_hr_benefit_policy_proposer", ondelete="SET NULL")
+    )
+    approved_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", name="fk_hr_benefit_policy_approver", ondelete="SET NULL")
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HrEmployeeBenefit(TimestampMixin, Base):
@@ -1783,6 +1825,11 @@ class HrReimbursementClaim(TimestampMixin, Base):
         nullable=False,
     )
     claim_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    benefit_assignment_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "hr_employee_benefits.id", name="fk_hr_claim_benefit_assignment", ondelete="RESTRICT"
+        )
+    )
     claim_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'LKR'"))
@@ -1792,6 +1839,17 @@ class HrReimbursementClaim(TimestampMixin, Base):
         ForeignKey("hr_documents.id", ondelete="SET NULL"),
         nullable=True,
     )
+    receipt_version_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey(
+            "hr_document_versions.id", name="fk_hr_claim_receipt_version", ondelete="RESTRICT"
+        ),
+    )
+    submitted_by_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("users.id", name="fk_hr_claim_submitter", ondelete="SET NULL"),
+    )
+    settlement_reference: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'submitted'")
     )
@@ -1802,8 +1860,49 @@ class HrReimbursementClaim(TimestampMixin, Base):
     decision_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class HrEmployeeAdvance(TimestampMixin, Base):
+    __tablename__ = "hr_employee_advances"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    benefit_assignment_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_employee_benefits.id", ondelete="RESTRICT"), index=True
+    )
+    submitted_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    requested_on: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'submitted'"))
+    decided_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disbursement_reference: Mapped[str | None] = mapped_column(String(100))
+    disbursed_on: Mapped[date | None] = mapped_column(Date)
+
+
+class HrAdvanceRecovery(TimestampMixin, Base):
+    __tablename__ = "hr_advance_recoveries"
+    __table_args__ = (
+        UniqueConstraint("advance_id", "reference", name="uq_hr_advance_recovery_reference"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
+    advance_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_employee_advances.id", ondelete="RESTRICT")
+    )
+    recorded_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    reference: Mapped[str] = mapped_column(String(100))
+    occurred_on: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+
+
 class HrCompensationTerm(TimestampMixin, Base):
     __tablename__ = "hr_compensation_terms"
+    __table_args__ = (
+        CheckConstraint(
+            "approval_status IN ('proposed', 'approved', 'rejected')",
+            name="hr_compensation_approval_status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -1822,6 +1921,14 @@ class HrCompensationTerm(TimestampMixin, Base):
     base_salary_masked: Mapped[str] = mapped_column(String(64), nullable=False)
     allowances_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    approval_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'approved'")
+    )
+    rejection_reason_encrypted: Mapped[str | None] = mapped_column(Text)
+    proposed_by_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("users.id", name="fk_hr_compensation_proposer", ondelete="SET NULL"),
+    )
     approved_by_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1839,6 +1946,7 @@ class HrPayrollPolicy(TimestampMixin, Base):
     rules_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+    controlled_record: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     approved_by_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -1896,6 +2004,23 @@ class HrPayrollRun(TimestampMixin, Base):
         return hashlib.sha256(self.snapshot_encrypted.encode()).hexdigest()
 
 
+class HrPayrollAdjustment(TimestampMixin, Base):
+    __tablename__ = "hr_payroll_adjustments"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_runs.id", ondelete="RESTRICT"), index=True
+    )
+    employee_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_employees.id", ondelete="RESTRICT")
+    )
+    submitted_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), server_default="submitted")
+    detail_encrypted: Mapped[str] = mapped_column(Text)
+
+
 class HrPayslipPublication(Base):
     __tablename__ = "hr_payslip_publications"
 
@@ -1947,6 +2072,45 @@ class HrPayrollLine(TimestampMixin, Base):
     breakdown_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
+
+
+class HrPayrollClosure(Base):
+    __tablename__ = "hr_payroll_closures"
+
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_runs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    closed_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    csv_sha256: Mapped[str] = mapped_column(String(64))
+    settlement_digest: Mapped[str] = mapped_column(String(64))
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HrPayrollCorrection(Base):
+    __tablename__ = "hr_payroll_corrections"
+    __table_args__ = (
+        Index("ix_hr_payroll_corrections_line_created", "line_id", "created_at", "id"),
+        CheckConstraint(
+            "(status = 'submitted' AND decided_by_id IS NULL AND decided_at IS NULL) OR "
+            "(status IN ('approved', 'rejected') AND decided_by_id IS NOT NULL "
+            "AND decided_at IS NOT NULL AND decided_by_id <> submitted_by_id)",
+            name="payroll_correction_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    line_id: Mapped[UUID] = mapped_column(ForeignKey("hr_payroll_lines.id", ondelete="RESTRICT"))
+    previous_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_payroll_corrections.id", ondelete="RESTRICT")
+    )
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    detail_encrypted: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), server_default="submitted")
+    submitted_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class HrPayrollSettlementEvent(Base):

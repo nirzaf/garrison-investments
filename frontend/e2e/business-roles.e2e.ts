@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from 'node:process';
@@ -574,6 +575,14 @@ test('independent HR Managers approve and apply an effective-dated employment ch
     await openEmployee(reviewerPage);
     await reviewerPage.getByRole('button', { name: 'Approve employment change' }).click();
     await expect(reviewerPage.getByRole('heading', { name: /Transfer .* approved/ })).toBeVisible();
+    await reviewerPage.reload();
+    await reviewerPage.getByRole('button', { name: 'Directory & Org' }).click();
+    await reviewerPage.getByText('Due employment changes', { exact: true }).click();
+    const dueRow = reviewerPage.getByRole('list', { name: 'Approved changes due' })
+      .getByRole('listitem').filter({ hasText: code });
+    await expect(dueRow).toContainText(effective);
+    await dueRow.getByRole('button', { name: 'Inspect employee' }).click();
+    await reviewerPage.getByText('Reviewed employment changes', { exact: true }).click();
     let current = await request.get(employeePath, { headers });
     expect(await current.json()).toMatchObject({
       work_location: 'Original site',
@@ -581,6 +590,7 @@ test('independent HR Managers approve and apply an effective-dated employment ch
     });
     await reviewerPage.getByRole('button', { name: 'Apply due employment change' }).click();
     await expect(reviewerPage.getByRole('heading', { name: /Transfer .* applied/ })).toBeVisible();
+    await expect(dueRow).toHaveCount(0);
     current = await request.get(employeePath, { headers });
     expect(await current.json()).toMatchObject({
       work_location: 'Synthetic new site',
@@ -601,8 +611,7 @@ test('independent HR Managers approve and apply an effective-dated employment ch
             'employees',
             'changes',
             action,
-            '--employee-id',
-            employee.id,
+            ...(action === 'due' ? [] : ['--employee-id', employee.id]),
             ...args,
             '--json'
           ],
@@ -641,6 +650,9 @@ test('independent HR Managers approve and apply an effective-dated employment ch
       expect(
         confirm(reviewer.accessToken, 'decide', [...changeId, '--decision', 'approved']).status
       ).toBe('approved');
+      expect(cli(reviewer.accessToken, 'due', []).items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: amendment.id, revision_matches: true })])
+      );
       expect(confirm(reviewer.accessToken, 'apply', changeId).status).toBe('applied');
       expect(cli(reviewer.accessToken, 'list', []).items).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: amendment.id, status: 'applied' })])
@@ -838,6 +850,85 @@ test('employees can open their own published payslip in My HR', async ({
       ownerContext.close(),
       otherContext.close()
     ]);
+  }
+});
+
+test('HR issues a salary confirmation from approved compensation', async ({ page, browser, request }) => {
+  const maker = await signIn(page, seedAccount('hr_manager'));
+  const reviewerContext = await browser.newContext();
+  const workerContext = await browser.newContext();
+  const directorContext = await browser.newContext();
+  try {
+    const reviewerPage = await reviewerContext.newPage();
+    const reviewer = await signIn(reviewerPage, seedAccount('hr_manager'));
+    const worker = seedAccount('quantity_surveyor');
+    const workerPage = await workerContext.newPage();
+    const owner = await signIn(workerPage, worker);
+    const director = await signIn(await directorContext.newPage(), seedAccount());
+    const code = `SALARY-${Date.now()}`;
+    const headers = { Authorization: `Bearer ${maker.accessToken}` };
+    const employee = await request.post('/api/v1/hr/employees', {
+      headers, data: {
+        employee_code: code, first_name: 'Synthetic', last_name: 'Salary Letter Recipient',
+        work_email: worker.email, employment_status: 'active'
+      }
+    });
+    expect(employee.status()).toBe(201);
+    const employeeId = (await employee.json()).id as string;
+    expect((await request.post(`/api/v1/hr/employees/${employeeId}/link-account`, {
+      headers: { Authorization: `Bearer ${director.accessToken}` },
+      data: { user_id: owner.userId }
+    })).status()).toBe(200);
+    const term = await request.post('/api/v1/hr/compensation', {
+      headers, data: {
+        employee_id: employeeId, effective_from: '2022-01-01', currency: 'LKR',
+        base_salary: '23456.78', pay_frequency: 'monthly'
+      }
+    });
+    expect(term.status()).toBe(201);
+    const termId = (await term.json()).id as string;
+    expect((await request.post(`/api/v1/hr/compensation/${termId}/decision`, {
+      headers: { Authorization: `Bearer ${reviewer.accessToken}` },
+      data: { decision: 'approve' }
+    })).status()).toBe(200);
+    const template = await request.post('/api/v1/hr/letter-templates', {
+      headers, data: {
+        code, name: 'Salary confirmation example', letter_type: 'salary_confirmation',
+        subject_template: 'Compensation for {full_name}',
+        body_template: 'Approved base salary {salary_currency} {base_salary} ({pay_frequency}).'
+      }
+    });
+    expect(template.status()).toBe(201);
+    const templateId = (await template.json()).id as string;
+    async function selectEmployee(target: Page) {
+      await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+      await target.getByRole('button', { name: 'Policies & Requests' }).click();
+      await target.getByLabel('Find employee by name or code').fill(code);
+      await target.getByRole('button', { name: 'Find employee', exact: true }).click();
+      await target.getByRole('combobox', { name: 'Letter employee', exact: true }).selectOption(employeeId);
+    }
+    await selectEmployee(page);
+    await page.getByRole('combobox', { name: 'Letter template', exact: true }).selectOption(templateId);
+    await expect(page.getByLabel('base_salary', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Preview letter' }).click();
+    const text = 'Approved base salary LKR 23456.78 (monthly).';
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Save draft for independent review' }).click();
+    await expect(page.getByText('Letter draft saved for review.')).toBeVisible();
+
+    await selectEmployee(reviewerPage);
+    await reviewerPage.getByRole('button', { name: /Salary confirmation example · draft/ }).click();
+    await expect(reviewerPage.getByText(text, { exact: true })).toBeVisible();
+    await reviewerPage.getByRole('button', { name: 'Approve and issue letter' }).click();
+    await expect(reviewerPage.getByRole('button', { name: /Salary confirmation example · issued/ }))
+      .toBeVisible();
+
+    await workerPage.getByRole('link', { name: 'My HR', exact: true }).click();
+    await workerPage.reload();
+    await workerPage.getByRole('button', { name: /Salary confirmation example · issued/ }).click();
+    await expect(workerPage.getByText(text, { exact: true })).toBeVisible();
+  } finally {
+    await Promise.all([reviewerContext.close(), workerContext.close(), directorContext.close()]);
   }
 });
 
@@ -1608,10 +1699,24 @@ test('HR staff draft, approve and publish a calendar and download the aggregate 
   await summaryButton.click();
   expect((await download).suggestedFilename()).toBe('hr-summary.xlsx');
 
-  const calendarName = `Synthetic work calendar ${Date.now()}`;
+  const calendarCode = `CAL-${Date.now()}`;
+  const calendarName = `Synthetic work calendar ${calendarCode}`;
+  type Calendar = { id: string; code: string; status: string; revision: number };
+  function calendarCli(token: string, ...args: string[]) {
+    return JSON.parse(execFileSync(
+      PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', 'calendars', ...args, '--json'], {
+        cwd: BACKEND_DIR,
+        encoding: 'utf8',
+        env: {
+          ...env, GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+          GARRISON_ENVIRONMENT: 'test', GARRISON_ACCESS_TOKEN: token
+        }
+      }
+    )) as { data: Calendar & { items: Calendar[]; plan_sha256: string } };
+  }
   await page.getByRole('button', { name: 'Attendance', exact: true }).click();
   await page.getByText('Work calendars, holidays and shifts', { exact: true }).click();
-  await page.getByLabel('Calendar code').fill(`CAL-${Date.now()}`);
+  await page.getByLabel('Calendar code').fill(calendarCode);
   await page.getByLabel('Name', { exact: true }).fill(calendarName);
   await page.getByLabel('Calendar effective from').fill('2027-01-01');
   await page.getByLabel('Calendar effective through').fill('2027-01-31');
@@ -1623,6 +1728,48 @@ test('HR staff draft, approve and publish a calendar and download the aggregate 
   await page.getByLabel('End time', { exact: true }).fill('16:00');
   await page.getByRole('button', { name: 'Save schedule' }).click();
   await expect(page.getByText(`${calendarName} · MON · 7.50 h`, { exact: true })).toBeVisible();
+  const calendar = calendarCli(preparerSession.accessToken, 'list').data.items.find(
+    (item) => item.code === calendarCode
+  );
+  expect(calendar?.status).toBe('draft');
+  if (!calendar) throw new Error('Calendar missing from CLI list');
+  const calendarIdArgs = ['--calendar-id', calendar.id];
+  const inputDirectory = mkdtempSync(join(tmpdir(), 'garrison-calendar-cli-'));
+  try {
+    const inputPath = join(inputDirectory, 'calendar.json');
+    const fields = {
+      code: calendarCode, name: calendarName, work_days_json: ['MON', 'TUE'],
+      standard_start_time: '08:30', standard_end_time: '16:00', daily_hours: '7.50',
+      effective_from: '2027-01-01', effective_to: '2027-01-31',
+      timezone: 'Asia/Colombo', project_id: preparer.projectId
+    };
+    const create = ['create', '--file', inputPath];
+    writeFileSync(inputPath, JSON.stringify({
+      ...fields, code: `${calendarCode}-draft`, name: 'Separate CLI draft'
+    }), {
+      mode: 0o600
+    });
+    const createPlan = calendarCli(preparerSession.accessToken, ...create, '--dry-run');
+    const created = calendarCli(
+      preparerSession.accessToken, ...create, '--apply', '--expect', createPlan.data.plan_sha256
+    );
+    expect(created.data).toMatchObject({ code: `${calendarCode}-draft`, status: 'draft', revision: 1 });
+    const update = ['update', ...calendarIdArgs, '--file', inputPath];
+    writeFileSync(inputPath, JSON.stringify(fields));
+    const updatePlan = calendarCli(preparerSession.accessToken, ...update, '--dry-run');
+    const updated = calendarCli(
+      preparerSession.accessToken, ...update, '--apply', '--expect', updatePlan.data.plan_sha256
+    );
+    expect(updated.data).toMatchObject({ status: 'draft', revision: calendar.revision + 1 });
+    expect(() => calendarCli(
+      preparerSession.accessToken, ...update, '--apply', '--expect', updatePlan.data.plan_sha256
+    )).toThrow();
+  } finally {
+    rmSync(inputDirectory, { recursive: true, force: true });
+  }
+  await page.reload();
+  await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+  await page.getByText('Work calendars, holidays and shifts', { exact: true }).click();
   const draft = page.getByRole('listitem').filter({ hasText: calendarName });
   await draft.getByRole('button', { name: 'Submit calendar' }).click();
   await expect(draft.getByText(/^submitted/)).toBeVisible();
@@ -1631,14 +1778,23 @@ test('HR staff draft, approve and publish a calendar and download the aggregate 
   const reviewerContext = await browser.newContext();
   try {
     const approvalPage = await reviewerContext.newPage();
-    await signIn(approvalPage, reviewer);
+    const reviewerSession = await signIn(approvalPage, reviewer);
+    const decision = ['decide', ...calendarIdArgs, '--action', 'approve'];
+    expect(() => calendarCli(preparerSession.accessToken, ...decision, '--dry-run')).toThrow();
+    const decisionPlan = calendarCli(reviewerSession.accessToken, ...decision, '--dry-run');
+    const approved = calendarCli(
+      reviewerSession.accessToken, ...decision, '--apply', '--expect', decisionPlan.data.plan_sha256
+    );
+    expect(approved.data.status).toBe('approved');
     await approvalPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
     await approvalPage.getByRole('button', { name: 'Attendance', exact: true }).click();
     await approvalPage.getByText('Work calendars, holidays and shifts', { exact: true }).click();
     const record = approvalPage.getByRole('listitem').filter({ hasText: calendarName });
-    await record.getByRole('button', { name: 'Approve calendar' }).click();
     await record.getByRole('button', { name: 'Publish calendar' }).click();
     await expect(record.getByText(/^published/)).toBeVisible();
+    expect(calendarCli(reviewerSession.accessToken, 'show', ...calendarIdArgs).data.status).toBe(
+      'published'
+    );
 
     await page.getByText('Import attendance CSV', { exact: true }).click();
     await page.getByLabel('Attendance CSV', { exact: true }).setInputFiles({
@@ -2158,6 +2314,24 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await expect(workerPage.getByText('Leave request cancelled.', { exact: true })).toBeVisible();
     await workerPage.reload();
     await expect(workerPage.getByText('cancelled', { exact: true })).toBeVisible();
+    await workerPage.getByLabel('Leave type', { exact: true }).selectOption(leaveTypeId);
+    await workerPage.getByLabel('Leave starts').fill('2026-12-16');
+    await workerPage.getByLabel('Leave ends').fill('2026-12-16');
+    await expect(workerPage.getByText('Scheduled leave days: 1', { exact: true })).toBeVisible();
+    await workerPage.getByRole('button', { name: 'Submit leave request' }).click();
+    await expect(workerPage.getByText('Leave request submitted.', { exact: true })).toBeVisible();
+
+    await reviewerPage.reload();
+    await reviewerPage.getByRole('button', { name: 'Leave', exact: true }).click();
+    const approvedLeave = reviewerPage.getByText(/^2026-12-16 → 2026-12-16/).locator('..');
+    await approvedLeave.getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect(approvedLeave).toContainText('approved');
+    await approvedLeave.getByText('Reverse approved leave', { exact: true }).click();
+    await approvedLeave.getByRole('textbox', { name: 'Reversal reason' }).fill('Synthetic roster change');
+    await approvedLeave.getByRole('button', { name: 'Confirm reversal', exact: true }).click();
+    await expect(approvedLeave).toContainText('cancelled');
+    await workerPage.reload();
+    await expect(workerPage.getByText('Synthetic roster change', { exact: true })).toBeVisible();
     const othersDirectory = await workerPage.request.get('/api/v1/hr/employees', {
       headers: { Authorization: `Bearer ${workerSession.accessToken}` }
     });
@@ -2793,6 +2967,7 @@ test('HR plans and cancels a roster allocation using a published schedule', asyn
   const hr = await signIn(page, seedAccount('hr_manager', site.projectId));
   const headers = { Authorization: `Bearer ${hr.accessToken}` };
   const reviewerContext = await browser.newContext();
+  const privateDir = mkdtempSync(join(tmpdir(), 'garrison-roster-cli-'));
   try {
     const reviewer = await signIn(
       await reviewerContext.newPage(),
@@ -2859,13 +3034,63 @@ test('HR plans and cancels a roster allocation using a published schedule', asyn
     await page.getByRole('button', { name: 'Confirm roster cancellation' }).click();
     await expect(allocation).toContainText('Cancelled · Synthetic reschedule');
 
+    type Roster = {
+      id: string; calendar_id: string; planned_hours: string; cancelled_at: string | null;
+      cancellation_reason?: string; employee_name?: string;
+    };
+    function rosterCli(...args: string[]) {
+      return JSON.parse(execFileSync(
+        PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', 'roster', ...args, '--json'], {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env, GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test', GARRISON_ACCESS_TOKEN: hr.accessToken
+          }
+        }
+      )) as { data: Roster & { plan_sha256: string; items: Roster[]; total: number } };
+    }
+    const replacementId = globalThis.crypto.randomUUID();
+    const replacementArgs = ['--allocation-id', replacementId];
+    const allocate = [
+      'allocate', ...replacementArgs, '--employee-id', employee.id,
+      '--project-id', site.projectId, '--work-date', date
+    ];
+    const allocationPlan = rosterCli(...allocate, '--dry-run');
+    const allocated = rosterCli(...allocate, '--apply', '--expect', allocationPlan.data.plan_sha256);
+    expect(allocated.data).toMatchObject({
+      id: replacementId, calendar_id: calendar.id, planned_hours: '7.50', cancelled_at: null
+    });
+    expect(allocated.data.employee_name).toBeUndefined();
+    expect(rosterCli(...allocate, '--apply', '--expect', allocationPlan.data.plan_sha256).data)
+      .toEqual(allocated.data);
+    const cancellationPath = join(privateDir, 'cancel.json');
+    writeFileSync(cancellationPath, JSON.stringify({ reason: 'Synthetic CLI cancellation' }), {
+      mode: 0o600
+    });
+    const cancel = ['cancel', ...replacementArgs, '--file', cancellationPath];
+    const cancellationPlan = rosterCli(...cancel, '--dry-run');
+    const cancelled = rosterCli(...cancel, '--apply', '--expect', cancellationPlan.data.plan_sha256);
+    expect(cancelled.data.cancelled_at).toBeTruthy();
+    expect(cancelled.data.cancellation_reason).toBeUndefined();
+    expect(rosterCli('show', ...replacementArgs).data.cancellation_reason).toBe(
+      'Synthetic CLI cancellation'
+    );
+    const listed = rosterCli(
+      'list', '--date-from', date, '--date-to', date, '--employee-id', employee.id
+    );
+    expect(listed.data.total).toBe(2);
+    expect(listed.data.items.find((item) => item.id === replacementId)?.cancelled_at).toBeTruthy();
+
     await page.reload();
     await page.getByRole('button', { name: 'Attendance', exact: true }).click();
     await page.getByLabel('Roster from').fill(date);
     await page.getByLabel('Roster to').fill(date);
     await page.getByRole('button', { name: 'View roster' }).click();
-    await expect(allocation).toContainText('Cancelled · Synthetic reschedule');
+    await expect(allocation.filter({ hasText: 'Cancelled · Synthetic reschedule' })).toBeVisible();
+    await expect(allocation.filter({ hasText: 'Cancelled · Synthetic CLI cancellation' })).toBeVisible();
   } finally {
+    rmSync(privateDir, { recursive: true, force: true });
     await reviewerContext.close();
   }
 });
@@ -3171,6 +3396,7 @@ test('policy replacement preserves the acknowledged file and requires a new rece
   const directorContext = await browser.newContext();
   const reviewerContext = await browser.newContext();
   const employeeContext = await browser.newContext();
+  const policyDir = mkdtempSync(join(tmpdir(), 'garrison-company-policy-'));
   try {
     const directorSession = await signIn(await directorContext.newPage(), director);
     const reviewer = await signIn(
@@ -3281,7 +3507,32 @@ test('policy replacement preserves the acknowledged file and requires a new rece
     await documentCard.getByRole('button', { name: 'Submit replacement' }).click();
     await expect(documentCard).toContainText('Version 2 · pending');
     await approveVersion(2);
-    await publish(2, today, firstId);
+    function cliPolicy(token: string, ...args: string[]) {
+      return JSON.parse(execFileSync(
+        PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', ...args, '--json'], {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: token
+          }
+        }
+      )) as { data: { id: string; plan_sha256: string; acknowledged_at: string; sha256: string } };
+    }
+    const editionInput = join(policyDir, 'edition.json');
+    writeFileSync(editionInput, JSON.stringify({
+      code: `${marker}-2`, title: marker, version: '2.0', effective_date: today,
+      content_summary: 'Synthetic edition 2 body', document_id: documentId,
+      document_version_number: 2, supersedes_policy_id: firstId
+    }), { mode: 0o600 });
+    const publishArgs = ['company-policy', 'publish', '--file', editionInput];
+    const preview = cliPolicy(hr.accessToken, ...publishArgs, '--dry-run');
+    const secondId = cliPolicy(
+      hr.accessToken, ...publishArgs, '--apply', '--expect', preview.data.plan_sha256
+    ).data.id;
+    expect(secondId).not.toBe(firstId);
 
     await employeePage.getByRole('button', { name: 'Reload policies' }).click();
     const replacement = employeePage.getByRole('article').filter({ hasText: `${marker} v2.0` });
@@ -3295,16 +3546,956 @@ test('policy replacement preserves the acknowledged file and requires a new rece
       current.getByRole('button', { name: 'Download policy file v1' }).click()
     ]);
     expect(readFileSync(await historicalFile.path())).toEqual(original);
+    const originalDownload = join(policyDir, 'original.pdf');
+    const objectOrigin = `http://${env.BROWSER_TEST_MINIO_ENDPOINT ?? '127.0.0.1:9000'}`;
+    const downloaded = cliPolicy(employeeSession.accessToken,
+      'my-policy', 'download', '--policy-id', firstId, '--output', originalDownload,
+      '--object-origin', objectOrigin
+    );
+    expect(downloaded.data.sha256).toBe(createHash('sha256').update(original).digest('hex'));
+    expect(readFileSync(originalDownload)).toEqual(original);
+
     const [newFile] = await Promise.all([
       employeePage.waitForEvent('download'),
       replacement.getByRole('button', { name: 'Download policy file v2' }).click()
     ]);
     expect(readFileSync(await newFile.path())).toEqual(updated);
-    await replacement.getByRole('button', { name: 'Acknowledge policy edition' }).click();
+    const ackArgs = [
+      'my-policy', 'acknowledge', '--policy-id', secondId, '--edition', '2.0', '--file-version', '2'
+    ];
+    const acknowledgement = cliPolicy(employeeSession.accessToken, ...ackArgs, '--dry-run');
+    const receipt = cliPolicy(
+      employeeSession.accessToken, ...ackArgs, '--apply', '--expect', acknowledgement.data.plan_sha256
+    );
+    expect(receipt.data.acknowledged_at).toBeTruthy();
+    await employeePage.getByRole('button', { name: 'Reload policies' }).click();
     await expect(replacement).toContainText('Acknowledged');
     await employeePage.reload();
     await expect(replacement).toContainText('Acknowledged');
   } finally {
+    rmSync(policyDir, { recursive: true, force: true });
     await Promise.all([directorContext.close(), reviewerContext.close(), employeeContext.close()]);
+  }
+});
+
+test('authorized HR operators propose and independently review a private compensation term', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const maker = seedAccount('hr_manager', director.projectId);
+  const reviewer = seedAccount('hr_manager', director.projectId);
+  const makerSession = await signIn(page, maker);
+  const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
+  const employeeCode = `COMP-${Date.now().toString(36)}`;
+  const created = await request.post('/api/v1/hr/employees', {
+    headers: makerHeaders,
+    data: {
+      employee_code: employeeCode,
+      first_name: 'Synthetic',
+      last_name: 'Compensation Employee',
+      employment_status: 'active',
+      join_date: '2025-01-01'
+    }
+  });
+  expect(created.status()).toBe(201);
+  const employee = (await created.json()) as { id: string };
+
+  async function openCompensation(target: Page) {
+    await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await target.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await target.getByLabel('Search employees').fill(employeeCode);
+    await target
+      .getByRole('row')
+      .filter({ hasText: employeeCode })
+      .getByRole('button', { name: 'Inspect', exact: true })
+      .click();
+    await target.getByText('Compensation history', { exact: true }).click();
+    return target.getByRole('region', { name: 'Compensation terms' });
+  }
+
+  const makerPanel = await openCompensation(page);
+  await expect(makerPanel.getByText('No compensation terms recorded.')).toBeVisible();
+  await makerPanel.getByLabel('Effective date').fill('2025-01-01');
+  await makerPanel.getByLabel('Currency code').fill('LKR');
+  await makerPanel.getByLabel('Base salary').fill('175.25');
+  await makerPanel.getByLabel('Allowances (optional JSON object)').fill('[]');
+  await makerPanel.getByRole('button', { name: 'Submit compensation proposal' }).click();
+  await expect(makerPanel.getByRole('alert')).toContainText('Enter allowances as a JSON object');
+  await expect(makerPanel.getByLabel('Base salary')).toHaveValue('175.25');
+  await makerPanel.getByLabel('Allowances (optional JSON object)').fill('{"transport":"5.25"}');
+  await makerPanel.getByRole('button', { name: 'Submit compensation proposal' }).click();
+  await expect(makerPanel.getByRole('status')).toHaveText('Compensation term sent for independent review.');
+  await expect(makerPanel.getByText('Pending independent review', { exact: true })).toBeVisible();
+  await expect(makerPanel.getByText('Base salary LKR 175.25')).toHaveCount(0);
+  await makerPanel.getByRole('button', { name: 'Reveal term for 2025-01-01' }).click();
+  await expect(makerPanel.getByText('Base salary LKR 175.25')).toBeVisible();
+  await expect(makerPanel.getByRole('button', { name: 'Approve reviewed term' })).toHaveCount(0);
+  await page.getByText('Compensation history', { exact: true }).click();
+  await expect(makerPanel).toHaveCount(0);
+  await page.getByText('Compensation history', { exact: true }).click();
+  await expect(makerPanel.getByText('Pending independent review', { exact: true })).toBeVisible();
+  await expect(makerPanel.getByText('Base salary LKR 175.25')).toHaveCount(0);
+
+  const context = await browser.newContext();
+  try {
+    const reviewerPage = await context.newPage();
+    await signIn(reviewerPage, reviewer);
+    const panel = await openCompensation(reviewerPage);
+    await expect(panel.getByRole('button', { name: 'Approve reviewed term' })).toHaveCount(0);
+    const privateRead = reviewerPage.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === `/api/v1/hr/compensation/${employee.id}` &&
+        url.searchParams.get('reveal_sensitive') === 'true';
+    });
+    await panel.getByRole('button', { name: 'Reveal term for 2025-01-01' }).click();
+    const response = await privateRead;
+    expect(response.status()).toBe(200);
+    expect(response.headers()['cache-control']).toBe('no-store');
+    expect(new URL(response.url()).searchParams.get('term_id')).toBeTruthy();
+    await expect(panel.getByText('Base salary LKR 175.25')).toBeVisible();
+    await panel.getByText('Allowances', { exact: true }).click();
+    await expect(panel.getByText(/"transport": "5.25"/)).toBeVisible();
+    await panel.getByRole('button', { name: 'Approve reviewed term' }).click();
+    await expect(panel.getByText('Current approved term', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Base salary LKR 175.25')).toHaveCount(0);
+    await reviewerPage.reload();
+    await reviewerPage.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await reviewerPage.getByLabel('Search employees').fill(employeeCode);
+    await reviewerPage.getByRole('row').filter({ hasText: employeeCode })
+      .getByRole('button', { name: 'Inspect', exact: true }).click();
+    await reviewerPage.getByText('Compensation history', { exact: true }).click();
+    await expect(panel.getByText('Current approved term', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Base salary LKR 175.25')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('HR operators submit, review and reconcile an employee advance', async ({ page, browser, request }) => {
+  const director = seedAccount();
+  const maker = seedAccount('hr_manager', director.projectId);
+  const reviewer = seedAccount('hr_manager', director.projectId);
+  const recorder = seedAccount('hr_manager', director.projectId);
+  const makerSession = await signIn(page, maker);
+  const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
+  const unique = Date.now().toString(36);
+  const employeeCode = `ADV-${unique}`;
+  const created = await request.post('/api/v1/hr/employees', {
+    headers: makerHeaders,
+    data: {
+      employee_code: employeeCode,
+      first_name: 'Synthetic',
+      last_name: 'Advance Employee',
+      employment_status: 'active',
+      join_date: '2025-01-01'
+    }
+  });
+  expect(created.status()).toBe(201);
+  const employee = (await created.json()) as { id: string };
+  const policyCode = `ADV-POLICY-${unique.toUpperCase()}`;
+
+  async function inspectEmployee(target: Page) {
+    await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await target.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await target.getByLabel('Search employees').fill(employeeCode);
+    await target.getByRole('row').filter({ hasText: employeeCode })
+      .getByRole('button', { name: 'Inspect', exact: true }).click();
+  }
+
+  async function openAdvance(target: Page) {
+    await inspectEmployee(target);
+    await target.getByText('Employee advances', { exact: true }).click();
+    return target.getByRole('region', { name: 'Advance records' });
+  }
+
+  const reviewContext = await browser.newContext();
+  const recorderContext = await browser.newContext();
+  try {
+    const reviewPage = await reviewContext.newPage();
+    await signIn(reviewPage, reviewer);
+    await inspectEmployee(page);
+    await page.getByText('Benefit policies and coverage', { exact: true }).click();
+    const makerBenefits = page.getByRole('region', { name: 'Benefit administration' });
+    await makerBenefits.getByLabel('Policy code').fill(policyCode);
+    await makerBenefits.getByLabel('Policy name').fill('Synthetic advance coverage');
+    await makerBenefits.getByLabel('Benefit category').fill('Travel');
+    await makerBenefits.getByLabel('Coverage ceiling').fill('75.00');
+    await makerBenefits.getByLabel('Benefit currency').fill('LKR');
+    await makerBenefits.getByLabel('Allow advances').check();
+    await makerBenefits.getByRole('button', { name: 'Submit benefit policy' }).click();
+    await expect(makerBenefits.getByText('Benefit policy proposed.', { exact: true })).toBeVisible();
+    await expect(makerBenefits.getByText('Pending independent approval', { exact: true })).toBeVisible();
+    await expect(makerBenefits.getByRole('button', { name: 'Approve benefit policy' })).toHaveCount(0);
+    const policyId = await makerBenefits.getByRole('combobox', { name: 'Benefit policy', exact: true }).inputValue();
+    const policyLabel = `${policyCode} · Synthetic advance coverage`;
+
+    await inspectEmployee(reviewPage);
+    await reviewPage.getByText('Benefit policies and coverage', { exact: true }).click();
+    const reviewerBenefits = reviewPage.getByRole('region', { name: 'Benefit administration' });
+    await reviewerBenefits.getByRole('combobox', { name: 'Benefit policy', exact: true }).selectOption(policyId);
+    await expect(reviewerBenefits.getByText(/Ceiling LKR 75.00/)).toBeVisible();
+    await reviewerBenefits.getByRole('button', { name: 'Approve benefit policy' }).click();
+    await expect(reviewerBenefits.getByText('Approved policy', { exact: true })).toBeVisible();
+
+    await makerBenefits.getByRole('button', { name: 'Refresh benefit records' }).click();
+    await makerBenefits.getByLabel('Approved policy for coverage').selectOption({ label: policyLabel });
+    await makerBenefits.getByLabel('Coverage start').fill(today);
+    await makerBenefits.getByLabel('Coverage end').fill(today);
+    await makerBenefits.getByRole('button', { name: 'Assign benefit coverage' }).click();
+    await expect(makerBenefits.getByText('Benefit coverage assigned.', { exact: true })).toBeVisible();
+    await expect(makerBenefits.getByRole('list', { name: 'Assigned benefit coverage' })).toContainText(today);
+    await makerBenefits.getByLabel('Approved policy for coverage').selectOption({ label: policyLabel });
+    await makerBenefits.getByLabel('Coverage start').fill(today);
+    await makerBenefits.getByLabel('Coverage end').fill(today);
+    await makerBenefits.getByRole('button', { name: 'Assign benefit coverage' }).click();
+    await expect(makerBenefits.getByRole('alert')).toContainText('overlaps existing coverage');
+    await expect(makerBenefits.getByLabel('Coverage start')).toHaveValue(today);
+
+    await page.getByText('Employee advances', { exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Advance records' });
+    await expect(panel.getByText('No advances recorded.')).toBeVisible();
+    await panel.getByLabel('Benefit coverage').selectOption({
+      label: `Synthetic advance coverage · ${today} to ${today} · LKR`
+    });
+    await panel.getByLabel('Advance request date').fill(today);
+    const amount = panel.getByLabel('Requested amount (LKR)', { exact: true });
+    await amount.fill('75.01');
+    await panel.getByRole('button', { name: 'Submit advance', exact: true }).click();
+    await expect(panel.getByRole('alert')).toContainText('remaining coverage ceiling');
+    await expect(amount).toHaveValue('75.01');
+    await amount.fill('40.00');
+    await panel.getByRole('button', { name: 'Submit advance', exact: true }).click();
+    await expect(panel.getByText('Advance submitted.', { exact: true })).toBeVisible();
+    const makerDetail = panel.getByRole('article', { name: 'Advance detail' });
+    await expect(makerDetail.getByText('Pending independent review')).toBeVisible();
+    await expect(makerDetail.getByRole('button', { name: 'Approve advance' })).toHaveCount(0);
+
+    const reviewing = await openAdvance(reviewPage);
+    await reviewing.getByRole('button', { name: 'Open advance' }).click();
+    await reviewing.getByRole('button', { name: 'Approve advance' }).click();
+    const reviewerDetail = reviewing.getByRole('article', { name: 'Advance detail' });
+    await expect(reviewerDetail.getByText('Approved for disbursement')).toBeVisible();
+    await expect(reviewerDetail.getByRole('button', { name: 'Record external disbursement' })).toHaveCount(0);
+    const downloadPromise = reviewPage.waitForEvent('download');
+    await reviewerDetail.getByRole('button', { name: 'Download approved payable' }).click();
+    const download = await downloadPromise;
+    const payable = JSON.parse(readFileSync(await download.path(), 'utf8')) as {
+      employee_id: string; amount: string; payable_sha256: string
+    };
+    expect(payable.employee_id).toBe(employee.id);
+    expect(payable.amount).toBe('40.00');
+    expect(payable.payable_sha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const recorderPage = await recorderContext.newPage();
+    await signIn(recorderPage, recorder);
+    const recording = await openAdvance(recorderPage);
+    await recording.getByRole('button', { name: 'Open advance' }).click();
+    const detail = recording.getByRole('article', { name: 'Advance detail' });
+
+    async function record(button: string, reference: string, actualAmount: string) {
+      await detail.getByLabel('External reference').fill(reference);
+      await detail.getByLabel('Payment date').fill(today);
+      await detail.getByLabel('Actual amount (LKR)').fill(actualAmount);
+      await detail.getByRole('button', { name: button }).click();
+    }
+
+    await record('Record external disbursement', 'SYNTH-OUT-01', '40.00');
+    await expect(detail.getByText('Disbursement recorded', { exact: true })).toBeVisible();
+    await record('Record external repayment', 'SYNTH-IN-01', '40.00');
+    await expect(detail.getByText('Fully repaid', { exact: true })).toBeVisible();
+    await recorderPage.reload();
+    const reloaded = await openAdvance(recorderPage);
+    await reloaded.getByRole('button', { name: 'Open advance' }).click();
+    await expect(reloaded.getByRole('article').getByText('Fully repaid', { exact: true })).toBeVisible();
+    await expect(reloaded.getByRole('list', { name: 'Recorded repayments' })).toContainText('SYNTH-IN-01');
+  } finally {
+    await recorderContext.close();
+    await reviewContext.close();
+  }
+});
+
+test('HR operators review a private reimbursement receipt and reconcile the payable', async ({ page, browser, request }) => {
+  const director = seedAccount();
+  const maker = seedAccount('hr_manager', director.projectId);
+  const reviewer = seedAccount('hr_manager', director.projectId);
+  const recorder = seedAccount('hr_manager', director.projectId);
+  const { accessToken } = await signIn(page, maker);
+  const makerHeaders = { Authorization: `Bearer ${accessToken}` };
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
+  const code = `REIM-${Date.now().toString(36)}`;
+  const created = await request.post('/api/v1/hr/employees', {
+    headers: makerHeaders,
+    data: { employee_code: code, first_name: 'Synthetic', last_name: 'Receipt Employee', employment_status: 'active' }
+  });
+  expect(created.status()).toBe(201);
+  const employeeId = (await created.json() as { id: string }).id;
+  const benefit = await request.post('/api/v1/hr/benefits/types', {
+    headers: makerHeaders,
+    data: { code, name: 'Synthetic receipt coverage', category: 'Travel', reimbursement_ceiling: '75.00', reimbursement_currency: 'LKR' }
+  });
+  expect(benefit.status()).toBe(201);
+  const policyId = (await benefit.json() as { id: string }).id;
+  const original = Buffer.from('%PDF-1.4\n% Synthetic original receipt\n%%EOF');
+
+  async function panel(target: Page) {
+    await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await target.getByRole('button', { name: 'Directory & Org', exact: true }).click();
+    await target.getByLabel('Search employees').fill(code);
+    await target.getByRole('row').filter({ hasText: code }).getByRole('button', { name: 'Inspect' }).click();
+    await target.getByText('Reimbursements', { exact: true }).click();
+    return target.getByRole('region', { name: 'Reimbursement records' });
+  }
+
+  const reviewContext = await browser.newContext();
+  const recordContext = await browser.newContext();
+  try {
+    const reviewPage = await reviewContext.newPage();
+    const reviewerSession = await signIn(reviewPage, reviewer);
+    const reviewerHeaders = { Authorization: `Bearer ${reviewerSession.accessToken}` };
+    const approvedPolicy = await request.post(`/api/v1/hr/benefits/types/${policyId}/approve`, { headers: reviewerHeaders });
+    expect(approvedPolicy.status()).toBe(200);
+    const assigned = await request.post('/api/v1/hr/benefits/assignments', {
+      headers: makerHeaders,
+      data: { employee_id: employeeId, benefit_type_id: policyId, effective_from: today, effective_to: today }
+    });
+    expect(assigned.status()).toBe(201);
+    const assignmentId = (await assigned.json() as { id: string }).id;
+
+    const makerPanel = await panel(page);
+    await makerPanel.getByLabel('Receipt title').fill('Synthetic reviewed receipt');
+    await makerPanel.getByLabel('Receipt file').setInputFiles({ name: 'receipt.pdf', mimeType: 'application/pdf', buffer: original });
+    const uploadResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/api/v1/hr/documents' && response.request().method() === 'POST'
+    );
+    await makerPanel.getByRole('button', { name: 'Upload private receipt' }).click();
+    const uploaded = await uploadResponse;
+    expect(uploaded.status()).toBe(201);
+    const receiptId = (await uploaded.json() as { id: string }).id;
+    await expect(makerPanel.getByText(/Pending receipt review/)).toBeVisible();
+    await expect(makerPanel.getByRole('button', { name: 'Approve receipt', exact: true })).toHaveCount(0);
+
+    const reviewing = await panel(reviewPage);
+    await reviewing.getByRole('button', { name: 'Prepare receipt review link' }).click();
+    const signed = await reviewing.getByRole('link', { name: 'Open receipt for review' }).getAttribute('href');
+    expect(signed).toBeTruthy();
+    const received = await request.get(signed!);
+    expect(await received.body()).toEqual(original);
+    await reviewing.getByRole('button', { name: 'Approve receipt', exact: true }).click();
+    await expect(reviewing.getByText('Receipt approved.', { exact: true })).toBeVisible();
+
+    await makerPanel.getByRole('button', { name: 'Refresh reimbursements' }).click();
+    await makerPanel.getByRole('combobox', { name: 'Reimbursement coverage' }).selectOption(assignmentId);
+    await makerPanel.getByRole('combobox', { name: 'Approved receipt' }).selectOption(receiptId);
+    await makerPanel.getByLabel('Expense date').fill(today);
+    await makerPanel.getByLabel('Claim amount (LKR)').fill('42.50');
+    await makerPanel.getByLabel('Claim description').fill('Synthetic reimbursable travel');
+    await makerPanel.getByRole('button', { name: 'Submit reimbursement' }).click();
+    await expect(makerPanel.getByText('Reimbursement submitted.', { exact: true })).toBeVisible();
+    await expect(makerPanel.getByRole('button', { name: 'Approve reimbursement' })).toHaveCount(0);
+
+    await reviewing.getByRole('button', { name: 'Refresh reimbursements' }).click();
+    await reviewing.getByRole('button', { name: 'Open claim' }).click();
+    await expect(reviewing.getByRole('button', { name: 'Approve reimbursement' })).toBeDisabled();
+    await reviewing.getByRole('button', { name: 'Prepare pinned receipt link' }).click();
+    const pinned = await reviewing.getByRole('link', { name: 'Open pinned receipt' }).getAttribute('href');
+    expect(await (await request.get(pinned!)).body()).toEqual(original);
+    await reviewing.getByRole('button', { name: 'Approve reimbursement' }).click();
+    await expect(reviewing.getByText('Reimbursement approved.', { exact: true })).toBeVisible();
+    await reviewing.getByRole('button', { name: 'Review payable' }).click();
+    await expect(reviewing.getByText('Approved payable LKR 42.50')).toBeVisible();
+    await expect(reviewing.getByRole('button', { name: 'Confirm external settlement' })).toHaveCount(0);
+
+    const recordPage = await recordContext.newPage();
+    await signIn(recordPage, recorder);
+    const recording = await panel(recordPage);
+    await recording.getByRole('button', { name: 'Open claim' }).click();
+    await recording.getByRole('button', { name: 'Review payable' }).click();
+    const download = recordPage.waitForEvent('download');
+    await recording.getByRole('button', { name: 'Download reimbursement payable' }).click();
+    const payable = JSON.parse(readFileSync(await (await download).path(), 'utf8')) as {
+      reference: { amount: string; employee_id: string }; reference_sha256: string
+    };
+    expect(payable.reference).toMatchObject({ amount: '42.50', employee_id: employeeId });
+    expect(payable.reference_sha256).toMatch(/^[a-f0-9]{64}$/);
+    await recording.getByLabel('External settlement reference').fill('SYNTH-REIM-01');
+    await recording.getByLabel('Actual settled currency').fill('LKR');
+    const amount = recording.getByLabel('Actual settled amount');
+    await amount.fill('42.51');
+    const confirm = recording.getByRole('button', { name: 'Confirm external settlement' });
+    await confirm.click();
+    await expect(recording.getByRole('alert')).toContainText('must match the payable');
+    await expect(amount).toHaveValue('42.51');
+    await amount.fill('42.50');
+    await confirm.click();
+    await expect(recording.getByText('External settlement confirmed.', { exact: true })).toBeVisible();
+    await recordPage.reload();
+    const reloaded = await panel(recordPage);
+    await reloaded.getByRole('button', { name: 'Open claim' }).click();
+    await expect(reloaded.getByText('Settlement reference SYNTH-REIM-01')).toBeVisible();
+    await expect(reloaded.getByRole('button', { name: 'Review payable' })).toHaveCount(0);
+  } finally {
+    await recordContext.close();
+    await reviewContext.close();
+  }
+});
+
+test('payroll operators lock a reviewed snapshot and publish its employee payslip', async ({ page, browser, request }) => {
+  const director = seedAccount();
+  const maker = seedAccount('hr_manager', director.projectId);
+  const checker = seedAccount('hr_manager', director.projectId);
+  const employeeAccount = seedAccount('quantity_surveyor', director.projectId);
+  const makerSession = await signIn(page, maker);
+  const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
+  const unique = Date.now().toString(36);
+  const periodCode = `PAY-PORTAL-${unique}`;
+  const contexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext()]);
+  try {
+    const checkerPage = await contexts[0].newPage();
+    const employeePage = await contexts[1].newPage();
+    const directorPage = await contexts[2].newPage();
+    const checkerSession = await signIn(checkerPage, checker);
+    const employeeSession = await signIn(employeePage, employeeAccount);
+    const directorSession = await signIn(directorPage, director);
+    const checkerHeaders = { Authorization: `Bearer ${checkerSession.accessToken}` };
+    const employee = await request.post('/api/v1/hr/employees', {
+      headers: makerHeaders,
+      data: {
+        employee_code: `PAY-EMP-${unique}`, first_name: 'Synthetic', last_name: 'Portal Payroll',
+        work_email: employeeAccount.email, employment_status: 'active', join_date: '2025-01-01'
+      }
+    });
+    expect(employee.status()).toBe(201);
+    const employeeId = (await employee.json() as { id: string }).id;
+    const accountLink = await request.post(`/api/v1/hr/employees/${employeeId}/link-account`, {
+      headers: { Authorization: `Bearer ${directorSession.accessToken}` },
+      data: { user_id: employeeSession.userId }
+    });
+    expect(accountLink.status()).toBe(200);
+    const term = await request.post('/api/v1/hr/compensation', {
+      headers: makerHeaders,
+      data: { employee_id: employeeId, effective_from: '2025-01-01', base_salary: '100.05', currency: 'LKR' }
+    });
+    expect(term.status()).toBe(201);
+    const termId = (await term.json() as { id: string }).id;
+    expect((await request.post(`/api/v1/hr/compensation/${termId}/decision`, {
+      headers: checkerHeaders, data: { decision: 'approve' }
+    })).status()).toBe(200);
+
+    async function openPayroll(target: Page) {
+      await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+      await target.getByRole('button', { name: 'Payroll', exact: true }).click();
+      return target.getByRole('region', { name: 'Payroll operations' });
+    }
+    const preparing = await openPayroll(page);
+    const makerPolicy = preparing.getByRole('region', { name: 'Payroll policy administration' });
+    await makerPolicy.getByLabel('Payroll policy code').fill(periodCode);
+    await makerPolicy.getByLabel('Payroll policy name').fill('Synthetic reviewed policy');
+    await makerPolicy.getByLabel('Controlled document reference').fill('HR-POL-BROWSER');
+    await makerPolicy.getByLabel('Document version').fill('1.2');
+    await makerPolicy.getByLabel('Policy effective from').fill('2025-06-01');
+    await makerPolicy.getByLabel('Business approval reference').fill('HR-APPROVAL-BROWSER');
+    await makerPolicy.getByLabel('Example base salary').fill('100.05');
+    await makerPolicy.getByLabel('Example additional earnings').fill('10.00');
+    await makerPolicy.getByLabel('Example additional deductions').fill('10.00');
+    await makerPolicy.getByLabel('Expected gross').fill('110.05');
+    await makerPolicy.getByLabel('Expected deductions').fill('20.01');
+    await makerPolicy.getByLabel('Expected net').fill('90.05');
+    await makerPolicy.getByRole('combobox', { name: 'Calculation basis' }).selectOption('base_salary_with_reviewed_adjustments');
+    await makerPolicy.getByLabel('Currency code').fill('LKR');
+    await makerPolicy.getByRole('combobox', { name: 'Rounding method' }).selectOption('half_up');
+    await makerPolicy.getByLabel('Employee deduction fraction (0–1)').fill('0.10');
+    await makerPolicy.getByRole('button', { name: 'Propose payroll policy' }).click();
+    const idOutput = makerPolicy.getByLabel('Proposed payroll policy ID');
+    await expect(idOutput).toBeVisible();
+    const policyId = (await idOutput.textContent())!;
+    await makerPolicy.getByLabel('Payroll policy ID', { exact: true }).fill(policyId);
+    await makerPolicy.getByRole('button', { name: 'Open policy by ID' }).click();
+    await expect(makerPolicy.getByText('A different reviewer must approve this policy.')).toBeVisible();
+    await expect(makerPolicy.getByRole('button', { name: 'Approve reviewed payroll policy' })).toHaveCount(0);
+    expect((await request.post(`/api/v1/hr/payroll/policies/${policyId}/approve`, { headers: makerHeaders })).status()).toBe(409);
+    expect((await request.get(`/api/v1/hr/payroll/policies/${policyId}`, {
+      headers: { Authorization: `Bearer ${employeeSession.accessToken}` }
+    })).status()).toBe(403);
+
+    const checking = await openPayroll(checkerPage);
+    const checkerPolicy = checking.getByRole('region', { name: 'Payroll policy administration' });
+    await checkerPolicy.getByLabel('Payroll policy ID', { exact: true }).fill(policyId);
+    await checkerPolicy.getByRole('button', { name: 'Open policy by ID' }).click();
+    const policyReview = checkerPolicy.getByRole('article', { name: 'Reviewed payroll policy' });
+    await expect(policyReview.getByText('HR-APPROVAL-BROWSER', { exact: true })).toBeVisible();
+    await expect(policyReview.getByLabel('Worked payroll examples')).toContainText('"90.05"');
+    await expect(policyReview.getByLabel('Proposed calculation rules')).toContainText('"employee_deduction_rate": "0.10"');
+    await policyReview.getByRole('button', { name: 'Approve reviewed payroll policy' }).click();
+    await expect(checkerPolicy.getByRole('alert')).toContainText('Worked example 1 differs');
+    await makerPolicy.getByRole('button', { name: 'Edit policy draft' }).click();
+    await expect(makerPolicy.getByLabel('Expected net')).toHaveValue('90.05');
+    await makerPolicy.getByLabel('Expected net').fill('90.04');
+    await makerPolicy.getByRole('button', { name: 'Save policy draft corrections' }).click();
+    await expect(makerPolicy.getByText('Payroll policy draft updated.', { exact: true })).toBeVisible();
+    await policyReview.getByRole('button', { name: 'Approve reviewed payroll policy' }).click();
+    await expect(checkerPolicy.getByRole('alert')).toContainText('Open it again');
+    await checkerPolicy.getByRole('button', { name: 'Open policy by ID' }).click();
+    await expect(policyReview.getByLabel('Worked payroll examples')).toContainText('"90.04"');
+    await policyReview.getByRole('button', { name: 'Approve reviewed payroll policy' }).click();
+    await expect(policyReview.getByText('Approved payroll policy', { exact: true })).toBeVisible();
+
+    const policyDir = mkdtempSync(join(tmpdir(), 'garrison-payroll-policy-'));
+    try {
+      function policyCli(token: string, ...args: string[]) {
+        return JSON.parse(execFileSync(
+          PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', 'payroll', 'policies', ...args, '--json'], {
+            cwd: BACKEND_DIR,
+            encoding: 'utf8',
+            env: {
+              ...env, GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+              GARRISON_ENVIRONMENT: 'test', GARRISON_ACCESS_TOKEN: token
+            }
+          }
+        )) as { data: {
+          id: string; review_sha256: string; plan_sha256: string; is_approved: boolean;
+          items: { id: string; is_approved: boolean }[];
+        } };
+      }
+      function applyPolicy(token: string, ...args: string[]) {
+        const preview = policyCli(token, ...args, '--dry-run');
+        return policyCli(token, ...args, '--apply', '--expect', preview.data.plan_sha256).data;
+      }
+      const sourceResponse = await request.get(`/api/v1/hr/payroll/policies/${policyId}`, {
+        headers: checkerHeaders
+      });
+      expect(sourceResponse.status()).toBe(200);
+      const source = await sourceResponse.json();
+      const policyFields = {
+        name: 'Synthetic CLI policy',
+        rules_json: source.rules_json,
+        controlled_record: source.controlled_record
+      };
+      const input = join(policyDir, 'input.json');
+      writeFileSync(input, JSON.stringify({
+        ...policyFields, code: `${periodCode}-CLI`
+      }), { mode: 0o600 });
+      const draftReceipt = applyPolicy(makerSession.accessToken, 'propose', '--file', input);
+      expect(draftReceipt.is_approved).toBe(false);
+      expect(draftReceipt).not.toHaveProperty('controlled_record');
+      const idArgs = ['--policy-id', draftReceipt.id];
+      const priorCopy = join(policyDir, 'prior.json');
+      const prior = policyCli(checkerSession.accessToken, 'show', ...idArgs, '--output', priorCopy);
+      expect(statSync(priorCopy).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(readFileSync(priorCopy, 'utf8')).controlled_record).toEqual(
+        source.controlled_record
+      );
+      const oldApproval = ['approve', ...idArgs, '--review-sha256', prior.data.review_sha256];
+      const oldPlan = policyCli(checkerSession.accessToken, ...oldApproval, '--dry-run');
+      writeFileSync(input, JSON.stringify({ ...policyFields, name: 'Synthetic corrected CLI policy' }));
+      applyPolicy(makerSession.accessToken, 'update', ...idArgs, '--file', input);
+      expect(() => policyCli(
+        checkerSession.accessToken, ...oldApproval, '--apply', '--expect', oldPlan.data.plan_sha256
+      )).toThrow();
+      const reviewedCopy = join(policyDir, 'reviewed.json');
+      const current = policyCli(checkerSession.accessToken, 'show', ...idArgs, '--output', reviewedCopy);
+      expect(JSON.parse(readFileSync(reviewedCopy, 'utf8')).name).toBe('Synthetic corrected CLI policy');
+      const approved = applyPolicy(
+        checkerSession.accessToken, 'approve', ...idArgs, '--review-sha256', current.data.review_sha256
+      );
+      expect(approved.is_approved).toBe(true);
+      expect(policyCli(makerSession.accessToken, 'list').data.items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: draftReceipt.id, is_approved: true })])
+      );
+    } finally {
+      rmSync(policyDir, { recursive: true, force: true });
+    }
+
+    await page.reload();
+    await openPayroll(page);
+    await preparing.getByLabel('Period code').fill(periodCode);
+    await preparing.getByLabel('Period start').fill('2025-06-01');
+    await preparing.getByLabel('Period end').fill('2025-06-30');
+    await preparing.getByLabel('Pay date').fill('2025-07-02');
+    await preparing.getByRole('button', { name: 'Open payroll period' }).click();
+    await expect(preparing.getByText('Payroll period opened.', { exact: true })).toBeVisible();
+    await preparing.getByRole('combobox', { name: 'Approved payroll policy' }).selectOption(policyId);
+    await preparing.getByRole('button', { name: 'Create payroll run' }).click();
+    await expect(preparing.getByText('Draft payroll run created.', { exact: true })).toBeVisible();
+    const selectedRun = preparing.getByRole('combobox', { name: 'Payroll run', exact: true });
+    await expect(selectedRun).toHaveValue(/^[a-f0-9-]{36}$/);
+    const runId = await selectedRun.inputValue();
+    const makerAdjustments = preparing.getByRole('region', { name: 'Payroll adjustments' });
+    await makerAdjustments.getByLabel('Adjustment payroll run ID').fill(runId);
+    await makerAdjustments.getByRole('button', { name: 'Open run adjustments' }).click();
+    for (const [kind, reference] of [['earning', 'EARN-PORTAL-1'], ['deduction', 'DEDUCT-PORTAL-1']]) {
+      await makerAdjustments.getByLabel('Adjustment employee ID').fill(employeeId);
+      await makerAdjustments.getByRole('combobox', { name: 'Adjustment type' }).selectOption(kind);
+      await makerAdjustments.getByLabel('Adjustment amount in policy currency').fill('10.00');
+      await makerAdjustments.getByLabel('Approved evidence reference').fill(reference);
+      await makerAdjustments.getByRole('button', { name: 'Propose payroll adjustment' }).click();
+      await expect(makerAdjustments.getByText(new RegExp(reference + '.*submitted'))).toBeVisible();
+    }
+    await expect(makerAdjustments.getByRole('button', { name: 'Approve reviewed adjustment' })).toHaveCount(0);
+    const checkerAdjustments = checking.getByRole('region', { name: 'Payroll adjustments' });
+    await checkerAdjustments.getByLabel('Adjustment payroll run ID').fill(runId);
+    await checkerAdjustments.getByRole('button', { name: 'Open run adjustments' }).click();
+    for (const reference of ['EARN-PORTAL-1', 'DEDUCT-PORTAL-1']) {
+      const proposal = checkerAdjustments.getByRole('listitem').filter({ hasText: reference });
+      await proposal.getByRole('button', { name: 'Approve reviewed adjustment' }).click();
+      await expect(proposal.getByText(new RegExp(reference + '.*approved'))).toBeVisible();
+    }
+
+    const roster = preparing.getByLabel('Roster employee IDs');
+    await roster.fill(`${employeeId},${employeeId}`);
+    await preparing.getByRole('button', { name: 'Calculate snapshot' }).click();
+    await expect(preparing.getByRole('alert')).toContainText('unique employee IDs');
+    await roster.fill(employeeId);
+    const sources = preparing.getByRole('region', { name: 'Time and leave source review' });
+    await sources.getByRole('button', { name: 'Review time and leave inputs' }).click();
+    const time = sources.getByRole('article', { name: 'Time inputs' });
+    const leave = sources.getByRole('article', { name: 'Leave inputs' });
+    await expect(time.getByText(/missing locked timesheet/)).toContainText(employeeId);
+    await expect(time.getByRole('button', { name: 'Download verified time CSV' })).toHaveCount(0);
+    await expect(leave.getByText('Paid leave days 0.00 · Unpaid leave days 0.00')).toBeVisible();
+    await roster.fill('');
+    await expect(sources).toHaveCount(0);
+    await roster.fill(employeeId);
+    await sources.getByRole('button', { name: 'Review time and leave inputs' }).click();
+    await expect(time.getByText(/missing locked timesheet/)).toBeVisible();
+
+    const timeDir = mkdtempSync(join(tmpdir(), 'garrison-payroll-time-'));
+    try {
+      const privateFile = join(timeDir, 'time.json');
+      function runTimeCommand(token: string, args: string[], input: Record<string, unknown>) {
+        writeFileSync(privateFile, JSON.stringify(input), { mode: 0o600 });
+        function call(...mode: string[]) {
+          return JSON.parse(execFileSync(
+            PYTHON_BIN,
+            ['-m', 'scripts.garrisonctl', 'hr', ...args, '--file', privateFile, ...mode, '--json'],
+            {
+              cwd: BACKEND_DIR,
+              encoding: 'utf8',
+              env: {
+                ...env,
+                GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+                GARRISON_ENVIRONMENT: 'test',
+                GARRISON_ACCESS_TOKEN: token
+              }
+            }
+          )) as { data: { id: string; status: string; plan_sha256: string } };
+        }
+        const preview = call('--dry-run');
+        expect(preview.data.plan_sha256).toMatch(/^[a-f0-9]{64}$/);
+        return call('--apply', '--expect', preview.data.plan_sha256).data;
+      }
+
+      const sourceOvertime = runTimeCommand(makerSession.accessToken, ['overtime', 'create'], {
+        employee_id: employeeId, work_date: '2025-06-03', requested_hours: '2.50',
+        reason: 'Synthetic payroll source'
+      });
+      expect(sourceOvertime.status).toBe('submitted');
+      const approvedOvertime = runTimeCommand(
+        checkerSession.accessToken, ['overtime', 'decide', '--record-id', sourceOvertime.id],
+        { decision: 'approved', approved_hours: '2.50' }
+      );
+      expect(approvedOvertime.status).toBe('approved');
+      const sourceSheet = runTimeCommand(makerSession.accessToken, ['timesheets', 'create'], {
+        employee_id: employeeId, period_start: '2025-06-02', period_end: '2025-06-06',
+        regular_hours: '40.00', overtime_hours: '2.50', submit: true
+      });
+      expect(sourceSheet.status).toBe('submitted');
+      for (const decision of ['approved', 'locked']) {
+        const updated = runTimeCommand(
+          checkerSession.accessToken, ['timesheets', 'decide', '--record-id', sourceSheet.id],
+          { decision }
+        );
+        expect(updated.status).toBe(decision);
+      }
+    } finally {
+      rmSync(timeDir, { recursive: true, force: true });
+    }
+    await sources.getByRole('button', { name: 'Refresh source review' }).click();
+    await expect(time.getByText('Regular hours 40.00 · Overtime hours 2.50')).toBeVisible();
+    const sourceFiles = new Map<string, Buffer>();
+    for (const [source, panel] of [['time', time], ['leave', leave]] as const) {
+      const ready = page.waitForEvent('download');
+      await panel.getByRole('button', { name: `Download verified ${source} CSV` }).click();
+      const downloaded = readFileSync((await (await ready).path())!);
+      expect(createHash('sha256').update(downloaded).digest('hex')).toBe(
+        await panel.getByLabel(`${source} input checksum`).textContent()
+      );
+      sourceFiles.set(source, downloaded);
+      expect(downloaded.toString('utf8')).toContain(employeeId);
+      expect(downloaded.toString('utf8')).not.toContain('Synthetic payroll source');
+    }
+    const sourceEvidence = {
+      time_sha256: (await time.getByLabel('time input checksum').textContent())!,
+      leave_sha256: (await leave.getByLabel('leave input checksum').textContent())!
+    };
+    const calculatePath = `/api/v1/hr/payroll/runs/${runId}/calculate`;
+    const stale = await request.post(calculatePath, {
+      headers: makerHeaders,
+      data: { employee_ids: [employeeId], source_evidence: { ...sourceEvidence, time_sha256: '0'.repeat(64) } }
+    });
+    expect(stale.status()).toBe(409);
+    await sources.getByRole('checkbox', { name: 'Attach reviewed time and leave evidence to the snapshot' }).check();
+    await preparing.getByRole('button', { name: 'Calculate snapshot' }).click();
+    await expect(preparing.getByText('Payroll snapshot calculated.', { exact: true })).toBeVisible();
+    const replay = await request.post(calculatePath, {
+      headers: makerHeaders, data: { employee_ids: [employeeId], source_evidence: sourceEvidence }
+    });
+    expect(replay.status()).toBe(200);
+    expect((await request.post(calculatePath, {
+      headers: makerHeaders, data: { employee_ids: [employeeId] }
+    })).status()).toBe(409);
+    const laterOvertime = await request.post('/api/v1/hr/overtime', {
+      headers: makerHeaders,
+      data: { employee_id: employeeId, work_date: '2025-06-12', requested_hours: '1.00', reason: 'Synthetic later change' }
+    });
+    expect(laterOvertime.status()).toBe(201);
+    const laterOvertimeId = (await laterOvertime.json()).id as string;
+    await expect(preparing.getByText('LKR 90.04', { exact: true })).toHaveCount(0);
+    await preparing.getByRole('button', { name: 'Review selected snapshot' }).click();
+    await expect(preparing.getByText('LKR 90.04', { exact: true })).toBeVisible();
+    await expect(preparing.getByRole('button', { name: 'Approve and lock reviewed payroll' })).toHaveCount(0);
+
+    await checking.getByLabel('Payroll run ID', { exact: true }).fill(runId);
+    await checking.getByRole('button', { name: 'Open snapshot by ID' }).click();
+    const review = checking.getByRole('article', { name: 'Reviewed payroll snapshot' });
+    await expect(review.getByLabel('Controlled payroll policy')).toContainText('HR-POL-BROWSER');
+    await expect(review.getByText('LKR 110.05', { exact: true })).toBeVisible();
+    await expect(review.getByText('LKR 20.01', { exact: true })).toBeVisible();
+    await review.getByText('Frozen payroll adjustments', { exact: true }).click();
+    await expect(review.getByText(/LKR 10.00.*EARN-PORTAL-1/)).toBeVisible();
+    await expect(review.getByText(/LKR 10.00.*DEDUCT-PORTAL-1/)).toBeVisible();
+    const frozenSources = review.getByRole('region', { name: 'Frozen time and leave evidence' });
+    await expect(frozenSources.getByText('Regular hours 40.00 · Overtime hours 2.50')).toBeVisible();
+    for (const source of ['time', 'leave']) {
+      const ready = checkerPage.waitForEvent('download');
+      await frozenSources.getByRole('button', { name: `Download frozen ${source} CSV` }).click();
+      expect(readFileSync((await (await ready).path())!)).toEqual(sourceFiles.get(source));
+    }
+    expect((await request.get(`/api/v1/hr/payroll/runs/${runId}/snapshot/sources/time`, {
+      headers: { Authorization: `Bearer ${employeeSession.accessToken}` }
+    })).status()).toBe(403);
+    const blocked = checkerPage.waitForResponse((entry) =>
+      new URL(entry.url()).pathname === `/api/v1/hr/payroll/runs/${runId}/approve`
+    );
+    await review.getByRole('button', { name: 'Approve and lock reviewed payroll' }).click();
+    const denied = await blocked;
+    expect(denied.status()).toBe(409);
+    expect((await denied.json()).error_code).toBe('PAYROLL_SOURCES_CHANGED');
+    await expect(checking.getByRole('alert')).toContainText('Time or leave changed after calculation');
+    await expect(review.getByText(/Awaiting independent approval/)).toBeVisible();
+    await expect(review.getByRole('button', { name: 'Publish payslips' })).toHaveCount(0);
+    const resolved = await request.post(`/api/v1/hr/overtime/${laterOvertimeId}/decision`, {
+      headers: { Authorization: `Bearer ${checkerSession.accessToken}` },
+      data: { decision: 'rejected', notes: 'Synthetic unrelated overtime request' }
+    });
+    expect(resolved.status()).toBe(200);
+
+    const approval = checkerPage.waitForRequest((entry) =>
+      new URL(entry.url()).pathname === `/api/v1/hr/payroll/runs/${runId}/approve`
+    );
+    await review.getByRole('button', { name: 'Approve and lock reviewed payroll' }).click();
+    expect((await approval).postDataJSON().expected_snapshot_digest).toMatch(/^[a-f0-9]{64}$/);
+    await expect(review.getByText(/Approved and locked/)).toBeVisible();
+    await review.getByRole('button', { name: 'Publish payslips' }).click();
+    await expect(review.getByText('Payslips are published.', { exact: true })).toBeVisible();
+
+    await review.getByRole('button', { name: 'Open Finance handoff' }).click();
+    const finance = review.getByRole('region', { name: 'Payroll Finance handoff' });
+    await expect(finance.getByText(/Payments: 1.*LKR 90.04/)).toBeVisible();
+    await finance.getByRole('button', { name: 'Register reviewed export' }).click();
+    await expect(finance.getByText('Payroll export registered.')).toBeVisible();
+    const downloadReady = checkerPage.waitForEvent('download');
+    await finance.getByRole('button', { name: 'Download verified payroll CSV' }).click();
+    const download = await downloadReady;
+    const contents = readFileSync((await download.path())!);
+    expect(createHash('sha256').update(contents).digest('hex')).toBe(
+      await finance.getByLabel('Export checksum').textContent()
+    );
+    const match = contents.toString('utf8').match(
+      /^payment_reference,currency,net_amount\n([a-f0-9-]{36}),LKR,90\.04\n$/
+    );
+    expect(match).not.toBeNull();
+    const paymentId = match![1];
+    await finance.getByRole('combobox', { name: 'Exported payment' }).selectOption(paymentId);
+    await finance.getByLabel('Settlement amount').fill('30.00');
+    await finance.getByLabel('Settlement date').fill('2025-07-01');
+    await finance.getByLabel('External evidence reference').fill('PAYROLL-TEST-001');
+    await finance.getByRole('checkbox', { name: /I verified this outcome/ }).check();
+    await finance.getByRole('button', { name: 'Record external settlement' }).click();
+    await expect(finance.getByLabel('Selected payment balance')).toHaveText('partial · Outstanding LKR 60.04');
+    const paymentEvent = finance.getByRole('listitem').filter({ hasText: 'PAYROLL-TEST-001' });
+    await expect(paymentEvent).toBeVisible();
+    const originalEventId = (await paymentEvent.locator('code').textContent())!;
+    await finance.getByLabel('Settlement amount').fill('90.04');
+    await finance.getByLabel('Settlement date').fill('2025-07-02');
+    await finance.getByLabel('External evidence reference').fill('PAYROLL-TEST-EXCESS');
+    await finance.getByRole('checkbox', { name: /I verified this outcome/ }).check();
+    await finance.getByRole('button', { name: 'Record external settlement' }).click();
+    await expect(finance.getByRole('alert')).toContainText('exceeds the outstanding amount');
+    await expect(finance.getByLabel('Settlement amount')).toHaveValue('90.04');
+    await finance.getByRole('combobox', { name: 'Payment outcome' }).selectOption('reversed');
+    await finance.getByLabel('Settlement amount').fill('30.00');
+    await finance.getByLabel('Original payment event ID').fill(originalEventId);
+    await finance.getByLabel('External evidence reference').fill('PAYROLL-TEST-REVERSAL');
+    await finance.getByRole('button', { name: 'Record external settlement' }).click();
+    await expect(finance.getByLabel('Selected payment balance')).toHaveText('reversed · Outstanding LKR 90.04');
+    await expect(finance.getByText(/PAYROLL-TEST-REVERSAL/)).toBeVisible();
+    await checkerPage.reload();
+    const reopened = await openPayroll(checkerPage);
+    await reopened.getByLabel('Payroll run ID', { exact: true }).fill(runId);
+    await reopened.getByRole('button', { name: 'Open snapshot by ID' }).click();
+    await reopened.getByRole('button', { name: 'Open Finance handoff' }).click();
+    await expect(reopened.getByLabel('Reconciliation totals')).toContainText('Outstanding LKR 90.04');
+    await reopened.getByRole('combobox', { name: 'Exported payment' }).selectOption(paymentId);
+    await expect(reopened.getByText(/PAYROLL-TEST-REVERSAL/)).toBeVisible();
+    await expect(reopened.getByRole('button', { name: 'Close payroll period' })).toHaveCount(0);
+    await reopened.getByLabel('Settlement amount').fill('90.04');
+    await reopened.getByLabel('Settlement date').fill('2025-07-03');
+    await reopened.getByLabel('External evidence reference').fill('PAYROLL-TEST-FINAL');
+    await reopened.getByRole('checkbox', { name: /I verified this outcome/ }).check();
+    await reopened.getByRole('button', { name: 'Record external settlement' }).click();
+    await expect(reopened.getByLabel('Reconciliation totals')).toContainText('Outstanding LKR 0.00');
+    await reopened.getByRole('checkbox', { name: 'I reviewed the final reconciliation.' }).check();
+    await reopened.getByRole('button', { name: 'Close payroll period' }).click();
+    await expect(reopened.getByText('Payroll period closed.', { exact: true })).toBeVisible();
+    await expect(reopened.getByRole('button', { name: 'Record external settlement' })).toHaveCount(0);
+    await checkerPage.reload();
+    const closed = await openPayroll(checkerPage);
+    await closed.getByLabel('Payroll run ID', { exact: true }).fill(runId);
+    await closed.getByRole('button', { name: 'Open snapshot by ID' }).click();
+    await closed.getByRole('button', { name: 'Open Finance handoff' }).click();
+    await expect(closed.getByText('Payroll period closed.', { exact: true })).toBeVisible();
+    await page.reload();
+    const preparingCorrection = await openPayroll(page);
+    await preparingCorrection.getByLabel('Payroll run ID', { exact: true }).fill(runId);
+    await preparingCorrection.getByRole('button', { name: 'Open snapshot by ID' }).click();
+    const makerCorrections = preparingCorrection.getByRole('region', { name: 'Closed payroll corrections' });
+    await makerCorrections.getByRole('combobox', { name: 'Employee for correction' }).selectOption(paymentId);
+    await makerCorrections.getByLabel('Corrected gross').fill('115.05');
+    await makerCorrections.getByLabel('Corrected deductions').fill('20.01');
+    await makerCorrections.getByLabel('Correction evidence reference').fill('PAYROLL-CORRECTION-001');
+    await makerCorrections.getByRole('button', { name: 'Propose payroll correction' }).click();
+    await expect(makerCorrections.getByText('PAYROLL-CORRECTION-001 · submitted')).toBeVisible();
+    await expect(makerCorrections.getByRole('button', { name: 'Approve correction' })).toHaveCount(0);
+    const reviewerCorrections = closed.getByRole('region', { name: 'Closed payroll corrections' });
+    await reviewerCorrections.getByRole('combobox', { name: 'Employee for correction' }).selectOption(paymentId);
+    await expect(reviewerCorrections.getByText(/Net change LKR 5.00/)).toBeVisible();
+    await reviewerCorrections.getByRole('button', { name: 'Approve correction' }).click();
+    await expect(reviewerCorrections.getByText('PAYROLL-CORRECTION-001 · approved')).toBeVisible();
+    await expect(reviewerCorrections.getByText('Current reviewed net LKR 95.04')).toBeVisible();
+    await checkerPage.reload();
+    const history = await openPayroll(checkerPage);
+    await history.getByLabel('Payroll run ID', { exact: true }).fill(runId);
+    await history.getByRole('button', { name: 'Open snapshot by ID' }).click();
+    const persisted = history.getByRole('region', { name: 'Closed payroll corrections' });
+    await persisted.getByRole('combobox', { name: 'Employee for correction' }).selectOption(paymentId);
+    await expect(persisted.getByText('PAYROLL-CORRECTION-001 · approved')).toBeVisible();
+
+
+
+    await employeePage.getByRole('link', { name: 'My HR', exact: true }).click();
+    await employeePage.getByText('My payslips', { exact: true }).click();
+    await employeePage.getByRole('button', { name: 'Open payslip for 2025-06-01 to 2025-06-30' }).click();
+    await expect(employeePage.getByText('LKR 90.04', { exact: true })).toBeVisible();
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
+test('HR independently reviews legacy leave work dates', async ({ page, browser, request }) => {
+  const maker = seedAccount('hr_manager');
+  const reviewer = seedAccount('hr_manager', maker.projectId);
+  const makerSession = await signIn(page, maker);
+  const reviewerContext = await browser.newContext();
+  const evidenceDir = mkdtempSync(join(tmpdir(), 'garrison-leave-evidence-'));
+  try {
+    const reviewerPage = await reviewerContext.newPage();
+    const reviewerSession = await signIn(reviewerPage, reviewer);
+    const employee = await request.post('/api/v1/hr/employees', {
+      headers: { Authorization: `Bearer ${makerSession.accessToken}` },
+      data: {
+        employee_code: `LEGACY-LEAVE-${Date.now().toString(36)}`,
+        first_name: 'Synthetic',
+        last_name: 'Legacy Leave',
+        employment_status: 'active',
+        join_date: '2035-01-01'
+      }
+    });
+    expect(employee.status()).toBe(201);
+    const employeeId = (await employee.json() as { id: string }).id;
+    const seeded = JSON.parse(execFileSync(PYTHON_BIN, [
+      '-m', 'tests.browser_fixtures', 'seed-legacy-leave', '--employee-id', employeeId,
+      '--reviewer-id', reviewerSession.userId
+    ], { cwd: BACKEND_DIR, encoding: 'utf8', env })) as { request_id: string };
+
+    async function openEvidence(target: Page, discover = false) {
+      await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+      await target.getByRole('button', { name: 'Leave', exact: true }).click();
+      const panel = target.getByRole('region', { name: 'Legacy leave work dates' });
+      if (discover) {
+        await panel.getByRole('button', { name: 'Find leave with missing work dates' }).click();
+        const candidate = panel.getByRole('listitem').filter({ hasText: employeeId });
+        await candidate.getByRole('button', { name: 'View historical request' }).click();
+      } else {
+        await panel.getByLabel('Legacy leave request ID').fill(seeded.request_id);
+        await panel.getByRole('button', { name: 'Open historical work dates' }).click();
+      }
+      await expect(panel.getByText(/Approved days 2.00/)).toBeVisible();
+      return panel;
+    }
+
+    const proposing = await openEvidence(page, true);
+    await proposing.getByLabel('Historical work dates').fill('2036-03-31');
+    await proposing.getByLabel('Historical evidence reference').fill('BROWSER-LEGACY-LEAVE-1');
+    await proposing.getByRole('button', { name: 'Propose historical dates' }).click();
+    await expect(proposing.getByRole('alert')).toContainText('match its units');
+    function cliEvidence(token: string, ...args: string[]) {
+      return JSON.parse(execFileSync(
+        PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', 'leave', 'date-evidence', ...args, '--json'], {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env, GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test', GARRISON_ACCESS_TOKEN: token
+          }
+        }
+      )) as { data: { id: string; digest: string; plan_sha256: string; status: string } };
+    }
+    const privateFile = join(evidenceDir, 'dates.json');
+    writeFileSync(privateFile, JSON.stringify({
+      proposal_id: globalThis.crypto.randomUUID(),
+      work_dates: ['2036-03-31', '2036-04-01'],
+      evidence_reference: 'BROWSER-LEGACY-LEAVE-1'
+    }), { mode: 0o600 });
+    const proposalArgs = ['propose', '--request-id', seeded.request_id, '--file', privateFile];
+    const plan = cliEvidence(makerSession.accessToken, ...proposalArgs, '--dry-run');
+    const receipt = cliEvidence(makerSession.accessToken, ...proposalArgs, '--apply', '--expect', plan.data.plan_sha256);
+    expect(receipt.data.status).toBe('submitted');
+    await proposing.getByRole('button', { name: 'Open historical work dates' }).click();
+    await expect(proposing.getByText('BROWSER-LEGACY-LEAVE-1 · submitted')).toBeVisible();
+    await expect(proposing.getByRole('button', { name: 'Approve historical dates' })).toHaveCount(0);
+
+    const approving = await openEvidence(reviewerPage);
+    await expect(approving.getByRole('button', { name: 'Approve historical dates' })).toBeVisible();
+    const decisionArgs = [
+      'decide', '--request-id', seeded.request_id, '--proposal-id', receipt.data.id,
+      '--decision', 'approved', '--digest', receipt.data.digest
+    ];
+    const decisionPlan = cliEvidence(reviewerSession.accessToken, ...decisionArgs, '--dry-run');
+    const approved = cliEvidence(
+      reviewerSession.accessToken, ...decisionArgs, '--apply', '--expect', decisionPlan.data.plan_sha256
+    );
+    expect(approved.data.status).toBe('approved');
+    await approving.getByRole('button', { name: 'Open historical work dates' }).click();
+    await expect(approving.getByText('Retained work dates: 2036-03-31, 2036-04-01')).toBeVisible();
+    await reviewerPage.reload();
+    const persisted = await openEvidence(reviewerPage);
+    await expect(persisted.getByText('BROWSER-LEGACY-LEAVE-1 · approved')).toBeVisible();
+    await expect(persisted.getByText('Retained work dates: 2036-03-31, 2036-04-01')).toBeVisible();
+  } finally {
+    rmSync(evidenceDir, { recursive: true, force: true });
+    await reviewerContext.close();
   }
 });

@@ -4,16 +4,19 @@ import hashlib
 import json
 from calendar import monthrange
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hr import (
     HrCompensationTerm,
     HrEmployee,
     HrEmploymentPeriod,
+    HrPayrollAdjustment,
+    HrPayrollClosure,
     HrPayrollLine,
     HrPayrollPeriod,
     HrPayrollPolicy,
@@ -22,8 +25,16 @@ from app.models.hr import (
 )
 from app.models.user import User
 from app.schemas.hr import (
+    PayrollAdjustmentCreate,
+    PayrollAdjustmentDetail,
+    PayrollAdjustmentList,
+    PayrollAdjustmentResponse,
+    PayrollAdjustmentReview,
+    PayrollControlledPolicyRecord,
+    PayrollFrozenSources,
     PayrollRunSnapshotResponse,
     PayrollSnapshotLine,
+    PayrollSourceEvidenceRequest,
     PayslipDetail,
     PayslipListResponse,
     PayslipSummary,
@@ -31,17 +42,24 @@ from app.schemas.hr import (
 from app.services.audit_service import AuditService
 from app.services.hr_crypto import decrypt_hr_value, encrypt_hr_value
 from app.services.hr_leave_accrual import _eligible_category
+from app.services.hr_payroll_time import (
+    reconcile_payroll_leave_inputs,
+    reconcile_payroll_time_inputs,
+)
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
     PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_PREPARE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     ensure_permission,
+    has_permission,
 )
 from app.utils.security import utc_now
 from app.utils.time import business_today
 
 CENTS = Decimal("0.01")
+MAX_AMOUNT = Decimal("9999999999999999.99")
+ADJUSTED_BASIS = "base_salary_with_reviewed_adjustments"
 ROUNDING = {"half_even": ROUND_HALF_EVEN, "half_up": ROUND_HALF_UP}
 RULES = {"calculation_basis", "currency", "rounding", "pay_frequency", "employee_deduction_rate"}
 
@@ -80,7 +98,7 @@ def _policy_rules(policy: HrPayrollPolicy) -> tuple[str, str, Decimal]:
             status_code=409,
             error_code="POLICY_NOT_APPROVED",
         )
-    return validate_payroll_rules(policy.rules_json)
+    return validate_payroll_policy(policy)
 
 
 def validate_payroll_rules(rules: dict[str, Any]) -> tuple[str, str, Decimal]:
@@ -88,7 +106,7 @@ def validate_payroll_rules(rules: dict[str, Any]) -> tuple[str, str, Decimal]:
     if (
         set(rules) != RULES
         or rules.get("pay_frequency") != "monthly"
-        or rules.get("calculation_basis") != "base_salary_only"
+        or rules.get("calculation_basis") not in ("base_salary_only", ADJUSTED_BASIS)
         or not isinstance(currency, str)
         or len(currency) != 3
         or not currency.isascii()
@@ -103,6 +121,42 @@ def validate_payroll_rules(rules: dict[str, Any]) -> tuple[str, str, Decimal]:
         )
     limit = Decimal("1")
     rate = _decimal(rules["employee_deduction_rate"], places=8, maximum=limit)
+    return currency, rounding, rate
+
+
+def _payroll_amounts(
+    base: Decimal, rate: Decimal, rounding: str, earnings: Decimal, extra_deductions: Decimal
+) -> tuple[Decimal, Decimal, Decimal]:
+    gross = base + earnings
+    deductions = (base * rate).quantize(CENTS, rounding=ROUNDING[rounding]) + extra_deductions
+    if gross > MAX_AMOUNT or deductions > gross:
+        raise AppException("Adjustments put gross or net outside payroll limits.", status_code=422)
+    return gross, deductions, gross - deductions
+
+
+def validate_payroll_policy(policy: HrPayrollPolicy) -> tuple[str, str, Decimal]:
+    currency, rounding, rate = validate_payroll_rules(policy.rules_json)
+    if policy.controlled_record is not None:
+        record = PayrollControlledPolicyRecord.model_validate(policy.controlled_record)
+        for position, example in enumerate(record.worked_examples, start=1):
+            if policy.rules_json["calculation_basis"] != ADJUSTED_BASIS and (
+                example.earnings or example.extra_deductions
+            ):
+                raise AppException(
+                    f"Worked example {position} includes adjustments outside this policy.",
+                    status_code=422,
+                    error_code="PAYROLL_EXAMPLE_MISMATCH",
+                )
+            amounts = _payroll_amounts(
+                example.base_salary, rate, rounding, example.earnings, example.extra_deductions
+            )
+            expected = (example.expected_gross, example.expected_deductions, example.expected_net)
+            if amounts != expected:
+                raise AppException(
+                    f"Worked example {position} differs from the payroll calculation.",
+                    status_code=422,
+                    error_code="PAYROLL_EXAMPLE_MISMATCH",
+                )
     return currency, rounding, rate
 
 
@@ -130,6 +184,167 @@ async def _locked_run(session: AsyncSession, run_id: UUID) -> tuple[HrPayrollRun
     return run, period
 
 
+def _adjustment_response(row: HrPayrollAdjustment) -> PayrollAdjustmentResponse:
+    detail = PayrollAdjustmentDetail.model_validate_json(
+        decrypt_hr_value(row.detail_encrypted) or ""
+    )
+    return PayrollAdjustmentResponse(
+        **detail.model_dump(),
+        id=row.id,
+        employee_id=row.employee_id,
+        status=row.status,
+        submitted_by_id=row.submitted_by_id,
+        decided_by_id=row.decided_by_id,
+        decided_at=row.decided_at,
+        digest=hashlib.sha256(row.detail_encrypted.encode()).hexdigest(),
+    )
+
+
+async def _adjustments(session: AsyncSession, run_id: UUID) -> list[HrPayrollAdjustment]:
+    return list(
+        await session.scalars(
+            select(HrPayrollAdjustment)
+            .where(HrPayrollAdjustment.run_id == run_id)
+            .order_by(HrPayrollAdjustment.id)
+        )
+    )
+
+
+async def _audit_adjustment(
+    session: AsyncSession, action: str, run_id: UUID, actor: User, adjustment_id: UUID | None = None
+) -> None:
+    await AuditService(session).record(
+        action=f"hr.payroll_adjustment.{action}",
+        user_id=actor.id,
+        entity_type="hr_payroll_runs",
+        entity_id=run_id,
+        new_values={"adjustment_id": str(adjustment_id)} if adjustment_id else None,
+    )
+    await session.commit()
+
+
+async def read_payroll_adjustments(
+    session: AsyncSession, run_id: UUID, actor: User
+) -> PayrollAdjustmentList:
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+    run = await get_payroll_run(session, run_id)
+    period = await session.get(HrPayrollPeriod, run.payroll_period_id)
+    policy = await session.get(HrPayrollPolicy, run.policy_id) if run.policy_id else None
+    editable = bool(
+        run.status == "draft"
+        and run.snapshot_encrypted is None
+        and period is not None and period.status == "open"
+        and policy is not None and policy.is_approved
+        and policy.rules_json.get("calculation_basis") == ADJUSTED_BASIS
+    )
+    result = PayrollAdjustmentList(
+        run_id=run_id,
+        can_submit=editable and actor.id == run.prepared_by_id
+        and has_permission(actor, PERMISSION_HR_PAYROLL_PREPARE),
+        can_review=editable and actor.id != run.prepared_by_id
+        and has_permission(actor, PERMISSION_HR_PAYROLL_APPROVE),
+        items=[_adjustment_response(row) for row in await _adjustments(session, run_id)],
+    )
+    await _audit_adjustment(session, "viewed", run_id, actor)
+    return result
+
+
+def _ensure_adjustable(run: HrPayrollRun, period: HrPayrollPeriod) -> None:
+    if run.status != "draft" or run.snapshot_encrypted is not None or period.status != "open":
+        raise AppException("Adjust only a draft run in an open payroll period.", status_code=409)
+
+
+async def submit_payroll_adjustment(
+    session: AsyncSession, run_id: UUID, payload: PayrollAdjustmentCreate, actor: User
+) -> PayrollAdjustmentResponse:
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_PREPARE)
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+    run, period = await _locked_run(session, run_id)
+    if actor.id != run.prepared_by_id:
+        raise PermissionDeniedException("submit an adjustment for this payroll run")
+    amount = _decimal(payload.amount, places=2, maximum=MAX_AMOUNT)
+    if amount <= 0:
+        raise AppException("Enter a positive adjustment amount.", status_code=422)
+    detail = PayrollAdjustmentDetail(
+        kind=payload.kind, amount=str(amount), evidence_reference=payload.evidence_reference
+    )
+    existing = await session.get(HrPayrollAdjustment, payload.adjustment_id)
+    if existing is not None:
+        if existing.run_id == run_id and existing.employee_id == payload.employee_id:
+            prior = _adjustment_response(existing)
+            if (prior.kind, prior.amount, prior.evidence_reference) == (
+                detail.kind, detail.amount, detail.evidence_reference,
+            ):
+                return prior
+        raise AppException("The adjustment ID already refers to another record.", status_code=409)
+    _ensure_adjustable(run, period)
+    policy = await session.get(HrPayrollPolicy, run.policy_id) if run.policy_id else None
+    if policy is None or policy.rules_json.get("calculation_basis") != ADJUSTED_BASIS:
+        raise AppException("Select an approved policy that permits adjustments.", status_code=409)
+    _policy_rules(policy)
+    employee = await session.get(HrEmployee, payload.employee_id)
+    if employee is None or employee.deleted_at is not None:
+        raise NotFoundException("Payroll roster employee")
+    await _eligible_category(session, employee, period.period_start, period.period_end)
+    adjustments = await _adjustments(session, run_id)
+    if len(adjustments) >= 5000:
+        raise AppException("This run has reached the adjustment limit.", status_code=409)
+    for row in adjustments:
+        if row.employee_id == employee.id and row.status != "rejected":
+            previous = _adjustment_response(row)
+            if (previous.kind, previous.evidence_reference) == (
+                detail.kind, detail.evidence_reference
+            ):
+                raise AppException("This evidence already supports an adjustment.", status_code=409)
+    encrypted = encrypt_hr_value(detail.model_dump_json())
+    assert encrypted is not None
+    result = await session.scalar(
+        insert(HrPayrollAdjustment)
+        .values(
+            id=payload.adjustment_id,
+            run_id=run_id,
+            employee_id=employee.id,
+            submitted_by_id=actor.id,
+            detail_encrypted=encrypted,
+        )
+        .on_conflict_do_nothing(index_elements=[HrPayrollAdjustment.id])
+        .returning(HrPayrollAdjustment)
+    )
+    if result is None:
+        raise AppException("The adjustment ID already refers to another record.", status_code=409)
+    response = _adjustment_response(result)
+    await _audit_adjustment(session, "submitted", run_id, actor, result.id)
+    return response
+
+
+async def review_payroll_adjustment(
+    session: AsyncSession, run_id: UUID, adjustment_id: UUID,
+    payload: PayrollAdjustmentReview, actor: User,
+) -> PayrollAdjustmentResponse:
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_APPROVE)
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+    run, period = await _locked_run(session, run_id)
+    row = await session.get(HrPayrollAdjustment, adjustment_id)
+    if row is None or row.run_id != run_id:
+        raise NotFoundException("Payroll adjustment")
+    if actor.id in (row.submitted_by_id, run.prepared_by_id):
+        raise PermissionDeniedException("independent payroll adjustment review")
+    previous = _adjustment_response(row)
+    if previous.digest != payload.expected_digest:
+        raise AppException("Confirm the reviewed adjustment digest.", status_code=409)
+    if row.status == payload.decision and row.decided_by_id == actor.id:
+        return previous
+    _ensure_adjustable(run, period)
+    if row.status != "submitted":
+        raise AppException("This adjustment already has a final decision.", status_code=409)
+    row.status = payload.decision
+    row.decided_by_id = actor.id
+    row.decided_at = utc_now()
+    result = _adjustment_response(row)
+    await _audit_adjustment(session, payload.decision, run_id, actor, row.id)
+    return result
+
+
 async def _source_terms(
     session: AsyncSession, roster: list[UUID], period: HrPayrollPeriod, currency: str
 ) -> list[HrCompensationTerm]:
@@ -155,6 +370,7 @@ async def _source_terms(
             select(HrCompensationTerm)
             .where(
                 HrCompensationTerm.employee_id.in_(roster),
+                HrCompensationTerm.approval_status == "approved",
                 HrCompensationTerm.effective_from <= period.period_end,
                 ~select(HrEmploymentPeriod.id)
                 .where(
@@ -226,7 +442,12 @@ async def _stored_snapshot(
 
 
 async def calculate_payroll_snapshot(
-    session: AsyncSession, run_id: UUID, employee_ids: list[UUID], actor: User
+    session: AsyncSession,
+    run_id: UUID,
+    employee_ids: list[UUID],
+    actor: User,
+    *,
+    source_evidence: PayrollSourceEvidenceRequest | None = None,
 ) -> HrPayrollRun:
     ensure_permission(actor, PERMISSION_HR_PAYROLL_PREPARE)
     run, period = await _locked_run(session, run_id)
@@ -239,6 +460,14 @@ async def calculate_payroll_snapshot(
         snapshot, _ = await _stored_snapshot(session, run)
         if sorted(snapshot["terms"]) != [str(user_id) for user_id in roster]:
             raise AppException("This payroll run already has a frozen roster.", status_code=409)
+        frozen = snapshot.get("source_evidence")
+        frozen_checksums = (frozen["time_sha256"], frozen["leave_sha256"]) if frozen else None
+        submitted_checksums = (
+            (source_evidence.time_sha256, source_evidence.leave_sha256)
+            if source_evidence else None
+        )
+        if frozen_checksums != submitted_checksums:
+            raise AppException("This run already has a fixed source review.", status_code=409)
         return run
     if (
         run.status != "draft"
@@ -265,35 +494,106 @@ async def calculate_payroll_snapshot(
     if policy is None:
         raise AppException("Select an approved payroll policy.", status_code=409)
     currency, rounding, rate = _policy_rules(policy)
+    if policy.controlled_record is not None:
+        record = PayrollControlledPolicyRecord.model_validate(policy.controlled_record)
+        if record.effective_from > start:
+            raise AppException(
+                "The controlled payroll policy must be effective from the start of the period.",
+                status_code=409,
+                error_code="PAYROLL_POLICY_NOT_EFFECTIVE",
+            )
+    basis = policy.rules_json["calculation_basis"]
     terms = await _source_terms(session, roster, period, currency)
+    adjustment_map: dict[str, list[PayrollAdjustmentResponse]] = {}
+    if basis == ADJUSTED_BASIS:
+        for row in await _adjustments(session, run_id):
+            if row.status == "rejected":
+                continue
+            if (
+                row.status != "approved"
+                or row.decided_at is None
+                or row.decided_by_id in (None, row.submitted_by_id, run.prepared_by_id)
+            ):
+                raise AppException(
+                    "Review all payroll adjustments before calculation.", status_code=409
+                )
+            if row.employee_id not in roster:
+                raise AppException(
+                    "Include each employee with an approved adjustment.", status_code=409
+                )
+            adjustment_map.setdefault(str(row.employee_id), []).append(_adjustment_response(row))
     lines = []
     for term in terms:
-        gross = _decimal(
+        base = _decimal(
             decrypt_hr_value(term.base_salary_encrypted),
             places=2,
-            maximum=Decimal("9999999999999999.99"),
+            maximum=MAX_AMOUNT,
         )
-        deduction = (gross * rate).quantize(CENTS, rounding=ROUNDING[rounding])
+        earnings = Decimal("0.00")
+        extra_deductions = Decimal("0.00")
+        for adjustment in adjustment_map.get(str(term.employee_id), []):
+            if adjustment.kind == "earning":
+                earnings += Decimal(adjustment.amount)
+            else:
+                extra_deductions += Decimal(adjustment.amount)
+        gross, deduction, net = _payroll_amounts(base, rate, rounding, earnings, extra_deductions)
         lines.append(
             HrPayrollLine(
                 payroll_run_id=run.id,
                 employee_id=term.employee_id,
                 gross_encrypted=encrypt_hr_value(str(gross)),
                 deductions_encrypted=encrypt_hr_value(str(deduction)),
-                net_encrypted=encrypt_hr_value(str(gross - deduction)),
+                net_encrypted=encrypt_hr_value(str(net)),
                 breakdown_json={},
             )
         )
+    frozen_sources = None
+    frozen_csvs = None
+    if source_evidence is not None:
+        source_roster = set(roster)  # _source_terms holds the employee locks through commit.
+        time_preview, time_csv = await reconcile_payroll_time_inputs(session, period, source_roster)
+        leave_preview, leave_csv = await reconcile_payroll_leave_inputs(
+            session, period, source_roster
+        )
+        if (
+            time_csv is None
+            or leave_csv is None
+            or time_preview.csv_sha256 != source_evidence.time_sha256
+            or leave_preview.csv_sha256 != source_evidence.leave_sha256
+            or time_preview.regular_hours is None
+            or time_preview.overtime_hours is None
+            or leave_preview.paid_days is None
+            or leave_preview.unpaid_days is None
+        ):
+            raise AppException(
+                "Refresh time and leave reconciliation before calculation.", status_code=409
+            )
+        frozen_sources = PayrollFrozenSources(
+            time_sha256=source_evidence.time_sha256,
+            leave_sha256=source_evidence.leave_sha256,
+            regular_hours=time_preview.regular_hours,
+            overtime_hours=time_preview.overtime_hours,
+            paid_days=leave_preview.paid_days,
+            unpaid_days=leave_preview.unpaid_days,
+        ).model_dump(mode="json")
+        frozen_csvs = {"time": time_csv.decode(), "leave": leave_csv.decode()}
     snapshot = {
+        "source_evidence": frozen_sources,
+        "source_csvs": frozen_csvs,
         "run_id": str(run.id),
         "period_id": str(period.id),
         "period_start": start.isoformat(),
         "period_end": end.isoformat(),
         "pay_date": period.pay_date.isoformat(),
         "policy_id": str(policy.id),
+        "controlled_policy_record": policy.controlled_record,
         "policy_code": policy.code,
         "policy_approvers": [str(policy.approved_by_id), str(policy.second_approved_by_id)],
-        "calculation_basis": "base_salary_only",
+        "calculation_basis": basis,
+        "adjustments": {
+            employee_id: [item.model_dump(mode="json") for item in adjustments]
+            for employee_id, adjustments in adjustment_map.items()
+        },
         "currency": currency,
         "rounding": rounding,
         "rate": str(rate),
@@ -333,11 +633,13 @@ async def read_payroll_snapshot(
     data, lines = await _stored_snapshot(session, run)
     assert run.snapshot_digest is not None
     publication = await session.get(HrPayslipPublication, run.id)
+    closure = await session.get(HrPayrollClosure, run.id)
     details = [
         PayrollSnapshotLine(
             employee_id=line.employee_id,
             payment_reference=line.id,
             term_id=UUID(data["terms"][str(line.employee_id)]),
+            adjustments=data.get("adjustments", {}).get(str(line.employee_id), []),
             **_line_amounts(line),
         )
         for line in lines
@@ -352,9 +654,13 @@ async def read_payroll_snapshot(
     return PayrollRunSnapshotResponse(
         run_id=run.id,
         status=run.status,
+        prepared_by_id=run.prepared_by_id,
+        approved_by_id=run.approved_by_id,
         payslips_published_at=publication.published_at if publication else None,
+        closed_at=closure.closed_at if closure else None,
         digest=run.snapshot_digest,
         policy_id=data["policy_id"],
+        controlled_policy_record=data.get("controlled_policy_record"),
         period_start=data["period_start"],
         period_end=data["period_end"],
         pay_date=data["pay_date"],
@@ -362,11 +668,40 @@ async def read_payroll_snapshot(
         currency=data["currency"],
         rounding=data["rounding"],
         employee_deduction_rate=Decimal(data["rate"]),
+        source_evidence=data.get("source_evidence"),
         lines=details,
         gross=sum((line.gross for line in details), Decimal(0)),
         deductions=sum((line.deductions for line in details), Decimal(0)),
         net=sum((line.net for line in details), Decimal(0)),
     )
+
+
+async def read_frozen_payroll_source(
+    session: AsyncSession, run_id: UUID, source: Literal["time", "leave"], actor: User
+) -> tuple[bytes, str]:
+    ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+    run = await get_payroll_run(session, run_id)
+    snapshot, _ = await _stored_snapshot(session, run)
+    metadata = snapshot.get("source_evidence")
+    if metadata is None:
+        raise NotFoundException("Frozen payroll source")
+    stored = (snapshot.get("source_csvs") or {}).get(source)
+    digest = metadata.get(f"{source}_sha256")
+    if (
+        not isinstance(stored, str)
+        or not isinstance(digest, str)
+        or hashlib.sha256(stored.encode()).hexdigest() != digest
+    ):
+        raise AppException("Stored payroll source checksum is invalid.", status_code=409)
+    await AuditService(session).record(
+        action="hr.payroll_run.frozen_source_downloaded",
+        user_id=actor.id,
+        entity_type="hr_payroll_runs",
+        entity_id=run_id,
+        new_values={"source": source, "sha256": digest},
+    )
+    await session.commit()
+    return stored.encode(), digest
 
 
 async def approve_payroll_snapshot(
@@ -399,13 +734,46 @@ async def approve_payroll_snapshot(
         .limit(1)
     ):
         raise AppException("An overlapping payroll run is already approved.", status_code=409)
-    data, _ = await _stored_snapshot(session, run)
+    data, lines = await _stored_snapshot(session, run)
     if (data["period_start"], data["period_end"], data["pay_date"]) != (
         period.period_start.isoformat(),
         period.period_end.isoformat(),
         period.pay_date.isoformat(),
     ):
         raise AppException("The payroll period changed after calculation.", status_code=409)
+    roster = [line.employee_id for line in lines]
+    try:
+        # The same roster locks also protect the attached source recheck.
+        terms = await _source_terms(session, roster, period, data["currency"])
+    except AppException as exc:
+        raise AppException(
+            "The roster no longer has eligible compensation for this period. "
+            "Review the source records.",
+            status_code=409,
+            error_code="PAYROLL_COMPENSATION_CHANGED",
+        ) from exc
+    if {str(term.employee_id): str(term.id) for term in terms} != data["terms"]:
+        raise AppException(
+            "Approved compensation changed after calculation. Prepare a new payroll run.",
+            status_code=409,
+            error_code="PAYROLL_COMPENSATION_CHANGED",
+        )
+    if (sources := data.get("source_evidence")) is not None:
+        source_roster = set(roster)
+        time, _ = await reconcile_payroll_time_inputs(session, period, source_roster)
+        leave, _ = await reconcile_payroll_leave_inputs(session, period, source_roster)
+        if (
+            time.csv_sha256 is None
+            or time.csv_sha256 != sources.get("time_sha256")
+            or leave.csv_sha256 is None
+            or leave.csv_sha256 != sources.get("leave_sha256")
+        ):
+            raise AppException(
+                "Time or leave changed after calculation. Resolve outstanding records and "
+                "prepare a new run if the reviewed inputs changed.",
+                status_code=409,
+                error_code="PAYROLL_SOURCES_CHANGED",
+            )
     run.status = "approved"
     run.approved_by_id = actor.id
     run.approved_at = utc_now()

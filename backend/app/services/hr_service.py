@@ -27,6 +27,8 @@ from app.schemas.hr import (
     AccessRequestDecisionRequest,
     DepartmentCreateRequest,
     DepartmentUpdateRequest,
+    DueEmploymentChange,
+    DueEmploymentChangeList,
     EmployeeCreateRequest,
     EmployeeDetailResponse,
     EmployeeDirectoryResponse,
@@ -1013,6 +1015,36 @@ class HrService(HrWorkforceService):
             )
         )
         return rows, total or 0
+
+    async def list_due_employment_changes(self, limit: int, offset: int) -> DueEmploymentChangeList:
+        today = business_today()
+        due = (
+            select(
+                HrEmploymentChange.id,
+                HrEmploymentChange.employee_id,
+                HrEmployee.employee_code,
+                HrEmploymentChange.change_type,
+                HrEmploymentChange.effective_date,
+                (HrEmploymentChange.employee_revision == HrEmployee.record_revision).label(
+                    "revision_matches"
+                ),
+            )
+            .join(HrEmployee, HrEmployee.id == HrEmploymentChange.employee_id)
+            .where(
+                HrEmploymentChange.status == "approved",
+                HrEmploymentChange.effective_date <= today,
+                HrEmployee.deleted_at.is_(None),
+            )
+        )
+        total = await self.session.scalar(select(func.count()).select_from(due.subquery()))
+        rows = (await self.session.execute(
+            due.order_by(HrEmploymentChange.effective_date, HrEmploymentChange.id)
+            .limit(limit).offset(offset)
+        )).mappings()
+        return DueEmploymentChangeList(
+            as_of=today, total=total or 0,
+            items=[DueEmploymentChange.model_validate(row) for row in rows],
+        )
 
     async def _record_employment_change(self, row: HrEmploymentChange, actor: User) -> None:
         await self.audit.record(

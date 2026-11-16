@@ -46,7 +46,7 @@ where relevant, approved policy values, and the workflow's own checks.
 | CLI | CODED | Registered remote commands use the same API permission boundaries. See [workforce CLI commands](CLI_ADMINISTRATION.md#workforce-administration). |
 | Training | CODED | HR Manager manages courses and enrollments and verifies approved employee certificate versions. My HR shows each linked employee their own training and expiry status. Local revisions 033 and 034 retain verification receipts and configure mandatory training by position or site. |
 | Performance | CODED | HR Manager opens narrative review cycles. The employee and authorized direct manager acknowledge goals and submit their assessments. HR calibrates the result, the employee acknowledges it, and corrections are retained as addenda. |
-| Benefits, reimbursements, compensation and payroll | ROLE_GATED | Benefits and compensation administration, HR reimbursement review/decision, and payroll preparation/approval require payroll permissions with no current role grant. Linked employees can submit their own reimbursement claims, but an authorized reviewer cannot list or decide them under the current catalogue. Calculations also require an approved policy. |
+| Benefits, reimbursements, compensation and payroll | ROLE_GATED | Benefits, both reimbursement entry points, compensation and payroll require payroll permissions with no current role grant. Compensation and payroll approvals require independent actors. Calculations require an approved policy. |
 | Restricted employee cases | ROLE_GATED | The current catalogue grants no restricted-case permission. |
 
 Source references are the [registered HR routes](../backend/app/api/v1/hr.py),
@@ -101,6 +101,10 @@ without an approved account, source roster, field mapping and authorized owner.
   reporting manager or work location), promotion (position), category
   amendment, or profile name correction. Another HR Manager reviews the
   specific fields and effective date.
+  Open **Due employment changes** in **Directory & Org** to find approved
+  changes on or after their effective date. Select **Inspect employee** to
+  review and apply the exact change. The list flags changes when the current
+  employee record differs from the version reviewed.
   HR applies the approved proposal on or after that date. An intervening employee
   edit requires a fresh proposal. Application adds one dated history entry,
   checks available position headcount, and clears the former manager's review
@@ -297,6 +301,12 @@ without an approved account, source roster, field mapping and authorized owner.
   Confirming the preview posts the transfer and expiry together and closes
   the source year for the selected employee and leave type. A later change
   to a closed year requires an audited correction workflow.
+  An HR reviewer can choose **Reverse approved leave** on an approved request
+  and enter a reason. The portal checks the original debit and posts one
+  offsetting credit, preserving the original. The employee can see the
+  cancelled status and reason in My HR. When approved payroll covers the
+  employee and request dates, the portal directs HR to the payroll correction
+  procedure instead.
   If an HR approval or cancellation response is interrupted, reload the request
   and check its saved status and balance. Replaying a committed decision with
   the old revision returns a conflict and leaves the ledger intact.
@@ -380,9 +390,16 @@ without an approved account, source roster, field mapping and authorized owner.
   opens the saved letter and issues it or rejects it with a reason. If employee
   data changed, prepare a new draft. Issued letters appear in **My HR → My issued
   HR letters** for the active linked recipient. Saved text and rejection reasons
-  are encrypted with the HR key. Salary confirmation remains preview-only
-  pending an approved compensation source. Portal issuance creates no electronic
-  signature or external delivery.
+  are encrypted with the HR key. Salary confirmation requires an HR Manager
+  with payroll-sensitive access to prepare it and a different authorized
+  HR Manager to issue it. Include `{base_salary}`, `{salary_currency}` and
+  `{pay_frequency}` in the template. The portal takes those values from
+  the current independently approved compensation term and binds the letter
+  to that term. If a different term becomes effective before issuance, prepare
+  a new draft. Only the linked employee can retrieve the issued letter in
+  My HR. The company still needs to approve its production template and
+  authorize its operators. Portal issuance creates no electronic signature
+  or external delivery.
 - **Service requests.** In **Policies & Requests**, starting an unassigned
   review claims it. Use **Assign request** or **Reassign request** to hand an
   open, in-review or approved request to an active HR user. Enter an operational
@@ -400,6 +417,197 @@ Run `python -m scripts.garrisonctl hr --help` for available commands. See the
 
 ## Payroll verification
 
+Open **Payroll** in the HR workspace. In **Payroll policies**, enter a
+code, name, calculation basis, currency, rounding method and employee
+deduction fraction for the monthly calculation. Share the proposed policy
+ID with a separate authorized reviewer, who can open the exact saved rules
+and approve them. Use a new code when proposing changed rules.
+
+Create a period and prepare a run using an approved policy. If the policy
+permits adjustments, open the draft run in **Payroll adjustments**. The
+preparer can propose an earning or deduction in the policy currency with
+the employee ID and an opaque reference to approved evidence. A separate
+reviewer approves or rejects the exact entry. Resolve pending adjustments
+before calculating and include every employee with an approved entry.
+The policy fraction applies to base salary and the result uses the
+approved rounding method.
+Reviewed earnings increase gross and reviewed deductions increase total
+deductions. Use approved amounts already calculated under your business
+rules. The portal does not calculate a statutory or overtime amount from
+an evidence reference.
+
+Enter the employee UUIDs for the
+intended roster and calculate the snapshot. Share the run ID through the
+restricted payroll handoff. An independent authorized reviewer opens
+that ID, inspects the frozen totals and employee lines, then approves and
+locks the reviewed snapshot. Approval verifies that each employee still
+qualifies for the period and that the exact compensation terms used for
+calculation still apply. If an approved term changes, prepare a new run
+in the same open period. The earlier snapshot stays available for review.
+The approver can publish payslips from the same view. Linked employees
+then see their own statement in **My HR**.
+
+Before calculation, select **Review time and leave inputs** with the
+intended roster. The portal shows unresolved source records or the
+reconciled regular hours, approved overtime, paid leave and unpaid leave
+for the selected period. A clean source can be downloaded as a verified
+CSV. Editing the roster clears the prior review and downloads are
+rechecked against the preview checksum. When both previews reconcile,
+select **Attach reviewed time and leave evidence to the snapshot** to
+retain both files and totals. Calculation rejects a changed or unresolved
+source until the preparer reviews it again. At approval the portal checks
+the attached digests against the current time and leave records for the
+same roster. Resolve any outstanding records. If the evidence has changed,
+prepare a new run for the same open period. An authorized reviewer can
+still download the earlier frozen files. Wage calculation uses the approved
+policy and separately reviewed adjustments.
+
+From the approved snapshot, select **Open Finance handoff** to review the
+payment count, net total and CSV checksum. The original approver registers
+the reviewed export. Authorized payroll reviewers can download the file
+after the portal verifies its bytes against the registered checksum.
+Select an exported payment reference to review its balance and event
+history. Record a confirmed payment, failure or reversal after checking
+the external evidence. A reversal references an original payment event
+from that history. The portal records outcomes from the external payment
+system. Review [CLI administration](CLI_ADMINISTRATION.md#workforce-administration)
+for terminal workflows.
+
+After payslips are published and every exported payment is reconciled, a
+reviewer other than the run preparer can confirm the reconciliation and
+select **Close payroll period**. A zero-net run can close without a
+payment export. Closure records the approved snapshot, CSV and settlement
+checksums. The period stays locked and published payslips, CSVs and event
+history remain readable. New settlement events are blocked after closure
+and the closed run keeps its original payment history.
+
+Open the closed snapshot and choose an employee under **Closed payroll
+corrections**. An authorized preparer can propose revised gross and
+deductions with an opaque evidence reference. A different reviewer
+approves or rejects the exact proposal. The panel shows the prior and
+proposed net and their difference. An approved correction becomes the
+baseline for any successor. The original snapshot, payslip and payment
+file remain the records of the closed run. A correction review does not
+book a payment, recover an overpayment or publish a replacement payslip.
+Those steps need the agreed HR and Finance procedure.
+
+### Payroll decisions for live operation
+
+HR is Garrisons' designated payroll business owner. HR defines, maintains,
+validates and approves payroll policies, calculation rules, eligibility,
+the pay calendar, overtime, unpaid leave, proration, statutory
+contributions and employer contributions. HR also owns worked examples
+and documented independent review responsibilities, and agrees the
+Finance handoff and correction process with Finance.
+
+The approved policy and its restricted storage location are unconfirmed.
+When HR supplies them, enter the opaque document reference, version,
+effective date, approved decision reference and worked examples in the
+payroll policy form. Each example gives a synthetic base salary, any
+applicable reviewed earnings or deductions, and the expected gross,
+deductions and net. The portal uses the same calculation as a payroll
+run to check every example before approving the policy.
+If the examples or draft rules need correction, the original preparer
+opens the policy by ID and selects **Edit policy draft**. The independent
+reviewer reopens the policy to see the revised version before approving.
+Approved policies retain their reviewed contents.
+The independent reviewer checks these references against the restricted
+source before approving the calculation policy. A run cannot use a
+referenced policy that takes effect after the period starts. The approved
+run retains the same reference in its snapshot. Legacy policies without
+this metadata remain readable and existing API clients can still omit it.
+Use synthetic employees in fixtures. Keep actual
+salary, banking information and credentials in the authorized restricted
+system.
+
+| Decision | Values and evidence to record |
+| --- | --- |
+| Employer and pay calendar | Employing entity and jurisdiction, covered employment categories, currency, cutoff, pay frequency and pay-date rules. |
+| Earnings and deductions | Component definitions, effective dates, included bases, rounding order, allowances, overtime rates and eligibility, unpaid time, proration and retroactive changes. Include expected gross, deductions and net for representative cases. |
+| Statutory and employer costs | Applicability by employee category, official tables or policy references, effective dates, employer versus employee treatment and the required reporting or remittance output. |
+| Operator duties | Authorized compensation proposer and reviewer, payroll preparer and approver, Finance executor and reconciler, and correction authority. State which duties must be independent and whether assignment is individual or role-wide. |
+| Finance and corrections | Restricted reference-to-beneficiary mapping, payment and accounting handoff, settlement evidence, and disposition of underpayments, overpayments, reversals and corrected statements after close. |
+| Release evidence | Approved sample calculation results, explained variances from a parallel run, key and backup recovery readback, and the deployed application and migration versions. |
+
+Compensation terms start as encrypted proposals. A different authorized
+reviewer approves the exact proposal or rejects it with an encrypted reason.
+Payroll considers only approved terms and rejects ambiguous effective dates.
+The current term in HR history uses the business date, so an approved future
+term does not displace today's term. Approving a change that would affect a
+locked payroll period returns a conflict. The masked history is the default.
+Explicit sensitive history access reveals the terms and creates an audit
+event without the amounts or review reasons.
+
+In **Directory & Org**, inspect an employee and open **Compensation
+history**. The panel loads amounts only when an operator explicitly reveals
+one term. Closing the panel or changing employees clears the private view.
+The proposal form sends encrypted records to independent review through the
+API. Review controls appear after a permitted reviewer reveals the proposal.
+
+Reimbursement claims use the existing restricted payroll permissions. Each
+claim pins a current, approved `reimbursement_receipt` document version in
+the compensation vault for that employee. Clients submit an
+`Idempotency-Key` and send the same key on retries. The claimant and the
+submitter cannot review the claim. Only submitted claims can be approved or
+declined. After external settlement, an authorized actor other than the
+approver records the transaction reference. The approval stays in the
+claim history and the confirmation has its own audit event.
+
+In **Directory & Org**, inspect the employee and open **Reimbursements**.
+Upload a private receipt. A different authorized reviewer can open the exact
+pending version and approve it. Select approved coverage and an approved
+receipt to submit the claim. The claim reviewer opens the pinned receipt
+version before recording a decision. After approval, the panel provides a
+payable download for the restricted Finance location. A separate authorized
+operator verifies the external settlement reference, amount and currency.
+
+An approved reimbursement is available as a protected Finance payable
+reference. The reference binds the original claim, opaque employee ID,
+approved amount, currency and approval time. Settlement requires its
+reviewed digest, the actual external amount and currency, and an external
+reference. The application matches these values before marking the claim
+paid. The same payable reference remains available for readback after
+settlement. Only the unpaid obligation can be exported by the CLI.
+[CLI commands](CLI_ADMINISTRATION.md#workforce-administration).
+
+Reimbursements require a benefit assignment covering the expense date. The
+benefit type sets an explicit ceiling and currency, and a different
+authorized actor approves that configuration before HR assigns it. A
+capped assignment has inclusive start and end dates. Submitted, approved
+and paid claims count against that assignment's ceiling. Rejection or
+cancellation frees the reservation. The API rejects overlapping assignments
+for the same employee and benefit type. New claims and approvals require
+coverage. Previously approved claims retain their existing evidence.
+
+In **Directory & Org**, inspect an employee and open **Benefit policies and
+coverage**. Enter the policy code, category, ceiling and currency. Select
+**Allow advances** if the policy permits them. A different authorized
+operator reviews and approves the policy. Refresh the panel to select the
+approved policy and assign dated coverage to the employee.
+
+Advances are available through the restricted HR API when the approved
+benefit type explicitly enables them. An authorized operator submits an
+advance with an idempotency key against its employee's dated assignment.
+An independent reviewer approves it. Another authorized operator records
+the external disbursement against the payable digest, exact amount and
+currency. Repayments retain their external references and dates, update the
+outstanding balance, and are safe to retry with the same details.
+
+Open advances reserve the full principal against the same coverage ceiling
+used by reimbursements. Full repayment releases the reservation. The
+advance workflow records external payments and repayments. The
+[CLI guide](CLI_ADMINISTRATION.md#workforce-administration) covers
+submission, independent review, private export and reconciliation.
+In **Directory & Org**, inspect the employee and open **Employee advances**.
+Select approved coverage to request an advance, or open a record to review
+it. The panel offers payment confirmation to a separate authorized actor
+after approval. Save payable downloads in the restricted Finance location.
+Payroll deductions and repayment schedule policy remain separate work.
+
+Legacy claims without a verified receipt version and submitter require
+reconciliation before further decisions. The API does not activate
+reimbursement policies or create Finance invoices, payments or transfers.
+
 An authorized payroll preparer can preview time inputs for an explicit roster
 and payroll period of up to 31 days, then download the reconciled CSV using
 the preview digest. One row represents one locked timesheet. Attendance is
@@ -411,20 +619,45 @@ coverage before using the extract, and investigate legacy locked records
 with inconsistencies through the approved correction process.
 [CLI commands](CLI_ADMINISTRATION.md).
 
+The payroll preparer can also export reconciled leave inputs for an explicit
+roster. Every included approved request must match its original leave ledger
+debit. Previously approved cancellations must reconcile to a reversal before
+being omitted. New submissions retain the scheduled work dates, and approval
+checks that those dates still match the published schedule. After approval,
+the retained dates determine each period's allocation, even when the
+calendar changes. Pending requests, overlapping approvals, inconsistent
+evidence and legacy cross-period approvals without retained dates block the
+export. The reviewed CSV gives payroll paid and unpaid units, allocated dates
+where available and traceable record IDs. Deductions and adjustments remain
+part of payroll policy and calculation.
+
+When a preview flags a legacy cross-month approval without retained dates,
+open **Legacy leave work dates** in the HR workspace's **Leave** tab. Enter
+the request ID from the preview or use **Find leave with missing work dates**.
+The list flags requests already covered by approved payroll. Open the
+request and propose the exact historical work dates
+with an opaque reference to the original evidence. A different HR reviewer
+checks the dates and decides the proposal. Approval retains the dates while
+preserving approved units, status and the original ledger debit. Refresh
+payroll source review afterward. Requests overlapping an approved payroll
+for that employee require the payroll correction process.
+
 Payroll permissions have no active portal role grant. The protected run API
-supports review of a fixed-base monthly calculation. A policy must explicitly
-declare `calculation_basis: base_salary_only`, `pay_frequency: monthly`, a
+supports review of a monthly base salary calculation with optional
+independently reviewed adjustments. A policy must explicitly declare
+`calculation_basis` as `base_salary_only` or
+`base_salary_with_reviewed_adjustments`, `pay_frequency: monthly`, a
 three-letter uppercase `currency`, `rounding` as `half_up` or `half_even`,
 and `employee_deduction_rate` as a decimal string from zero to one. A
 second actor must approve the policy. These fields are configuration inputs,
 and approved worked examples are still required for live adoption.
 
-Calculate an empty draft for a closed month using the explicit employee
+Calculate a draft for a closed month using the explicit employee
 roster. Each employee needs complete eligible employment history and a
 whole-period approved monthly term in the policy currency. Mid-period
 changes, missing or ambiguous terms, and allowances outside this formula
 stop calculation. The run preserves the approved policy reference, source
-term IDs and encrypted lines. An authorized reviewer reads the protected
+term IDs, reviewed adjustments and encrypted lines. An authorized reviewer reads the protected
 snapshot and reconciles gross, deductions and net. A different approver
 confirms the same snapshot digest. Approval locks the period against a
 competing run. Protected readbacks are audited.

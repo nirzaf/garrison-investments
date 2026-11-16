@@ -2283,6 +2283,30 @@ async def test_hr_g_calendars_attendance_timesheets_and_overtime() -> None:
             headers=_auth(recorder),
         )
         assert ts.status_code == 201
+        ot = await client.post(
+            "/api/v1/hr/overtime",
+            json={
+                "employee_id": emp_id,
+                "work_date": "2026-06-04",
+                "requested_hours": "2.00",
+                "reason": "Synthetic extra shift",
+            },
+            headers=_auth(recorder),
+        )
+        assert ot.status_code == 201
+        for route, row in (
+            ("attendance", att), ("attendance/corrections", corr),
+            ("timesheets", ts), ("overtime", ot),
+        ):
+            detail_path = f"/api/v1/hr/{route}/{row.json()['id']}"
+            detail = await client.get(detail_path, headers=_auth(tok))
+            assert detail.status_code == 200
+            assert detail.headers["cache-control"] == "no-store"
+            assert detail.json()["id"] == row.json()["id"]
+            assert detail.json()["employee_id"] == emp_id
+            assert (await client.get(detail_path, headers=_auth(staff))).status_code == 403
+            missing = await client.get(f"/api/v1/hr/{route}/{uuid4()}", headers=_auth(tok))
+            assert missing.status_code == 404
         assert (
             await client.post(
                 f"/api/v1/hr/timesheets/{ts.json()['id']}/decision",
@@ -2734,6 +2758,7 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
                 json={
                     "decision": "cancelled",
                     "expected_revision": 6,
+                    "notes": "Synthetic entitlement restored on cancellation",
                 },
             )
         ).status_code == 200
@@ -3025,14 +3050,42 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         bal1_item = next(item for item in bal1 if item["leave_type_id"] == lt_id)
         assert float(bal1_item["balance_days"]) == pytest.approx(12.0)
 
-        # Cancel approved leave -> reverses ledger back to 14 days
+        decision_path = f"/api/v1/hr/leave/requests/{lr_id}/decision"
         assert (
-            await client.post(
-                f"/api/v1/hr/leave/requests/{lr_id}/decision",
-                json={"decision": "cancelled"},
-                headers=_auth(hrm_tok),
+            await client.post(decision_path, json={"decision": "cancelled"}, headers=_auth(hrm_tok))
+        ).status_code == 422
+        reversal = {"decision": "cancelled", "notes": "Verified schedule change"}
+        assert (await client.post(decision_path, json=reversal, headers=staff)).status_code == 403
+        assert (await client.post(
+            f"/api/v1/hr/me/leave-requests/{lr_id}/cancel", headers=staff
+        )).status_code == 409
+        async with AsyncSessionLocal() as session:
+            debit = await session.scalar(
+                select(HrLeaveLedger).where(HrLeaveLedger.reference_request_id == UUID(lr_id))
             )
-        ).status_code == 200
+            assert debit is not None
+            debit_id = debit.id
+            debit.days_delta = Decimal("-1.00")
+            await session.commit()
+        inconsistent = await client.post(decision_path, json=reversal, headers=_auth(hrm_tok))
+        assert inconsistent.status_code == 409 and "ledger debit" in inconsistent.json()["detail"]
+        async with AsyncSessionLocal() as session:
+            debit = await session.get(HrLeaveLedger, debit_id)
+            assert debit is not None
+            debit.days_delta = Decimal("-2.00")
+            await session.commit()
+        reversals = await asyncio.gather(*(
+            client.post(decision_path, json=reversal, headers=_auth(hrm_tok)) for _ in range(2)
+        ))
+        assert sorted(response.status_code for response in reversals) == [200, 409]
+        async with AsyncSessionLocal() as session:
+            entries = (await session.scalars(
+                select(HrLeaveLedger).where(HrLeaveLedger.reference_request_id == UUID(lr_id))
+            )).all()
+            assert sorted((entry.entry_type, entry.days_delta) for entry in entries) == [
+                ("reversal", Decimal("2.00")), ("taken", Decimal("-2.00")),
+            ]
+            assert next(entry.id for entry in entries if entry.entry_type == "taken") == debit_id
         bal2 = (
             await client.get(
                 f"/api/v1/hr/leave/balances/{emp_id}?leave_year=2026", headers=_auth(hrm_tok)
@@ -3314,6 +3367,120 @@ async def test_hr_service_request_owner_can_reopen_with_current_version() -> Non
 
 
 @pytest.mark.asyncio
+async def test_hr_salary_confirmation_uses_current_approved_compensation(monkeypatch) -> None:
+    from app.utils.permissions import (
+        PERMISSION_HR_PAYROLL_APPROVE,
+        PERMISSION_HR_PAYROLL_SENSITIVE,
+        ROLE_PERMISSIONS,
+    )
+
+    await skip_if_database_unavailable()
+    _, maker_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    owner_id, owner_email, _ = await _create_portal_user("quantity_surveyor", password)
+    _, outsider_email, _ = await _create_portal_user("quantity_surveyor", password)
+    _, director_email, _ = await _create_portal_user("managing_director", password)
+    original = ROLE_PERMISSIONS["hr_manager"]
+    monkeypatch.setitem(
+        ROLE_PERMISSIONS, "hr_manager",
+        original | {PERMISSION_HR_PAYROLL_APPROVE, PERMISSION_HR_PAYROLL_SENSITIVE},
+    )
+    base = "/api/v1/hr"
+    async with _client() as client:
+        maker, reviewer, owner, outsider, director = [
+            _auth(await _login(client, email, password))
+            for email in (maker_email, reviewer_email, owner_email, outsider_email, director_email)
+        ]
+        employee = await client.post(f"{base}/employees", headers=maker, json={
+            "employee_code": f"SAL-{uuid4().hex[:12]}", "first_name": "Synthetic",
+            "last_name": "Salary Letter", "work_email": owner_email, "employment_status": "active",
+        })
+        assert employee.status_code == 201
+        employee_id = employee.json()["id"]
+        employee_path = f"{base}/employees/{employee_id}"
+        assert (await client.post(
+            f"{employee_path}/link-account", headers=director, json={"user_id": owner_id}
+        )).status_code == 200
+        template = await client.post(f"{base}/letter-templates", headers=maker, json={
+            "code": f"SAL-{uuid4().hex[:12]}", "name": "Salary confirmation",
+            "letter_type": "salary_confirmation", "subject_template": "For {full_name}",
+            "body_template": "Base compensation {salary_currency} {base_salary}, {pay_frequency}.",
+        })
+        assert template.status_code == 201
+        selection = {"template_id": template.json()["id"], "employee_id": employee_id}
+        render = f"{base}/letters/render"
+        assert (await client.post(render, headers=maker, json=selection)).status_code == 409
+        assert (await client.post(render, headers=maker, json={
+            **selection, "extra_vars": {"base_salary": "1"}
+        })).status_code == 422
+
+        async def approve_term(effective_from: str, *, salary: str = "23456.78") -> str:
+            term = await client.post(f"{base}/compensation", headers=maker, json={
+                "employee_id": employee_id, "effective_from": effective_from, "currency": "LKR",
+                "base_salary": salary, "pay_frequency": "monthly",
+            })
+            assert term.status_code == 201
+            term_id = term.json()["id"]
+            assert (await client.post(
+                f"{base}/compensation/{term_id}/decision", headers=reviewer,
+                json={"decision": "approve"},
+            )).status_code == 200
+            return str(term_id)
+
+        async def preview() -> str:
+            response = await client.post(render, headers=maker, json=selection)
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "no-store"
+            assert response.json()["body"] == "Base compensation LKR 23456.78, monthly."
+            return str(response.json()["digest"])
+
+        async def save(digest: str) -> str:
+            draft_id = str(uuid4())
+            result = await client.post(f"{base}/letters/drafts", headers=maker, json={
+                **selection, "expected_digest": digest, "draft_id": draft_id,
+            })
+            assert result.status_code == 201
+            return draft_id
+
+        first_source = await approve_term("2021-01-01")
+        await approve_term("2090-01-01", salary="99999.99")
+        old_digest = await preview()
+        stale = await save(old_digest)
+        stale_path = f"{employee_path}/letters/{stale}/decision"
+        current_source = await approve_term("2022-01-01")
+        current_digest = await preview()
+        assert current_digest != old_digest
+        assert (await client.post(
+            stale_path, headers=reviewer, json={"decision": "issued"}
+        )).status_code == 409
+        letter_id = await save(current_digest)
+        manager_path = f"{employee_path}/letters/{letter_id}"
+        employee_letter = f"{base}/me/letters/{letter_id}"
+        assert (await client.get(employee_letter, headers=owner)).status_code == 404
+        assert (await client.post(
+            f"{manager_path}/decision", headers=maker, json={"decision": "issued"}
+        )).status_code == 403
+        issued = await client.post(
+            f"{manager_path}/decision", headers=reviewer, json={"decision": "issued"}
+        )
+        assert issued.status_code == 200
+        own_letter = await client.get(employee_letter, headers=owner)
+        assert own_letter.status_code == 200 and own_letter.json()["body"] == issued.json()["body"]
+        assert (await client.get(employee_letter, headers=outsider)).status_code == 404
+        monkeypatch.setitem(ROLE_PERMISSIONS, "hr_manager", original)
+        assert (await client.get(manager_path, headers=reviewer)).status_code == 404
+        assert (await client.get(f"{employee_path}/letters", headers=reviewer)).json()["total"] == 0
+        assert (await client.get(employee_letter, headers=owner)).status_code == 200
+
+    async with AsyncSessionLocal() as session:
+        old = await session.get(HrIssuedLetter, UUID(stale))
+        saved = await session.get(HrIssuedLetter, UUID(letter_id))
+        assert old is not None and old.compensation_term_id == UUID(first_source)
+        assert saved is not None and saved.compensation_term_id == UUID(current_source)
+        assert "23456.78" not in saved.content_encrypted
+
+
+@pytest.mark.asyncio
 async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> None:
     await skip_if_database_unavailable()
     today = date(2026, 11, 16)
@@ -3396,18 +3563,7 @@ async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> No
             json={"template_id": tpl.json()["id"], "employee_id": emp_id},
             headers=_auth(hrm_tok),
         )
-        assert rendered.status_code == 200
-        assert "Exit User" in rendered.json()["body"]
-        override = await client.post(
-            "/api/v1/hr/letters/render",
-            json={
-                "template_id": tpl.json()["id"],
-                "employee_id": emp_id,
-                "extra_vars": {"full_name": "different employee"},
-            },
-            headers=_auth(hrm_tok),
-        )
-        assert override.status_code == 422
+        assert rendered.status_code == 403
         malformed = await client.post(
             "/api/v1/hr/letter-templates",
             json={
@@ -3421,7 +3577,6 @@ async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> No
         )
         assert malformed.status_code == 422
 
-        assert rendered.json()["digest"] is None
         published_template = await client.post(
             "/api/v1/hr/letter-templates",
             json={
@@ -3439,6 +3594,12 @@ async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> No
             "employee_id": emp_id,
             "extra_vars": {"purpose": "Synthetic <b>literal</b> confidential use."},
         }
+        override = await client.post(
+            "/api/v1/hr/letters/render",
+            json={**letter, "extra_vars": {"full_name": "different employee"}},
+            headers=_auth(hrm_tok),
+        )
+        assert override.status_code == 422
         preview = await client.post(
             "/api/v1/hr/letters/render", json=letter, headers=_auth(hrm_tok)
         )
@@ -4550,6 +4711,11 @@ async def test_hr_employment_change_independent_dated_and_applied_once(monkeypat
         assert (await client.post(decide, headers=creator, json=approve)).status_code == 403
         accepted = await client.post(decide, headers=reviewer, json=approve)
         assert accepted.status_code == 200, accepted.text
+        queue = f"{base}/employment-changes/due"
+        assert (await client.get(queue, headers=viewer)).status_code == 403
+        before_due = await client.get(queue, headers=reviewer)
+        assert before_due.json()["as_of"] == first_day.isoformat()
+        assert proposed["id"] not in {row["id"] for row in before_due.json()["items"]}
         assert (await client.post(decide, headers=reviewer, json=approve)).json() == accepted.json()
         unchanged = (await client.get(employee_path, headers=creator)).json()
         assert unchanged["manager_employee_id"] == old_manager["id"]
@@ -4558,11 +4724,26 @@ async def test_hr_employment_change_independent_dated_and_applied_once(monkeypat
         assert (await client.post(apply, headers=creator)).status_code == 409
 
         current_day = due
+        due_page = await client.get(queue, headers=reviewer, params={"limit": 50})
+        assert due_page.status_code == 200 and due_page.headers["Cache-Control"] == "no-store"
+        assert due_page.json()["as_of"] == due.isoformat()
+        assert next(row for row in due_page.json()["items"] if row["id"] == proposed["id"]) == {
+            "id": proposed["id"], "employee_id": worker_id,
+            "employee_code": worker["employee_code"], "change_type": "transfer",
+            "effective_date": due.isoformat(), "revision_matches": True,
+        }
+        first_page = await client.get(queue, headers=reviewer, params={"limit": 1})
+        next_page = await client.get(queue, headers=reviewer, params={"limit": 1, "offset": 1})
+        assert first_page.json()["items"] == due_page.json()["items"][:1]
+        assert next_page.json()["items"] == due_page.json()["items"][1:2]
+        assert next_page.json()["total"] == due_page.json()["total"]
         applies = await asyncio.gather(
             client.post(apply, headers=creator), client.post(apply, headers=reviewer)
         )
         assert all(result.status_code == 200 for result in applies), [r.text for r in applies]
         assert applies[0].json() == applies[1].json()
+        after_apply = (await client.get(queue, headers=reviewer)).json()["items"]
+        assert proposed["id"] not in {row["id"] for row in after_apply}
         changed = (await client.get(employee_path, headers=creator)).json()
         assert changed["manager_employee_id"] == next_manager["id"]
         assert changed["line_manager_reviewer_id"] is None
@@ -4599,6 +4780,10 @@ async def test_hr_employment_change_independent_dated_and_applied_once(monkeypat
             },
         )
         assert moved.status_code == 200
+        due_stale = (await client.get(queue, headers=reviewer)).json()["items"]
+        assert not next(
+            row for row in due_stale if row["id"] == amended.json()["id"]
+        )["revision_matches"]
         assert (await client.post(f"{amendment}/apply", headers=reviewer)).status_code == 409
         results = await client.get(path, headers=creator)
         assert results.json()["total"] == 2
@@ -4868,11 +5053,18 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         "administrative_executive",
         ROLE_PERMISSIONS["administrative_executive"] | {PERMISSION_HR_PAYROLL_PREPARE},
     )
+    monkeypatch.setitem(
+        ROLE_PERMISSIONS,
+        "operations_director",
+        ROLE_PERMISSIONS["operations_director"]
+        | {PERMISSION_HR_PAYROLL_APPROVE, PERMISSION_HR_PAYROLL_SENSITIVE},
+    )
     _, preparer_email, password = await _create_portal_user("hr_manager")
     _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
     other_user, other_email, _ = await _create_portal_user("administrative_executive", password)
     owner_user, owner_email, _ = await _create_portal_user("quantity_surveyor", password)
     _, director_email, _ = await _create_portal_user("managing_director", password)
+    _, approval_only_email, _ = await _create_portal_user("operations_director", password)
     base = "/api/v1/hr"
     payroll = f"{base}/payroll"
 
@@ -4882,6 +5074,7 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         other = _auth(await _login(client, other_email, password))
         owner = _auth(await _login(client, owner_email, password))
         director = _auth(await _login(client, director_email, password))
+        approval_only = _auth(await _login(client, approval_only_email, password))
         employee = await client.post(
             f"{base}/employees",
             headers=preparer,
@@ -4923,8 +5116,8 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             )
         ).status_code == 200
 
-        async def term(start: str, amount: str, target: str = employee_id) -> str:
-            result = await client.post(
+        async def propose_term(start: str, amount: str, target: str = employee_id):
+            return await client.post(
                 f"{base}/compensation",
                 headers=preparer,
                 json={
@@ -4935,11 +5128,40 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
                     "currency": "LKR",
                 },
             )
-            assert result.status_code == 201, result.text
-            return result.json()["id"]
 
-        frozen_term = await term("2025-01-01", "100.05")
+        async def term_decision(term_id: str, actor, decision="approve", **fields):
+            return await client.post(
+                f"{base}/compensation/{term_id}/decision",
+                headers=actor,
+                json={"decision": decision, **fields},
+            )
+
+        async def term(start: str, amount: str, target: str = employee_id) -> str:
+            result = await propose_term(start, amount, target)
+            assert result.status_code == 201, result.text
+            assert result.json()["approval_status"] == "proposed"
+            assert result.json()["approved_by_id"] is None
+            assert result.json()["base_salary_plain"] is None
+            assert result.headers["cache-control"] == "no-store"
+            term_id = result.json()["id"]
+            approved_term = await term_decision(term_id, reviewer)
+            assert approved_term.status_code == 200, approved_term.text
+            assert approved_term.json()["approval_status"] == "approved"
+            return term_id
+
+        frozen_term = await term("2024-12-01", "100.05")
         await term("2025-02-01", "500.00")
+        assert (await propose_term("2025-02-01", "700.00")).status_code == 409
+        assert (await propose_term("2025-02-02", "NaN")).status_code == 422
+        pending_term = await propose_term("2025-01-15", "999.99")
+        assert pending_term.status_code == 201, pending_term.text
+        pending_id = pending_term.json()["id"]
+        assert (await term_decision(pending_id, preparer)).status_code == 403
+        assert (await term_decision(pending_id, other)).status_code == 403
+        assert (await propose_term("2025-01-16", "900")).status_code == 409
+        assert (
+            await client.get(f"{base}/compensation/{employee_id}", headers=director)
+        ).status_code == 403
         zero_employee = await client.post(
             f"{base}/employees",
             headers=preparer,
@@ -4992,18 +5214,88 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
                 f"{payroll}/policies/{unsupported.json()['id']}/approve", headers=reviewer
             )
         ).status_code == 422
+        worked_example = {
+            "base_salary": "100.05", "earnings": "0.00", "extra_deductions": "0.00",
+            "expected_gross": "100.05", "expected_deductions": "10.01", "expected_net": "90.04",
+        }
+        controlled_record = {
+            "document_reference": "HR-POL-FIXTURE",
+            "version": "1.2",
+            "effective_from": "2025-01-01",
+            "approval_reference": "HR-DECISION-FIXTURE",
+            "worked_examples": [worked_example],
+        }
+        policy_payload = {
+            "code": f"PAY-{uuid4().hex[:8]}",
+            "name": "Synthetic payroll",
+            "rules_json": rules,
+            "controlled_record": controlled_record,
+        }
+        invalid_record = {**controlled_record, "document_reference": "https://example.invalid"}
+        assert (await client.post(
+            f"{payroll}/policies", headers=preparer,
+            json={**policy_payload, "controlled_record": invalid_record},
+        )).status_code == 422
+        wrong_example = await client.post(
+            f"{payroll}/policies", headers=preparer, json={
+                **policy_payload, "code": f"PAY-EXAMPLE-{uuid4().hex[:8]}",
+                "controlled_record": {
+                    **controlled_record,
+                    "worked_examples": [{
+                        **worked_example, "expected_net": "90.05",
+                    }],
+                },
+            },
+        )
+        assert wrong_example.status_code == 201
+        wrong_policy = f"{payroll}/policies/{wrong_example.json()['id']}"
+        old_version = {"expected_updated_at": wrong_example.json()["updated_at"]}
+        mismatch = await client.post(f"{wrong_policy}/approve", headers=reviewer, json=old_version)
+        assert mismatch.status_code == 422
+        assert mismatch.json()["error_code"] == "PAYROLL_EXAMPLE_MISMATCH"
+        assert (await client.get(wrong_policy, headers=reviewer)).json()["is_approved"] is False
+        correction = {
+            **old_version, "name": policy_payload["name"], "rules_json": rules,
+            "controlled_record": controlled_record,
+        }
+        denied_edit = await client.put(f"{wrong_policy}/draft", headers=other, json=correction)
+        assert denied_edit.status_code == 403
+        corrected = await client.put(f"{wrong_policy}/draft", headers=preparer, json=correction)
+        assert corrected.status_code == 200
+        assert corrected.json()["id"] == wrong_example.json()["id"]
+        assert corrected.json()["updated_at"] != old_version["expected_updated_at"]
+        stale_edit = await client.put(f"{wrong_policy}/draft", headers=preparer, json=correction)
+        assert stale_edit.status_code == 409
+        stale_review = await client.post(
+            f"{wrong_policy}/approve", headers=reviewer, json=old_version
+        )
+        assert stale_review.status_code == 409
+        assert stale_review.json()["error_code"] == "PAYROLL_POLICY_REVIEW_STALE"
+        current_review = {"expected_updated_at": corrected.json()["updated_at"]}
+        assert (await client.post(
+            f"{wrong_policy}/approve", headers=reviewer, json=current_review
+        )).status_code == 200
+        assert (await client.put(
+            f"{wrong_policy}/draft", headers=preparer, json={**correction, **current_review}
+        )).status_code == 409
         policy = await client.post(
             f"{payroll}/policies",
             headers=preparer,
-            json={
-                "code": f"PAY-{uuid4().hex[:8]}",
-                "name": "Synthetic payroll",
-                "rules_json": rules,
-            },
+            json=policy_payload,
         )
         assert policy.status_code == 201, policy.text
         policy_id = policy.json()["id"]
-        policy_approval = f"{payroll}/policies/{policy_id}/approve"
+        policy_detail = f"{payroll}/policies/{policy_id}"
+        reviewed_policy = await client.get(policy_detail, headers=reviewer)
+        assert reviewed_policy.status_code == 200
+        assert reviewed_policy.headers["cache-control"] == "no-store"
+        assert reviewed_policy.json()["rules_json"] == rules
+        assert reviewed_policy.json()["controlled_record"] == controlled_record
+        assert reviewed_policy.json()["is_approved"] is False
+        assert (await client.get(policy_detail, headers=other)).status_code == 403
+        missing_policy = await client.get(f"{payroll}/policies/{uuid4()}", headers=reviewer)
+        assert missing_policy.status_code == 404
+        policy_approval = f"{policy_detail}/approve"
         assert (await client.post(policy_approval, headers=preparer)).status_code == 409
 
         async def draft() -> str:
@@ -5015,12 +5307,37 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             assert run.status_code == 201, run.text
             return f"{payroll}/runs/{run.json()['id']}"
 
-        first, second = await draft(), await draft()
+        first = await draft()
         roster = {"employee_ids": [employee_id, zero_id]}
         assert (
             await client.post(f"{first}/calculate", headers=preparer, json=roster)
         ).status_code == 409
-        assert (await client.post(policy_approval, headers=reviewer)).status_code == 200
+        assert (await client.post(
+            policy_approval, headers=reviewer,
+            json={"expected_updated_at": reviewed_policy.json()["updated_at"]},
+        )).status_code == 200
+        future_policy = await client.post(
+            f"{payroll}/policies", headers=preparer, json={
+                **policy_payload, "code": f"PAY-FUTURE-{uuid4().hex[:8]}",
+                "controlled_record": {**controlled_record, "effective_from": "2025-01-02"},
+            },
+        )
+        assert future_policy.status_code == 201
+        future_policy_id = future_policy.json()["id"]
+        assert (await client.post(
+            f"{payroll}/policies/{future_policy_id}/approve", headers=reviewer,
+            json={"expected_updated_at": future_policy.json()["updated_at"]},
+        )).status_code == 200
+        future_run = await client.post(
+            f"{payroll}/runs", headers=preparer,
+            json={"payroll_period_id": period_id, "policy_id": future_policy_id},
+        )
+        assert future_run.status_code == 201
+        premature = await client.post(
+            f"{payroll}/runs/{future_run.json()['id']}/calculate", headers=preparer, json=roster,
+        )
+        assert premature.status_code == 409
+        assert premature.json()["error_code"] == "PAYROLL_POLICY_NOT_EFFECTIVE"
         duplicate = {"employee_ids": [employee_id, employee_id]}
         assert (
             await client.post(f"{first}/calculate", headers=preparer, json=duplicate)
@@ -5041,6 +5358,7 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         assert snapshot.status_code == 200, snapshot.text
         assert snapshot.headers["cache-control"] == "no-store"
         payload = snapshot.json()
+        assert payload["controlled_policy_record"] == controlled_record
         assert (payload["gross"], payload["deductions"], payload["net"]) == (
             "100.05",
             "10.01",
@@ -5053,10 +5371,182 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             == frozen_term
         )
 
-        competitor = await client.post(f"{second}/calculate", headers=preparer, json=roster)
-        assert competitor.status_code == 200, competitor.text
-        # A later compensation backfill cannot alter the existing snapshot.
-        await term("2025-01-10", "700.00")
+        adjustment_policy = await client.post(
+            f"{payroll}/policies", headers=preparer,
+            json={
+                "code": f"PAY-ADJ-{uuid4().hex[:8]}",
+                "name": "Synthetic reviewed adjustments policy",
+                "rules_json": {
+                    **rules, "calculation_basis": "base_salary_with_reviewed_adjustments"
+                },
+            },
+        )
+        assert adjustment_policy.status_code == 201
+        adjusted_policy_id = adjustment_policy.json()["id"]
+        assert (await client.post(
+            f"{payroll}/policies/{adjusted_policy_id}/approve", headers=reviewer
+        )).status_code == 200
+        adjusted_run = await client.post(
+            f"{payroll}/runs", headers=preparer,
+            json={"payroll_period_id": period_id, "policy_id": adjusted_policy_id},
+        )
+        assert adjusted_run.status_code == 201
+        adjusted = f"{payroll}/runs/{adjusted_run.json()['id']}"
+        input_path = f"{adjusted}/adjustments"
+        request = {
+            "adjustment_id": str(uuid4()), "employee_id": employee_id,
+            "kind": "earning", "amount": "12.50", "evidence_reference": "SYNTH-EARNING-1",
+        }
+        assert (await client.post(input_path, headers=other, json=request)).status_code == 403
+        earning = await client.post(input_path, headers=preparer, json=request)
+        assert earning.status_code == 200, earning.text
+        assert earning.headers["cache-control"] == "no-store"
+        assert earning.json() == (await client.post(
+            input_path, headers=preparer, json=request
+        )).json()
+        changed = await client.post(
+            input_path, headers=preparer, json={**request, "amount": "12.51"}
+        )
+        assert changed.status_code == 409
+        duplicate_input = await client.post(
+            input_path, headers=preparer, json={**request, "adjustment_id": str(uuid4())}
+        )
+        assert duplicate_input.status_code == 409
+        assert (await client.get(input_path, headers=owner)).status_code == 403
+        assert (await client.post(
+            f"{adjusted}/calculate", headers=preparer, json=roster
+        )).status_code == 409
+        decision_path = f"{input_path}/{request['adjustment_id']}/decision"
+        decision = {"expected_digest": earning.json()["digest"], "decision": "approved"}
+        response = await client.post(decision_path, headers=preparer, json=decision)
+        assert response.status_code == 403
+        assert (await client.post(
+            decision_path, headers=reviewer, json={**decision, "expected_digest": "0" * 64}
+        )).status_code == 409
+        response = await client.post(decision_path, headers=reviewer, json=decision)
+        assert response.status_code == 200
+        for reference, amount, outcome in (
+            ("SYNTH-DEDUCTION-1", "2.50", "approved"),
+            ("SYNTH-REJECTED-1", "500.00", "rejected"),
+        ):
+            proposal_id = str(uuid4())
+            proposal = await client.post(
+                input_path, headers=preparer,
+                json={
+                    **request, "adjustment_id": proposal_id, "kind": "deduction",
+                    "amount": amount, "evidence_reference": reference,
+                },
+            )
+            assert proposal.status_code == 200
+            assert (await client.post(
+                f"{input_path}/{proposal_id}/decision", headers=reviewer,
+                json={"expected_digest": proposal.json()["digest"], "decision": outcome},
+            )).status_code == 200
+        assert (await client.post(
+            f"{adjusted}/calculate", headers=preparer, json={"employee_ids": [zero_id]}
+        )).status_code == 409
+        frozen = await client.post(f"{adjusted}/calculate", headers=preparer, json=roster)
+        assert frozen.status_code == 200, frozen.text
+        assert (await client.post(
+            input_path, headers=preparer, json={**request, "adjustment_id": str(uuid4())}
+        )).status_code == 409
+        adjusted_snapshot = (await client.get(f"{adjusted}/snapshot", headers=reviewer)).json()
+        assert (adjusted_snapshot["gross"], adjusted_snapshot["deductions"],
+                adjusted_snapshot["net"]) == ("112.55", "12.51", "100.04")
+        frozen_line = next(
+            row for row in adjusted_snapshot["lines"] if row["employee_id"] == employee_id
+        )
+        assert {item["evidence_reference"] for item in frozen_line["adjustments"]} == {
+            "SYNTH-EARNING-1", "SYNTH-DEDUCTION-1"
+        }
+
+        await _publish_leave_calendar(client, preparer, reviewer, "2025-01-01", "2025-01-31")
+        leave_type = await client.post(
+            f"{base}/leave/types", headers=preparer,
+            json={"code": f"INPUT-{uuid4().hex[:8]}", "name": "Synthetic unpaid", "is_paid": False},
+        )
+        assert leave_type.status_code == 201
+        leave_request = await client.post(
+            f"{base}/leave/requests", headers=preparer, json={
+                "employee_id": employee_id, "leave_type_id": leave_type.json()["id"],
+                "start_date": "2025-01-07", "end_date": "2025-01-07", "submit_immediately": True,
+            },
+        )
+        assert leave_request.status_code == 201
+        leave_decision = f"{base}/leave/requests/{leave_request.json()['id']}/decision"
+        approved_leave = await client.post(
+            leave_decision, headers=reviewer, json={"decision": "approved"}
+        )
+        assert approved_leave.status_code == 200
+
+        sheet = await client.post(
+            f"{base}/timesheets", headers=preparer, json={
+                "employee_id": employee_id, "period_start": "2025-01-06",
+                "period_end": "2025-01-10", "regular_hours": "32.00", "submit": True,
+            },
+        )
+        assert sheet.status_code == 201
+        for status in ("approved", "locked"):
+            result = await client.post(
+                f"{base}/timesheets/{sheet.json()['id']}/decision",
+                headers=reviewer, json={"decision": status},
+            )
+            assert result.status_code == 200
+
+        source_roster = {"employee_ids": [employee_id]}
+        source_paths = {
+            kind: f"{payroll}/periods/{period_id}/{kind}-inputs/preview"
+            for kind in ("time", "leave")
+        }
+        source_digests = {}
+        for kind, source_path in source_paths.items():
+            preview = await client.post(source_path, headers=preparer, json=source_roster)
+            assert preview.status_code == 200 and preview.json()["issues"] == []
+            source_digests[f"{kind}_sha256"] = preview.json()["csv_sha256"]
+        assert (await client.post(
+            source_paths["leave"], headers=approval_only, json=source_roster
+        )).status_code == 403
+        sourced_run = await draft()
+        observed = await client.post(
+            f"{sourced_run}/calculate", headers=preparer,
+            json={**source_roster, "source_evidence": source_digests},
+        )
+        assert observed.status_code == 200
+        source_confirmation = {"expected_snapshot_digest": observed.json()["snapshot_digest"]}
+        frozen_csv = await client.get(
+            f"{sourced_run}/snapshot/sources/leave", headers=approval_only
+        )
+        assert frozen_csv.status_code == 200
+        assert (await client.post(
+            leave_decision, headers=reviewer, json={
+                "decision": "cancelled", "notes": "Synthetic change after calculation",
+                "expected_revision": approved_leave.json()["record_revision"],
+            },
+        )).status_code == 200
+        after_reversal = await client.post(
+            source_paths["leave"], headers=preparer, json=source_roster,
+        )
+        assert after_reversal.json()["unpaid_days"] == "0.00"
+        assert after_reversal.json()["csv_sha256"] != source_digests["leave_sha256"]
+        stale_approval = await client.post(
+            f"{sourced_run}/approve", headers=approval_only, json=source_confirmation,
+        )
+        assert stale_approval.status_code == 409, stale_approval.text
+        assert stale_approval.json()["error_code"] == "PAYROLL_SOURCES_CHANGED"
+        retained = await client.get(f"{sourced_run}/snapshot", headers=approval_only)
+        assert retained.json()["status"] == "calculated"
+        assert retained.json()["digest"] == source_confirmation["expected_snapshot_digest"]
+        assert (await client.get(
+            f"{sourced_run}/snapshot/sources/leave", headers=approval_only
+        )).content == frozen_csv.content
+
+        assert (await term_decision(pending_id, reviewer, "reject")).status_code == 422
+        rejection = await term_decision(
+            pending_id, reviewer, "reject", reason="Synthetic private review"
+        )
+        assert rejection.status_code == 200 and rejection.json()["approval_status"] == "rejected"
+        assert rejection.json()["rejection_reason"] is None
+        assert (await term_decision(pending_id, reviewer)).status_code == 409
         retried = await client.post(f"{first}/calculate", headers=preparer, json=roster)
         assert retried.json()["snapshot_digest"] == digest
         assert (await client.get(f"{first}/snapshot", headers=reviewer)).json() == payload
@@ -5112,14 +5602,34 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             line.net_encrypted = original
             await session.commit()
 
-        approvals = await asyncio.gather(
-            client.post(f"{first}/approve", headers=reviewer, json=confirmation),
-            client.post(
-                f"{second}/approve",
-                headers=reviewer,
-                json={"expected_snapshot_digest": competitor.json()["snapshot_digest"]},
-            ),
+        # A different approved term requires a new run even when the amount is identical.
+        replacement_term = await term("2025-01-01", "100.05")
+        stale_term = await client.post(
+            f"{first}/approve", headers=approval_only, json=confirmation
         )
+        assert stale_term.status_code == 409, stale_term.text
+        assert stale_term.json()["error_code"] == "PAYROLL_COMPENSATION_CHANGED"
+        assert (await client.get(f"{first}/snapshot", headers=reviewer)).json() == payload
+        assert (
+            await client.post(f"{first}/calculate", headers=preparer, json=roster)
+        ).json()["snapshot_digest"] == digest
+
+        ready = {}
+        for _ in range(2):
+            fresh = await draft()
+            calculated = await client.post(f"{fresh}/calculate", headers=preparer, json=roster)
+            assert calculated.status_code == 200
+            fresh_snapshot = (await client.get(f"{fresh}/snapshot", headers=reviewer)).json()
+            assert next(
+                line["term_id"] for line in fresh_snapshot["lines"]
+                if line["employee_id"] == employee_id
+            ) == replacement_term
+            ready[fresh] = {"expected_snapshot_digest": calculated.json()["snapshot_digest"]}
+
+        approvals = await asyncio.gather(*(
+            client.post(f"{candidate}/approve", headers=reviewer, json=approval)
+            for candidate, approval in ready.items()
+        ))
         assert sorted(item.status_code for item in approvals) == [200, 409]
         approved = next(item for item in approvals if item.status_code == 200)
         winner = f"{payroll}/runs/{approved.json()['id']}"
@@ -5129,6 +5639,41 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             json={"expected_snapshot_digest": approved.json()["snapshot_digest"]},
         )
         assert repeated.status_code == 200 and repeated.json() == approved.json()
+        locked_term = await propose_term("2025-01-12", "685.55")
+        assert locked_term.status_code == 201, locked_term.text
+        locked_term_id = locked_term.json()["id"]
+        assert (await term_decision(locked_term_id, reviewer)).status_code == 409
+        assert (
+            await term_decision(locked_term_id, reviewer, "reject", reason="Locked period")
+        ).status_code == 200
+        future_term = await term("2099-02-01", "1000.00")
+        history = await client.get(f"{base}/compensation/{employee_id}", headers=reviewer)
+        assert history.status_code == 200 and history.headers["cache-control"] == "no-store"
+        active = [row for row in history.json()["items"] if row["is_current"]]
+        assert [row["effective_from"] for row in active] == ["2025-02-01"]
+        assert all(row["base_salary_plain"] is None for row in history.json()["items"])
+        private_history = await client.get(
+            f"{base}/compensation/{employee_id}",
+            headers=reviewer,
+            params={"reveal_sensitive": True},
+        )
+        assert private_history.status_code == 200
+        private_rows = {row["id"]: row for row in private_history.json()["items"]}
+        assert private_rows[future_term]["base_salary_plain"] == "1000.00"
+        assert private_rows[pending_id]["rejection_reason"] == "Synthetic private review"
+        one_term = await client.get(
+            f"{base}/compensation/{employee_id}",
+            headers=reviewer,
+            params={"reveal_sensitive": True, "term_id": pending_id},
+        )
+        assert one_term.status_code == 200
+        assert one_term.json() == {"items": [private_rows[pending_id]], "total": 1}
+        unrelated_term = await client.get(
+            f"{base}/compensation/{zero_id}",
+            headers=reviewer,
+            params={"reveal_sensitive": True, "term_id": pending_id},
+        )
+        assert unrelated_term.status_code == 404
         periods = (await client.get(f"{payroll}/periods", headers=preparer)).json()
         assert next(row for row in periods["items"] if row["id"] == period_id)["status"] == "locked"
         closed = await client.post(
@@ -5353,11 +5898,41 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
                 publish, headers=reviewer, json={"expected_snapshot_digest": "0" * 64}
             )
         ).status_code == 409
+        close = f"{winner}/close"
+        close_payload = {
+            **accepted_digest,
+            "expected_csv_sha256": quote["csv_sha256"],
+            "expected_settlement_digest": state["settlement_digest"],
+        }
+        assert (await client.post(close, headers=reviewer, json=close_payload)).status_code == 409
         releases = await asyncio.gather(
             *(client.post(publish, headers=reviewer, json=accepted_digest) for _ in range(2))
         )
         assert all(release.status_code == 200 for release in releases), [r.text for r in releases]
         assert releases[0].json() == releases[1].json()
+        assert (await client.post(close, headers=owner, json=close_payload)).status_code == 403
+        assert (await client.post(close, headers=preparer, json=close_payload)).status_code == 403
+        assert (await client.post(close, headers=reviewer, json=close_payload)).status_code == 409
+        repayment = event("paid", "90.04")
+        assert (await client.post(events_url, headers=reviewer, json=repayment)).status_code == 200
+        reconciled = (await client.get(settlement, headers=reviewer)).json()
+        assert reconciled["fully_reconciled"] and reconciled["closure"] is None
+        assert (await client.post(close, headers=reviewer, json=close_payload)).status_code == 409
+        close_payload["expected_settlement_digest"] = reconciled["settlement_digest"]
+        closures = await asyncio.gather(
+            *(client.post(close, headers=reviewer, json=close_payload) for _ in range(2))
+        )
+        assert all(row.status_code == 200 for row in closures), [row.text for row in closures]
+        assert closures[0].json() == closures[1].json()
+        assert closures[0].headers["cache-control"] == "no-store"
+        state = (await client.get(settlement, headers=reviewer)).json()
+        assert state["closure"] == closures[0].json()
+        assert (await client.post(events_url, headers=reviewer, json=repayment)).status_code == 200
+        late_reversal = event("reversed", "90.04", reverses_event_id=repayment["event_id"])
+        assert (
+            await client.post(events_url, headers=reviewer, json=late_reversal)
+        ).status_code == 409
+        assert (await client.get(export, headers=reviewer)).content == artifact.content
         assert (await client.get(payslip)).status_code == 401
         assert (await client.get(payslips, headers=other)).json()["total"] == 0
         assert (await client.get(payslip, headers=other)).status_code == 404
@@ -5381,6 +5956,79 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
             "net": "90.04",
         }
 
+        correction_path = f"{winner}/lines/{payment['payment_reference']}/corrections"
+        before_snapshot = (await client.get(f"{winner}/snapshot", headers=reviewer)).json()
+        assert before_snapshot["closed_at"]
+        assert (await client.get(correction_path, headers=owner)).status_code == 403
+        assert (await client.get(correction_path, headers=other)).status_code == 403
+        proposal_id = str(uuid4())
+        correction = {
+            **accepted_digest,
+            "correction_id": proposal_id,
+            "expected_previous_id": None,
+            "gross": "110.05",
+            "deductions": "11.01",
+            "evidence_reference": "PAY-CORR-PRIVATE-001",
+        }
+        submitted = await client.post(correction_path, headers=preparer, json=correction)
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.headers["cache-control"] == "no-store"
+        assert submitted.json()["net_delta"] == "9.00"
+        replay = await client.post(correction_path, headers=preparer, json=correction)
+        assert replay.json() == submitted.json()
+        duplicate_correction = await client.post(
+            correction_path, headers=preparer, json={**correction, "correction_id": str(uuid4())}
+        )
+        assert duplicate_correction.status_code == 409
+        payload = {"expected_digest": submitted.json()["digest"], "decision": "approved"}
+        decision_url = f"{correction_path}/{proposal_id}/decision"
+        assert (await client.post(decision_url, headers=preparer, json=payload)).status_code == 403
+        stale = await client.post(
+            decision_url, headers=reviewer, json={**payload, "expected_digest": "0" * 64}
+        )
+        assert stale.status_code == 409
+        accepted = await client.post(decision_url, headers=reviewer, json=payload)
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["status"] == "approved"
+        identical_decision = await client.post(decision_url, headers=reviewer, json=payload)
+        assert identical_decision.json() == accepted.json()
+        stale_proposal = await client.post(
+            correction_path, headers=preparer, json={**correction, "correction_id": str(uuid4())}
+        )
+        assert stale_proposal.status_code == 409
+        next_correction_id = str(uuid4())
+        successor = await client.post(
+            correction_path, headers=preparer,
+            json={
+                **correction, "correction_id": next_correction_id,
+                "expected_previous_id": proposal_id,
+                "gross": "108.05", "evidence_reference": "PAY-CORR-PRIVATE-002",
+            },
+        )
+        assert successor.status_code == 200, successor.text
+        assert successor.json()["baseline"]["net"] == "99.04"
+        assert successor.json()["net_delta"] == "-2.00"
+        approved_successor = await client.post(
+            f"{correction_path}/{next_correction_id}/decision", headers=reviewer,
+            json={"decision": "approved", "expected_digest": successor.json()["digest"]},
+        )
+        assert approved_successor.status_code == 200, approved_successor.text
+        detail_path = f"{correction_path}/{proposal_id}"
+        detail = await client.get(detail_path, headers=reviewer)
+        assert detail.status_code == 200 and detail.json() == accepted.json()
+        assert detail.headers["cache-control"] == "no-store"
+        assert (await client.get(detail_path, headers=owner)).status_code == 403
+        wrong_id = await client.get(f"{correction_path}/{uuid4()}", headers=reviewer)
+        assert wrong_id.status_code == 404
+        history = (await client.get(correction_path, headers=reviewer)).json()
+        assert history["current_correction_id"] == next_correction_id
+        assert history["baseline"]["net"] == "97.04"
+        assert history["total"] == 2
+        assert history["items"][0]["previous_id"] == proposal_id
+        assert (await client.get(payslip, headers=owner)).json() == slip.json()
+        assert (await client.get(export, headers=reviewer)).content == artifact.content
+        assert (await client.get(f"{winner}/snapshot", headers=reviewer)).json() == before_snapshot
+
         async with AsyncSessionLocal() as session:
             key = UUID(approved.json()["id"])
             publication = await session.get(HrPayslipPublication, key)
@@ -5399,6 +6047,46 @@ async def test_hr_payroll_snapshot_freezes_inputs_and_locks_one_approval(monkeyp
         assert (await client.get(payslip, headers=owner)).status_code == 409
         assert (await client.get(payslip, headers=other)).status_code == 404
 
+        zero_period = await client.post(
+            f"{payroll}/periods", headers=preparer,
+            json={
+                "period_code": f"ZERO-{uuid4().hex[:8]}",
+                "period_start": "2025-02-01",
+                "period_end": "2025-02-28",
+                "pay_date": "2025-03-01",
+            },
+        )
+        assert zero_period.status_code == 201, zero_period.text
+        zero_run = await client.post(
+            f"{payroll}/runs", headers=preparer,
+            json={"payroll_period_id": zero_period.json()["id"], "policy_id": policy_id},
+        )
+        assert zero_run.status_code == 201, zero_run.text
+        zero_path = f"{payroll}/runs/{zero_run.json()['id']}"
+        calculated = await client.post(
+            f"{zero_path}/calculate", headers=preparer, json={"employee_ids": [zero_id]}
+        )
+        assert calculated.status_code == 200, calculated.text
+        zero_digest = {"expected_snapshot_digest": calculated.json()["snapshot_digest"]}
+        for action in ("approve", "publish-payslips"):
+            response = await client.post(
+                f"{zero_path}/{action}", headers=reviewer, json=zero_digest
+            )
+            assert response.status_code == 200, response.text
+        zero_state = await client.get(f"{zero_path}/settlements", headers=reviewer)
+        assert zero_state.status_code == 200, zero_state.text
+        zero_summary = zero_state.json()
+        assert zero_summary["fully_reconciled"] and zero_summary["payments"] == []
+        zero_closed = await client.post(
+            f"{zero_path}/close", headers=reviewer,
+            json={
+                **zero_digest,
+                "expected_csv_sha256": zero_summary["csv_sha256"],
+                "expected_settlement_digest": zero_summary["settlement_digest"],
+            },
+        )
+        assert zero_closed.status_code == 200, zero_closed.text
+
 
 def test_hr_payroll_cli_confirms_snapshot_digest_and_reads_back(tmp_path, monkeypatch) -> None:
     from app.utils.permissions import (
@@ -5416,6 +6104,7 @@ def test_hr_payroll_cli_confirms_snapshot_digest_and_reads_back(tmp_path, monkey
     path = f"/api/v1/hr/payroll/runs/{run}"
     roster = tmp_path / "roster.json"
     roster.write_text(json.dumps([employee]), encoding="utf-8")
+    checksums = {"time_sha256": "b" * 64, "leave_sha256": "c" * 64}
     status = "draft"
     published_at = None
 
@@ -5435,7 +6124,9 @@ def test_hr_payroll_cli_confirms_snapshot_digest_and_reads_back(tmp_path, monkey
                 },
             )
         if request.url.path == f"{path}/calculate":
-            assert json.loads(request.content) == {"employee_ids": [employee]}
+            assert json.loads(request.content) == {
+                "employee_ids": [employee], "source_evidence": checksums
+            }
             status = "calculated"
         elif request.url.path == f"{path}/approve":
             assert json.loads(request.content) == {"expected_snapshot_digest": digest}
@@ -5487,7 +6178,9 @@ def test_hr_payroll_cli_confirms_snapshot_digest_and_reads_back(tmp_path, monkey
         assert not err.getvalue()
         return code, json.loads(out.getvalue())
 
-    args = ("calculate", "--roster-file", str(roster))
+    args: tuple[str, ...] = ("calculate", "--roster-file", str(roster))
+    assert call(*args, "--time-sha256", checksums["time_sha256"], "--dry-run")[0] != 0
+    args += ("--time-sha256", checksums["time_sha256"], "--leave-sha256", checksums["leave_sha256"])
     code, plan = call(*args, "--dry-run")
     assert code == 0 and status == "draft"
     code, result = call(*args, "--apply", "--expect", plan["data"]["plan_sha256"])
@@ -5691,6 +6384,279 @@ def test_hr_payroll_settlement_cli_binds_private_evidence_and_balance(
     code, result = call("--apply", "--expect", plan["data"]["plan_sha256"])
     assert code == 0 and result["data"]["id"] == event_id
     assert evidence not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    ("command", "route"),
+    [
+        (("attendance",), "attendance"),
+        (("attendance", "corrections"), "attendance/corrections"),
+        (("timesheets",), "timesheets"),
+        (("overtime",), "overtime"),
+    ],
+)
+def test_hr_time_cli_previews_private_input_and_binds_revision(
+    tmp_path, monkeypatch, command: tuple[str, ...], route: str,
+) -> None:
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "synthetic-time-cli")
+    employee, maker, reviewer, record = (str(uuid4()) for _ in range(4))
+    actor = maker
+    note = "SYNTHETIC PRIVATE HR TIME NOTE"
+    path = f"/api/v1/hr/{route}"
+    supports_revision = route != "attendance/corrections"
+    input_fields: dict[str, dict[str, str | bool]] = {
+        "attendance": {
+            "work_date": "2025-06-03", "attendance_status": "present",
+            "worked_hours": "7.50", "notes": note,
+        },
+        "attendance/corrections": {
+            "work_date": "2025-06-03", "requested_status": "present",
+            "requested_worked_hours": "7.50", "reason": note,
+        },
+        "timesheets": {
+            "period_start": "2025-06-03", "period_end": "2025-06-05",
+            "regular_hours": "23.00", "submit": True, "notes": note,
+        },
+        "overtime": {"work_date": "2025-06-03", "requested_hours": "2.00", "reason": note},
+    }
+    file = tmp_path / "private-time.json"
+    file.write_text(json.dumps({"employee_id": employee, **input_fields[route]}), encoding="utf-8")
+    file.chmod(0o600)
+    row: dict[str, str | int] = {
+        "id": record, "employee_id": employee, "status": "submitted", "notes": note,
+    }
+    if supports_revision:
+        row["record_revision"] = 2
+    written = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auth/me":
+            return httpx.Response(200, json={
+                "id": actor, "role": "hr_manager",
+                "permissions": ["hr:attendance:record", "hr:attendance:approve"],
+            })
+        if request.url.path == path and request.method == "POST":
+            payload = json.loads(request.content)
+            assert payload["employee_id"] == employee and actor == maker
+            assert note in payload.values()
+            written.append("create")
+            return httpx.Response(201, json=row)
+        if request.url.path == f"{path}/{record}" and request.method == "GET":
+            return httpx.Response(200, json=row)
+        if request.url.path == f"{path}/{record}/decision" and request.method == "POST":
+            payload = json.loads(request.content)
+            assert actor == reviewer and payload["decision"] == "approved"
+            if supports_revision:
+                assert payload["expected_revision"] == row["record_revision"]
+                row["record_revision"] = int(row["record_revision"]) + 1
+            else:
+                assert "expected_revision" not in payload
+            row["status"] = "approved"
+            written.append("decision")
+            return httpx.Response(200, json=row)
+        return httpx.Response(404)
+
+    def call(*args: str) -> tuple[int, dict]:
+        output = io.StringIO()
+        status = garrisonctl.run(
+            ["hr", *command, *args, "--file", str(file), "--json"],
+            transport=httpx.MockTransport(handler), stdout=output, stderr=io.StringIO(),
+        )
+        return status, json.loads(output.getvalue())
+
+    file.chmod(0o644)
+    assert call("create", "--dry-run")[0] != 0
+    file.chmod(0o600)
+    status, draft = call("create", "--dry-run")
+    assert status == 0 and not written and note not in json.dumps(draft)
+    status, result = call("create", "--apply", "--expect", draft["data"]["plan_sha256"])
+    assert status == 0 and result["data"]["status"] == "submitted"
+    assert note not in json.dumps(result)
+
+    actor = reviewer
+    file.write_text(json.dumps({"decision": "approved"}), encoding="utf-8")
+    decide = ("decide", "--record-id", record)
+    status, draft = call(*decide, "--dry-run")
+    assert status == 0 and note not in json.dumps(draft)
+    if supports_revision:
+        row["record_revision"] = int(row["record_revision"]) + 1
+    else:
+        row["notes"] = "Changed server record"
+    assert call(*decide, "--apply", "--expect", draft["data"]["plan_sha256"])[0] == 4
+    assert written == ["create"]
+    status, draft = call(*decide, "--dry-run")
+    assert status == 0
+    status, result = call(*decide, "--apply", "--expect", draft["data"]["plan_sha256"])
+    assert status == 0 and result["data"]["status"] == "approved"
+    assert written == ["create", "decision"] and note not in json.dumps(result)
+
+
+def test_hr_payroll_correction_cli_binds_private_proposal_and_independent_review(
+    tmp_path, monkeypatch,
+) -> None:
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "synthetic-correction-token")
+    maker, reviewer, run_id, line_id, correction_id = (str(uuid4()) for _ in range(5))
+    actor_id = maker
+    snapshot_digest = "a" * 64
+    previous_id = None
+    receipt = None
+    path = f"/api/v1/hr/payroll/runs/{run_id}/lines/{line_id}/corrections"
+    file = tmp_path / "correction.json"
+    detail = {
+        "correction_id": correction_id,
+        "gross": "211.49",
+        "deductions": "33.05",
+        "evidence_reference": "PRIVATE-CLI-CORRECTION",
+    }
+    file.write_text(json.dumps(detail), encoding="utf-8")
+    file.chmod(0o600)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal receipt
+        if request.url.path == "/api/v1/auth/me":
+            return httpx.Response(200, json={
+                "id": actor_id, "role": "hr_manager",
+                "permissions": [
+                    "hr:payroll:prepare", "hr:payroll:approve", "hr:payroll:sensitive",
+                ],
+            })
+        if request.url.path == f"/api/v1/hr/payroll/runs/{run_id}/snapshot":
+            return httpx.Response(200, json={
+                "run_id": run_id, "closed_at": "2026-11-16T10:00:00Z",
+                "digest": snapshot_digest,
+            })
+        if request.url.path == path and request.method == "GET":
+            return httpx.Response(200, json={
+                "line_id": line_id, "current_correction_id": previous_id,
+            })
+        if request.url.path == path and request.method == "POST":
+            assert actor_id == maker
+            assert json.loads(request.content) == {
+                **detail, "expected_snapshot_digest": snapshot_digest,
+                "expected_previous_id": previous_id,
+            }
+            receipt = {
+                "id": correction_id, "line_id": line_id, "previous_id": previous_id,
+                "snapshot_digest": snapshot_digest, "digest": "b" * 64, "status": "submitted",
+                "submitted_by_id": maker, "evidence_reference": detail["evidence_reference"],
+            }
+            return httpx.Response(200, json=receipt)
+        if request.url.path == f"{path}/{correction_id}" and receipt:
+            return httpx.Response(200, json=receipt)
+        if request.url.path == f"{path}/{correction_id}/decision" and receipt:
+            assert actor_id == reviewer
+            assert json.loads(request.content) == {
+                "decision": "approved", "expected_digest": receipt["digest"],
+            }
+            receipt["status"] = "approved"
+            return httpx.Response(200, json=receipt)
+        return httpx.Response(404)
+
+    def call(*args: str) -> tuple[int, dict]:
+        output = io.StringIO()
+        status = garrisonctl.run(
+            [
+                "hr", "payroll", "correction", *args, "--run-id", run_id,
+                "--line-id", line_id, "--json",
+            ],
+            transport=httpx.MockTransport(handler), stdout=output, stderr=io.StringIO(),
+        )
+        return status, json.loads(output.getvalue())
+
+    def assert_private(result: dict) -> None:
+        serialized = json.dumps(result)
+        assert all(detail[key] not in serialized for key in (
+            "gross", "deductions", "evidence_reference"
+        ))
+
+    proposal = ("propose", "--file", str(file))
+    file.chmod(0o644)
+    assert call(*proposal, "--dry-run")[0] != 0
+    file.chmod(0o600)
+    code, preview = call(*proposal, "--dry-run")
+    assert code == 0 and receipt is None
+    assert_private(preview)
+    stale = preview["data"]["plan_sha256"]
+    previous_id = str(uuid4())
+    assert call(*proposal, "--apply", "--expect", stale)[0] == 4
+    assert receipt is None
+    code, preview = call(*proposal, "--dry-run")
+    assert code == 0
+    code, result = call(*proposal, "--apply", "--expect", preview["data"]["plan_sha256"])
+    assert code == 0 and result["data"]["status"] == "submitted"
+    assert_private(result)
+    approval = (
+        "decide", "--correction-id", correction_id, "--decision", "approved", "--digest", "b" * 64,
+    )
+    assert call(*approval, "--dry-run")[0] == 4
+    actor_id = reviewer
+    code, preview = call(*approval, "--dry-run")
+    assert code == 0
+    assert_private(preview)
+    assert call(*approval, "--apply", "--expect", stale)[0] == 4
+    code, result = call(*approval, "--apply", "--expect", preview["data"]["plan_sha256"])
+    assert code == 0 and result["data"]["status"] == "approved"
+    assert_private(result)
+
+
+def test_hr_payroll_close_cli_verifies_reviewed_settlement(monkeypatch) -> None:
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "synthetic-closure-token")
+    actor_id, run_id = str(uuid4()), str(uuid4())
+    path = f"/api/v1/hr/payroll/runs/{run_id}"
+    settlement_digest = "c" * 64
+    receipt: dict | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal receipt
+        if request.url.path == "/api/v1/auth/me":
+            return httpx.Response(200, json={
+                "id": actor_id, "role": "hr_manager",
+                "permissions": ["hr:payroll:approve", "hr:payroll:sensitive"],
+            })
+        if request.url.path == f"{path}/snapshot":
+            return httpx.Response(200, json={
+                "run_id": run_id, "status": "approved", "digest": "a" * 64,
+                "payslips_published_at": "2026-11-16T10:00:00Z",
+                "lines": [{"net": "synthetic-private-line"}],
+            })
+        if request.url.path == f"{path}/settlements":
+            return httpx.Response(200, json={
+                "run_id": run_id, "csv_sha256": "b" * 64,
+                "settlement_digest": settlement_digest,
+                "fully_reconciled": True, "closure": receipt,
+            })
+        assert request.url.path == f"{path}/close" and request.method == "POST"
+        assert json.loads(request.content) == {
+            "expected_snapshot_digest": "a" * 64,
+            "expected_csv_sha256": "b" * 64,
+            "expected_settlement_digest": settlement_digest,
+        }
+        receipt = {
+            "run_id": run_id, "closed_by_id": actor_id,
+            "closed_at": "2026-11-16T10:05:00Z", "settlement_digest": settlement_digest,
+        }
+        return httpx.Response(200, json=receipt)
+
+    def call(*args: str) -> tuple[int, dict]:
+        output = io.StringIO()
+        status = garrisonctl.run(
+            ["hr", "payroll", "close", "--run-id", run_id, *args, "--json"],
+            transport=httpx.MockTransport(handler), stdout=output, stderr=io.StringIO(),
+        )
+        return status, json.loads(output.getvalue())
+
+    code, preview = call("--dry-run")
+    assert code == 0 and receipt is None and "synthetic-private-line" not in json.dumps(preview)
+    settlement_digest = "d" * 64
+    assert call("--apply", "--expect", preview["data"]["plan_sha256"])[0] == 4
+    assert receipt is None
+    code, preview = call("--dry-run")
+    assert code == 0
+    code, result = call("--apply", "--expect", preview["data"]["plan_sha256"])
+    assert code == 0 and result["data"] == receipt
 
 
 @pytest.mark.parametrize("area", ["store_inventory", "it_admin"])
@@ -6523,6 +7489,12 @@ async def test_hr_roster_serializes_overnight_overlaps_and_preserves_attendance(
         assert winner["calendar_id"] == str(calendar_id)
         assert Decimal(winner["planned_hours"]) == Decimal("10")
         assert datetime.fromisoformat(winner["ends_at"]) == datetime(2027, 1, 5, 2, 30, tzinfo=UTC)
+        detail_url = f"{url}/{winner['id']}"
+        detail = await client.get(detail_url, headers=hr)
+        assert detail.status_code == 200 and detail.json() == winner
+        assert detail.headers["Cache-Control"] == "no-store"
+        assert (await client.get(detail_url, headers=staff)).status_code == 403
+        assert (await client.get(f"{url}/{uuid4()}", headers=hr)).status_code == 404
         retry = await client.post(url, headers=hr, json={**payload, "id": winner["id"]})
         assert retry.status_code == 201 and retry.json() == winner
 
@@ -6536,6 +7508,8 @@ async def test_hr_roster_serializes_overnight_overlaps_and_preserves_attendance(
         cancelled = await client.post(cancel_url, headers=hr, json=cancellation)
         assert cancelled.status_code == 200
         assert cancelled.json()["cancellation_reason"] == "Replacement planned"
+        cancelled_detail = await client.get(detail_url, headers=hr)
+        assert cancelled_detail.status_code == 200 and cancelled_detail.json() == cancelled.json()
         replay = await client.post(cancel_url, headers=hr, json=cancellation)
         assert replay.json() == cancelled.json()
 
@@ -6776,7 +7750,1040 @@ async def test_payroll_time_inputs_reconcile_locked_hours_and_deny_stale_downloa
         assert events.count("hr.payroll_time.previewed") == 4
 
 
-def test_garrisonctl_payroll_time_inputs_writes_only_verified_private_bytes(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_payroll_leave_inputs_reconcile_ledger_and_deny_stale_download(monkeypatch) -> None:
+    import csv
+    import hashlib
+
+    from app.models.hr import (
+        HrHoliday,
+        HrLeaveLedger,
+        HrLeaveRequest,
+        HrPayrollLine,
+        HrPayrollRun,
+    )
+    from app.utils.permissions import PERMISSION_HR_PAYROLL_PREPARE, ROLE_PERMISSIONS
+
+    await skip_if_database_unavailable()
+    monkeypatch.setitem(
+        ROLE_PERMISSIONS,
+        "administrative_executive",
+        ROLE_PERMISSIONS["administrative_executive"] | {PERMISSION_HR_PAYROLL_PREPARE},
+    )
+    _, hr_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    _, preparer_email, _ = await _create_portal_user("administrative_executive", password)
+    root = "/api/v1/hr"
+
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+        preparer = _auth(await _login(client, preparer_email, password))
+
+        async def create(path, payload, actor=hr):
+            response = await client.post(f"{root}/{path}", headers=actor, json=payload)
+            assert response.status_code == 201, response.text
+            return response.json()["id"]
+
+        employees = [
+            await create(
+                "employees",
+                {
+                    "employee_code": f"LEAVE-PAY-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Private name",
+                    "employment_status": "active",
+                    "join_date": "2026-01-01",
+                },
+            )
+            for _ in range(2)
+        ]
+        employee_id, empty_employee = employees
+        period_id = await create(
+            "payroll/periods",
+            {
+                "period_code": f"LEAVE-{uuid4().hex[:8]}",
+                "period_start": "2039-01-01",
+                "period_end": "2039-01-31",
+                "pay_date": "2039-02-04",
+            },
+            preparer,
+        )
+        path = f"{root}/payroll/periods/{period_id}/leave-inputs"
+        roster = {"employee_ids": employees}
+        assert (await client.post(f"{path}/preview", headers=hr, json=roster)).status_code == 403
+        await _publish_leave_calendar(
+            client, hr, reviewer, "2039-01-01", "2039-02-28", "2039-01-31"
+        )
+        paid, unpaid = [
+            await create(
+                "leave/types",
+                {"code": f"TEST-{uuid4().hex[:8]}", "name": "Private type", "is_paid": is_paid},
+            )
+            for is_paid in (True, False)
+        ]
+        await create(
+            "leave/ledger",
+            {
+                "employee_id": employee_id,
+                "leave_type_id": paid,
+                "entry_type": "opening_balance",
+                "days_delta": "5.00",
+                "leave_year": 2039,
+                "reason": "Private opening balance",
+            },
+        )
+
+        async def request(leave_type, first, last, **options):
+            return await create(
+                "leave/requests",
+                {
+                    "employee_id": employee_id,
+                    "leave_type_id": leave_type,
+                    "start_date": first,
+                    "end_date": last,
+                    "submit_immediately": True,
+                    "reason": "Private reason",
+                    **options,
+                },
+            )
+
+        async def decide(request_id, decision):
+            response = await client.post(
+                f"{root}/leave/requests/{request_id}/decision",
+                headers=reviewer,
+                json={"decision": decision, "notes": "Synthetic change"},
+            )
+            assert response.status_code == 200, response.text
+
+        async def preview(employee_ids=employees):
+            response = await client.post(
+                f"{path}/preview", headers=preparer, json={"employee_ids": employee_ids}
+            )
+            assert response.status_code == 200, response.text
+            assert response.headers["cache-control"] == "no-store"
+            return response.json()
+
+        paid_id = await request(paid, "2039-01-03", "2039-01-04")
+        pending = await preview()
+        assert pending["issues"] == [
+            {"employee_id": employee_id, "request_id": paid_id, "code": "pending_leave"}
+        ]
+        assert pending["csv_sha256"] is None
+        await decide(paid_id, "approved")
+        unpaid_id = await request(
+            unpaid, "2039-01-05", "2039-01-05", is_half_day=True, half_day_period="morning"
+        )
+        await decide(unpaid_id, "approved")
+
+        reviewed = await preview()
+        assert reviewed["issues"] == []
+        assert (reviewed["paid_days"], reviewed["unpaid_days"]) == ("2.00", "0.50")
+        assert reviewed["approved_request_count"] == 2
+        digest = reviewed["csv_sha256"]
+        assert (await preview(employees[::-1]))["csv_sha256"] == digest
+        assert (await preview([employee_id]))["csv_sha256"] != digest
+        query = {**roster, "expected_csv_sha256": digest}
+        assert (await client.post(f"{path}.csv", headers=hr, json=query)).status_code == 403
+        download = await client.post(f"{path}.csv", headers=preparer, json=query)
+        assert download.status_code == 200 and download.headers["cache-control"] == "no-store"
+        assert download.headers["x-payroll-export-sha256"] == digest
+        assert hashlib.sha256(download.content).hexdigest() == digest
+        rows = list(csv.DictReader(io.StringIO(download.text)))
+        assert len(rows) == 3
+        by_request = {row["leave_request_id"]: row for row in rows}
+        assert (by_request[paid_id]["paid"], by_request[paid_id]["days"]) == ("yes", "2.00")
+        assert (by_request[unpaid_id]["paid"], by_request[unpaid_id]["days"]) == ("no", "0.50")
+        assert by_request[""]["employee_id"] == empty_employee
+        assert by_request[""]["record_status"] == "no_approved_leave"
+        assert "Private" not in download.text and "Synthetic" not in download.text
+
+        await decide(unpaid_id, "cancelled")
+        cancelled = await preview()
+        assert cancelled["issues"] == [] and cancelled["unpaid_days"] == "0.00"
+        assert cancelled["approved_request_count"] == 1 and cancelled["csv_sha256"] != digest
+        assert (await client.post(f"{path}.csv", headers=preparer, json=query)).status_code == 409
+
+        crossing_id = await request(unpaid, "2039-01-28", "2039-02-02")
+
+        async def move_holiday(old: date, new: date) -> None:
+            async with AsyncSessionLocal() as session:
+                holiday = await session.scalar(
+                    select(HrHoliday).where(HrHoliday.holiday_date == old)
+                )
+                assert holiday is not None
+                holiday.holiday_date = new
+                await session.commit()
+
+        await move_holiday(date(2039, 1, 31), date(2039, 2, 1))
+        changed = await client.post(
+            f"{root}/leave/requests/{crossing_id}/decision",
+            headers=reviewer,
+            json={"decision": "approved"},
+        )
+        assert changed.status_code == 409
+        assert changed.json()["error_code"] == "LEAVE_SCHEDULE_CHANGED"
+        await move_holiday(date(2039, 2, 1), date(2039, 1, 31))
+        await decide(crossing_id, "approved")
+        await move_holiday(date(2039, 1, 31), date(2039, 2, 1))
+        crossing = await preview()
+        assert crossing["issues"] == [] and crossing["unpaid_days"] == "1.00"
+        february_id = await create(
+            "payroll/periods",
+            {
+                "period_code": f"LEAVE-{uuid4().hex[:8]}",
+                "period_start": "2039-02-01",
+                "period_end": "2039-02-28",
+                "pay_date": "2039-03-04",
+            },
+            preparer,
+        )
+        february_path = f"{root}/payroll/periods/{february_id}/leave-inputs"
+        february = await client.post(f"{february_path}/preview", headers=preparer, json=roster)
+        assert february.status_code == 200 and february.json()["unpaid_days"] == "2.00"
+        february_csv = await client.post(
+            f"{february_path}.csv",
+            headers=preparer,
+            json={**roster, "expected_csv_sha256": february.json()["csv_sha256"]},
+        )
+        assert february_csv.status_code == 200
+        february_rows = list(csv.DictReader(io.StringIO(february_csv.text)))
+        assert (
+            next(row for row in february_rows if row["leave_request_id"] == crossing_id)[
+                "allocated_work_dates"
+            ]
+            == "2039-02-01 2039-02-02"
+        )
+
+        async with AsyncSessionLocal() as session:
+            legacy = await session.get(HrLeaveRequest, UUID(crossing_id))
+            assert legacy is not None
+            legacy.scheduled_work_dates = [date(2039, 1, 28)] * 3
+            await session.commit()
+        invalid = await preview()
+        assert invalid["issues"][0]["code"] == "leave_work_dates_mismatch"
+        async with AsyncSessionLocal() as session:
+            legacy = await session.get(HrLeaveRequest, UUID(crossing_id))
+            assert legacy is not None
+            legacy.scheduled_work_dates = None
+            await session.commit()
+        unverifiable = await preview()
+        assert unverifiable["issues"][0]["code"] == "leave_crosses_period"
+        assert unverifiable["csv_sha256"] is None
+
+        evidence_url = f"{root}/leave/requests/{crossing_id}/date-evidence"
+        _, evidence_email, _ = await _create_portal_user("hr_manager", password)
+        evidence_maker = _auth(await _login(client, evidence_email, password))
+        candidates_url = f"{root}/leave/date-evidence/candidates"
+        candidates_params = {"employee_id": employee_id, "limit": 1}
+        assert (await client.get(candidates_url, headers=preparer)).status_code == 403
+        candidates = await client.get(
+            candidates_url, headers=evidence_maker, params=candidates_params
+        )
+        assert candidates.status_code == 200, candidates.text
+        assert candidates.headers["cache-control"] == "no-store"
+        assert candidates.json()["total"] == 1
+        candidate = candidates.json()["items"][0]
+        assert candidate["request_id"] == crossing_id
+        assert candidate["requires_payroll_correction"] is False
+        assert set(candidate) == {
+            "request_id", "employee_id", "start_date", "end_date", "approved_units",
+            "requires_payroll_correction",
+        }
+        before = await client.get(evidence_url, headers=evidence_maker)
+        assert before.status_code == 200 and before.headers["cache-control"] == "no-store"
+        assert (await client.get(evidence_url, headers=preparer)).status_code == 403
+        proposal = {
+            "proposal_id": str(uuid4()),
+            "expected_revision": before.json()["request_revision"],
+            "work_dates": ["2039-01-28", "2039-02-01", "2039-02-02"],
+            "evidence_reference": "SYNTHETIC-LEGACY-CALENDAR",
+        }
+        wrong_units = await client.post(
+            evidence_url, headers=evidence_maker,
+            json={**proposal, "work_dates": ["2039-01-28", "2039-02-01"]},
+        )
+        assert wrong_units.status_code == 422
+        proposed = await client.post(evidence_url, headers=evidence_maker, json=proposal)
+        assert proposed.status_code == 200, proposed.text
+        assert (await preview())["issues"][0]["code"] == "leave_crosses_period"
+        replay = await client.post(evidence_url, headers=evidence_maker, json=proposal)
+        assert replay.json() == proposed.json()
+        detail_url = f"{evidence_url}/{proposal['proposal_id']}"
+        detail = await client.get(detail_url, headers=reviewer)
+        assert detail.status_code == 200 and detail.json() == proposed.json()
+        assert detail.headers["cache-control"] == "no-store"
+        assert (await client.get(detail_url, headers=preparer)).status_code == 403
+        decision_url = f"{detail_url}/decision"
+        decision = {"decision": "approved", "expected_digest": proposed.json()["digest"]}
+        self_review = await client.post(decision_url, headers=evidence_maker, json=decision)
+        assert self_review.status_code == 403
+        wrong_digest = await client.post(
+            decision_url, headers=reviewer, json={**decision, "expected_digest": "0" * 64},
+        )
+        assert wrong_digest.status_code == 409
+        # A payroll approval recorded after proposal still prevents a historical mutation.
+        async with AsyncSessionLocal() as session:
+            locked_run = HrPayrollRun(payroll_period_id=UUID(period_id), status="approved")
+            session.add(locked_run)
+            await session.flush()
+            locked_run_id = locked_run.id
+            session.add(HrPayrollLine(
+                payroll_run_id=locked_run_id,
+                employee_id=UUID(employee_id),
+                gross_encrypted="unused fixture",
+                deductions_encrypted="unused fixture",
+                net_encrypted="unused fixture",
+            ))
+            await session.commit()
+        while_locked = await client.post(decision_url, headers=reviewer, json=decision)
+        assert while_locked.status_code == 409 and "locked payroll" in while_locked.json()["detail"]
+        locked_cancel = await client.post(
+            f"{root}/leave/requests/{crossing_id}/decision", headers=reviewer,
+            json={"decision": "cancelled", "notes": "Synthetic locked reversal"},
+        )
+        assert locked_cancel.status_code == 409
+        assert locked_cancel.json()["error_code"] == "LEAVE_PAYROLL_LOCKED"
+        new_request = await request(unpaid, "2039-01-17", "2039-01-17")
+        locked_approval = await client.post(
+            f"{root}/leave/requests/{new_request}/decision", headers=reviewer,
+            json={"decision": "approved"},
+        )
+        assert locked_approval.status_code == 409
+        assert locked_approval.json()["error_code"] == "LEAVE_PAYROLL_LOCKED"
+        await decide(new_request, "cancelled")
+        locked_candidates = await client.get(
+            candidates_url, headers=evidence_maker, params=candidates_params
+        )
+        assert locked_candidates.json()["items"][0]["requires_payroll_correction"] is True
+        locked_request = (await client.get(evidence_url, headers=evidence_maker)).json()
+        assert locked_request["requires_payroll_correction"] and not locked_request["can_propose"]
+        async with AsyncSessionLocal() as session:
+            locked = await session.get(HrPayrollRun, locked_run_id)
+            assert locked is not None
+            await session.delete(locked)
+            await session.commit()
+        accepted = await client.post(decision_url, headers=reviewer, json=decision)
+        assert accepted.status_code == 200, accepted.text
+        repeated = await client.post(decision_url, headers=reviewer, json=decision)
+        assert repeated.json() == accepted.json()
+        retained = (await client.get(evidence_url, headers=reviewer)).json()
+        assert retained["scheduled_work_dates"] == proposal["work_dates"]
+        assert retained["request_revision"] == proposal["expected_revision"] + 1
+        resolved = await client.get(
+            candidates_url, headers=evidence_maker, params=candidates_params
+        )
+        assert resolved.json() == {"total": 0, "items": []}
+        assert (await preview())["unpaid_days"] == "1.00"
+        february_reconciled = await client.post(
+            f"{february_path}/preview", headers=preparer, json=roster
+        )
+        assert february_reconciled.json()["unpaid_days"] == "2.00"
+        async with AsyncSessionLocal() as session:
+            history = list(await session.scalars(
+                select(HrLeaveLedger).where(
+                    HrLeaveLedger.reference_request_id == UUID(crossing_id)
+                )
+            ))
+            assert len(history) == 1 and history[0].days_delta == Decimal("-3.00")
+        await decide(crossing_id, "cancelled")
+
+        async with AsyncSessionLocal() as session:
+            debit = await session.scalar(
+                select(HrLeaveLedger).where(HrLeaveLedger.reference_request_id == UUID(paid_id))
+            )
+            assert debit is not None
+            debit.days_delta = Decimal("-1.00")
+            await session.commit()
+        mismatch = await preview()
+        assert mismatch["issues"] == [
+            {"employee_id": employee_id, "request_id": paid_id, "code": "leave_ledger_mismatch"}
+        ]
+        assert mismatch["paid_days"] is None and mismatch["csv_sha256"] is None
+
+
+@pytest.mark.asyncio
+async def test_hr_reimbursement_receipt_retry_and_independent_decisions(monkeypatch) -> None:
+    from sqlalchemy import func
+
+    from app.models.finance import Invoice, Payment
+    from app.utils.permissions import (
+        PERMISSION_HR_PAYROLL_APPROVE,
+        PERMISSION_HR_PAYROLL_SENSITIVE,
+        ROLE_PERMISSIONS,
+    )
+    from app.utils.time import business_today
+
+    await skip_if_database_unavailable()
+    async with AsyncSessionLocal() as session:
+        original_invoices = await session.scalar(select(func.count()).select_from(Invoice))
+        original_payments = await session.scalar(select(func.count()).select_from(Payment))
+    maker_id, maker_email, password = await _create_portal_user("hr_manager")
+    reviewer_id, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    _, recorder_email, _ = await _create_portal_user("hr_manager", password)
+    _, director_email, _ = await _create_portal_user("managing_director", password)
+    monkeypatch.setitem(
+        ROLE_PERMISSIONS,
+        "hr_manager",
+        ROLE_PERMISSIONS["hr_manager"]
+        | {PERMISSION_HR_PAYROLL_APPROVE, PERMISSION_HR_PAYROLL_SENSITIVE},
+    )
+    base = "/api/v1/hr"
+    claim_path = f"{base}/reimbursements"
+    self_path = f"{base}/me/reimbursements"
+    async with _client() as client:
+        maker = _auth(await _login(client, maker_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+        recorder = _auth(await _login(client, recorder_email, password))
+        director = _auth(await _login(client, director_email, password))
+
+        async def employee(work_email: str) -> str:
+            created = await client.post(
+                f"{base}/employees",
+                headers=maker,
+                json={
+                    "employee_code": f"CLAIM-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Claim",
+                    "work_email": work_email,
+                    "employment_status": "active",
+                },
+            )
+            assert created.status_code == 201, created.text
+            return created.json()["id"]
+
+        owner, outsider = await employee(maker_email), await employee(reviewer_email)
+        linked = await client.post(
+            f"{base}/employees/{owner}/link-account", headers=director, json={"user_id": maker_id}
+        )
+        assert linked.status_code == 200, linked.text
+        linked = await client.post(
+            f"{base}/employees/{outsider}/link-account",
+            headers=director,
+            json={"user_id": reviewer_id},
+        )
+        assert linked.status_code == 200, linked.text
+
+        async def upload(employee_id, category="compensation", label="shared synthetic receipt"):
+            result = await client.post(
+                f"{base}/documents",
+                headers=maker,
+                data={
+                    "employee_id": employee_id,
+                    "title": "Synthetic reimbursement",
+                    "document_type": "reimbursement_receipt",
+                    "category": category,
+                },
+                files={
+                    "file": (
+                        "receipt.pdf",
+                        _pdf_bytes(label),
+                        "application/pdf",
+                    )
+                },
+            )
+            assert result.status_code == 201, result.text
+            return result.json()
+
+        async def approve(doc):
+            decision = await client.post(
+                f"{base}/documents/{doc['id']}/versions/1/decision",
+                headers=reviewer,
+                json={"decision": "approve"},
+            )
+            assert decision.status_code == 200, decision.text
+
+        benefit_types = f"{base}/benefits/types"
+        assignments = f"{base}/benefits/assignments"
+        type_payload = {
+            "code": f"TEST-TRAVEL-{uuid4().hex[:8]}",
+            "name": "Synthetic travel reimbursement",
+            "category": "Travel",
+            "reimbursement_ceiling": "50.00",
+            "reimbursement_currency": "LKR",
+            "allows_advances": True,
+        }
+        assert (
+            await client.post(
+                benefit_types,
+                headers=maker,
+                json={**type_payload, "requires_policy_approval": False},
+            )
+        ).status_code == 422
+        proposed = await client.post(benefit_types, headers=maker, json=type_payload)
+        assert proposed.status_code == 201 and proposed.json()["approved_at"] is None
+        benefit_id = proposed.json()["id"]
+        today = business_today()
+        today_text = today.isoformat()
+        coverage = {
+            "employee_id": owner,
+            "benefit_type_id": benefit_id,
+            "effective_from": today_text,
+            "effective_to": (today + timedelta(days=29)).isoformat(),
+        }
+        assert (await client.post(assignments, headers=maker, json=coverage)).status_code == 409
+        policy_approval = f"{benefit_types}/{benefit_id}/approve"
+        assert (await client.post(policy_approval, headers=maker)).status_code == 403
+        assert (await client.post(policy_approval, headers=reviewer)).status_code == 200
+        assert (
+            await client.post(assignments, headers=maker, json={**coverage, "effective_to": None})
+        ).status_code == 422
+        assigned = await client.post(assignments, headers=maker, json=coverage)
+        assert assigned.status_code == 201, assigned.text
+        assignment_id = assigned.json()["id"]
+        assert (await client.post(assignments, headers=maker, json=coverage)).status_code == 409
+        outside = await client.post(
+            assignments, headers=maker, json={**coverage, "employee_id": outsider}
+        )
+        assert outside.status_code == 201
+
+        receipt = await upload(owner)
+        receipt_id = receipt["id"]
+        pending_download = f"{base}/documents/{receipt_id}/download"
+        assert (
+            await client.get(pending_download, headers=maker, params={"version_number": 1})
+        ).status_code == 404
+        assert (await client.get(pending_download, headers=reviewer)).status_code == 404
+        response = await client.get(
+            pending_download, headers=reviewer, params={"version_number": 1}
+        )
+        assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+        payload = {
+            "employee_id": owner,
+            "claim_type": type_payload["code"],
+            "benefit_assignment_id": assignment_id,
+            "claim_date": today_text,
+            "amount": "25.75",
+            "currency": "LKR",
+            "description": "Synthetic reimbursable expense",
+            "receipt_document_id": receipt_id,
+            "receipt_version_number": 1,
+        }
+        key = f"claim-{uuid4()}"
+
+        async def submit(body=payload, *, actor=maker, request_key=key):
+            return await client.post(
+                self_path, headers={**actor, "Idempotency-Key": request_key}, json=body
+            )
+
+        assert (await client.get(claim_path, headers=director)).status_code == 403
+        assert (await submit(actor=reviewer)).status_code == 404
+        assert (
+            await submit({**payload, "benefit_assignment_id": outside.json()["id"]})
+        ).status_code == 404
+        assert (
+            await submit({**payload, "claim_date": (today + timedelta(days=30)).isoformat()})
+        ).status_code == 409
+        assert (await submit({**payload, "claim_type": "Other"})).status_code == 409
+        assert (await submit({**payload, "currency": "USD"})).status_code == 409
+        assert (await submit({**payload, "amount": "25.755"})).status_code == 422
+        assert (await submit()).status_code == 404
+        other_receipt = await upload(outsider)
+        await approve(other_receipt)
+        assert (
+            await submit({**payload, "receipt_document_id": other_receipt["id"]})
+        ).status_code == 404
+        public_receipt = await upload(owner, category="ordinary")
+        await approve(public_receipt)
+        assert (
+            await submit({**payload, "receipt_document_id": public_receipt["id"]})
+        ).status_code == 404
+        await approve(receipt)
+        assert (await submit({**payload, "receipt_version_number": 2})).status_code == 409
+        assert (await client.post(self_path, headers=maker, json=payload)).status_code == 422
+        first, replay = await asyncio.gather(submit(), submit())
+        assert first.status_code == replay.status_code == 201, (first.text, replay.text)
+        assert first.headers["cache-control"] == "no-store"
+        claim = first.json()
+        assert claim["id"] == replay.json()["id"]
+        assert claim["amount"] == "25.75"
+        assert claim["receipt_version_id"] == receipt["versions"][0]["id"]
+        assert (await submit({**payload, "amount": "25.76"})).status_code == 409
+        identical = await upload(owner)
+        await approve(identical)
+        assert (
+            await submit(
+                {**payload, "receipt_document_id": identical["id"], "amount": "1.00"},
+                request_key=f"claim-{uuid4()}",
+            )
+        ).status_code == 409
+        assert (await client.get(self_path, headers=reviewer)).json()["items"] == []
+
+        path = f"{claim_path}/{claim['id']}/decision"
+        reference_path = f"{claim_path}/{claim['id']}/payable"
+
+        async def decide(actor, decision, **fields):
+            return await client.post(path, headers=actor, json={"decision": decision, **fields})
+
+        assert (await decide(maker, "approved")).status_code == 403
+        assert (await client.get(reference_path, headers=director)).status_code == 403
+        assert (await client.get(reference_path, headers=reviewer)).status_code == 409
+        outcome = {
+            "settlement_reference": "TEST-01",
+            "expected_payable_sha256": "0" * 64,
+            "settled_amount": "25.75",
+            "settled_currency": "LKR",
+        }
+        assert (await decide(recorder, "paid", **outcome)).status_code == 409
+        first, second = await asyncio.gather(
+            decide(reviewer, "approved"), decide(reviewer, "approved")
+        )
+        assert sorted([first.status_code, second.status_code]) == [200, 409]
+        handoff = await client.get(reference_path, headers=recorder)
+        assert handoff.status_code == 200 and handoff.headers["cache-control"] == "no-store"
+        payable = handoff.json()
+        assert payable["status"] == "approved"
+        assert payable["reference"] == {
+            "version": "reimbursement-payable-v1",
+            "claim_id": claim["id"],
+            "payable_reference": claim["claim_code"],
+            "employee_id": owner,
+            "amount": "25.75",
+            "currency": "LKR",
+            "approved_at": next(
+                result.json()["decided_at"]
+                for result in (first, second)
+                if result.status_code == 200
+            ),
+        }
+        assert "Synthetic" not in handoff.text and receipt_id not in handoff.text
+        assert (await decide(recorder, "paid", **outcome)).status_code == 409
+        outcome["expected_payable_sha256"] = payable["reference_sha256"]
+        assert (await decide(reviewer, "paid", **outcome)).status_code == 403
+        assert (await decide(recorder, "paid")).status_code == 422
+        assert (
+            await decide(recorder, "paid", **{**outcome, "settled_amount": "25.74"})
+        ).status_code == 409
+        assert (
+            await decide(recorder, "paid", **{**outcome, "settled_currency": "USD"})
+        ).status_code == 409
+        paid = await decide(recorder, "paid", **outcome)
+        assert paid.status_code == 200, paid.text
+        assert paid.json()["decided_by_id"] == str(reviewer_id)
+        assert paid.json()["settlement_reference"] == "TEST-01"
+        assert (await decide(recorder, "paid", **outcome)).status_code == 200
+        assert (
+            await decide(recorder, "paid", **{**outcome, "settlement_reference": "TEST-02"})
+        ).status_code == 409
+        assert (await decide(recorder, "rejected", notes="Synthetic")).status_code == 409
+        readback = await client.get(reference_path, headers=recorder)
+        assert readback.status_code == 200 and readback.json() == {**payable, "status": "paid"}
+        new_receipts = [
+            await upload(owner, label=f"synthetic follow-up {number}") for number in range(2)
+        ]
+        for doc in new_receipts:
+            await approve(doc)
+        contenders = [
+            {**payload, "amount": "15.00", "receipt_document_id": doc["id"]} for doc in new_receipts
+        ]
+        results = await asyncio.gather(
+            *(submit(body, request_key=str(uuid4())) for body in contenders)
+        )
+        assert sorted(response.status_code for response in results) == [201, 409]
+        loser = next(i for i, result in enumerate(results) if result.status_code == 409)
+        assert results[loser].json()["error_code"] == "BENEFIT_CEILING_EXCEEDED"
+        winner_id = results[1 - loser].json()["id"]
+        rejected = await client.post(
+            f"{claim_path}/{winner_id}/decision",
+            headers=reviewer,
+            json={"decision": "rejected", "notes": "Synthetic declined claim"},
+        )
+        assert rejected.status_code == 200
+        boundary = await submit({**contenders[loser], "amount": "24.25"}, request_key=str(uuid4()))
+        assert boundary.status_code == 201 and boundary.json()["amount"] == "24.25"
+        boundary_id = boundary.json()["id"]
+        assert (
+            await client.post(
+                f"{claim_path}/{boundary_id}/decision",
+                headers=reviewer,
+                json={"decision": "cancelled", "notes": "Synthetic cancellation"},
+            )
+        ).status_code == 200
+
+        advance_root = f"{base}/advances"
+        advance_request = {
+            "employee_id": owner,
+            "benefit_assignment_id": assignment_id,
+            "requested_on": today_text,
+            "amount": "24.25",
+            "currency": "LKR",
+        }
+        advance_key = str(uuid4())
+
+        async def advance_submit(body=advance_request, key=advance_key):
+            return await client.post(
+                advance_root, headers={**maker, "Idempotency-Key": key}, json=body
+            )
+
+        assert (
+            await client.get(advance_root, headers=director, params={"employee_id": owner})
+        ).status_code == 403
+        assert (await advance_submit({**advance_request, "amount": "24.26"})).status_code == 409
+        made = await advance_submit()
+        assert made.status_code == 201, made.text
+        assert made.json()["status"] == "submitted" and made.json()["payable_sha256"] is None
+        assert (await advance_submit()).json()["id"] == made.json()["id"]
+        assert (await advance_submit({**advance_request, "amount": "1.00"})).status_code == 409
+        advance = f"{advance_root}/{made.json()['id']}"
+
+        async def update_advance(action, body, actor=recorder):
+            return await client.post(f"{advance}/{action}", headers=actor, json=body)
+
+        assert (
+            await update_advance("decision", {"decision": "approved"}, maker)
+        ).status_code == 403
+        approved = await update_advance("decision", {"decision": "approved"}, reviewer)
+        assert approved.status_code == 200 and approved.json()["status"] == "approved"
+        digest = approved.json()["payable_sha256"]
+        assert digest
+        payout = {
+            "reference": "SYNTHETIC-FUND-01",
+            "occurred_on": today_text,
+            "amount": "24.25",
+            "currency": "LKR",
+            "expected_payable_sha256": digest,
+        }
+        assert (await update_advance("disburse", payout, reviewer)).status_code == 403
+        assert (
+            await update_advance("disburse", {**payout, "expected_payable_sha256": "0" * 64})
+        ).status_code == 409
+        funded = await update_advance("disburse", payout)
+        assert funded.status_code == 200 and funded.json()["outstanding"] == "24.25"
+        assert (await update_advance("disburse", payout)).status_code == 200
+        repayment = {
+            "reference": "SYNTHETIC-RECOVERY-01",
+            "occurred_on": today_text,
+            "amount": "4.25",
+            "currency": "LKR",
+        }
+        assert (
+            await update_advance("repayments", {**repayment, "reference": payout["reference"]})
+        ).status_code == 409
+        first, replay = await asyncio.gather(
+            update_advance("repayments", repayment), update_advance("repayments", repayment)
+        )
+        assert first.status_code == replay.status_code == 200
+        assert first.json()["outstanding"] == "20.00" and len(replay.json()["recoveries"]) == 1
+        assert (
+            await update_advance("repayments", {**repayment, "amount": "1.00"})
+        ).status_code == 409
+        assert (
+            await submit({**contenders[loser], "amount": "1.00"}, request_key=str(uuid4()))
+        ).json()["error_code"] == "BENEFIT_CEILING_EXCEEDED"
+        final_repayment = {**repayment, "amount": "20.00", "reference": "SYNTHETIC-RECOVERY-02"}
+        assert (
+            await update_advance("repayments", {**final_repayment, "amount": "20.01"})
+        ).status_code == 409
+        settled = await update_advance("repayments", final_repayment)
+        assert settled.status_code == 200 and settled.json()["status"] == "settled"
+        assert settled.json()["outstanding"] == "0.00" and settled.json()["recovered"] == "24.25"
+        read = await client.get(advance, headers=reviewer)
+        assert read.json() == settled.json() and read.headers["cache-control"] == "no-store"
+        listed = await client.get(advance_root, headers=reviewer, params={"employee_id": owner})
+        assert listed.json() == {"items": [settled.json()], "total": 1}
+        assert (
+            await submit({**contenders[loser], "amount": "24.25"}, request_key=str(uuid4()))
+        ).status_code == 201
+
+    async with AsyncSessionLocal() as session:
+        assert await session.scalar(select(func.count()).select_from(Invoice)) == original_invoices
+        assert await session.scalar(select(func.count()).select_from(Payment)) == original_payments
+        events = list(
+            await session.scalars(
+                select(ActivityLog.action).where(
+                    ActivityLog.entity_id == UUID(claim["id"]),
+                    ActivityLog.entity_type == "hr_reimbursement_claims",
+                )
+            )
+        )
+        assert sorted(events) == [
+            "hr.reimbursement.approved",
+            "hr.reimbursement.paid",
+            "hr.reimbursement.payable_read",
+            "hr.reimbursement.payable_read",
+            "hr.reimbursement.submitted",
+        ]
+
+
+def test_garrisonctl_advance_operations_bind_private_input_and_verify_readback(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "cli-test-token")
+    monkeypatch.delenv("GARRISON_ENVIRONMENT", raising=False)
+    employee_id, actor_id, advance_id, assignment_id, request_key = (str(uuid4()) for _ in range(5))
+    day = "2026-10-01"
+    digest = "b" * 64
+    path = f"/api/v1/hr/advances/{advance_id}"
+    request_body = {
+        "employee_id": employee_id,
+        "benefit_assignment_id": assignment_id,
+        "requested_on": day,
+        "amount": "23.45",
+        "currency": "LKR",
+    }
+    row = {
+        **request_body,
+        "id": advance_id,
+        "status": "submitted",
+        "submitted_by_id": actor_id,
+        "decided_by_id": None,
+        "decided_at": None,
+        "payable_sha256": None,
+        "disbursed_on": None,
+        "disbursement_reference": None,
+        "recovered": "0.00",
+        "outstanding": "0.00",
+        "recoveries": [],
+    }
+    payment = {
+        "reference": "SYNTHETIC-DISBURSEMENT",
+        "amount": "23.45",
+        "occurred_on": day,
+        "currency": "LKR",
+        "expected_payable_sha256": digest,
+    }
+    recovery = {
+        "reference": "SYNTHETIC-RECOVERY",
+        "amount": "23.45",
+        "occurred_on": day,
+        "currency": "LKR",
+    }
+    operations: list[str] = []
+    permissions = ["hr:payroll:sensitive", "hr:payroll:approve"]
+    incorrect_readback = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        route = request.url.path
+        if route == "/api/v1/auth/me":
+            return httpx.Response(200, json={"id": actor_id, "permissions": permissions})
+        if request.method == "GET" and route == path:
+            return httpx.Response(200, json=row)
+        if request.method == "GET" and route == "/api/v1/hr/advances":
+            assert request.url.params["employee_id"] == employee_id
+            return httpx.Response(200, json={"items": [row], "total": 1})
+        assert request.method == "POST"
+        data = json.loads(request.content)
+        operations.append(route)
+        if route == "/api/v1/hr/advances":
+            assert request.headers["idempotency-key"] == request_key
+            assert data == request_body
+        elif route == f"{path}/decision":
+            assert data == {"decision": "approved"}
+            row.update(
+                status="approved",
+                decided_by_id=str(uuid4()),
+                decided_at=f"{day}T10:00:00Z",
+                payable_sha256=digest,
+            )
+        elif route == f"{path}/disburse":
+            assert data == payment
+            row.update(
+                status="disbursed",
+                disbursed_on=day,
+                outstanding="23.45",
+                disbursement_reference=payment["reference"],
+            )
+        elif route == f"{path}/repayments":
+            assert data == recovery
+            row.update(
+                status="settled",
+                outstanding="0.00",
+                recovered="23.45",
+                recoveries=[
+                    {"reference": recovery["reference"], "occurred_on": day, "amount": "23.45"}
+                ]
+                if not incorrect_readback
+                else [],
+            )
+        else:
+            pytest.fail(f"Unexpected write route {route}")
+        return httpx.Response(200, json=row)
+
+    def private_file(name, data, mode=0o600):
+        target = tmp_path / name
+        target.write_text(json.dumps(data), encoding="utf-8")
+        target.chmod(mode)
+        return str(target)
+
+    def invoke(command, *options):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        code = garrisonctl.run(
+            ["hr", "advance", command, "--json", *options],
+            transport=httpx.MockTransport(handler),
+            stdout=stdout,
+            stderr=stderr,
+        )
+        assert not stderr.getvalue()
+        rendered = stdout.getvalue()
+        assert all(
+            value not in rendered
+            for value in (
+                "23.45",
+                "SYNTHETIC-DISBURSEMENT",
+                "SYNTHETIC-RECOVERY",
+                request_key,
+            )
+        )
+        return code, json.loads(rendered)
+
+    def dry_run(command, *options):
+        before = list(operations)
+        code, preview = invoke(command, *options, "--dry-run")
+        assert code == 0 and operations == before
+        return preview["data"]["plan_sha256"]
+
+    def apply(command, *options):
+        plan = dry_run(command, *options)
+        code, receipt = invoke(command, *options, "--apply", "--expect", plan)
+        assert code == 0
+        return receipt["data"]
+
+    form = {**request_body, "idempotency_key": request_key}
+    assert (
+        invoke("submit", "--file", private_file("request.json", form, 0o644), "--dry-run")[0] != 0
+    )
+    submission = ("--file", private_file("request.json", form))
+    assert apply("submit", *submission)["advance_id"] == advance_id
+    key = ("--advance-id", advance_id)
+    decision = (*key, "--decision", "approved")
+    permissions.remove("hr:payroll:approve")
+    assert invoke("decide", *decision, "--dry-run")[0] != 0
+    permissions.append("hr:payroll:approve")
+    assert apply("decide", *decision)["status"] == "approved"
+
+    output = tmp_path / "payable.json"
+    assert invoke("show", *key, "--output", str(output))[0] == 0
+    assert output.stat().st_mode & 0o777 == 0o600
+    assert json.loads(output.read_text()) == row
+    assert invoke("show", *key, "--output", str(output))[0] != 0
+
+    disbursement = (*key, "--file", private_file("disbursement.json", payment))
+    plan = dry_run("confirm-disbursement", *disbursement)
+    row["status"] = "cancelled"
+    assert invoke("confirm-disbursement", *disbursement, "--apply", "--expect", plan)[0] == 4
+    row["status"] = "approved"
+    private_file("disbursement.json", {**payment, "reference": "CHANGED"})
+    assert invoke("confirm-disbursement", *disbursement, "--apply", "--expect", plan)[0] == 4
+    assert len(operations) == 2
+    private_file("disbursement.json", payment)
+    assert apply("confirm-disbursement", *disbursement)["status"] == "disbursed"
+
+    repayment = (*key, "--file", private_file("recovery.json", recovery))
+    plan = dry_run("record-repayment", *repayment)
+    incorrect_readback = True
+    code, result = invoke("record-repayment", *repayment, "--apply", "--expect", plan)
+    assert code != 0 and result["changed"] is None
+    assert operations[-1] == f"{path}/repayments"
+
+    row.update(status="disbursed", recoveries=[], recovered="0.00", outstanding="23.45")
+    incorrect_readback = False
+    assert apply("record-repayment", *repayment)["repayment_count"] == 1
+    listed = invoke("list", "--employee-id", employee_id)[1]["data"]
+    assert listed["items"][0]["status"] == "settled" and listed["total"] == 1
+
+
+def test_garrisonctl_reimbursement_exports_and_binds_the_reviewed_payable(tmp_path, monkeypatch):
+    from scripts.garrisonctl_common import sha256_json
+
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "cli-test-token")
+    monkeypatch.delenv("GARRISON_ENVIRONMENT", raising=False)
+    actor_id, claim_id, employee_id = (str(uuid4()) for _ in range(3))
+    reference = {
+        "version": "reimbursement-payable-v1",
+        "claim_id": claim_id,
+        "payable_reference": "CLM-SYNTH001",
+        "employee_id": employee_id,
+        "amount": "25.75",
+        "currency": "LKR",
+        "approved_at": "2026-10-02T10:00:00Z",
+    }
+    digest = sha256_json(reference)
+    status = "approved"
+    response_digest = digest
+    posted = []
+    output = tmp_path / "payable.json"
+    settlement = tmp_path / "settlement.json"
+    settlement_fields = {
+        "expected_payable_sha256": digest,
+        "settled_amount": "25.75",
+        "settled_currency": "LKR",
+        "settlement_reference": "SYNTHETIC-EXTERNAL-01",
+    }
+    settlement.write_text(json.dumps(settlement_fields), encoding="utf-8")
+    settlement.chmod(0o600)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal status
+        path = request.url.path
+        if path == "/api/v1/auth/me":
+            return httpx.Response(
+                200,
+                json={
+                    "id": actor_id,
+                    "permissions": ["hr:payroll:approve", "hr:payroll:sensitive"],
+                },
+            )
+        if path == f"/api/v1/hr/reimbursements/{claim_id}/payable":
+            return httpx.Response(
+                200,
+                json={
+                    "status": status,
+                    "reference": reference,
+                    "reference_sha256": response_digest,
+                },
+            )
+        assert request.method == "POST" and path == f"/api/v1/hr/reimbursements/{claim_id}/decision"
+        posted.append(json.loads(request.content))
+        status = "paid"
+        return httpx.Response(200, json={"id": claim_id, "status": status})
+
+    def invoke(command: str, *options: str):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        code = garrisonctl.run(
+            ["hr", "reimbursement", command, "--claim-id", claim_id, "--json", *options],
+            transport=httpx.MockTransport(handler),
+            stdout=stdout,
+            stderr=stderr,
+        )
+        text = stdout.getvalue()
+        assert not stderr.getvalue()
+        assert "25.75" not in text and "SYNTHETIC-EXTERNAL-01" not in text
+        return code, json.loads(text)
+
+    response_digest = "0" * 64
+    assert invoke("payable", "--output", str(output))[0] == 4
+    assert not output.exists()
+    response_digest = digest
+    code, report = invoke("payable", "--output", str(output))
+    assert code == 0 and report["data"]["reference_sha256"] == digest
+    assert output.stat().st_mode & 0o777 == 0o600
+    assert json.loads(output.read_text())["reference"] == reference
+    assert invoke("payable", "--output", str(output))[0] != 0
+
+    command_options = ("--settlement-file", str(settlement))
+    code, preview = invoke("confirm-paid", *command_options, "--dry-run")
+    assert code == 0 and not posted
+    plan = preview["data"]["plan_sha256"]
+    settlement.write_text(
+        json.dumps({**settlement_fields, "settlement_reference": "SYNTHETIC-CHANGED"}),
+        encoding="utf-8",
+    )
+    assert invoke("confirm-paid", *command_options, "--apply", "--expect", plan)[0] == 4
+    assert not posted
+    settlement.write_text(json.dumps(settlement_fields), encoding="utf-8")
+    code, receipt = invoke("confirm-paid", *command_options, "--apply", "--expect", plan)
+    assert code == 0 and receipt["data"]["status"] == "paid"
+    assert posted == [{"decision": "paid", **settlement_fields}]
+    assert invoke("payable")[1]["data"]["status"] == "paid"
+    assert invoke("payable", "--output", str(tmp_path / "new.json"))[0] == 4
+
+
+@pytest.mark.parametrize("source", ["time", "leave"])
+def test_garrisonctl_payroll_inputs_writes_only_verified_private_bytes(
+    tmp_path, monkeypatch, source
+):
     import hashlib
 
     monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
@@ -6786,13 +8793,13 @@ def test_garrisonctl_payroll_time_inputs_writes_only_verified_private_bytes(tmp_
     roster_file = tmp_path / "roster.json"
     roster_file.write_text(json.dumps([employee_id]), encoding="utf-8")
     roster_file.chmod(0o600)
-    output = tmp_path / "time.csv"
+    output = tmp_path / f"{source}.csv"
     content = b"regular_hours,overtime_hours\n37.50,2.50\n"
     digest = hashlib.sha256(content).hexdigest()
     actual_content = content
 
     def handler(request: httpx.Request) -> httpx.Response:
-        prefix = f"/api/v1/hr/payroll/periods/{period_id}/time-inputs"
+        prefix = f"/api/v1/hr/payroll/periods/{period_id}/{source}-inputs"
         if request.url.path == "/api/v1/auth/me":
             return httpx.Response(
                 200, json={"id": str(uuid4()), "permissions": ["hr:payroll:prepare"]}
@@ -6814,7 +8821,7 @@ def test_garrisonctl_payroll_time_inputs_writes_only_verified_private_bytes(tmp_
     command = [
         "hr",
         "payroll",
-        "time-inputs",
+        f"{source}-inputs",
         "--period-id",
         period_id,
         "--roster-file",
@@ -7685,8 +9692,98 @@ def test_garrisonctl_shortlist_rechecks_application_and_verifies_stage(monkeypat
     assert invoke("--dry-run")[0] == 4
 
 
+def test_company_policy_cli_binds_attachment_and_refuses_unverified_download(
+    tmp_path, monkeypatch,
+) -> None:
+    import hashlib
+
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "https://portal.example.invalid")
+    monkeypatch.setenv("GARRISON_ACCESS_TOKEN", "synthetic-policy-cli")
+    actor, doc_id, policy_id = (str(uuid4()) for _ in range(3))
+    expected_bytes = b"%PDF-1.4 synthetic approved edition"
+    expected_hash = hashlib.sha256(expected_bytes).hexdigest()
+    current_hash = expected_hash
+    private_summary = "Private simulated policy summary"
+    published: list[dict[str, str | int | bool]] = []
+    source = tmp_path / "edition.json"
+    source.write_text(json.dumps({
+        "code": "SYNTH-POL",
+        "title": "Synthetic policy",
+        "version": "1.0",
+        "effective_date": "2026-01-01",
+        "content_summary": private_summary,
+        "document_id": doc_id,
+        "document_version_number": 1,
+    }), encoding="utf-8")
+    source.chmod(0o600)
+    download = tmp_path / "requested.pdf"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v1/auth/me":
+            return httpx.Response(200, json={
+                "id": actor, "role": "hr_manager",
+                "permissions": ["hr:employees:read", "hr:policy:manage"],
+            })
+        if path == f"/api/v1/hr/documents/{doc_id}":
+            return httpx.Response(200, json={
+                "id": doc_id, "category": "ordinary", "document_type": "policy",
+                "current_version": 1,
+                "versions": [
+                    {"status": "active", "version_number": 1, "sha256_checksum": current_hash}
+                ],
+            })
+        if path == "/api/v1/hr/policies" and request.method == "POST":
+            body = json.loads(request.content)
+            result = {**body, "id": policy_id, "published_at": "2026-01-01T00:00:00Z"}
+            published.append(result)
+            return httpx.Response(201, json=result)
+        if path == "/api/v1/hr/policies":
+            return httpx.Response(200, json={"items": published})
+        if path == "/api/v1/hr/me/policies":
+            item = {**published[0], "is_current": True, "acknowledged_at": None}
+            return httpx.Response(200, json={"items": [item]})
+        if path == f"/api/v1/hr/me/policies/{policy_id}/download":
+            return httpx.Response(200, json={
+                "document_id": doc_id, "version_number": 1, "file_size": len(expected_bytes),
+                "sha256_checksum": expected_hash, "download_url": "https://test.example.invalid/x",
+            })
+        return httpx.Response(404)
+
+    def call(*args: str) -> tuple[int, dict]:
+        output = io.StringIO()
+        code = garrisonctl.run(
+            ["hr", *args, "--json"],
+            transport=httpx.MockTransport(handler), stdout=output, stderr=io.StringIO(),
+        )
+        return code, json.loads(output.getvalue())
+
+    publish = ("company-policy", "publish", "--file", str(source))
+    code, preview = call(*publish, "--dry-run")
+    assert code == 0 and not published and private_summary not in json.dumps(preview)
+    current_hash = "0" * 64
+    assert call(*publish, "--apply", "--expect", preview["data"]["plan_sha256"])[0] == 4
+    assert not published
+    current_hash = expected_hash
+    code, result = call(*publish, "--apply", "--expect", preview["data"]["plan_sha256"])
+    assert code == 0 and result["data"]["id"] == policy_id
+    assert private_summary not in json.dumps(result)
+    assert call(
+        "my-policy", "acknowledge", "--policy-id", policy_id, "--edition", "2.0",
+        "--file-version", "1", "--dry-run",
+    )[0] == 4
+    monkeypatch.setattr(
+        "scripts.garrisonctl_hr._read_signed_hr_file", lambda *_: b"x" * len(expected_bytes)
+    )
+    download_args = ("my-policy", "download", "--policy-id", policy_id, "--output", str(download))
+    assert call(*download_args)[0] == 4
+    assert not download.exists()
+
+
 @pytest.mark.asyncio
 async def test_policy_editions_keep_exact_versions_and_employee_receipts(monkeypatch) -> None:
+    import hashlib
+
     from app.models.hr import HrPolicyAcknowledgement, HrPolicyDocument
 
     await skip_if_database_unavailable()
@@ -7785,6 +9882,8 @@ async def test_policy_editions_keep_exact_versions_and_employee_receipts(monkeyp
         download = await client.get(f"{edition}/download", headers=employee)
         assert download.status_code == 200 and download.headers["cache-control"] == "no-store"
         assert download.json()["file_name"] == "policy-original.pdf"
+        assert download.json()["file_size"] == len(file_v1["file"][1])
+        assert download.json()["sha256_checksum"] == hashlib.sha256(file_v1["file"][1]).hexdigest()
         assert (await client.get(f"{edition}/download", headers=unlinked)).status_code == 404
         assert (
             await client.get(f"{base}/me/documents/{document_id}/download", headers=employee)

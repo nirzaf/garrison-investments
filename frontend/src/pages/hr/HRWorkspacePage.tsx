@@ -57,7 +57,7 @@ import {
   type WorkbookPreviewResponse
 } from '../../api/hr';
 import { formatApiError as errMsg } from '../../api/errors';
-import { HRAccessForms } from './HRAccessForms';
+import { HRAccessForms, hrInputClass } from './HRAccessForms';
 import { HROffboarding } from './HROffboarding';
 import { HRTraining } from './HRTraining';
 import { HRPerformanceReviews, HRPerformanceSetup } from './HRPerformanceReviews';
@@ -65,15 +65,22 @@ import { HRDirectorOffboarding } from './HROffboardingCustody';
 import { HRSummaryPanel } from './HRSummaryPanel';
 import { HRTimePanel } from './HRTimePanel';
 import { HRLeavePolicies } from './HRLeavePolicies';
+import { HRLeaveDateEvidence } from './HRLeaveDateEvidence';
 import { HRLeaveAccrual } from './HRLeaveAccrual';
 import { HRLeaveRollover } from './HRLeaveRollover';
 import { HRHiringPanel } from './HRHiringPanel';
 import { HREmploymentChanges } from './HREmploymentChanges';
+import { HRDueEmploymentChanges } from './HRDueEmploymentChanges';
 import { HRLettersPanel } from './HRLettersPanel';
 import { HRPolicyPublication } from './HRPolicyPublication';
 import { HRIssuedLetterPicker, HRResponseLetter } from './HRResponseLetter';
 import { HRServiceRequestAssignment } from './HRServiceRequestAssignment';
 import { HRProjectAssignments } from './HRProjectAssignments';
+import { HRCompensation } from './HRCompensation';
+import { HRAdvances } from './HRAdvances';
+import { HRBenefits } from './HRBenefits';
+import { HRReimbursements } from './HRReimbursements';
+import { HRPayroll } from './HRPayroll';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
 
@@ -87,6 +94,7 @@ type HrTab =
   | 'leave'
   | 'operations'
   | 'training'
+  | 'payroll'
   | 'performance';
 
 function OrgBranch({ node }: { node: OrgChartNode }) {
@@ -248,6 +256,7 @@ export function HRWorkspacePage() {
     setPrivateVault(null);
     setEmploymentHistory(null);
     setVaultNationalId('');
+    setSelectedEmp(null);
     try {
       const detail = await getEmployee(empId);
       if (selection !== employeeSelection.current) return;
@@ -471,6 +480,10 @@ export function HRWorkspacePage() {
     { key: 'training', label: 'Training', visible: hasPerm('hr:training:manage') },
     { key: 'performance', label: 'Performance', visible: hasPerm('hr:performance:manage') },
     {
+      key: 'payroll', label: 'Payroll',
+      visible: hasPerm('hr:payroll:prepare') || hasPerm('hr:payroll:sensitive') || hasPerm('hr:payroll:approve')
+    },
+    {
       key: 'operations',
       label: 'Policies & Requests',
       visible: hasPerm('hr:policy:manage') || hasPerm('hr:requests:process')
@@ -532,9 +545,21 @@ export function HRWorkspacePage() {
       {tab === 'overview' && hasPerm('hr:reports:view') && (
         <HRSummaryPanel departments={departments} />
       )}
+      {tab === 'payroll' && user && (hasPerm('hr:payroll:prepare') || hasPerm('hr:payroll:sensitive') || hasPerm('hr:payroll:approve')) && (
+        <HRPayroll
+          key={user.id}
+          actorId={user.id}
+          canPrepare={hasPerm('hr:payroll:prepare')}
+          canRead={hasPerm('hr:payroll:sensitive')}
+          canApprove={hasPerm('hr:payroll:approve')}
+        />
+      )}
 
       {tab === 'directory' && (
         <div className="space-y-6">
+          {user && hasPerm('hr:employees:sensitive') && (
+            <HRDueEmploymentChanges key={user.id} actorId={user.id} inspectEmployee={selectEmployee} />
+          )}
           {hasPerm('hr:employees:manage') && (
             <div className="grid gap-4 lg:grid-cols-3">
               <form
@@ -776,6 +801,39 @@ export function HRWorkspacePage() {
                     Status: {selectedEmp.employment_status} · Revision:{' '}
                     {selectedEmp.record_revision}
                   </p>
+                  {user && hasPerm('hr:payroll:sensitive') && (
+                    <>
+                      <HRCompensation
+                        key={`compensation:${user.id}:${selectedEmp.id}`}
+                        employeeId={selectedEmp.id}
+                        employeeUserId={selectedEmp.user_id}
+                        actorId={user.id}
+                        canReview={hasPerm('hr:payroll:approve')}
+                      />
+                      <HRAdvances
+                        key={`advances:${user.id}:${selectedEmp.id}`}
+                        employeeId={selectedEmp.id}
+                        employeeUserId={selectedEmp.user_id}
+                        actorId={user.id}
+                        canReview={hasPerm('hr:payroll:approve')}
+                      />
+                      <HRBenefits
+                        key={`benefits:${user.id}:${selectedEmp.id}`}
+                        employeeId={selectedEmp.id}
+                        actorId={user.id}
+                        canReview={hasPerm('hr:payroll:approve')}
+                      />
+                      <HRReimbursements
+                        key={`reimbursements:${user.id}:${selectedEmp.id}`}
+                        employeeId={selectedEmp.id}
+                        employeeUserId={selectedEmp.user_id}
+                        actorId={user.id}
+                        canReview={hasPerm('hr:payroll:approve')}
+                        canManageReceipts={hasPerm('hr:documents:manage')}
+                        canReviewReceipts={hasPerm('hr:employees:sensitive')}
+                      />
+                    </>
+                  )}
                   {hasPerm('hr:employees:sensitive') && (
                     <HREmploymentChanges
                       key={selectedEmp.id}
@@ -1503,6 +1561,7 @@ export function HRWorkspacePage() {
             ))}
           </div>
 
+          {user && <HRLeaveDateEvidence key={user.id} actorId={user.id} />}
           <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
             <h3 className="text-base font-semibold">Leave Requests ({leaveRequests.length})</h3>
             {leaveRequests.map((lr) => (
@@ -1571,6 +1630,40 @@ export function HRWorkspacePage() {
                     </button>
                   </div>
                 )}
+                {hasPerm('hr:leave:approve') && lr.status === 'approved' &&
+                  lr.requested_by_id !== user?.id && (
+                  <details>
+                    <summary className="cursor-pointer">Reverse approved leave</summary>
+                    <form
+                      className="mt-2 flex flex-wrap items-end gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (pending) return;
+                        const reason = String(new FormData(event.currentTarget).get('reason')).trim();
+                        void runChange(
+                          () => decideLeaveRequest(lr.id, {
+                            decision: 'cancelled',
+                            notes: reason,
+                            expected_revision: lr.record_revision
+                          }),
+                          'Could not reverse approved leave.'
+                        );
+                      }}
+                    >
+                      <label className="block">
+                        Reversal reason (visible to employee)
+                        <input className={hrInputClass} name="reason" maxLength={500} required />
+                      </label>
+                      <button
+                        className="rounded border border-theme-border px-2 py-1"
+                        disabled={pending}
+                        type="submit"
+                      >
+                        Confirm reversal
+                      </button>
+                    </form>
+                  </details>
+                )}
               </div>
             ))}
           </div>
@@ -1595,6 +1688,7 @@ export function HRWorkspacePage() {
               canCreate={hasPerm('hr:policy:manage')}
               canIssue={user?.role === 'hr_manager'}
               canRender={hasPerm('hr:requests:process') && hasPerm('hr:employees:read')}
+              canReadCompensation={user?.role === 'hr_manager' && hasPerm('hr:payroll:sensitive')}
             />
           )}
           <HRPolicyPublication

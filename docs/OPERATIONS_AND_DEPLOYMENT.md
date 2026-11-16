@@ -74,7 +74,40 @@ The backend suite and Google Chrome browser suite each run in two shards with se
 
 Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
 
-For browser rebalancing, sum case times by file across both reports from comparable runs. After editing the workflow filter, use Playwright's `--list` with each filter and verify that the combined list matches the unfiltered suite exactly.
+The backend reports from HR checkpoint CI run `43902036278` recorded
+168.53 and 252.95 seconds of test time. The refreshed module weights
+project 211.15 and 210.34 seconds using those same case timings. Local
+collection verified that the new assignments cover all 916 cases once.
+Compare runner wall time on the next CI run before recording a speedup.
+
+For browser rebalancing, sum JUnit case times across both reports. The first
+Chrome shard uses [a Playwright test list](../frontend/e2e/ci-shard-1.txt).
+The second runs its complement. After editing the list, verify with
+`playwright test --list` and the two selectors `--test-list` and
+`--test-list-invert` that every test appears exactly once.
+
+The HR checkpoint ran all 62 Chrome scenarios without skips. The existing
+shards totaled 179.56 and 525.22 seconds of test time. Moving seven HR
+scenarios to the first shard projects 353.01 and 351.77 seconds using the
+same timings. Local collection verified the new 30/32 split. These are
+projected test-time totals. The next self-hosted run will measure elapsed
+time with the new assignments.
+
+The subsequent 67-case local Chrome run took 2.7 minutes with two workers.
+Applying the existing selectors to its case durations gave 134.0 and
+170.6 seconds. Moving the payroll browser workflow to the first selector
+projects 149.6 and 155.0 seconds from the same measurements. Collection
+verified a disjoint 31/36 split covering all 67 cases. Measure the next
+self-hosted run before drawing conclusions about wall time.
+
+The 68-case payroll-policy candidate ran locally in 3.0 minutes with two
+Chrome workers. The previous selectors account for 163.51 and 178.73 seconds
+of JUnit case time. Moving the manager recommendation scenario, measured
+at 7.89 seconds, projects 171.40 and 170.84 seconds. The final lists cover
+33 and 35 cases. The latest measured self-hosted CI on published
+`c4a61cd` was 737 seconds elapsed, with the longest browser job at
+326 seconds and longest backend job at 298 seconds. Compare the new
+selectors on the next self-hosted run before claiming a wall-time gain.
 
 The pre-rebalance baseline is CI run `43504480104` on `c50de62e4fbb2c57426d208e38e787421ac96f90`: 209 seconds wall time; browser shard 1 took 148 seconds and shard 2 took 204 seconds. Their browser-test steps took 74 and 104 seconds. JUnit case-time sums were 127.23 and 180.53 seconds; `project-setup.e2e.ts` contributed 24.89 seconds on shard 2. The first rebalance on `00b38884c450ac699cbc8039b522044e05fff1ca` passed all checks but did not improve measured CI wall time: it took 214 seconds, with browser jobs at 210 and 159 seconds and test steps at 120 and 64 seconds. Its JUnit sums were 205.96 and 106.06 seconds. The second rebalance on `9f7a543c5b637109f735709cbe27a59910b2f6c7` passed all required checks in 195 seconds wall time; browser jobs took 150 and 193 seconds, with test steps at 72 and 114 seconds and JUnit case-time sums of 126.98 and 202.26 seconds. The third rebalance on `d79f4f47534e5d726fa258befa3c6b496d506cca` passed all checks in 178 seconds; browser jobs took 142 and 175 seconds, with test steps at 74 and 93 seconds and JUnit case-time sums of 132.11 and 155.90 seconds. The fourth rebalance on `f81e369bce759aef93e172f60bde1552d0d53f9f` passed all checks in 170 seconds; browser jobs took 166 and 152 seconds, with test steps at 90 and 77 seconds and JUnit case-time sums of 161.70 and 125.54 seconds. This run was 39 seconds shorter than the baseline, but measurements vary substantially between runners and the single-run difference is not proof of a repeatable speedup.
 

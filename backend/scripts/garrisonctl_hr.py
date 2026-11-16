@@ -12,30 +12,60 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.schemas.hr import (
     ApplicationCreateRequest,
     ApplicationStageUpdateRequest,
     ApplicationWithdrawalRequest,
+    AttendanceCorrectionCreateRequest,
+    AttendanceCorrectionDecisionRequest,
+    AttendanceEntryCreateRequest,
+    AttendanceReviewRequest,
     CandidateCorrespondenceDecisionRequest,
     CandidateCreateRequest,
+    EmployeeAdvanceDecision,
+    EmployeeAdvanceDisbursement,
+    EmployeeAdvanceListResponse,
+    EmployeeAdvancePayment,
+    EmployeeAdvanceRequest,
+    EmployeeAdvanceResponse,
     InterviewCreateRequest,
     InterviewUpdateRequest,
+    LeaveDateEvidenceCreate,
+    LeaveDateEvidenceDecision,
     OffboardingCustodyRequest,
     OfferCreateRequest,
     OfferDecisionRequest,
     OfferReissueRequest,
     OnboardingCaseCreateRequest,
     OnboardingTaskUpdateRequest,
+    OvertimeDecisionRequest,
+    OvertimeRequestCreateRequest,
+    PayrollCorrectionCreate,
+    PayrollCorrectionDecision,
+    PayrollPolicyCreateRequest,
+    PayrollPolicyDraftUpdateRequest,
     PayrollRunCalculateRequest,
     PayrollSettlementRequest,
+    PayrollSnapshotCalculateRequest,
+    PolicyAcknowledgeRequest,
+    PolicyDocumentCreateRequest,
     ProbationReviewRequest,
+    ReimbursementDecisionRequest,
+    ReimbursementPayableResponse,
     RequisitionCreateRequest,
     RequisitionDecisionRequest,
+    RosterAllocationCreateRequest,
+    RosterCancellationRequest,
     SeparationSettlementProposal,
     SeparationSettlementReview,
+    TimesheetCreateRequest,
+    TimesheetDecisionRequest,
     TrainingCompletionRequest,
+    WorkCalendarCreateRequest,
+    WorkCalendarDecisionRequest,
+    WorkCalendarUpdateRequest,
 )
 from scripts.garrisonctl_access import has_cli_permission, page, query, require_preview_permission
 from scripts.garrisonctl_auth import prompt_secret
@@ -67,6 +97,7 @@ PERM_LEAVE_APPROVE = "hr:leave:approve"
 PERM_LEAVE_MANAGE = "hr:leave:manage"
 PERM_POLICY_MANAGE = "hr:policy:manage"
 PERM_ATTENDANCE = "hr:attendance:record"
+PERM_ATTENDANCE_REVIEW = "hr:attendance:approve"
 PERM_DOCUMENTS = "hr:documents:manage"
 PERM_COMPLIANCE = "hr:compliance:manage"
 PERM_OFFBOARDING = "hr:offboarding:manage"
@@ -1803,6 +1834,128 @@ def _decide_correspondence(args: argparse.Namespace, ctx: Context) -> Result:
     )
 
 
+def _payroll_policy_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key] for key in (
+            "id", "code", "is_approved", "approved_by_id", "second_approved_by_id", "updated_at"
+        )
+    }
+
+
+def _list_payroll_policies(_args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
+    require_preview_permission(ctx, PERM_PAYROLL_PREPARE)
+    rows = ctx.request("GET", f"{HR}/payroll/policies")
+    return {
+        "items": [_payroll_policy_summary(row) for row in rows["items"]],
+        "total": rows["total"],
+    }
+
+
+def _read_payroll_policy(ctx: Context, policy_id: str) -> dict[str, Any]:
+    row: dict[str, Any] = ctx.request("GET", f"{HR}/payroll/policies/{policy_id}")
+    if row["id"] != policy_id:
+        raise CLIError("The response does not match the requested payroll policy.", CONFLICT)
+    return row
+
+
+def _show_payroll_policy(args: argparse.Namespace, ctx: Context) -> Result:
+    _require_any_permission(ctx, PERM_PAYROLL_PREPARE, PERM_PAYROLL_APPROVE)
+    row = _read_payroll_policy(ctx, args.policy_id)
+    try:
+        write_private_bytes(args.output, (json.dumps(row, ensure_ascii=False) + "\n").encode())
+    except OSError:
+        raise CLIError("Could not write the private payroll policy file.") from None
+    return Result({**_payroll_policy_summary(row), "review_sha256": sha256_json(row)})
+
+
+def _save_payroll_policy(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_PREPARE)
+    path = f"{HR}/payroll/policies"
+    current = None
+    if args.policy_id:
+        current = _read_payroll_policy(ctx, args.policy_id)
+        if current["approved_by_id"] != ctx.identity()["id"] or current["is_approved"]:
+            raise CLIError("The preparer can only edit their own pending payroll policy.", CONFLICT)
+    try:
+        raw = json.loads(read_private_bytes(args.file, max_bytes=64 * 1024))
+        if not isinstance(raw, dict) or "expected_updated_at" in raw:
+            raise ValueError
+        if current is None:
+            policy = PayrollPolicyCreateRequest.model_validate(raw, extra="forbid")
+            if policy.controlled_record is None:
+                raise ValueError
+            payload = policy.model_dump(mode="json")
+            payload["code"] = payload["code"].strip()
+        else:
+            payload = PayrollPolicyDraftUpdateRequest.model_validate(
+                {**raw, "expected_updated_at": current["updated_at"]}
+            ).model_dump(mode="json")
+        payload["name"] = payload["name"].strip()
+    except ValueError:
+        raise CLIError(
+            "Supply a valid controlled payroll policy in an owner-only JSON file."
+        ) from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "current": _payroll_policy_summary(current) if current else None,
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    if current is None:
+        saved = ctx.request("POST", path, json=payload, write=True)
+    else:
+        saved = ctx.request("PUT", f"{path}/{args.policy_id}/draft", json=payload, write=True)
+    observed = verified(
+        ctx,
+        lambda: _read_payroll_policy(ctx, args.policy_id or saved["id"]),
+        lambda row: (
+            row == saved and not row["is_approved"]
+            and all(
+                row[key] == value for key, value in payload.items() if key != "expected_updated_at"
+            )
+        ),
+    )
+    return Result(_payroll_policy_summary(observed.data), changed=observed.changed)
+
+
+def _approve_payroll_policy(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    row = _read_payroll_policy(ctx, args.policy_id)
+    if row["is_approved"] or row["approved_by_id"] == ctx.identity()["id"]:
+        raise CLIError("A different reviewer must approve a pending policy.", CONFLICT)
+    digest = sha256_json(row)
+    if digest != args.review_sha256:
+        raise CLIError("The payroll policy changed. Save a new copy for review.", CONFLICT)
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "current": _payroll_policy_summary(row),
+            "review_sha256": digest,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request(
+        "POST", f"{HR}/payroll/policies/{args.policy_id}/approve",
+        json={"expected_updated_at": row["updated_at"]}, write=True,
+    )
+    observed = verified(
+        ctx,
+        lambda: _read_payroll_policy(ctx, args.policy_id),
+        lambda result: (
+            result == saved and result["is_approved"]
+            and result["second_approved_by_id"] == ctx.identity()["id"]
+            and all(result[field] == row[field] for field in ("rules_json", "controlled_record"))
+        ),
+    )
+    return Result(_payroll_policy_summary(observed.data), changed=observed.changed)
+
+
 def _calculate_payroll(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, PERM_PAYROLL_PREPARE)
     roster = load_json(Path(args.roster_file), max_bytes=64 * 1024)
@@ -1820,7 +1973,15 @@ def _calculate_payroll(args: argparse.Namespace, ctx: Context) -> Result:
     run = ctx.request("GET", path)
     if run["prepared_by_id"] != ctx.identity()["id"] or run["status"] != "draft":
         raise CLIError("The preparer must calculate their own draft payroll run.", CONFLICT)
-    payload = {"employee_ids": employee_ids}
+    evidence = None
+    if args.time_sha256 is not None or args.leave_sha256 is not None:
+        evidence = {"time_sha256": args.time_sha256, "leave_sha256": args.leave_sha256}
+    try:
+        payload = PayrollSnapshotCalculateRequest.model_validate(
+            {"employee_ids": employee_ids, "source_evidence": evidence}
+        ).model_dump(mode="json", exclude_none=True)
+    except ValidationError:
+        raise CLIError("Provide both the reviewed time and leave SHA-256 checksums.") from None
     plan = checked_plan(
         args,
         ctx,
@@ -1974,7 +2135,7 @@ def _download_payroll_export(args: argparse.Namespace, ctx: Context) -> Result:
     return Result({"run_id": args.run_id, "csv_sha256": expected, "size_bytes": len(content)})
 
 
-def _payroll_time_inputs(args: argparse.Namespace, ctx: Context) -> Result:
+def _payroll_inputs(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, PERM_PAYROLL_PREPARE)
     try:
         roster = PayrollRunCalculateRequest.model_validate(
@@ -1986,32 +2147,324 @@ def _payroll_time_inputs(args: argparse.Namespace, ctx: Context) -> Result:
         )
     except ValueError:
         raise CLIError("Provide a private JSON array of unique employee UUIDs.") from None
-    path = f"{HR}/payroll/periods/{args.period_id}/time-inputs"
+    source = args.input_source
+    path = f"{HR}/payroll/periods/{args.period_id}/{source}-inputs"
     payload = roster.model_dump(mode="json")
     if args.output is None:
         return Result(ctx.request("POST", f"{path}/preview", json=payload))
     if not args.sha256 or re.fullmatch(r"[0-9a-f]{64}", args.sha256) is None:
-        raise CLIError("Provide --sha256 from the current time input preview.")
+        raise CLIError(f"Provide --sha256 from the current {source} input preview.")
     payload["expected_csv_sha256"] = args.sha256
     with ctx.stream("POST", f"{path}.csv", json=payload) as response:
         if (
             response.headers.get("content-type", "").split(";", 1)[0] != "text/csv"
             or response.headers.get("x-payroll-export-sha256") != args.sha256
         ):
-            raise CLIError("The download headers do not match the time input preview.", CONFLICT)
+            raise CLIError(
+                f"The download headers do not match the {source} input preview.", CONFLICT
+            )
         content = bytearray()
         for chunk in response.iter_bytes(chunk_size=65536):
             content.extend(chunk)
             if len(content) > 8 * 1024 * 1024:
-                raise CLIError("The time input export exceeds the expected size limit.")
+                raise CLIError(f"The {source} input export exceeds the expected size limit.")
     if hashlib.sha256(content).hexdigest() != args.sha256:
-        raise CLIError("The downloaded file does not match the time input preview.", CONFLICT)
+        raise CLIError(f"The downloaded file does not match the {source} input preview.", CONFLICT)
     try:
         write_private_bytes(Path(args.output), bytes(content))
     except OSError:
-        raise CLIError("Could not create a new private time input file.") from None
+        raise CLIError(f"Could not create a new private {source} input file.") from None
     return Result(
         {"period_id": args.period_id, "csv_sha256": args.sha256, "size_bytes": len(content)}
+    )
+
+
+def _advance_metadata(row: EmployeeAdvanceResponse) -> dict[str, Any]:
+    return {
+        "advance_id": str(row.id),
+        "employee_id": str(row.employee_id),
+        "status": row.status,
+        "payable_sha256": row.payable_sha256,
+        "repayment_count": len(row.recoveries),
+    }
+
+
+def _advance_details(ctx: Context, advance_id: str) -> EmployeeAdvanceResponse:
+    try:
+        row = EmployeeAdvanceResponse.model_validate(
+            ctx.request("GET", f"{HR}/advances/{advance_id}")
+        )
+    except ValidationError:
+        raise CLIError("The API returned an invalid advance record.", CONFLICT) from None
+    if str(row.id) != advance_id:
+        raise CLIError("The API returned a different advance.", CONFLICT)
+    return row
+
+
+def _list_advances(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        result = EmployeeAdvanceListResponse.model_validate(
+            ctx.request(
+                "GET", f"{HR}/advances", params=query(args, "employee_id", "limit", "offset")
+            )
+        )
+    except ValidationError:
+        raise CLIError("The API returned an invalid list of advances.", CONFLICT) from None
+    if any(str(row.employee_id) != args.employee_id for row in result.items):
+        raise CLIError("The API returned advances for a different employee.", CONFLICT)
+    return Result(
+        {"items": [_advance_metadata(row) for row in result.items], "total": result.total}
+    )
+
+
+def _show_advance(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    row = _advance_details(ctx, args.advance_id)
+    if args.output:
+        try:
+            write_private_bytes(args.output, (row.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not create a new private advance file.") from None
+    return Result(_advance_metadata(row))
+
+
+def _advance_input(path: Path, required: set[str]) -> dict[str, Any]:
+    try:
+        values = json.loads(read_private_bytes(path, max_bytes=16 * 1024))
+        if not isinstance(values, dict) or values.keys() != required:
+            raise ValueError
+        if not isinstance(values.get("amount"), str):
+            raise ValueError
+    except ValueError:
+        raise CLIError(
+            "Supply the required fields in a private JSON file with amount as text."
+        ) from None
+    return values
+
+
+def _submit_advance(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    values = _advance_input(
+        args.file, set(EmployeeAdvanceRequest.model_fields) | {"idempotency_key"}
+    )
+    try:
+        key = uuid_arg(values.pop("idempotency_key"))
+        payload = EmployeeAdvanceRequest.model_validate(values)
+    except (ValidationError, argparse.ArgumentTypeError, AttributeError, TypeError):
+        raise CLIError("The advance request fields are invalid.") from None
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "employee_id": str(payload.employee_id),
+            "benefit_assignment_id": str(payload.benefit_assignment_id),
+            "request_sha256": sha256_json([key, payload.model_dump(mode="json")]),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request(
+        "POST",
+        f"{HR}/advances",
+        json=payload.model_dump(mode="json"),
+        headers={"Idempotency-Key": key},
+        write=True,
+    )
+
+    def readback() -> dict[str, Any]:
+        try:
+            saved_id = uuid_arg(saved["id"])
+        except (argparse.ArgumentTypeError, KeyError, AttributeError, TypeError):
+            raise CLIError("The API did not identify the new advance.", CONFLICT) from None
+        row = _advance_details(ctx, saved_id)
+        if any(getattr(row, field) != value for field, value in payload.model_dump().items()):
+            raise CLIError("The recorded advance does not match the submission.", CONFLICT)
+        return _advance_metadata(row)
+
+    return verified(ctx, readback, bool)
+
+
+def _change_advance(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    current = _advance_details(ctx, args.advance_id)
+    action = args.advance_action
+    payload: EmployeeAdvanceDecision | EmployeeAdvancePayment
+    if action == "decision":
+        if current.status != "submitted":
+            raise CLIError("Only submitted advances can be decided.", CONFLICT)
+        payload = EmployeeAdvanceDecision(decision=args.decision)
+    else:
+        input_model = (
+            EmployeeAdvanceDisbursement if action == "disburse" else EmployeeAdvancePayment
+        )
+        normalized = _advance_input(args.file, set(input_model.model_fields))
+        try:
+            normalized["reference"] = (
+                str(normalized["reference"]).strip()
+                if isinstance(normalized["reference"], str)
+                else normalized["reference"]
+            )
+            payload = input_model.model_validate(normalized)
+        except ValidationError:
+            raise CLIError("The external payment fields are invalid.") from None
+        if payload.currency != current.currency:
+            raise CLIError("The external payment currency differs from the advance.", CONFLICT)
+        if isinstance(payload, EmployeeAdvanceDisbursement):
+            if (
+                current.status != "approved"
+                or payload.expected_payable_sha256 != current.payable_sha256
+                or payload.amount != current.amount
+            ):
+                raise CLIError(
+                    "The external disbursement must match the approved advance.", CONFLICT
+                )
+        elif (
+            current.status != "disbursed"
+            or payload.amount > current.outstanding
+            or payload.reference == current.disbursement_reference
+            or any(item.reference == payload.reference for item in current.recoveries)
+        ):
+            raise CLIError(
+                "The repayment must be new and within the outstanding principal.", CONFLICT
+            )
+    body = payload.model_dump(mode="json")
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "advance_id": args.advance_id,
+            "current_status": current.status,
+            "state_sha256": sha256_json(current.model_dump(mode="json")),
+            "request_sha256": sha256_json(body),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/advances/{args.advance_id}/{action}", json=body, write=True)
+
+    def readback() -> dict[str, Any]:
+        row = _advance_details(ctx, args.advance_id)
+        if isinstance(payload, EmployeeAdvanceDecision):
+            matches = row.status == payload.decision
+        elif isinstance(payload, EmployeeAdvanceDisbursement):
+            matches = (
+                row.status in {"disbursed", "settled"}
+                and row.disbursement_reference == payload.reference
+                and row.disbursed_on == payload.occurred_on
+                and row.payable_sha256 == payload.expected_payable_sha256
+            )
+        else:
+            matches = any(
+                (item.reference, item.occurred_on, item.amount)
+                == (payload.reference, payload.occurred_on, payload.amount)
+                for item in row.recoveries
+            )
+        if not matches:
+            raise CLIError("The advance record does not match the reviewed operation.", CONFLICT)
+        return _advance_metadata(row)
+
+    return verified(ctx, readback, lambda row: row["advance_id"] == args.advance_id)
+
+
+def _read_reimbursement_payable(ctx: Context, claim_id: str) -> ReimbursementPayableResponse:
+    try:
+        result = ReimbursementPayableResponse.model_validate(
+            ctx.request("GET", f"{HR}/reimbursements/{claim_id}/payable")
+        )
+    except ValidationError:
+        raise CLIError("The portal returned an invalid payable reference.", CONFLICT) from None
+    reference = result.reference.model_dump(mode="json")
+    if (
+        str(result.reference.claim_id) != claim_id
+        or sha256_json(reference) != result.reference_sha256
+    ):
+        raise CLIError("The payable reference failed integrity verification.", CONFLICT)
+    return result
+
+
+def _reimbursement_payable(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    result = _read_reimbursement_payable(ctx, args.claim_id)
+    if args.output:
+        if result.status != "approved":
+            raise CLIError("This payable is already settled.", CONFLICT)
+        try:
+            write_private_bytes(args.output, (result.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not create a new private payable file.") from None
+    return Result(
+        {
+            "claim_id": args.claim_id,
+            "payable_reference": result.reference.payable_reference,
+            "reference_sha256": result.reference_sha256,
+            "status": result.status,
+        }
+    )
+
+
+def _confirm_reimbursement_paid(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    payable = _read_reimbursement_payable(ctx, args.claim_id)
+    if payable.status != "approved":
+        raise CLIError("This payable is already settled.", CONFLICT)
+    try:
+        file_values = json.loads(read_private_bytes(args.settlement_file, max_bytes=16 * 1024))
+        if not isinstance(file_values, dict) or file_values.keys() != {
+            "expected_payable_sha256",
+            "settlement_reference",
+            "settled_amount",
+            "settled_currency",
+        }:
+            raise ValueError
+        decision = ReimbursementDecisionRequest.model_validate(
+            {
+                "decision": "paid",
+                **file_values,
+            }
+        )
+    except ValueError:
+        raise CLIError(
+            "Provide the reviewed payable digest, external reference, amount and currency "
+            "in a private JSON file."
+        ) from None
+    if (
+        not (decision.settlement_reference or "").strip()
+        or decision.expected_payable_sha256 != payable.reference_sha256
+        or decision.settled_amount != payable.reference.amount
+        or decision.settled_currency != payable.reference.currency
+    ):
+        raise CLIError("The external settlement must match the approved payable.", CONFLICT)
+    payload = decision.model_dump(mode="json", exclude_none=True)
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "claim_id": args.claim_id,
+            "payable_sha256": payable.reference_sha256,
+            "settlement_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/reimbursements/{args.claim_id}/decision", json=payload, write=True)
+
+    def readback() -> dict[str, str]:
+        current = _read_reimbursement_payable(ctx, args.claim_id)
+        return {"status": current.status, "reference_sha256": current.reference_sha256}
+
+    return verified(
+        ctx,
+        readback,
+        lambda row: row["status"] == "paid" and row["reference_sha256"] == payable.reference_sha256,
     )
 
 
@@ -2089,6 +2542,142 @@ def _record_payroll_settlement(args: argparse.Namespace, ctx: Context) -> Result
             bool(row)
             and row["id"] == saved["id"] == event_id
             and row["recorded_at"] == saved["recorded_at"]
+        ),
+    )
+
+
+def _close_payroll(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    path = f"{HR}/payroll/runs/{args.run_id}"
+    snapshot = ctx.request("GET", f"{path}/snapshot")
+    summary = ctx.request("GET", f"{path}/settlements")
+    if (
+        snapshot["run_id"] != args.run_id
+        or summary["run_id"] != args.run_id
+        or snapshot["status"] != "approved"
+        or not snapshot["payslips_published_at"]
+        or not summary["fully_reconciled"]
+    ):
+        raise CLIError("Closure requires published payslips and full reconciliation.", CONFLICT)
+    payload = {
+        "expected_snapshot_digest": snapshot["digest"],
+        "expected_csv_sha256": summary["csv_sha256"],
+        "expected_settlement_digest": summary["settlement_digest"],
+    }
+    plan = checked_plan(
+        args, ctx, {"operation": args.command_name, "run_id": args.run_id, **payload},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request("POST", f"{path}/close", json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: ctx.request("GET", f"{path}/settlements")["closure"],
+        lambda row: bool(row) and row == saved and row["run_id"] == args.run_id,
+    )
+
+
+def _payroll_corrections_path(args: argparse.Namespace) -> str:
+    return f"{HR}/payroll/runs/{args.run_id}/lines/{args.line_id}/corrections"
+
+
+def _correction_receipt(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key]
+        for key in ("id", "line_id", "previous_id", "snapshot_digest", "digest", "status")
+    }
+
+
+def _propose_payroll_correction(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_PREPARE)
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        detail = json.loads(read_private_bytes(Path(args.file), max_bytes=16 * 1024))
+        if not isinstance(detail, dict) or detail.keys() != {
+            "correction_id", "gross", "deductions", "evidence_reference"
+        }:
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise CLIError("Use a private JSON file with the four correction fields.") from None
+    path = _payroll_corrections_path(args)
+    snapshot = ctx.request("GET", f"{HR}/payroll/runs/{args.run_id}/snapshot")
+    history = ctx.request("GET", path, params={"limit": 1})
+    if snapshot["run_id"] != args.run_id or not snapshot["closed_at"]:
+        raise CLIError("A correction requires the exact closed payroll snapshot.", CONFLICT)
+    if history["line_id"] != args.line_id:
+        raise CLIError("The correction baseline belongs to a different payroll line.", CONFLICT)
+    try:
+        payload = PayrollCorrectionCreate.model_validate({
+            **detail,
+            "expected_snapshot_digest": snapshot["digest"],
+            "expected_previous_id": history["current_correction_id"],
+        }).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("The private correction proposal fields failed validation.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "run_id": args.run_id,
+            "line_id": args.line_id,
+            "correction_id": payload["correction_id"],
+            "snapshot_digest": payload["expected_snapshot_digest"],
+            "previous_id": payload["expected_previous_id"],
+            "proposal_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = _correction_receipt(ctx.request("POST", path, json=payload, write=True))
+    return verified(
+        ctx,
+        lambda: _correction_receipt(ctx.request("GET", f"{path}/{payload['correction_id']}")),
+        lambda row: (
+            row == saved and row["id"] == payload["correction_id"]
+            and row["snapshot_digest"] == payload["expected_snapshot_digest"]
+            and row["line_id"] == args.line_id
+            and row["previous_id"] == payload["expected_previous_id"]
+        ),
+    )
+
+
+def _decide_payroll_correction(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    path = f"{_payroll_corrections_path(args)}/{args.correction_id}"
+    current = ctx.request("GET", path)
+    if current["id"] != args.correction_id or current["line_id"] != args.line_id:
+        raise CLIError("The correction does not match the requested payroll line.", CONFLICT)
+    if current["submitted_by_id"] == ctx.identity()["id"]:
+        raise CLIError("A different actor must decide this correction.", CONFLICT)
+    if current["digest"] != args.digest:
+        raise CLIError("Read and confirm the exact correction digest.", CONFLICT)
+    try:
+        payload = PayrollCorrectionDecision.model_validate({
+            "decision": args.decision, "expected_digest": args.digest
+        }).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("Confirm a valid correction decision and digest.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "run_id": args.run_id,
+            "correction": _correction_receipt(current),
+            **payload,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = _correction_receipt(ctx.request("POST", f"{path}/decision", json=payload, write=True))
+    return verified(
+        ctx,
+        lambda: _correction_receipt(ctx.request("GET", path)),
+        lambda row: (
+            row == saved and row["status"] == args.decision
+            and row["id"] == args.correction_id and row["digest"] == args.digest
         ),
     )
 
@@ -2375,6 +2964,108 @@ def _decide_leave_policy(args: argparse.Namespace, ctx: Context) -> Result:
     )
 
 
+def _leave_date_evidence_path(args: argparse.Namespace) -> str:
+    return f"{HR}/leave/requests/{args.request_id}/date-evidence"
+
+
+def _leave_date_evidence_receipt(row: dict[str, Any]) -> dict[str, Any]:
+    return {key: row[key] for key in ("id", "status", "digest", "request_revision")}
+
+
+def _propose_leave_date_evidence(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_LEAVE_MANAGE)
+    path = _leave_date_evidence_path(args)
+    current = ctx.request("GET", path, params={"limit": 1})
+    if current["request_id"] != args.request_id or not current["can_propose"]:
+        raise CLIError("This leave request is unavailable for historical date review.", CONFLICT)
+    try:
+        private = json.loads(read_private_bytes(args.file, max_bytes=16 * 1024))
+        if not isinstance(private, dict) or private.keys() != {
+            "proposal_id", "work_dates", "evidence_reference",
+        }:
+            raise ValueError
+        payload = LeaveDateEvidenceCreate.model_validate({
+            **private, "expected_revision": current["request_revision"]
+        }).model_dump(mode="json")
+    except ValueError:
+        raise CLIError("Provide valid historical dates in an owner-only JSON file.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "request_id": args.request_id,
+            "request_revision": payload["expected_revision"],
+            "proposal_id": payload["proposal_id"],
+            "evidence_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = _leave_date_evidence_receipt(ctx.request("POST", path, json=payload, write=True))
+    detail_path = f"{path}/{payload['proposal_id']}"
+    return verified(
+        ctx,
+        lambda: _leave_date_evidence_receipt(ctx.request("GET", detail_path)),
+        lambda row: (
+            row == saved and row["id"] == payload["proposal_id"]
+            and row["request_revision"] == payload["expected_revision"]
+        ),
+    )
+
+
+def _decide_leave_date_evidence(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_LEAVE_MANAGE)
+    require_preview_permission(ctx, PERM_LEAVE_APPROVE)
+    base = _leave_date_evidence_path(args)
+    path = f"{base}/{args.proposal_id}"
+    reviewed = ctx.request("GET", path)
+    current = ctx.request("GET", base, params={"limit": 1})
+    if reviewed["id"] != args.proposal_id or current["request_id"] != args.request_id:
+        raise CLIError("The evidence response does not match the request.", CONFLICT)
+    if not current["can_review"] or reviewed["submitted_by_id"] == ctx.identity()["id"]:
+        raise CLIError("A different reviewer must decide work-date evidence.", CONFLICT)
+    if reviewed["digest"] != args.digest:
+        raise CLIError("Read and confirm the exact work-date evidence digest.", CONFLICT)
+    if args.decision == "approved" and current["requires_payroll_correction"]:
+        raise CLIError("Use payroll corrections for dates covered by approved payroll.", CONFLICT)
+    try:
+        payload = LeaveDateEvidenceDecision(
+            decision=args.decision, expected_digest=args.digest
+        ).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("Provide a valid work-date review decision and digest.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "request_id": args.request_id,
+            "request_revision": current["request_revision"],
+            "reviewed": _leave_date_evidence_receipt(reviewed),
+            **payload,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = _leave_date_evidence_receipt(
+        ctx.request("POST", f"{path}/decision", json=payload, write=True)
+    )
+
+    def readback() -> dict[str, Any]:
+        row = _leave_date_evidence_receipt(ctx.request("GET", path))
+        if args.decision == "approved":
+            retained = ctx.request("GET", base, params={"limit": 1})
+            if retained["scheduled_work_dates"] != reviewed["work_dates"]:
+                raise CLIError("The reviewed work dates could not be verified on the request.")
+        return row
+
+    return verified(
+        ctx, readback,
+        lambda row: (
+            row == saved and row["status"] == args.decision and row["digest"] == args.digest
+        ),
+    )
+
+
 def _post_leave_accrual(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, PERM_LEAVE_APPROVE)
     payload = {
@@ -2510,6 +3201,281 @@ def _attendance_correction(args: argparse.Namespace, ctx: Context) -> Result:
         return Result(plan, outcome="preview")
     created = ctx.request("POST", f"{HR}/attendance/corrections", json=payload, write=True)
     return Result(created, changed=True)
+
+
+TIME_CREATE_SCHEMAS: dict[str, type[BaseModel]] = {
+    "attendance": AttendanceEntryCreateRequest,
+    "attendance/corrections": AttendanceCorrectionCreateRequest,
+    "timesheets": TimesheetCreateRequest,
+    "overtime": OvertimeRequestCreateRequest,
+}
+TIME_REVIEW_SCHEMAS: dict[str, type[BaseModel]] = {
+    "attendance": AttendanceReviewRequest,
+    "attendance/corrections": AttendanceCorrectionDecisionRequest,
+    "timesheets": TimesheetDecisionRequest,
+    "overtime": OvertimeDecisionRequest,
+}
+
+
+def _time_record_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key]
+        for key in ("id", "employee_id", "status", "record_revision")
+        if key in row
+    }
+
+
+def _read_time_change(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        value = json.loads(read_private_bytes(args.file, max_bytes=16 * 1024))
+        if not isinstance(value, dict):
+            raise ValueError
+    except ValueError:
+        raise CLIError("Provide the time record fields in an owner-only JSON file.") from None
+    return value
+
+
+def _create_time_record(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    draft = _read_time_change(args)
+    schema = TIME_CREATE_SCHEMAS[args.time_source]
+    if (
+        (args.time_source == "attendance" and draft.get("source", "manual") != "manual")
+        or draft.keys() - schema.model_fields.keys()
+    ):
+        raise CLIError("The private file contains unsupported fields or attendance source.")
+    try:
+        payload = schema.model_validate(draft).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("The time record fields failed validation.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "employee_id": payload["employee_id"],
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    path = f"{HR}/{args.time_source}"
+    saved = _time_record_summary(ctx.request("POST", path, json=payload, write=True))
+    expected_status = (
+        "draft" if args.time_source == "timesheets" and not payload["submit"] else "submitted"
+    )
+    return verified(
+        ctx,
+        lambda: _time_record_summary(ctx.request("GET", f"{path}/{saved['id']}")),
+        lambda row: (
+            row == saved and row["employee_id"] == payload["employee_id"]
+            and row["status"] == expected_status
+        ),
+    )
+
+
+def _review_time_record(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    require_preview_permission(ctx, PERM_ATTENDANCE_REVIEW)
+    draft = _read_time_change(args)
+    schema = TIME_REVIEW_SCHEMAS[args.time_source]
+    if "expected_revision" in draft or draft.keys() - schema.model_fields.keys():
+        raise CLIError("Supply review fields only. The portal provides the record revision.")
+    path = f"{HR}/{args.time_source}/{args.record_id}"
+    current = ctx.request("GET", path)
+    if current["id"] != args.record_id:
+        raise CLIError("The response does not match the requested time record.", CONFLICT)
+    if "expected_revision" in schema.model_fields:
+        draft["expected_revision"] = current["record_revision"]
+    try:
+        payload = schema.model_validate(draft).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("The time decision fields failed validation.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "current": _time_record_summary(current),
+            "record_sha256": sha256_json(current),
+            "decision": payload["decision"],
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = _time_record_summary(ctx.request("POST", f"{path}/decision", json=payload, write=True))
+    return verified(
+        ctx,
+        lambda: _time_record_summary(ctx.request("GET", path)),
+        lambda row: (
+            row == saved and row["id"] == args.record_id and row["status"] == payload["decision"]
+        ),
+    )
+
+
+def _calendar_list(ctx: Context) -> dict[str, Any]:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    result: dict[str, Any] = ctx.request("GET", f"{HR}/calendars")
+    return result
+
+
+def _calendar_read(ctx: Context, calendar_id: str) -> dict[str, Any]:
+    for row in _calendar_list(ctx)["items"]:
+        if row["id"] == calendar_id:
+            return row
+    raise CLIError("Work calendar was not found.", CONFLICT)
+
+
+def _calendar_change(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    current = _calendar_read(ctx, args.calendar_id) if args.calendar_id else None
+    schema: type[BaseModel]
+    path = f"{HR}/calendars"
+    method = "POST"
+    if args.calendar_action == "decide":
+        if args.action != "submit":
+            require_preview_permission(ctx, PERM_POLICY_MANAGE)
+        assert current is not None
+        if args.action == "approve" and ctx.identity()["id"] in {
+            current["created_by_id"], current["submitted_by_id"]
+        }:
+            raise CLIError("Another HR Manager must approve this calendar.", AUTH)
+        schema = WorkCalendarDecisionRequest
+        values = {
+            "action": args.action,
+            "expected_revision": current["revision"],
+            "reason": args.reason,
+        }
+        path = f"{path}/{args.calendar_id}/decision"
+        expected_status = {
+            "submit": "submitted", "approve": "approved", "publish": "published",
+            "return_to_draft": "draft",
+        }[args.action]
+    else:
+        values = _read_time_change(args)
+        if "expected_revision" in values:
+            raise CLIError("Supply schedule fields only. The portal provides the revision.")
+        schema = WorkCalendarCreateRequest
+        expected_status = "draft"
+        if current is not None:
+            schema = WorkCalendarUpdateRequest
+            values["expected_revision"] = current["revision"]
+            path = f"{path}/{args.calendar_id}"
+            method = "PATCH"
+    try:
+        payload = schema.model_validate(values, extra="forbid").model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("The work calendar fields failed validation.") from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "calendar_id": args.calendar_id,
+            "revision": current["revision"] if current is not None else None,
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request(method, path, json=payload, write=True)
+    calendar_id = args.calendar_id or saved["id"]
+    expected_revision = 1 if current is None else current["revision"] + 1
+    return verified(
+        ctx,
+        lambda: _calendar_read(ctx, calendar_id),
+        lambda row: (
+            row == saved and row["id"] == calendar_id and row["status"] == expected_status
+            and row["revision"] == expected_revision
+        ),
+    )
+
+
+def _roster_list(args: argparse.Namespace, ctx: Context) -> Any:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    return ctx.request(
+        "GET", f"{HR}/roster",
+        params=query(args, "date_from", "date_to", "employee_id", "project_id", "limit", "offset"),
+    )
+
+
+def _roster_read(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    row: dict[str, Any] = ctx.request("GET", f"{HR}/roster/{args.allocation_id}")
+    if row["id"] != args.allocation_id:
+        raise CLIError("The response does not match the requested allocation.", CONFLICT)
+    return row
+
+
+def _roster_receipt(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key]
+        for key in (
+            "id", "employee_id", "project_id", "work_date", "calendar_id", "shift_id",
+            "timezone", "starts_at", "ends_at", "planned_hours", "created_at", "cancelled_at",
+        )
+    }
+
+
+def _roster_allocate(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    try:
+        payload = RosterAllocationCreateRequest.model_validate({
+            "id": args.allocation_id,
+            "employee_id": args.employee_id,
+            "project_id": args.project_id,
+            "work_date": args.work_date,
+        }).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError("Provide a valid allocation with a YYYY-MM-DD work date.") from None
+    plan = checked_plan(
+        args, ctx, {"operation": args.command_name, "allocation": payload}, bind_actor=True
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request("POST", f"{HR}/roster", json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: _roster_receipt(_roster_read(args, ctx)),
+        lambda row: (
+            row == _roster_receipt(saved) and row["cancelled_at"] is None
+            and all(row[key] == value for key, value in payload.items())
+        ),
+    )
+
+
+def _roster_cancel(args: argparse.Namespace, ctx: Context) -> Result:
+    current = _roster_read(args, ctx)
+    try:
+        payload = RosterCancellationRequest.model_validate_json(
+            read_private_bytes(args.file, max_bytes=4096), extra="forbid"
+        ).model_dump(mode="json")
+    except ValidationError:
+        raise CLIError('Provide an owner-only JSON file with a nonempty "reason".') from None
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "allocation": _roster_receipt(current),
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    if current["cancelled_at"] is not None:
+        if current["cancellation_reason"] != payload["reason"]:
+            raise CLIError("This allocation has already been cancelled.", CONFLICT)
+        return Result(_roster_receipt(current))
+    saved = ctx.request(
+        "POST", f"{HR}/roster/{args.allocation_id}/cancel", json=payload, write=True
+    )
+    result = verified(
+        ctx,
+        lambda: _roster_read(args, ctx),
+        lambda row: (
+            row == saved and row["cancelled_at"] is not None
+            and row["cancellation_reason"] == payload["reason"]
+        ),
+    )
+    return Result(_roster_receipt(result.data), changed=result.changed)
 
 
 def _document_bytes(file: Path) -> bytes:
@@ -2784,7 +3750,194 @@ def _download_document(args: argparse.Namespace, ctx: Context) -> dict[str, Any]
     return {"document_id": args.document_id, "version_number": args.version, "sha256": digest}
 
 
+def _policy_from_list(ctx: Context, path: str, policy_id: str) -> dict[str, Any]:
+    for row in ctx.request("GET", path)["items"]:
+        if row["id"] == policy_id:
+            return row
+    raise CLIError("The policy edition is unavailable to this account.", CONFLICT)
+
+
+def _policy_summary(row: dict[str, Any]) -> dict[str, Any]:
+    fields = (
+        "id", "code", "version", "effective_date", "document_id", "document_version_number",
+        "supersedes_policy_id", "requires_acknowledgement", "published_at", "acknowledged_at",
+        "is_current",
+    )
+    return {key: row[key] for key in fields if key in row}
+
+
+def _publish_company_policy(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_READ)
+    require_preview_permission(ctx, PERM_POLICY_MANAGE)
+    try:
+        request = PolicyDocumentCreateRequest.model_validate_json(
+            read_private_bytes(args.file, max_bytes=64 * 1024)
+        )
+    except ValidationError:
+        raise CLIError("Provide the company policy edition in an owner-only JSON file.") from None
+    payload = request.model_dump(mode="json")
+    previous = None
+    if request.supersedes_policy_id is not None:
+        previous = _policy_summary(_policy_from_list(
+            ctx, f"{HR}/policies", str(request.supersedes_policy_id)
+        ))
+    attachment = None
+    if request.document_id is not None and request.document_version_number is not None:
+        doc = _document_record(ctx, str(request.document_id))
+        version = _document_version(doc, request.document_version_number)
+        if (
+            version["status"] != "active"
+            or doc["current_version"] != request.document_version_number
+            or doc["category"] != "ordinary"
+            or doc["document_type"] != "policy"
+            or not version["sha256_checksum"]
+        ):
+            raise CLIError("Select the current approved company policy file version.", CONFLICT)
+        attachment = {
+            "id": str(request.document_id),
+            "version": request.document_version_number,
+            "sha256": version["sha256_checksum"],
+        }
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "code": request.code,
+            "edition": request.version,
+            "effective_date": request.effective_date.isoformat(),
+            "supersedes": previous,
+            "attachment": attachment,
+            "publication_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request("POST", f"{HR}/policies", json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: _policy_summary(_policy_from_list(ctx, f"{HR}/policies", saved["id"])),
+        lambda row: (
+            row == _policy_summary(saved) and bool(row["published_at"])
+            and all(row[key] == payload[key] for key in (
+                "code", "version", "effective_date", "document_id", "document_version_number",
+                "supersedes_policy_id", "requires_acknowledgement",
+            ))
+        ),
+    )
+
+
+def _acknowledge_company_policy(args: argparse.Namespace, ctx: Context) -> Result:
+    path = f"{HR}/me/policies"
+    policy = _policy_from_list(ctx, path, args.policy_id)
+    if (policy["version"], policy["document_version_number"]) != (args.edition, args.file_version):
+        raise CLIError("Confirm the exact published edition and file version.", CONFLICT)
+    if not policy["requires_acknowledgement"] or (
+        not policy["is_current"] and not policy["acknowledged_at"]
+    ):
+        raise CLIError("This edition is unavailable for acknowledgement.", CONFLICT)
+    payload = PolicyAcknowledgeRequest(
+        expected_version=args.edition, expected_document_version=args.file_version
+    ).model_dump(mode="json")
+    plan = checked_plan(
+        args, ctx, {"operation": args.command_name, "policy": _policy_summary(policy), **payload},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    if policy["acknowledged_at"]:
+        return Result(_policy_summary(policy), outcome="unchanged")
+    saved = ctx.request("POST", f"{path}/{args.policy_id}/acknowledge", json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: _policy_summary(_policy_from_list(ctx, path, args.policy_id)),
+        lambda row: (
+            row["id"] == saved["policy_id"] == args.policy_id
+            and row["version"] == saved["policy_version"] == args.edition
+            and row["document_version_number"] == saved["document_version_number"]
+            == args.file_version
+            and row["acknowledged_at"] == saved["acknowledged_at"]
+        ),
+    )
+
+
+def _download_my_company_policy(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
+    path = f"{HR}/me/policies"
+    policy = _policy_from_list(ctx, path, args.policy_id)
+    if policy["document_version_number"] is None:
+        raise CLIError("This edition has no pinned policy file.", CONFLICT)
+    link = ctx.request("GET", f"{path}/{args.policy_id}/download")
+    if (link["document_id"], link["version_number"]) != (
+        policy["document_id"], policy["document_version_number"],
+    ):
+        raise CLIError("The download does not match the selected policy edition.", CONFLICT)
+    size, expected = link["file_size"], link["sha256_checksum"]
+    if (
+        not isinstance(size, int) or not 0 < size <= MAX_DOCUMENT_BYTES
+        or not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+    ):
+        raise CLIError("The policy file size and checksum are unavailable.", CONFLICT)
+    target = urlsplit(ctx.base_url)
+    origin = args.object_origin or f"{target.scheme}://{target.netloc}"
+    content = _read_signed_hr_file(link["download_url"], origin, size)
+    if len(content) != size or hashlib.sha256(content).hexdigest() != expected:
+        raise CLIError("The policy file does not match the registered checksum.", CONFLICT)
+    try:
+        write_private_bytes(args.output, content)
+    except OSError:
+        raise CLIError("Could not write a new private policy file.") from None
+    return {"policy_id": args.policy_id, "version": policy["version"], "sha256": expected}
+
+
 def register(registry: Registry) -> None:
+    p = registry.add("hr roster list", _roster_list, permission=PERM_ATTENDANCE)
+    p.add_argument("--date-from", required=True)
+    p.add_argument("--date-to", required=True)
+    p.add_argument("--employee-id", type=uuid_arg)
+    p.add_argument("--project-id", type=uuid_arg)
+    page(p)
+    p = registry.add("hr roster show", _roster_read, permission=PERM_ATTENDANCE)
+    p.add_argument("--allocation-id", type=uuid_arg, required=True)
+    p = registry.add(
+        "hr roster allocate", _roster_allocate, permission=PERM_ATTENDANCE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--allocation-id", type=uuid_arg, required=True)
+    p.add_argument("--employee-id", type=uuid_arg, required=True)
+    p.add_argument("--project-id", type=uuid_arg, required=True)
+    p.add_argument("--work-date", required=True)
+    mode(p)
+    p = registry.add(
+        "hr roster cancel", _roster_cancel, permission=PERM_ATTENDANCE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--allocation-id", type=uuid_arg, required=True)
+    p.add_argument("--file", type=Path, required=True)
+    mode(p)
+
+    registry.add("hr calendars list", lambda _, c: _calendar_list(c), permission=PERM_ATTENDANCE)
+    p = registry.add(
+        "hr calendars show", lambda a, c: _calendar_read(c, a.calendar_id),
+        permission=PERM_ATTENDANCE,
+    )
+    p.add_argument("--calendar-id", type=uuid_arg, required=True)
+    for action in ("create", "update", "decide"):
+        p = registry.add(
+            f"hr calendars {action}", _calendar_change,
+            permission=PERM_ATTENDANCE, mutates=True, preview=True,
+        )
+        p.set_defaults(calendar_action=action, calendar_id=None)
+        if action != "create":
+            p.add_argument("--calendar-id", type=uuid_arg, required=True)
+        if action == "decide":
+            p.add_argument(
+                "--action", choices=("submit", "approve", "return_to_draft", "publish"),
+                required=True,
+            )
+            p.add_argument("--reason")
+        else:
+            p.add_argument("--file", type=Path, required=True)
+        mode(p)
+
     p = registry.add("hr employees list", _employees_list, permission=PERM_READ)
     p.add_argument("--search")
     p.add_argument("--status", dest="employment_status")
@@ -2976,6 +4129,54 @@ def register(registry: Registry) -> None:
     p.add_argument("--reason", required=True)
     mode(p)
 
+    for label, source in (
+        ("attendance", "attendance"),
+        ("attendance corrections", "attendance/corrections"),
+        ("timesheets", "timesheets"),
+        ("overtime", "overtime"),
+    ):
+        if source != "attendance":
+            p = registry.add(
+                f"hr {label} list",
+                lambda a, c: c.request(
+                    "GET", f"{HR}/{a.time_source}", params=query(a, "employee_id")
+                ),
+                permission=PERM_ATTENDANCE,
+            )
+            p.set_defaults(time_source=source)
+            p.add_argument("--employee-id", type=uuid_arg)
+        p = registry.add(
+            f"hr {label} show",
+            lambda a, c: c.request("GET", f"{HR}/{a.time_source}/{a.record_id}"),
+            permission=PERM_ATTENDANCE,
+        )
+        p.set_defaults(time_source=source)
+        p.add_argument("--record-id", type=uuid_arg, required=True)
+
+        p = registry.add(
+            f"hr {label} create",
+            _create_time_record,
+            permission=PERM_ATTENDANCE,
+            mutates=True,
+            preview=True,
+        )
+        p.set_defaults(time_source=source)
+        p.add_argument("--file", type=Path, required=True)
+        mode(p)
+
+        p = registry.add(
+            f"hr {label} decide",
+            _review_time_record,
+            permission=f"{PERM_ATTENDANCE} and {PERM_ATTENDANCE_REVIEW}",
+            mutates=True,
+            preview=True,
+            approval=True,
+        )
+        p.set_defaults(time_source=source)
+        p.add_argument("--record-id", type=uuid_arg, required=True)
+        p.add_argument("--file", type=Path, required=True)
+        mode(p)
+
     p = registry.add(
         "hr documents list",
         _list_documents,
@@ -3043,6 +4244,32 @@ def register(registry: Registry) -> None:
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--object-origin")
 
+    registry.add(
+        "hr payroll policies list", _list_payroll_policies, permission=PERM_PAYROLL_PREPARE
+    )
+    p = registry.add(
+        "hr payroll policies show", _show_payroll_policy, permission="payroll prepare or approve"
+    )
+    p.add_argument("--policy-id", type=uuid_arg, required=True)
+    p.add_argument("--output", type=Path, required=True)
+    for action in ("propose", "update"):
+        p = registry.add(
+            f"hr payroll policies {action}", _save_payroll_policy, permission=PERM_PAYROLL_PREPARE,
+            mutates=True, preview=True,
+        )
+        p.set_defaults(policy_id=None)
+        if action == "update":
+            p.add_argument("--policy-id", type=uuid_arg, required=True)
+        p.add_argument("--file", type=Path, required=True)
+        mode(p)
+    p = registry.add(
+        "hr payroll policies approve", _approve_payroll_policy, permission=PERM_PAYROLL_APPROVE,
+        mutates=True, preview=True, approval=True,
+    )
+    p.add_argument("--policy-id", type=uuid_arg, required=True)
+    p.add_argument("--review-sha256", required=True)
+    mode(p)
+
     p = registry.add(
         "hr payroll snapshot",
         lambda a, c: c.request("GET", f"{HR}/payroll/runs/{a.run_id}/snapshot"),
@@ -3050,15 +4277,73 @@ def register(registry: Registry) -> None:
     )
     p.add_argument("--run-id", type=uuid_arg, required=True)
 
+    p = registry.add("hr advance list", _list_advances, permission=PERM_PAYROLL_SENSITIVE)
+    p.add_argument("--employee-id", required=True, type=uuid_arg)
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0)
+
+    p = registry.add("hr advance show", _show_advance, permission=PERM_PAYROLL_SENSITIVE)
+    p.add_argument("--advance-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+
     p = registry.add(
-        "hr payroll time-inputs",
-        _payroll_time_inputs,
-        permission=PERM_PAYROLL_PREPARE,
+        "hr advance submit",
+        _submit_advance,
+        permission=PERM_PAYROLL_SENSITIVE,
+        mutates=True,
+        preview=True,
     )
-    p.add_argument("--period-id", type=uuid_arg, required=True)
-    p.add_argument("--roster-file", required=True)
-    p.add_argument("--output")
-    p.add_argument("--sha256")
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
+
+    for command, action in (
+        ("decide", "decision"),
+        ("confirm-disbursement", "disburse"),
+        ("record-repayment", "repayments"),
+    ):
+        p = registry.add(
+            f"hr advance {command}",
+            _change_advance,
+            permission=PERM_PAYROLL_APPROVE,
+            mutates=True,
+            preview=True,
+        )
+        p.set_defaults(advance_action=action)
+        p.add_argument("--advance-id", required=True, type=uuid_arg)
+        if action == "decision":
+            p.add_argument(
+                "--decision", required=True, choices=["approved", "rejected", "cancelled"]
+            )
+        else:
+            p.add_argument("--file", required=True, type=Path)
+        mode(p)
+
+    p = registry.add(
+        "hr reimbursement payable", _reimbursement_payable, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--claim-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+
+    p = registry.add(
+        "hr reimbursement confirm-paid",
+        _confirm_reimbursement_paid,
+        permission=PERM_PAYROLL_APPROVE,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--claim-id", required=True, type=uuid_arg)
+    p.add_argument("--settlement-file", required=True, type=Path)
+    mode(p)
+
+    for source in ("time", "leave"):
+        p = registry.add(
+            f"hr payroll {source}-inputs", _payroll_inputs, permission=PERM_PAYROLL_PREPARE
+        )
+        p.set_defaults(input_source=source)
+        p.add_argument("--period-id", type=uuid_arg, required=True)
+        p.add_argument("--roster-file", required=True)
+        p.add_argument("--output")
+        p.add_argument("--sha256")
 
     p = registry.add(
         "hr payroll calculate",
@@ -3069,6 +4354,8 @@ def register(registry: Registry) -> None:
     )
     p.add_argument("--run-id", type=uuid_arg, required=True)
     p.add_argument("--roster-file", required=True)
+    p.add_argument("--time-sha256")
+    p.add_argument("--leave-sha256")
     mode(p)
 
     p = registry.add(
@@ -3146,6 +4433,64 @@ def register(registry: Registry) -> None:
     mode(p)
 
     p = registry.add(
+        "hr payroll close",
+        _close_payroll,
+        permission=PERM_PAYROLL_APPROVE,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--run-id", type=uuid_arg, required=True)
+    mode(p)
+
+    p = registry.add(
+        "hr payroll correction list",
+        lambda a, c: c.request(
+            "GET", _payroll_corrections_path(a), params=query(a, "limit", "offset")
+        ),
+        permission=PERM_PAYROLL_SENSITIVE,
+    )
+    p.add_argument("--run-id", type=uuid_arg, required=True)
+    p.add_argument("--line-id", type=uuid_arg, required=True)
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0)
+
+    p = registry.add(
+        "hr payroll correction show",
+        lambda a, c: c.request("GET", f"{_payroll_corrections_path(a)}/{a.correction_id}"),
+        permission=PERM_PAYROLL_SENSITIVE,
+    )
+    p.add_argument("--run-id", type=uuid_arg, required=True)
+    p.add_argument("--line-id", type=uuid_arg, required=True)
+    p.add_argument("--correction-id", type=uuid_arg, required=True)
+
+    p = registry.add(
+        "hr payroll correction propose",
+        _propose_payroll_correction,
+        permission=PERM_PAYROLL_PREPARE,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--run-id", type=uuid_arg, required=True)
+    p.add_argument("--line-id", type=uuid_arg, required=True)
+    p.add_argument("--file", type=Path, required=True)
+    mode(p)
+
+    p = registry.add(
+        "hr payroll correction decide",
+        _decide_payroll_correction,
+        permission=PERM_PAYROLL_APPROVE,
+        mutates=True,
+        preview=True,
+        approval=True,
+    )
+    p.add_argument("--run-id", type=uuid_arg, required=True)
+    p.add_argument("--line-id", type=uuid_arg, required=True)
+    p.add_argument("--correction-id", type=uuid_arg, required=True)
+    p.add_argument("--decision", choices=["approved", "rejected"], required=True)
+    p.add_argument("--digest", required=True)
+    mode(p)
+
+    p = registry.add(
         "hr payslip list",
         lambda a, c: c.request("GET", f"{HR}/me/payslips", params=query(a, "limit", "offset")),
         permission="authenticated",
@@ -3171,6 +4516,16 @@ def register(registry: Registry) -> None:
     )
     p.add_argument("--employee-id", type=uuid_arg, required=True)
     page(p)
+
+    p = registry.add(
+        "hr employees changes due",
+        lambda a, c: c.request(
+            "GET", f"{HR}/employment-changes/due", params=query(a, "limit", "offset")
+        ),
+        permission=PERM_SENSITIVE,
+    )
+    page(p)
+    p.set_defaults(limit=20)
 
     p = registry.add(
         "hr employees changes list",
@@ -3291,6 +4646,52 @@ def register(registry: Registry) -> None:
         lambda a, c: c.request("GET", f"{HR}/leave/policies"),
         permission=PERM_LEAVE_MANAGE,
     )
+    registry.add(
+        "hr company-policy list",
+        lambda a, c: c.request("GET", f"{HR}/policies"),
+        permission=PERM_READ,
+    )
+    p = registry.add(
+        "hr company-policy publish",
+        _publish_company_policy,
+        permission=f"{PERM_POLICY_MANAGE} and {PERM_READ}",
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--file", type=Path, required=True)
+    mode(p)
+
+    registry.add(
+        "hr my-policy list",
+        lambda a, c: c.request("GET", f"{HR}/me/policies"),
+        permission="authenticated",
+    )
+    p = registry.add(
+        "hr my-policy show",
+        lambda a, c: _policy_from_list(c, f"{HR}/me/policies", a.policy_id),
+        permission="authenticated",
+    )
+    p.add_argument("--policy-id", type=uuid_arg, required=True)
+
+    p = registry.add(
+        "hr my-policy download", _download_my_company_policy, permission="authenticated"
+    )
+    p.add_argument("--policy-id", type=uuid_arg, required=True)
+    p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--object-origin")
+
+    p = registry.add(
+        "hr my-policy acknowledge",
+        _acknowledge_company_policy,
+        permission="authenticated",
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--policy-id", type=uuid_arg, required=True)
+    p.add_argument("--edition", required=True)
+    p.add_argument("--file-version", type=int)
+    mode(p)
+
     p = registry.add(
         "hr leave policy propose",
         _propose_leave_policy,
@@ -3312,6 +4713,62 @@ def register(registry: Registry) -> None:
     p.add_argument("--policy-id", type=uuid_arg, required=True)
     p.add_argument("--decision", choices=["approved", "rejected"], required=True)
     p.add_argument("--reason")
+    mode(p)
+
+    p = registry.add(
+        "hr leave date-evidence candidates",
+        lambda a, c: c.request(
+            "GET", f"{HR}/leave/date-evidence/candidates",
+            params=query(a, "employee_id", "limit", "offset"),
+        ),
+        permission=PERM_LEAVE_MANAGE,
+    )
+    p.add_argument("--employee-id", type=uuid_arg)
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0)
+
+    p = registry.add(
+        "hr leave date-evidence list",
+        lambda a, c: c.request(
+            "GET", _leave_date_evidence_path(a), params=query(a, "limit", "offset")
+        ),
+        permission=PERM_LEAVE_MANAGE,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--offset", type=int, default=0)
+
+    p = registry.add(
+        "hr leave date-evidence show",
+        lambda a, c: c.request("GET", f"{_leave_date_evidence_path(a)}/{a.proposal_id}"),
+        permission=PERM_LEAVE_MANAGE,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    p.add_argument("--proposal-id", type=uuid_arg, required=True)
+
+    p = registry.add(
+        "hr leave date-evidence propose",
+        _propose_leave_date_evidence,
+        permission=PERM_LEAVE_MANAGE,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    p.add_argument("--file", type=Path, required=True)
+    mode(p)
+
+    p = registry.add(
+        "hr leave date-evidence decide",
+        _decide_leave_date_evidence,
+        permission=f"{PERM_LEAVE_MANAGE} and {PERM_LEAVE_APPROVE}",
+        mutates=True,
+        preview=True,
+        approval=True,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    p.add_argument("--proposal-id", type=uuid_arg, required=True)
+    p.add_argument("--decision", choices=["approved", "rejected"], required=True)
+    p.add_argument("--digest", required=True)
     mode(p)
 
     p = registry.add(

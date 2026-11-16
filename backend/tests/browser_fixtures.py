@@ -331,6 +331,7 @@ async def seed_employee_payslip(employee_id: UUID, maker_id: UUID, reviewer_id: 
     from app.models.user import User
     from app.schemas.hr import (
         CompensationTermCreateRequest,
+        CompensationTermDecisionRequest,
         PayrollPeriodCreateRequest,
         PayrollPolicyCreateRequest,
         PayrollRunCreateRequest,
@@ -377,7 +378,7 @@ async def seed_employee_payslip(employee_id: UUID, maker_id: UUID, reviewer_id: 
                 PERMISSION_HR_PAYROLL_SENSITIVE,
             }
             service = HrService(session)
-            await service.create_compensation_term(
+            term = await service.create_compensation_term(
                 CompensationTermCreateRequest(
                     employee_id=employee.id,
                     effective_from=date(2025, 1, 1),
@@ -385,6 +386,9 @@ async def seed_employee_payslip(employee_id: UUID, maker_id: UUID, reviewer_id: 
                     currency="LKR",
                 ),
                 maker,
+            )
+            await service.decide_compensation_term(
+                term.id, CompensationTermDecisionRequest(decision="approve"), reviewer
             )
             period = await service.create_payroll_period(
                 PayrollPeriodCreateRequest(
@@ -423,6 +427,44 @@ async def seed_employee_payslip(employee_id: UUID, maker_id: UUID, reviewer_id: 
         await engine.dispose()
 
 
+async def seed_legacy_leave(employee_id: UUID, reviewer_id: UUID) -> None:
+    from app.database import AsyncSessionLocal, engine
+    from app.models.hr import HrLeaveLedger, HrLeaveRequest, HrLeaveType
+
+    try:
+        async with AsyncSessionLocal() as session:
+            leave_type = HrLeaveType(
+                code=f"E2E-LEGACY-{uuid4().hex[:12]}", name="Synthetic legacy leave", is_paid=False
+            )
+            session.add(leave_type)
+            await session.flush()
+            request = HrLeaveRequest(
+                employee_id=employee_id,
+                leave_type_id=leave_type.id,
+                start_date=date(2036, 3, 30),
+                end_date=date(2036, 4, 3),
+                days_requested=Decimal("2.00"),
+                status="approved",
+                decided_by_id=reviewer_id,
+                decided_at=datetime.now(UTC),
+            )
+            session.add(request)
+            await session.flush()
+            session.add(HrLeaveLedger(
+                employee_id=employee_id,
+                leave_type_id=leave_type.id,
+                entry_type="taken",
+                days_delta=Decimal("-2.00"),
+                leave_year=2036,
+                reference_request_id=request.id,
+                reason="Synthetic legacy fixture",
+            ))
+            await session.commit()
+            print(json.dumps({"request_id": str(request.id)}))
+    finally:
+        await engine.dispose()
+
+
 if __name__ == "__main__":
     from app.utils.permissions import VALID_ROLES
 
@@ -435,6 +477,7 @@ if __name__ == "__main__":
             "seed-delegation",
             "seed-analytics-finance",
             "seed-employee-payslip",
+            "seed-legacy-leave",
             "serve",
             "expire-login",
         ],
@@ -445,6 +488,7 @@ if __name__ == "__main__":
     parser.add_argument("--employee-id", type=UUID)
     parser.add_argument("--maker-id", type=UUID)
     parser.add_argument("--reviewer-id", type=UUID)
+    parser.add_argument("--enable-fixture-payroll", action="store_true")
     args = parser.parse_args()
     if args.command == "expire-login" and args.challenge_id is None:
         parser.error("expire-login requires --challenge-id")
@@ -452,11 +496,29 @@ if __name__ == "__main__":
         parser.error("seed-analytics-finance requires --project-id")
     configure()
     if args.command == "serve":
+        if args.enable_fixture_payroll:
+            from app.utils.permissions import (
+                PERMISSION_HR_PAYROLL_APPROVE,
+                PERMISSION_HR_PAYROLL_PREPARE,
+                PERMISSION_HR_PAYROLL_SENSITIVE,
+                ROLE_PERMISSIONS,
+            )
+
+            # Inject only into the loopback browser fixture server.
+            ROLE_PERMISSIONS["hr_manager"] |= {
+                PERMISSION_HR_PAYROLL_APPROVE,
+                PERMISSION_HR_PAYROLL_PREPARE,
+                PERMISSION_HR_PAYROLL_SENSITIVE,
+            }
         uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
     elif args.command == "expire-login":
         asyncio.run(expire_login_challenge(args.challenge_id))
     elif args.command == "seed-delegation":
         asyncio.run(seed_delegation())
+    elif args.command == "seed-legacy-leave":
+        if not (args.employee_id and args.reviewer_id):
+            parser.error("seed-legacy-leave needs employee and reviewer IDs")
+        asyncio.run(seed_legacy_leave(args.employee_id, args.reviewer_id))
     elif args.command == "seed-employee-payslip":
         if not (args.employee_id and args.maker_id and args.reviewer_id):
             parser.error("seed-employee-payslip needs employee, maker and reviewer IDs")

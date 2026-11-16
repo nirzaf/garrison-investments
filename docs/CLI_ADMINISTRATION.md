@@ -63,7 +63,11 @@ subcommand's `--help`.
 | `hr departments`, `hr positions` | `list`, `create` | Employee read or manage permission. |
 | `hr access-requests` | `list`, `create`, `decide` | Request stage and actor determine HR versus director access. |
 | `hr attendance` | `list`, `correction` | Attendance recording permission. |
+| `hr calendars` | `list`, `show`, `create`, `update`, `decide` | Attendance recording permission. Review and publication also require HR policy management permission. |
+| `hr roster` | `list`, `show`, `allocate`, `cancel` | Attendance recording permission. Uses the published work schedule and preserves cancellation history. |
 | `hr documents` | `list`, `status`, `upload`, `upload-version`, `decide`, `download` | Manage HR vault files, including independently reviewed candidate CVs and offer PDFs. |
+| `hr company-policy` | `list`, `publish` | Publish an edition and pin the current approved company policy file when applicable. |
+| `hr my-policy` | `list`, `show`, `download`, `acknowledge` | Read and acknowledge editions visible to the linked employee. |
 | `hr leave` | `policy show`, `policy propose`, `policy decide`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management, leave approval or policy management, depending on the command. |
 | `hr offers` | `list`, `status`, `draft`, `decide`, `reissue`, `convert` | Follow offer status and version history. Conversion requires an accepted offer and an open requisition with capacity. |
 | `hr requisitions` | `list`, `status`, `create`, `decide` | Find requisitions, record requested headcount, and move a requisition through its approval and hiring states. |
@@ -236,6 +240,12 @@ the calculated amount or supply it to assert the expected total. For permitted
 single-day half-day leave, pass `--half-day-period morning` or
 `--half-day-period afternoon`. If the quote changes, review a fresh dry run.
 
+To reverse approved leave, preview
+`hr leave requests decide --leave-request-id ID --decision cancelled --notes "Decision reference" --dry-run`.
+Use a reference or short reason suitable for the employee to see. Apply with
+`--apply --expect PLAN_SHA256`. The server verifies the original debit and
+blocks changes to a closed leave year or approved payroll.
+
 Use `hr leave policy propose --file POLICY.json --dry-run` to preview a
 dated proposal. The JSON uses the leave policy creation contract, including
 `effective_from` and `effective_to`. A second HR Manager uses
@@ -252,15 +262,114 @@ months in that year. Review each policy and ledger reference, then apply with
 ineligible period prevents the range from posting. Use the same dry run to
 read back stored ledger references after posting or an uncertain result.
 
+HR time administrators can use the command groups `hr attendance`,
+`hr attendance corrections`, `hr timesheets`, and `hr overtime`.
+Each group has `list` and `show --record-id ID`. Use a private terminal
+when reading records with employee notes. Lists can filter by
+`--employee-id ID`.
+
+Use `create --file FILE --dry-run` with the corresponding request fields
+in an owner-only JSON file. Manual attendance uses `employee_id`,
+`work_date`, `attendance_status` and `worked_hours`. A correction uses
+`employee_id`, `work_date`, `requested_status`,
+`requested_worked_hours`, `reason` and the existing
+`attendance_entry_id` when applicable. A timesheet uses `employee_id`,
+`period_start`, `period_end`, `regular_hours`, optional
+`overtime_hours` and `submit`. An overtime request uses `employee_id`,
+`work_date`, `requested_hours` and `reason`.
+
+Review with `decide --record-id ID --file FILE --dry-run`. The JSON
+supplies `decision` plus any note or approved hours required by the
+existing workflow. The CLI reads the current revision itself where the
+API supports it. Confirm either write with `--apply --expect PLAN_SHA256`.
+Previews bind the signed-in actor and request hash. Review plans also bind
+the read record. Write receipts omit private notes and include the saved
+status read back from the server.
+
+Use `hr calendars list` or `hr calendars show --calendar-id ID` to
+read the schedule, effective dates, status and revision. To prepare a
+calendar, use `hr calendars create --file FILE --dry-run`. To replace the
+fields of a draft, use `hr calendars update --calendar-id ID --file FILE
+--dry-run`. Use an owner-only JSON file with `code`, `name`,
+`work_days_json`, `standard_start_time`, `standard_end_time`,
+`daily_hours`, `effective_from`, `effective_to`, `timezone`, and optional
+`project_id` and `is_default`. The CLI reads the current revision for updates.
+
+Use `hr calendars decide --calendar-id ID --action ACTION --dry-run`
+with `submit`, `approve`, `publish` or `return_to_draft`. Approval
+requires a different HR Manager from the creator and submitter.
+Returning to draft requires `--reason`. Confirm each write
+with `--apply --expect PLAN_SHA256`, using the same account and input
+as the preview. The CLI reads back the saved status and revision.
+
+Use `hr roster list --date-from YYYY-MM-DD --date-to YYYY-MM-DD` for up
+to 31 days, with optional employee and project filters. Use
+`hr roster show --allocation-id ID` to read the exact record. List and
+show include employee names and any cancellation reason.
+
+Use `hr roster allocate --allocation-id ID --employee-id ID --project-id ID
+--work-date YYYY-MM-DD --dry-run`. Generate and keep a UUID for each
+intended allocation. Reuse that UUID if the same active allocation has to
+be retried. The preview binds the requested employee, project and date.
+The server resolves the published calendar or shift when it applies the
+allocation, and the receipt includes the saved hours and shift.
+
+Use `hr roster cancel --allocation-id ID --file FILE --dry-run` with an
+owner-only JSON file containing `reason`. Confirm both commands with
+`--apply --expect PLAN_SHA256`. The CLI checks the saved record after each
+write. Write receipts omit names and the cancellation reason.
+
+Use `hr company-policy publish --file FILE --dry-run` with the edition fields
+in an owner-only JSON file. A file-backed edition includes `document_id`
+and `document_version_number` for the approved company policy file.
+A replacement includes `supersedes_policy_id` and a later effective
+date. The preview binds the edition input and the file checksum.
+Confirm with `--apply --expect PLAN_SHA256`.
+
+Linked employees use `hr my-policy list` and `hr my-policy show
+--policy-id ID` to inspect available editions. Use `hr my-policy
+download --policy-id ID --output NEW_FILE` for the pinned file. Specify
+`--object-origin` if the signed file is served from the authorized
+object-storage origin. The CLI verifies size and checksum before
+creating a new owner-only file.
+
+After reviewing the edition, run `hr my-policy acknowledge --policy-id ID
+--edition LABEL --file-version N --dry-run` and confirm with
+`--apply --expect PLAN_SHA256`. Omit `--file-version` for a text edition.
+A receipt applies only to the named edition and pinned version.
+
+Use `hr leave date-evidence candidates` to find approved cross-month
+leave missing dates. Filter with `--employee-id ID` when reconciling a
+known employee. Results flag requests that need payroll correction
+because an approved run already covers them.
+
+Use `hr leave date-evidence list --request-id ID` to inspect the
+approved leave and its proposals, or `show --request-id ID --proposal-id
+ID` for the exact review digest. Propose with `hr leave date-evidence
+propose --request-id ID --file FILE --dry-run`. The owner-only JSON
+contains `proposal_id` (a new UUID), `work_dates` (an array of ISO dates)
+and an opaque `evidence_reference`. A separate reviewer runs `hr leave
+date-evidence decide --request-id ID --proposal-id ID --decision approved
+--digest DIGEST --dry-run` or sends `--decision rejected`. Confirm either
+write with `--apply --expect PLAN_SHA256`. The CLI verifies that an
+approval retained the exact submitted dates on the request.
+
 Payroll commands require the corresponding prepare, approve and sensitive
 permissions. The current portal role catalogue has no payroll grant. With
 separately authorized test permissions, use
 `hr payroll calculate --run-id ID --roster-file FILE --dry-run` for a draft,
 with a JSON array of employee UUIDs. Use
+`--time-sha256 TIME_SHA256 --leave-sha256 LEAVE_SHA256` together to retain
+the source files and totals reviewed for that roster and period. The
+server rechecks the supplied digests before freezing the snapshot. Use
 `hr payroll snapshot --run-id ID` to inspect the frozen inputs and amounts,
 then `hr payroll approve --run-id ID --dry-run` as an independent reviewer.
-Each write requires its own `--apply --expect PLAN_SHA256`. Review payroll
-output in an authorized private terminal.
+Each write requires its own `--apply --expect PLAN_SHA256`. On approval,
+the server rechecks roster eligibility and the approved compensation
+terms, and compares any attached source digests with the current sources.
+If the terms or evidence have changed, review fresh inputs and prepare a
+new run for the open period. The earlier snapshot stays available for
+review. Review payroll output in an authorized private terminal.
 
 Use `hr payroll time-inputs --period-id ID --roster-file FILE` to preview
 locked time inputs. Supply a JSON array of employee UUIDs in an owner-only
@@ -270,6 +379,69 @@ preview supplies a digest, rerun the same command with
 creates a new owner-only file. The export contains time quantities and opaque
 record IDs. Approved overtime must reconcile to the timesheet. Payroll rates,
 salary, and payment instructions stay in their own workflows.
+
+Use `hr payroll leave-inputs --period-id ID --roster-file FILE` to preview
+paid and unpaid approved leave against the same roster. The command checks
+approval debits and cancellation reversals. For approved requests spanning
+periods, each CSV includes only the units for approved work dates in that
+period. Pending requests, ledger discrepancies and legacy approvals spanning
+periods without retained work dates block download. Resolve the reported
+issues before reviewing the digest again.
+Use `--sha256 CSV_SHA256 --output FILE` to save the reviewed export. The
+download contains record IDs, dates and leave units. Private reasons, names
+and attachments stay in the leave workflow.
+
+Use `hr reimbursement payable --claim-id ID --output FILE` to save the
+reviewed unpaid obligation as owner-only JSON. The file contains the claim
+reference, an opaque employee ID and the approved amount and currency.
+Omit `--output` to check the reference and settlement status in the
+terminal. Treat the claim reference as the same obligation on every read.
+
+After external settlement, put `expected_payable_sha256` from the reviewed
+file, `settlement_reference`, `settled_amount` as a decimal string and
+`settled_currency` in a separate owner-only JSON file. An authorized
+operator who did not approve the claim can run
+`hr reimbursement confirm-paid --claim-id ID --settlement-file FILE --dry-run`,
+then apply with `--apply --expect PLAN_SHA256`. The command verifies the
+confirmed status and keeps the amount and external reference out of its
+terminal output.
+
+Use `hr advance list --employee-id ID` to locate an advance and
+`hr advance show --advance-id ID --output FILE` to save the exact record
+to a new owner-only JSON file. The terminal receipt shows identifiers,
+status, payable digest and repayment count. Use the private file to
+review principal and external references.
+
+Run the appropriate command with `--dry-run` before applying it with
+`--apply --expect PLAN_SHA256`.
+
+| Command | Arguments and private JSON |
+| --- | --- |
+| `hr advance submit` | `--file FILE` with `employee_id`, `benefit_assignment_id`, `requested_on`, `amount`, `currency` and an `idempotency_key` UUID. Reuse the key for an unchanged submission. |
+| `hr advance decide` | `--advance-id ID --decision approved\|rejected\|cancelled`. The reviewer must be independent. |
+| `hr advance confirm-disbursement` | `--advance-id ID --file FILE` with the external `reference`, `occurred_on`, exact `amount`, `currency` and `expected_payable_sha256` from the approved record. |
+| `hr advance record-repayment` | `--advance-id ID --file FILE` with the external `reference`, `occurred_on`, `amount` and `currency`. |
+
+Use ISO dates and decimal strings for amounts. If a confirmation loses its
+response, use `show` to verify whether the external reference was recorded.
+
+Use `hr payroll policies list` to locate a policy. A payroll preparer can
+run `hr payroll policies propose --file FILE --dry-run` with an owner-only
+JSON file containing `code`, `name`, `rules_json`, and `controlled_record`.
+The controlled record includes the restricted document reference, version,
+effective date, approval reference, and worked examples. Use
+`hr payroll policies update --policy-id ID --file FILE --dry-run` to correct
+the same pending proposal. The update file supplies the revised name, rules,
+and controlled record. Confirm either write with `--apply --expect PLAN_SHA256`.
+
+An independent payroll approver uses
+`hr payroll policies show --policy-id ID --output NEW.json` to save the
+review copy in a new owner-only file. After reviewing that copy, pass the
+receipt's digest to `hr payroll policies approve --policy-id ID
+--review-sha256 REVIEW_SHA256 --dry-run`, then confirm with
+`--apply --expect PLAN_SHA256`. If the proposal changes, save and review a
+fresh copy. The terminal receipts omit policy rules, document references, and
+worked-example amounts. Keep the input and review files outside Git.
 
 The reviewer who approved a locked run can inspect
 `hr payroll publish-payslips --run-id ID --dry-run` and publish with
@@ -297,6 +469,30 @@ as a date, and an opaque `evidence_reference`. A reversal also requires
 `reverses_event_id`. Confirm with `--apply --expect PLAN_SHA256`. Use the same
 event UUID and evidence reference on retry. Never put account details into
 the evidence reference.
+
+After publishing payslips and reconciling every payment, run
+`hr payroll close --run-id ID --dry-run`. A separate authorized reviewer
+confirms with `--apply --expect PLAN_SHA256`. The plan binds the reviewed
+snapshot, CSV and settlement checksums, and apply reads back the closure
+receipt. Zero-net payroll uses the checksum of the empty payment export.
+
+For a closed payroll run, `hr payroll correction list --run-id ID
+--line-id LINE_ID` shows the current baseline and history. Use the line's
+`payment_reference` from the restricted snapshot as `LINE_ID`, including
+for a zero-net line. Inspect an exact proposal with `hr payroll correction
+show --run-id ID --line-id LINE_ID --correction-id ID` in a private
+terminal.
+
+To propose revised amounts, run `hr payroll correction propose --run-id
+ID --line-id LINE_ID --file FILE --dry-run`. The owner-only JSON file
+contains a fresh `correction_id` UUID, decimal strings for `gross` and
+`deductions`, and an opaque `evidence_reference`. The preview binds the
+closed snapshot, current baseline, and proposal hash. A separate reviewer
+can use `hr payroll correction decide --run-id ID --line-id LINE_ID
+--correction-id ID --decision approved --digest DIGEST --dry-run`.
+A rejection uses `--decision rejected`. Confirm either write with
+`--apply --expect PLAN_SHA256`. Both commands read back the resulting
+receipt. Review approval records the correction for follow-up with Finance.
 
 HR Managers and inventory owners can inspect a case's custody history with
 `hr offboarding custody list --case-id ID`. Inventory owners first post any
@@ -345,6 +541,9 @@ OUTCOME --evidence-reference REF --dry-run`. Use `outstanding`, `settled` or
 Use opaque references to the approved Finance evidence. Keep financial details
 in their approved system of record.
 
+Use `hr employees changes due --limit 20 --offset 0` for approved changes due
+as of the server's business date. The list identifies the employee and
+indicates whether their current record still matches the reviewed revision.
 Use `hr employees changes list --employee-id ID` to inspect reviewed employment
 changes. For `changes propose --employee-id ID --file FILE --dry-run`, the
 JSON object contains `change_type`, `effective_date`, `reason` and `updates`.

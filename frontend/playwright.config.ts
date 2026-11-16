@@ -29,7 +29,8 @@ export default defineConfig({
         // Each disposable API run has its own HR vault key.
         HR_ENCRYPTION_KEY: hrFixtureKey
       },
-      command: '"${BROWSER_TEST_PYTHON:-python}" -m tests.browser_fixtures serve',
+      command:
+        '"${BROWSER_TEST_PYTHON:-python}" -m tests.browser_fixtures serve --enable-fixture-payroll',
       url: 'http://127.0.0.1:8425/health/readiness'
     },
     {

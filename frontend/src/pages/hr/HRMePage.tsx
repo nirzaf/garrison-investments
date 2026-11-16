@@ -558,7 +558,7 @@ export function HRMePage() {
               >
                 <span>
                   {r.start_date} to {r.end_date} ({r.days_requested}d)
-                  {r.status === 'rejected' && r.decision_notes && (
+                  {(r.status === 'rejected' || r.status === 'cancelled') && r.decision_notes && (
                     <span className="block">{r.decision_notes}</span>
                   )}
                 </span>

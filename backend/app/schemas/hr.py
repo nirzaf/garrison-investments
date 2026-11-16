@@ -390,6 +390,21 @@ class EmploymentChangeListResponse(BaseModel):
     total: int
 
 
+class DueEmploymentChange(BaseModel):
+    id: UUID
+    employee_id: UUID
+    employee_code: str
+    change_type: EmploymentChangeType
+    effective_date: date
+    revision_matches: bool
+
+
+class DueEmploymentChangeList(BaseModel):
+    as_of: date
+    items: list[DueEmploymentChange]
+    total: int
+
+
 class EmploymentPeriodResponse(BaseModel):
     id: UUID
     started_on: date | None
@@ -1151,6 +1166,11 @@ class HrDocumentDownloadResponse(BaseModel):
     expires_in_seconds: int
 
 
+class MyPolicyFileResponse(HrDocumentDownloadResponse):
+    file_size: int | None
+    sha256_checksum: str | None
+
+
 class ComplianceItemResponse(BaseModel):
     source_type: Literal["document", "certification"]
     record_id: UUID
@@ -1825,6 +1845,71 @@ class LeaveRequestResponse(ManagerRecommendationResponse):
 
 class LeaveRequestListResponse(BaseModel):
     items: list[LeaveRequestResponse]
+    total: int
+
+
+class LeaveDateEvidenceDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    work_dates: list[date] = Field(min_length=1, max_length=366)
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+    @field_validator("work_dates")
+    @classmethod
+    def unique_work_dates(cls, value: list[date]) -> list[date]:
+        if len(value) != len(set(value)):
+            raise ValueError("Supply each historical work date once.")
+        return sorted(value)
+
+
+class LeaveDateEvidenceCreate(LeaveDateEvidenceDetail):
+    proposal_id: UUID
+    expected_revision: int = Field(ge=1)
+
+
+class LeaveDateEvidenceDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LeaveDateEvidenceResponse(LeaveDateEvidenceDetail):
+    id: UUID
+    request_revision: int
+    status: str
+    digest: str
+    submitted_by_id: UUID
+    decided_by_id: UUID | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class LeaveDateEvidenceCandidate(BaseModel):
+    request_id: UUID
+    employee_id: UUID
+    start_date: date
+    end_date: date
+    approved_units: Decimal
+    requires_payroll_correction: bool
+
+
+class LeaveDateEvidenceCandidates(BaseModel):
+    items: list[LeaveDateEvidenceCandidate]
+    total: int
+
+
+class LeaveDateEvidencePage(BaseModel):
+    request_id: UUID
+    request_revision: int
+    start_date: date
+    end_date: date
+    approved_units: Decimal
+    scheduled_work_dates: list[date] | None
+    requires_payroll_correction: bool
+    can_propose: bool
+    can_review: bool
+    items: list[LeaveDateEvidenceResponse]
     total: int
 
 
@@ -2587,6 +2672,11 @@ class BenefitTypeCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     category: str = Field(min_length=2, max_length=40)
     requires_policy_approval: bool = True
+    reimbursement_ceiling: Decimal | None = Field(
+        default=None, gt=0, max_digits=15, decimal_places=2
+    )
+    reimbursement_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    allows_advances: bool = False
 
 
 class BenefitTypeResponse(BaseModel):
@@ -2596,6 +2686,12 @@ class BenefitTypeResponse(BaseModel):
     category: str
     requires_policy_approval: bool
     is_active: bool
+    reimbursement_ceiling: Decimal | None
+    reimbursement_currency: str | None
+    allows_advances: bool
+    proposed_by_id: UUID | None
+    approved_by_id: UUID | None
+    approved_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -2635,16 +2731,38 @@ class EmployeeBenefitListResponse(BaseModel):
 class ReimbursementCreateRequest(BaseModel):
     employee_id: UUID | None = None
     claim_type: str = Field(min_length=2, max_length=40)
+    benefit_assignment_id: UUID
     claim_date: date
-    amount: Decimal = Field(gt=0)
-    currency: str = Field(default="LKR", max_length=10)
-    description: str = Field(min_length=2)
-    receipt_document_id: UUID | None = None
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
+    currency: str = Field(default="LKR", pattern=r"^[A-Z]{3}$")
+    description: str = Field(min_length=2, max_length=2000)
+    receipt_document_id: UUID
+    receipt_version_number: int = Field(ge=1)
 
 
 class ReimbursementDecisionRequest(BaseModel):
     decision: Literal["approved", "rejected", "paid", "cancelled"]
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+    settlement_reference: str | None = Field(default=None, min_length=1, max_length=100)
+    expected_payable_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    settled_amount: Decimal | None = Field(default=None, gt=0, max_digits=15, decimal_places=2)
+    settled_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+
+
+class ReimbursementPayable(BaseModel):
+    version: Literal["reimbursement-payable-v1"] = "reimbursement-payable-v1"
+    claim_id: UUID
+    payable_reference: str
+    employee_id: UUID
+    amount: Decimal
+    currency: str
+    approved_at: datetime
+
+
+class ReimbursementPayableResponse(BaseModel):
+    reference: ReimbursementPayable
+    reference_sha256: str
+    status: Literal["approved", "paid"]
 
 
 class ReimbursementResponse(BaseModel):
@@ -2652,11 +2770,14 @@ class ReimbursementResponse(BaseModel):
     claim_code: str
     employee_id: UUID
     claim_type: str
+    benefit_assignment_id: UUID | None
     claim_date: date
     amount: Decimal
     currency: str
     description: str
     receipt_document_id: UUID | None
+    receipt_version_id: UUID | None
+    settlement_reference: str | None
     status: str
     decided_by_id: UUID | None
     decided_at: datetime | None
@@ -2671,13 +2792,82 @@ class ReimbursementListResponse(BaseModel):
     total: int
 
 
+class ReimbursementOperatorResponse(ReimbursementResponse):
+    submitted_by_id: UUID | None
+
+
+class ReimbursementOperatorListResponse(BaseModel):
+    items: list[ReimbursementOperatorResponse]
+    total: int
+
+
+class EmployeeAdvanceRequest(BaseModel):
+    employee_id: UUID
+    benefit_assignment_id: UUID
+    requested_on: date
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+class EmployeeAdvanceDecision(BaseModel):
+    decision: Literal["approved", "rejected", "cancelled"]
+
+
+class EmployeeAdvancePayment(BaseModel):
+    reference: str = Field(min_length=1, max_length=100)
+    occurred_on: date
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+class EmployeeAdvanceDisbursement(EmployeeAdvancePayment):
+    expected_payable_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class EmployeeAdvanceRecovery(BaseModel):
+    reference: str
+    occurred_on: date
+    amount: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmployeeAdvanceResponse(BaseModel):
+    id: UUID
+    employee_id: UUID
+    benefit_assignment_id: UUID
+    requested_on: date
+    amount: Decimal
+    currency: str
+    status: str
+    submitted_by_id: UUID
+    decided_by_id: UUID | None
+    decided_at: datetime | None
+    payable_sha256: str | None
+    disbursed_on: date | None
+    disbursement_reference: str | None
+    recovered: Decimal
+    outstanding: Decimal
+    recoveries: list[EmployeeAdvanceRecovery]
+
+
+class EmployeeAdvanceListResponse(BaseModel):
+    items: list[EmployeeAdvanceResponse]
+    total: int
+
+
 class CompensationTermCreateRequest(BaseModel):
     employee_id: UUID
     effective_from: date
     pay_frequency: Literal["monthly", "biweekly", "weekly", "daily"] = "monthly"
-    currency: str = Field(default="LKR", max_length=10)
-    base_salary: str = Field(min_length=1, max_length=40)
+    currency: str = Field(default="LKR", pattern=r"^[A-Z]{3}$")
+    base_salary: str = Field(pattern=r"^[0-9]{1,16}(\.[0-9]{1,2})?$")
     allowances_json: dict[str, Any] | None = None
+
+
+class CompensationTermDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 class CompensationTermResponse(BaseModel):
@@ -2688,7 +2878,11 @@ class CompensationTermResponse(BaseModel):
     currency: str
     base_salary_masked: str
     base_salary_plain: str | None = None
+    allowances_json: dict[str, Any] | None = None
     is_current: bool
+    approval_status: str
+    proposed_by_id: UUID | None
+    rejection_reason: str | None = None
     approved_by_id: UUID | None
     approved_at: datetime | None
     created_at: datetime
@@ -2699,10 +2893,47 @@ class CompensationTermListResponse(BaseModel):
     total: int
 
 
+class PayrollPolicyWorkedExample(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_salary: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+    earnings: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=18, decimal_places=2)
+    extra_deductions: Decimal = Field(
+        default=Decimal("0.00"), ge=0, max_digits=18, decimal_places=2
+    )
+    expected_gross: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+    expected_deductions: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+    expected_net: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
+
+
+class PayrollControlledPolicyRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    document_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+    version: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
+    effective_from: date
+    approval_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+    worked_examples: list[PayrollPolicyWorkedExample] = Field(min_length=1, max_length=12)
+
+
 class PayrollPolicyCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=40)
     name: str = Field(min_length=2, max_length=160)
     rules_json: dict[str, Any] = Field(default_factory=dict)
+    controlled_record: PayrollControlledPolicyRecord | None = None
+
+
+class PayrollPolicyDraftUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=160)
+    rules_json: dict[str, Any]
+    controlled_record: PayrollControlledPolicyRecord
+    expected_updated_at: datetime
+
+
+class PayrollPolicyApproveRequest(BaseModel):
+    expected_updated_at: datetime
 
 
 class PayrollPolicyResponse(BaseModel):
@@ -2710,11 +2941,13 @@ class PayrollPolicyResponse(BaseModel):
     code: str
     name: str
     rules_json: dict[str, Any]
+    controlled_record: PayrollControlledPolicyRecord | None = None
     is_approved: bool
     approved_by_id: UUID | None
     second_approved_by_id: UUID | None
     approved_at: datetime | None
     created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -2767,6 +3000,17 @@ class PayrollRunCalculateRequest(BaseModel):
         return value
 
 
+class PayrollSourceEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    time_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    leave_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollSnapshotCalculateRequest(PayrollRunCalculateRequest):
+    source_evidence: PayrollSourceEvidenceRequest | None = None
+
+
 class PayrollRunApproveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -2811,28 +3055,105 @@ class PayrollTimeInputPreview(BaseModel):
     issues: list[PayrollTimeInputIssue]
 
 
+PayrollLeaveIssueCode = Literal[
+    "pending_leave",
+    "leave_crosses_period",
+    "leave_ledger_mismatch",
+    "leave_work_dates_mismatch",
+    "overlapping_leave",
+]
+
+
+class PayrollLeaveInputIssue(BaseModel):
+    employee_id: UUID
+    request_id: UUID
+    code: PayrollLeaveIssueCode
+
+
+class PayrollLeaveInputPreview(BaseModel):
+    payroll_period_id: UUID
+    period_start: date
+    period_end: date
+    employee_count: int
+    approved_request_count: int
+    paid_days: Decimal | None
+    unpaid_days: Decimal | None
+    csv_sha256: str | None
+    issues: list[PayrollLeaveInputIssue]
+
+
+class PayrollAdjustmentDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["earning", "deduction"]
+    amount: str = Field(pattern=r"^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$")
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+
+class PayrollAdjustmentCreate(PayrollAdjustmentDetail):
+    adjustment_id: UUID
+    employee_id: UUID
+
+
+class PayrollAdjustmentReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollAdjustmentResponse(PayrollAdjustmentDetail):
+    id: UUID
+    employee_id: UUID
+    status: str
+    submitted_by_id: UUID
+    decided_by_id: UUID | None
+    decided_at: datetime | None
+    digest: str
+
+
+class PayrollAdjustmentList(BaseModel):
+    run_id: UUID
+    can_submit: bool
+    can_review: bool
+    items: list[PayrollAdjustmentResponse]
+
+
 class PayrollSnapshotLine(BaseModel):
     employee_id: UUID
     payment_reference: UUID
     term_id: UUID
+    adjustments: list[PayrollAdjustmentResponse] = Field(default_factory=list)
     gross: Decimal
     deductions: Decimal
     net: Decimal
 
 
+class PayrollFrozenSources(PayrollSourceEvidenceRequest):
+    regular_hours: Decimal
+    overtime_hours: Decimal
+    paid_days: Decimal
+    unpaid_days: Decimal
+
+
 class PayrollRunSnapshotResponse(BaseModel):
     run_id: UUID
     status: str
+    prepared_by_id: UUID | None
+    approved_by_id: UUID | None
     payslips_published_at: datetime | None
+    closed_at: datetime | None = None
     digest: str
     policy_id: UUID
+    controlled_policy_record: PayrollControlledPolicyRecord | None = None
     period_start: date
     period_end: date
     pay_date: date
-    calculation_basis: Literal["base_salary_only"]
+    calculation_basis: Literal["base_salary_only", "base_salary_with_reviewed_adjustments"]
     currency: str
     rounding: str
     employee_deduction_rate: Decimal
+    source_evidence: PayrollFrozenSources | None = None
     lines: list[PayrollSnapshotLine]
     gross: Decimal
     deductions: Decimal
@@ -2916,6 +3237,69 @@ class PayrollSettlementLine(BaseModel):
     status: Literal["pending", "failed", "partial", "settled", "reversed"]
 
 
+class PayrollClosureRequest(PayrollExportConfirmRequest):
+    expected_settlement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollClosureResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    run_id: UUID
+    closed_by_id: UUID
+    snapshot_digest: str
+    csv_sha256: str
+    settlement_digest: str
+    closed_at: datetime
+
+
+class PayrollCorrectionCreate(PayrollRunApproveRequest):
+    correction_id: UUID
+    expected_previous_id: UUID | None
+    gross: str = Field(pattern=r"^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$")
+    deductions: str = Field(pattern=r"^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$")
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+
+class PayrollCorrectionDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollCorrectionAmounts(BaseModel):
+    gross: Decimal
+    deductions: Decimal
+    net: Decimal
+
+
+class PayrollCorrectionResponse(BaseModel):
+    id: UUID
+    line_id: UUID
+    previous_id: UUID | None
+    snapshot_digest: str
+    digest: str
+    status: str
+    currency: str
+    baseline: PayrollCorrectionAmounts
+    proposed: PayrollCorrectionAmounts
+    net_delta: Decimal
+    evidence_reference: str
+    submitted_by_id: UUID
+    decided_by_id: UUID | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class PayrollCorrectionPage(BaseModel):
+    line_id: UUID
+    currency: str
+    current_correction_id: UUID | None
+    baseline: PayrollCorrectionAmounts
+    items: list[PayrollCorrectionResponse]
+    total: int
+
+
 class PayrollSettlementSummary(BaseModel):
     run_id: UUID
     csv_sha256: str
@@ -2924,6 +3308,8 @@ class PayrollSettlementSummary(BaseModel):
     net_paid: Decimal
     outstanding: Decimal
     fully_reconciled: bool
+    settlement_digest: str
+    closure: PayrollClosureResponse | None = None
     payments: list[PayrollSettlementLine]
 
 

@@ -15,6 +15,7 @@ import { HRLetterRecords } from './HRLetterRecords';
 
 const templateKey = ['hr', 'letter-templates'] as const;
 const employeeFields = new Set(['employee_code', 'full_name', 'join_date', 'employment_status']);
+const compensationFields = new Set(['base_salary', 'salary_currency', 'pay_frequency']);
 const letterTypes = {
   employment_confirmation: 'Employment confirmation',
   experience_letter: 'Experience letter',
@@ -29,11 +30,13 @@ const buttonClass = 'rounded bg-brand-600 px-3 py-1.5 text-white disabled:opacit
 export function HRLettersPanel({
   canCreate,
   canRender,
-  canIssue
+  canIssue,
+  canReadCompensation
 }: {
   canCreate: boolean;
   canRender: boolean;
   canIssue: boolean;
+  canReadCompensation: boolean;
 }) {
   const queryClient = useQueryClient();
   const [templateId, setTemplateId] = useState('');
@@ -61,12 +64,17 @@ export function HRLettersPanel({
   const [selection, setSelection] = useState<
     HrSchemas['LetterGenerateRequest'] & { draft_id: string }
   >();
-  const activeTemplates = templates.data?.items.filter((item) => item.is_active) ?? [];
+  const activeTemplates = templates.data?.items.filter(
+    (item) => item.is_active && (item.letter_type !== 'salary_confirmation' || canReadCompensation)
+  ) ?? [];
   const template = activeTemplates.find((item) => item.id === templateId);
   const variables = new Set<string>();
   for (const value of [template?.subject_template, template?.body_template]) {
     for (const [, field] of value?.matchAll(/\{\{|\}\}|\{([A-Za-z_]\w*):?\}/g) ?? []) {
-      if (field && !employeeFields.has(field)) variables.add(field);
+      if (
+        field && !employeeFields.has(field) &&
+        !(template?.letter_type === 'salary_confirmation' && compensationFields.has(field))
+      ) variables.add(field);
     }
   }
   const canPreview =
@@ -128,6 +136,12 @@ export function HRLettersPanel({
               Candidate rejection templates use {'{candidate_name}'} and {'{position_title}'}.
               Review the rendered correspondence in Recruitment.
             </p>
+            {canReadCompensation && (
+              <p className="text-sm">
+                Salary confirmations require {'{base_salary}'}, {'{salary_currency}'} and
+                {' {pay_frequency}'} from the current independently approved compensation term.
+              </p>
+            )}
             <label className="block">
               Template code
               <input className={hrInputClass} name="code" maxLength={40} required />
