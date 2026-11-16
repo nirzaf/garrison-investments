@@ -645,6 +645,23 @@ Set `PLAN_SHA256` to the returned hash after reviewing the target, actor, curren
 
 Apply uses the same target, identity and arguments as the preview. A stale plan returns exit 4. Read the updated user or membership afterward and keep the write request ID for the audit record. Create and password-reset apply commands prompt for the temporary password at that point.
 
+For a staff roster, look up each verified email and compare the returned
+role and account status with the approved assignment. For a new account,
+use the approved employee code and phone and a unique temporary password.
+Resolve missing or conflicting role and identity values before applying
+that row. Role changes on existing accounts use `users set-role` and do
+not require a password reset.
+
+`users create` writes the account and reads back its role. Credential
+delivery is a separate operation. Send each new account's credentials
+individually through the authorized channel after role readback. Record
+the account result and the delivery result separately in the restricted
+handoff record. Keep temporary passwords out of audit notes and reports.
+Distinguish provider acceptance from confirmed receipt. If mail fails or
+its outcome is uncertain, check the existing account and the delivery
+record before retrying. Coordinate any credential rotation through
+`users reset-password` for that same account.
+
 ### Inspect or propose finance policy
 
 ```json

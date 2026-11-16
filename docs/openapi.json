@@ -11165,6 +11165,17 @@
       },
       "InterviewerOption": {
         "properties": {
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
           "full_name": {
             "title": "Full Name",
             "type": "string"

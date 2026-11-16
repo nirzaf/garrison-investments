@@ -8810,6 +8810,8 @@ export interface components {
         };
         /** InterviewerOption */
         InterviewerOption: {
+            /** Employee Code */
+            employee_code?: string | null;
             /** Full Name */
             full_name: string;
             /**

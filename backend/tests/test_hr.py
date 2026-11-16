@@ -9440,6 +9440,45 @@ async def test_candidate_correspondence_is_frozen_independent_and_recruitment_sc
 
 
 @pytest.mark.asyncio
+async def test_recruitment_interviewer_lookup_disambiguates_by_employee_code() -> None:
+    await skip_if_database_unavailable()
+    _, hr_email, password = await _create_portal_user("hr_manager")
+    staff_id, staff_email, _ = await _create_portal_user("quantity_surveyor", password)
+    peer_id, _, _ = await _create_portal_user("quantity_surveyor", password)
+    inactive_id, _, _ = await _create_portal_user("quantity_surveyor", password)
+    decoy_id, _, _ = await _create_portal_user("quantity_surveyor", password)
+    name = f"Synthetic Interviewer {uuid4().hex[:8]}"
+    async with AsyncSessionLocal() as session:
+        staff_row = await session.get(User, staff_id)
+        peer = await session.get(User, peer_id)
+        inactive = await session.get(User, inactive_id)
+        decoy = await session.get(User, decoy_id)
+        assert staff_row and staff_row.employee_code and peer and inactive and decoy
+        staff_row.full_name = peer.full_name = inactive.full_name = name
+        inactive.is_active = False
+        code = staff_row.employee_code
+        decoy.full_name = code
+        expected = {staff_id: code, peer_id: peer.employee_code}
+        await session.commit()
+
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        staff = _auth(await _login(client, staff_email, password))
+        url = "/api/v1/hr/interviews/interviewer-options"
+        result = await client.get(url, headers=hr, params={"search": name})
+        assert result.status_code == 200
+        assert result.headers["cache-control"] == "no-store"
+        assert result.json()["total"] == 2
+        assert {row["id"]: row["employee_code"] for row in result.json()["items"]} == expected
+        exact = await client.get(url, headers=hr, params={"search": code.lower(), "limit": 1})
+        assert exact.status_code == 200
+        assert exact.json()["items"] == [
+            {"id": str(staff_id), "full_name": name, "employee_code": code}
+        ]
+        assert (await client.get(url, headers=staff, params={"search": code})).status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_recruitment_shortlist_filters_and_records_one_manual_stage_event() -> None:
     await skip_if_database_unavailable()
     _, hr_email, password = await _create_portal_user("hr_manager")
@@ -9554,9 +9593,9 @@ async def test_recruitment_shortlist_filters_and_records_one_manual_stage_event(
             options_url, headers=hr, params={"search": "Synthetic quantity_surveyor", "limit": 100}
         )
         assert options.status_code == 200 and options.headers["cache-control"] == "no-store"
-        assert {"id": str(staff_id), "full_name": "Synthetic quantity_surveyor"} in options.json()[
-            "items"
-        ]
+        staff_option = next(row for row in options.json()["items"] if row["id"] == str(staff_id))
+        assert staff_option["full_name"] == "Synthetic quantity_surveyor"
+        assert set(staff_option) == {"id", "full_name", "employee_code"}
 
         schedule = {
             "application_id": app_id,

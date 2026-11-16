@@ -383,6 +383,7 @@ export function HRHiringPanel({
               <input
                 type="search"
                 maxLength={120}
+                placeholder="Name or exact employee code"
                 value={interviewerSearch}
                 onChange={(event) => {
                   setInterviewerSearch(event.target.value);
@@ -402,6 +403,7 @@ export function HRHiringPanel({
                 {interviewers.data?.items.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.full_name}
+                    {person.employee_code && ` · ${person.employee_code}`}
                   </option>
                 ))}
               </select>
@@ -414,7 +416,7 @@ export function HRHiringPanel({
             )}
             {interviewers.data?.total === 0 && <p role="status">No matching portal accounts.</p>}
             {(interviewers.data?.total ?? 0) > 20 && (
-              <p>Refine the search to narrow the results.</p>
+              <p>Refine the name or enter the exact employee code.</p>
             )}
           </>
         )}

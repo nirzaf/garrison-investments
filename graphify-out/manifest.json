@@ -200,8 +200,8 @@
     "semantic_hash": "630b247ddbbc9d3419f40183f257b256"
   },
   "frontend/src/api/schema.d.ts": {
-    "mtime": 1794857752.4015343,
-    "ast_hash": "40effbd97079a53a06f4ccffcd882c88",
+    "mtime": 1794859202.3752718,
+    "ast_hash": "8c2bc83c03de1b7b3e390402a8e81321",
     "semantic_hash": ""
   },
   "frontend/src/api/users.ts": {
@@ -1210,8 +1210,8 @@
     "semantic_hash": "de5f8c40d3d9c8f6580bf75532f9f20e"
   },
   "docs/openapi.json": {
-    "mtime": 1794857751.417004,
-    "ast_hash": "530ceeee36351561275cb002edbc365c",
+    "mtime": 1794859201.3018339,
+    "ast_hash": "b395210f6a43a26d4aecebaa80549eee",
     "semantic_hash": ""
   },
   "index.html": {
@@ -1725,8 +1725,8 @@
     "semantic_hash": "21a9070fc81617bf83c75dfedf51dece"
   },
   "backend/tests/browser_fixtures.py": {
-    "mtime": 1794853567.2667713,
-    "ast_hash": "612b5fe96cf377b28c2f0018333eecf8",
+    "mtime": 1794858786.3761475,
+    "ast_hash": "a8a8a0dcabc069f695c6b4d83321dbaf",
     "semantic_hash": ""
   },
   "backend/tests/concurrency_helpers.py": {
@@ -2355,8 +2355,8 @@
     "semantic_hash": ""
   },
   "docs/CLI_ADMINISTRATION.md": {
-    "mtime": 1794858414.2303162,
-    "ast_hash": "3742608432ec51791b25258d377ea25f",
+    "mtime": 1794858552.6892586,
+    "ast_hash": "6fb5236f67e5c766029b1e9b627eb0cb",
     "semantic_hash": ""
   },
   "backend/tests/test_release_config_contract.py": {
@@ -2410,8 +2410,8 @@
     "semantic_hash": ""
   },
   "frontend/e2e/business-roles.e2e.ts": {
-    "mtime": 1794858345.9045446,
-    "ast_hash": "d86658880c6d5bfa0735bb69f963e19b",
+    "mtime": 1794859192.1160326,
+    "ast_hash": "f700aef68b41f34f3f066637600040f2",
     "semantic_hash": ""
   },
   "backend/alembic/versions/202605310007_hr_workforce_management.py": {
@@ -2430,8 +2430,8 @@
     "semantic_hash": ""
   },
   "backend/app/schemas/hr.py": {
-    "mtime": 1794857708.3994713,
-    "ast_hash": "25609d4bd71681be71546c25aa1b4c7d",
+    "mtime": 1794859182.2373657,
+    "ast_hash": "83b53706138b57b48494535012eed895",
     "semantic_hash": ""
   },
   "backend/app/services/hr_crypto.py": {
@@ -2450,8 +2450,8 @@
     "semantic_hash": ""
   },
   "backend/app/services/hr_workforce_service.py": {
-    "mtime": 1794857199.1861136,
-    "ast_hash": "4de60d328e573f06fca606d1ecf536cf",
+    "mtime": 1794859182.2403483,
+    "ast_hash": "90455c788aa83e145313119d7cffbcbc",
     "semantic_hash": ""
   },
   "backend/scripts/garrisonctl_hr.py": {
@@ -2460,8 +2460,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_hr.py": {
-    "mtime": 1794857854.846046,
-    "ast_hash": "8eac4755695ecd08a149733a82217326",
+    "mtime": 1794859220.980009,
+    "ast_hash": "aa3106c3156aeb407857945a3b518f11",
     "semantic_hash": ""
   },
   "frontend/src/api/hr.ts": {
@@ -2475,8 +2475,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/hr/HRHiringPanel.tsx": {
-    "mtime": 1794842598.775234,
-    "ast_hash": "be854b5940f1da8a1912c22793775151",
+    "mtime": 1794859182.241489,
+    "ast_hash": "ed9ac5568763ef2a0ba44349b7dbd5c9",
     "semantic_hash": ""
   },
   "frontend/src/pages/hr/HRMePage.tsx": {
@@ -2505,8 +2505,8 @@
     "semantic_hash": ""
   },
   "docs/HR_WORKFORCE.md": {
-    "mtime": 1794857815.204694,
-    "ast_hash": "15ae6b267a143214a3c45408f4d34015",
+    "mtime": 1794859206.5059524,
+    "ast_hash": "0bd8b464c93d33dcc1b3e272cf742cf9",
     "semantic_hash": ""
   },
   "frontend/src/pages/hr/HRWorkCalendar.tsx": {
@@ -2625,8 +2625,8 @@
     "semantic_hash": ""
   },
   "docs/HR_COMPLETION_LEDGER.md": {
-    "mtime": 1794858432.682093,
-    "ast_hash": "10c7c6a1513b42c63ab05994281755dd",
+    "mtime": 1794859259.088983,
+    "ast_hash": "641aeb53ab478e4facd8bf995004ddc4",
     "semantic_hash": ""
   },
   "backend/alembic/versions/202605310015_hr_leave_policy_review.py": {

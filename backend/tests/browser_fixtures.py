@@ -70,7 +70,7 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
         async with AsyncSessionLocal() as session:
             user = User(
                 email=email,
-                full_name=f"Browser Test {role.replace('_', ' ').title()}",
+                full_name=f"Browser Test {role.replace('_', ' ').title()} {identifier}",
                 role=role,
                 employee_code=f"E2E-{identifier}",
                 password_hash=hash_fixture_password(password),

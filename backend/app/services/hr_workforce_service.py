@@ -817,21 +817,25 @@ class HrWorkforceService:
     async def list_interviewer_options(
         self, *, search: str, limit: int, offset: int
     ) -> InterviewerOptions:
+        exact_code = func.lower(User.employee_code) == search.lower()
         filters = (
             User.is_active.is_(True),
             User.deleted_at.is_(None),
-            User.full_name.icontains(search, autoescape=True),
+            or_(exact_code, User.full_name.icontains(search, autoescape=True)),
         )
         rows = await self.session.execute(
-            select(User.id, User.full_name)
+            select(User.id, User.full_name, User.employee_code)
             .where(*filters)
-            .order_by(func.lower(User.full_name), User.id)
+            .order_by(case((exact_code, 0), else_=1), func.lower(User.full_name), User.id)
             .limit(limit)
             .offset(offset)
         )
         total = await self.session.scalar(select(func.count()).select_from(User).where(*filters))
         return InterviewerOptions(
-            items=[InterviewerOption(id=user_id, full_name=name) for user_id, name in rows],
+            items=[
+                InterviewerOption(id=user_id, full_name=name, employee_code=code)
+                for user_id, name, code in rows
+            ],
             total=total or 0,
         )
 

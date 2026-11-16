@@ -175,8 +175,10 @@ without an approved account, source roster, field mapping and authorized owner.
   and offer drafting requires evaluation. Open **Application stage history**
   for recorded stage decisions and actors. Existing records already at
   interview or evaluation keep that stage and their earlier history.
-  When scheduling, search for an active **Portal interviewer** to send that
-  account an in-app invitation. The notification asks the interviewer to
+  When scheduling, search for an active **Portal interviewer** by name or
+  exact employee code. The results display employee codes where recorded
+  so you can distinguish people with the same name. Verify the account
+  before sending the in-app invitation. The notification asks the interviewer to
   contact HR for details. It contains no candidate, date, or feedback and
   opens no recruitment record. Cancelling an assigned interview sends a
   similarly limited notice to the interviewer. Leave **No invitation**
@@ -793,9 +795,11 @@ adds `hr_requisitions.rejection_reason`, offer validity and versioning columns
 `superseded_at`), self-referential offer foreign keys, and
 `ck_hr_offers_version_positive`.
 Use the [production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
-to prepare and apply future approved revisions. Production currently runs
-revision `202605310013`, so deploying `202605310014` requires that maintenance
-procedure. Retain the existing schema and HR records on an
+to prepare and apply approved revisions. The last recorded production
+schema was `202605310013`. The current local HR candidate adds revisions through
+[`202605310061`](../backend/alembic/versions/202605310061_hr_payroll_policy_record.py).
+Check the live revision before choosing the migration range in the
+maintenance plan. Retain the existing schema and HR records on an
 application rollback. A schema downgrade drops HR tables and must never serve
 as a routine production rollback.
 
@@ -817,10 +821,11 @@ and a tampered backup artifact were rejected. Release acceptance still requires 
 destination, production key custody and an operator-led exercise described in
 the [recovery runbook](OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup--restore).
 
-The retention default preserves HR rows and versions. Payroll, statutory
-calculation, compensation/benefits and disciplinary cases
-remain disabled pending policy and authorization. The code assumes no statutory
-rates or entitlement schedule.
+The retention default preserves HR rows and versions. The local candidate
+includes compensation, benefits and reviewed payroll workflows. Live
+payroll needs the controlled policy and operating decisions described under
+[Payroll decisions for live operation](#payroll-decisions-for-live-operation).
+The calculation assumes no statutory rates or entitlement schedule.
 
 ## Remaining acceptance work
 
@@ -841,16 +846,15 @@ Key custody and recovery remain separate evidence requirements.
   title mappings, and review the preview before reconciliation. Link employee
   accounts only through verified work-email identity.
 - Name the HR Manager and employee test accounts, define the expected HR
-  scenarios and record persisted outcomes. Current production has zero HR
-  employee rows, so neither HR Manager workflows nor linked employee
-  self-service have authenticated production UAT evidence.
+  scenarios and record persisted outcomes. The last recorded production
+  count had zero HR employee rows. Authenticated production UAT for HR
+  Manager workflows and linked employee self-service is still pending.
 - Approve the attendance source format, line-manager/time-submission settings,
   calendar/timezone/holiday and leave values, reminder windows/recipients,
   retention and clearance owners, and the relevant letter templates.
 - Approve key custody and an off-host database/object recovery exercise; retain
   the existing isolated synthetic rehearsal as rehearsal evidence only.
-- Deploy pending revision
-  [`202605310014`](../backend/alembic/versions/202605310014_hr_recruitment_followups.py)
-  via the [production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance),
-  then repeat focused authenticated HR acceptance checks on the release
-  candidate before formal sign-off.
+- Use the [production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
+  to apply the pending revisions through the selected release candidate's
+  Alembic head. Repeat focused authenticated HR acceptance checks after
+  deploying that candidate.

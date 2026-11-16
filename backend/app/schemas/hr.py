@@ -943,6 +943,7 @@ class InterviewListResponse(BaseModel):
 class InterviewerOption(BaseModel):
     id: UUID
     full_name: str
+    employee_code: str | None = None
 
 
 class InterviewerOptions(BaseModel):

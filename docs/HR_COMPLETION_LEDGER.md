@@ -1711,3 +1711,41 @@ mypy, frontend lint and browser TypeScript checks passed.
 
 The production policy reference, approved examples and operational
 assignments remain unconfirmed. This slice used synthetic policy data.
+
+## Slice 83 · recheck the local release candidate and onboarding roster
+
+The local `7df303d` application candidate passed 929 PostgreSQL tests
+and 50 frontend tests. Both backend shards had zero failures or skips.
+The populated upgrade from revision 013 to 061 preserved existing HR
+rows and decrypted the original synthetic compensation. The OpenAPI and
+generated TypeScript contracts matched.
+
+The first full Chrome run passed 67 cases. The interview withdrawal case
+timed out because more than 20 generated HR accounts shared one display
+name and the intended account was outside the first lookup page. Browser
+fixtures now give synthetic users unique names. The full rerun passed all
+68 cases in 2.9 minutes. The 33/35 Chrome selectors cover each case once
+and sum to 172.20 and 161.33 seconds of local case time. The backend
+shards ran in 98.45 and 116.11 seconds locally. The next published
+self-hosted run is needed to measure CI wall time for this candidate.
+
+The account roster has 12 distinct email entries. Two lack a role and one
+uses the retired HR Executive title. The CLI guide now records role
+readback and credential delivery separately. No new production migration,
+account assignment, or credential delivery was performed in this slice.
+
+## Slice 84 · disambiguate interview invitations
+
+The recruitment picker lists employee codes beside active portal
+interviewers' names and accepts the exact employee code. An exact code
+match comes first even if a different user's name matches the search.
+The response contains the user ID, name and employee code. Recruitment
+authorization and active-account checks still apply. No migration is
+needed.
+
+Five focused recruitment API tests passed on disposable PostgreSQL,
+including two active accounts with identical names, an inactive account,
+a misleading name match and a denied non-HR request. The Chrome workflow
+selected an interviewer by employee code, then withdrew the application
+and confirmed cancellation of the assigned interview. Backend lint and
+typing, frontend lint and build, and generated API type checks passed.

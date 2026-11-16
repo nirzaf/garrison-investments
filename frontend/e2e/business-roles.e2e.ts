@@ -3253,10 +3253,13 @@ test('HR withdraws an application with a retention decision and cancels its inte
   await newRecord.getByLabel('Round number').fill('1');
   const profile = await request.get('/api/v1/auth/me', { headers });
   expect(profile.ok()).toBeTruthy();
-  const fullName = (await profile.json()).full_name as string;
-  await newRecord.getByRole('searchbox', { name: 'Find portal interviewer' }).fill(fullName);
+  const { full_name, employee_code } = (await profile.json()) as {
+    full_name: string; employee_code: string;
+  };
+  await newRecord.getByRole('searchbox', { name: 'Find portal interviewer' }).fill(employee_code.toLowerCase());
   const interviewer = newRecord.getByRole('combobox', { name: 'Portal interviewer', exact: true });
   await interviewer.selectOption(session.userId);
+  await expect(interviewer.locator('option:checked')).toHaveText(`${full_name} · ${employee_code}`);
   await newRecord.getByRole('button', { name: 'Save recruitment record' }).click();
   await expect(card.getByRole('button', { name: 'Record interview completed' })).toBeVisible();
   await card.getByRole('button', { name: 'Withdraw application' }).click();
