@@ -11,6 +11,37 @@ Production deployment and formal acceptance are separate states. Technical produ
 - **Environment:** Production is the acceptance target. Staging has been abandoned and is not part of the acceptance evidence.
 - **Data and personal evidence:** Keep real approvals, assignment exports, business samples, production receipts, and customer evidence in the approved restricted evidence store. Commit only blank templates and sanitized documentation.
 
+## Current HR recruitment release reconciliation
+
+As of 2026-11-15, `main` and `origin/main` point to
+`f322d81059a679b982e72527e212e735b4ccc5de`. The commit contains HR-008/HR-010
+recruitment changes and Alembic revision `202605310014`. Self-hosted CI run
+[43735043858](https://github.com/nirzaf/garrison-investments/actions/runs/43735043858)
+passed for this SHA. Production deployment run
+[43736276674](https://github.com/nirzaf/garrison-investments/actions/runs/43736276674)
+failed before activation: the host release script found pending database
+migrations and requires the reviewed maintenance procedure. No migration or
+deployment was run as part of this reconciliation.
+
+The latest successful production receipt remains run
+[43717032813](https://github.com/nirzaf/garrison-investments/actions/runs/43717032813),
+for SHA `be61f5b74ce9701ba83f70261b03fe6219bd2d72` and schema
+`202605310013`. A fresh public readiness request returned `ready` with the
+database connected. The failed deployment stopped at the pre-activation
+migration guard, and no later successful production run is recorded. However,
+this review did not have access to the Hostinger `DEPLOYED` receipt or a direct
+production Alembic query, so the current live SHA/schema are **last verified as**
+`be61f5b` / `202605310013`, not independently re-read. Do not describe
+`202605310014` as deployed or accepted. Its production maintenance and post-
+deployment verification remain open; authenticated HR UAT and business
+acceptance are separate release gates.
+
+The documentation inventory, per-file disposition, and source-backed findings
+are recorded in the local [documentation audit](DOCUMENTATION_AUDIT.md). It
+covers the 59 Markdown files tracked at baseline `f322d81`; the audit artifact
+itself is additional. This is a source/documentation review, not production
+verification, release acceptance, or business sign-off.
+
 ## Six owner decisions
 
 | ID | Required owner | Required decision and evidence | Current closure state |

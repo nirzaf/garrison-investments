@@ -6,6 +6,11 @@ The portal connects daily site reporting with project oversight, document contro
 
 ## Implemented features
 
+This is a source-code feature inventory. A feature listed here may still need a
+pending database migration, approved configuration, an authorized account, or
+acceptance evidence before it is available in production. See the [release ledger](docs/POST_RELEASE_ACTIONS.md)
+for the verified production and acceptance state.
+
 | Area | What the portal supports |
 | --- | --- |
 | Identity and account management | Password and emailed one-time code sign-in (with code restart and offline-storage prechecks before consuming an OTP), password reset and change, session refresh and logout, a read-only user profile, and authorized account controls for creating, deactivating, resetting, and changing the roles of other active users. |
