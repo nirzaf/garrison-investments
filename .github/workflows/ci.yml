@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: self-hosted-ci-${{ github.ref }}
+  group: garrison-self-hosted-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
