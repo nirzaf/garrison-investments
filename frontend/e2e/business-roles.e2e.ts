@@ -3946,6 +3946,8 @@ test('HR operators review a private reimbursement receipt and reconcile the paya
 });
 
 test('payroll operators lock a reviewed snapshot and publish its employee payslip', async ({ page, browser, request }) => {
+  // The full policy-to-payslip workflow uses four signed-in browser contexts.
+  test.setTimeout(90_000);
   const director = seedAccount();
   const maker = seedAccount('hr_manager', director.projectId);
   const checker = seedAccount('hr_manager', director.projectId);
