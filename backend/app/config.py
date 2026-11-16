@@ -31,6 +31,9 @@ class Settings(BaseSettings, BusinessPolicy):
     smtp_from_name: str = "Garrisons Investments"
     usesend_api_url: HttpUrl | None = None
     usesend_api_key: SecretStr | None = None
+    cloudflare_email_account_id: str | None = None
+    cloudflare_email_api_token: SecretStr | None = None
+    cloudflare_email_from: str | None = None
     exception_email_recipients: str = "admin@garrisons.lk"
     exception_email_enabled: bool | None = None
     hr_encryption_key: SecretStr | None = None

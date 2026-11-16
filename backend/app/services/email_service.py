@@ -1,5 +1,7 @@
+import re
 import smtplib
 from email.message import EmailMessage
+from email.utils import parseaddr
 
 import httpx
 import structlog
@@ -24,8 +26,44 @@ class EmailService:
         if self.settings.app_env.lower() == "staging":
             subject = f"[Testing] {subject}"
 
-        if self.settings.usesend_api_url is not None or self.settings.usesend_api_key is not None:
-            return self._send_usesend(recipients=recipients, subject=subject, body=body)
+        try:
+            if (
+                self.settings.usesend_api_url is not None
+                or self.settings.usesend_api_key is not None
+            ):
+                return self._send_usesend(recipients=recipients, subject=subject, body=body)
+            refused = self._send_smtp(recipients=recipients, subject=subject, body=body)
+        except EmailDeliveryError:
+            if not self._cloudflare_configured():
+                raise
+            return self._send_cloudflare(recipients=recipients, subject=subject, body=body)
+
+        accepted = len(recipients) - len(refused)
+        if refused:
+            logger.warning("email_recipients_refused", refused=len(refused), accepted=accepted)
+            if self._cloudflare_configured():
+                try:
+                    accepted += self._send_cloudflare(
+                        recipients=refused, subject=subject, body=body
+                    )
+                except EmailDeliveryError:
+                    if not accepted:
+                        raise
+        if not accepted:
+            raise EmailDeliveryError("SMTP refused all recipients.")
+        return accepted
+
+    def _cloudflare_configured(self) -> bool:
+        account = self.settings.cloudflare_email_account_id
+        token = self.settings.cloudflare_email_api_token
+        return bool(
+            account
+            and re.fullmatch(r"[0-9a-fA-F]{32}", account)
+            and token
+            and token.get_secret_value().strip()
+        )
+
+    def _send_smtp(self, *, recipients: list[str], subject: str, body: str) -> list[str]:
 
         message = EmailMessage()
         message["Subject"] = subject
@@ -52,11 +90,58 @@ class EmailService:
             )
             raise EmailDeliveryError("SMTP delivery failed.") from None
 
-        accepted = len(recipients) - len(refused)
-        if refused:
-            logger.warning("email_recipients_refused", refused=len(refused), accepted=accepted)
-        if accepted <= 0:
-            raise EmailDeliveryError("SMTP refused all recipients.")
+        refused_addresses = {address.casefold() for address in refused}
+        return [
+            address
+            for address in recipients
+            if parseaddr(address)[1].casefold() in refused_addresses
+        ]
+
+    def _send_cloudflare(self, *, recipients: list[str], subject: str, body: str) -> int:
+        account = self.settings.cloudflare_email_account_id
+        token = self.settings.cloudflare_email_api_token
+        assert account is not None and token is not None
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account}/email/sending/send"
+        accepted = 0
+        for start in range(0, len(recipients), 50):
+            batch = [parseaddr(address)[1] for address in recipients[start : start + 50]]
+            try:
+                response = httpx.post(
+                    url,
+                    headers={"Authorization": f"Bearer {token.get_secret_value()}"},
+                    json={
+                        "from": {
+                            "address": self.settings.cloudflare_email_from
+                            or self.settings.smtp_from_email,
+                            "name": self.settings.smtp_from_name,
+                        },
+                        "to": batch,
+                        "subject": subject,
+                        "text": body,
+                    },
+                    timeout=10,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict) or payload.get("success") is not True:
+                    raise ValueError("Cloudflare did not accept the request")
+                result = payload.get("result")
+                if not isinstance(result, dict):
+                    raise ValueError("Cloudflare did not return recipient results")
+                delivered, queued = result.get("delivered", []), result.get("queued", [])
+                if not isinstance(delivered, list) or not isinstance(queued, list):
+                    raise ValueError("Invalid Cloudflare recipient results")
+                accepted_addresses = {
+                    item.casefold() for item in delivered + queued if isinstance(item, str)
+                }
+                accepted += sum(address.casefold() in accepted_addresses for address in batch)
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("cloudflare_email_delivery_failed", error_type=type(exc).__name__)
+        if not accepted:
+            raise EmailDeliveryError("Cloudflare Email Sending accepted no recipients.")
+        logger.info(
+            "cloudflare_email_fallback_accepted", accepted=accepted, recipients=len(recipients)
+        )
         return accepted
 
     def _send_usesend(self, *, recipients: list[str], subject: str, body: str) -> int:
