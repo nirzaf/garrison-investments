@@ -4,11 +4,14 @@ import { useState, type FormEvent } from 'react';
 import { formatApiError } from '../../api/errors';
 import {
   createLetterTemplate,
+  draftHrLetter,
   listEmployees,
   listLetterTemplates,
-  renderLetter
+  renderLetter,
+  type HrSchemas
 } from '../../api/hr';
 import { hrInputClass } from './HRAccessForms';
+import { HRLetterRecords } from './HRLetterRecords';
 
 const templateKey = ['hr', 'letter-templates'] as const;
 const employeeFields = new Set(['employee_code', 'full_name', 'join_date', 'employment_status']);
@@ -18,16 +21,19 @@ const letterTypes = {
   transfer_letter: 'Transfer letter',
   warning_letter: 'Warning letter',
   salary_confirmation: 'Salary confirmation',
+  candidate_rejection: 'Candidate rejection',
   custom: 'Custom'
 };
 const buttonClass = 'rounded bg-brand-600 px-3 py-1.5 text-white disabled:opacity-50';
 
 export function HRLettersPanel({
   canCreate,
-  canRender
+  canRender,
+  canIssue
 }: {
   canCreate: boolean;
   canRender: boolean;
+  canIssue: boolean;
 }) {
   const queryClient = useQueryClient();
   const [templateId, setTemplateId] = useState('');
@@ -45,6 +51,16 @@ export function HRLettersPanel({
   });
   const create = useMutation({ mutationFn: createLetterTemplate });
   const render = useMutation({ mutationFn: renderLetter });
+  const draft = useMutation({
+    mutationFn: draftHrLetter,
+    onSuccess: (_saved, input) =>
+      queryClient.invalidateQueries({
+        queryKey: ['hr', 'letters', input.employee_id]
+      })
+  });
+  const [selection, setSelection] = useState<
+    HrSchemas['LetterGenerateRequest'] & { draft_id: string }
+  >();
   const activeTemplates = templates.data?.items.filter((item) => item.is_active) ?? [];
   const template = activeTemplates.find((item) => item.id === templateId);
   const variables = new Set<string>();
@@ -74,7 +90,7 @@ export function HRLettersPanel({
         onSuccess: (saved) => {
           form.reset();
           render.reset();
-          setTemplateId(saved.id);
+          if (saved.letter_type !== 'candidate_rejection') setTemplateId(saved.id);
           void queryClient.invalidateQueries({ queryKey: templateKey });
         }
       }
@@ -83,15 +99,18 @@ export function HRLettersPanel({
 
   function handleRender(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canPreview || render.isPending) return;
+    if (!canPreview || render.isPending || draft.isPending) return;
     const data = new FormData(event.currentTarget);
-    render.mutate({
+    draft.reset();
+    const input = {
       template_id: templateId,
       employee_id: employeeId,
       extra_vars: Object.fromEntries(
         [...variables].map((field) => [field, String(data.get(field) ?? '')])
       )
-    });
+    };
+    setSelection({ ...input, draft_id: crypto.randomUUID() });
+    render.mutate(input);
   }
 
   return (
@@ -104,6 +123,10 @@ export function HRLettersPanel({
             <p className="text-sm">
               Use {'{full_name}'}, {'{employee_code}'}, {'{join_date}'} or {'{employment_status}'}{' '}
               to insert employee details from the directory.
+            </p>
+            <p className="text-sm">
+              Candidate rejection templates use {'{candidate_name}'} and {'{position_title}'}.
+              Review the rendered correspondence in Recruitment.
             </p>
             <label className="block">
               Template code
@@ -274,8 +297,26 @@ export function HRLettersPanel({
               <div className="space-y-2 rounded border border-theme-border p-3" role="status">
                 <p className="font-semibold">{render.data.subject}</p>
                 <p className="whitespace-pre-wrap break-words">{render.data.body}</p>
+                {canIssue && selection && render.data.digest && (
+                  <button
+                    className={buttonClass}
+                    type="button"
+                    disabled={draft.isPending || draft.isSuccess || render.isPending}
+                    onClick={() => {
+                      const digest = render.data?.digest;
+                      if (digest) draft.mutate({ ...selection, expected_digest: digest });
+                    }}
+                  >
+                    Save draft for independent review
+                  </button>
+                )}
+                {draft.isSuccess && <p>Letter draft saved for review.</p>}
+                {draft.isError && (
+                  <p role="alert">{formatApiError(draft.error, 'Unable to save the draft.')}</p>
+                )}
               </div>
             )}
+            {canIssue && employeeId && <HRLetterRecords key={employeeId} employeeId={employeeId} />}
           </div>
         )}
       </div>

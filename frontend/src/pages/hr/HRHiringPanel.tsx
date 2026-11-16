@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 
 import { formatApiError } from '../../api/errors';
 import {
@@ -11,8 +11,10 @@ import {
   createOnboardingCase,
   decideOffer,
   decideRequisition,
+  getOfferDocumentDownload,
   listApplications,
   listCandidates,
+  listInterviewerOptions,
   listInterviews,
   listOffers,
   listOnboardingCases,
@@ -26,13 +28,29 @@ import {
   type RequisitionRecord
 } from '../../api/hr';
 import { hrButtonClass, hrInputClass } from './HRAccessForms';
+import { HRApplicationWithdrawal } from './HRApplicationWithdrawal';
+import { HRApplicationRejection } from './HRApplicationRejection';
+import { HRApplicationHistory } from './HRApplicationHistory';
 import { HRCandidateCVs } from './HRCandidateCVs';
+import { HROfferDocumentPicker } from './HROfferDocumentPicker';
 import { HRProbationReview } from './HRProbationReview';
 
 type HiringRecord = 'candidate' | 'application' | 'interview' | 'offer' | 'onboarding';
 type ReqStatus = Parameters<typeof decideRequisition>[1]['status'];
 type OfferStatus = Parameters<typeof decideOffer>[1]['status'];
 type Stage = Parameters<typeof updateApplicationStage>[1]['stage'];
+const applicationPageSize = 25;
+const applicationStages = [
+  'applied',
+  'screening',
+  'shortlisted',
+  'interview',
+  'evaluation',
+  'offer',
+  'hired',
+  'rejected',
+  'withdrawn'
+] as const satisfies readonly Stage[];
 
 export function HRHiringPanel({
   requisitions,
@@ -53,17 +71,42 @@ export function HRHiringPanel({
   const [kind, setKind] = useState<HiringRecord>('candidate');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [applicationSearch, setApplicationSearch] = useState('');
+  const [applicationStage, setApplicationStage] = useState<Stage | ''>('');
+  const [applicationFilters, setApplicationFilters] = useState({
+    search: '',
+    stage: '' as Stage | ''
+  });
+  const [applicationOffset, setApplicationOffset] = useState(0);
+  const [interviewerSearch, setInterviewerSearch] = useState('');
+  const [interviewerId, setInterviewerId] = useState('');
+  const [draftApplicationId, setDraftApplicationId] = useState('');
+  const interviewAttempt = useRef<{ schedule: string; id: string } | null>(null);
+  const interviewers = useQuery({
+    queryKey: ['hr', 'hiring', 'interviewers', interviewerSearch.trim()],
+    queryFn: () => listInterviewerOptions(interviewerSearch.trim()),
+    enabled: kind === 'interview' && interviewerSearch.trim().length >= 2
+  });
+  const applications = useQuery({
+    queryKey: ['hr', 'hiring', 'applications', applicationFilters, applicationOffset],
+    queryFn: () =>
+      listApplications({
+        search: applicationFilters.search || undefined,
+        stage: applicationFilters.stage || undefined,
+        offset: applicationOffset,
+        limit: applicationPageSize
+      })
+  });
   const hiring = useQuery({
     queryKey: ['hr', 'hiring'],
     queryFn: async () => {
-      const [candidates, applications, interviews, offers, onboarding] = await Promise.all([
+      const [candidates, interviews, offers, onboarding] = await Promise.all([
         listCandidates(),
-        listApplications(),
         listInterviews(),
         listOffers(),
         listOnboardingCases()
       ]);
-      return { candidates, applications, interviews, offers, onboarding };
+      return { candidates, interviews, offers, onboarding };
     }
   });
 
@@ -99,19 +142,28 @@ export function HRHiringPanel({
           candidate_id: field('candidate'),
           requisition_id: field('requisition')
         });
-      if (kind === 'interview')
-        await createInterview({
+      if (kind === 'interview') {
+        const schedule = {
           application_id: field('application'),
           scheduled_at: new Date(field('schedule')).toISOString(),
           interview_type: 'technical',
-          round_number: Number(field('round'))
-        });
+          round_number: Number(field('round')),
+          interviewer_user_id: interviewerId || null
+        };
+        const key = JSON.stringify(schedule);
+        if (interviewAttempt.current?.schedule !== key) {
+          interviewAttempt.current = { schedule: key, id: crypto.randomUUID() };
+        }
+        await createInterview({ ...schedule, interview_id: interviewAttempt.current.id });
+        interviewAttempt.current = null;
+      }
       if (kind === 'offer')
         await createOffer({
           application_id: field('application'),
           offer_code: field('code'),
           proposed_title: field('name'),
-          valid_until: field('valid_until') || null
+          valid_until: field('valid_until') || null,
+          document_version_id: field('document_version_id') || null
         });
       if (kind === 'onboarding')
         await createOnboardingCase({
@@ -120,6 +172,7 @@ export function HRHiringPanel({
           probation_end_date: field('probation_end_date') || null
         });
       form.reset();
+      setDraftApplicationId('');
     });
   }
 
@@ -138,7 +191,8 @@ export function HRHiringPanel({
   } as Record<string, OfferStatus>;
   const stageSteps = {
     applied: 'screening',
-    screening: 'interview',
+    screening: 'shortlisted',
+    shortlisted: 'interview',
     interview: 'evaluation'
   } as Record<string, Stage>;
   const data = hiring.data;
@@ -154,7 +208,14 @@ export function HRHiringPanel({
         </p>
       )}
       {canManageCVs && (
-        <HRCandidateCVs candidates={data?.candidates.items ?? []} reviewerId={reviewerId} />
+        <>
+          <HRCandidateCVs candidates={data?.candidates.items ?? []} reviewerId={reviewerId} />
+          <HRCandidateCVs
+            candidates={data?.candidates.items ?? []}
+            reviewerId={reviewerId}
+            offerFiles
+          />
+        </>
       )}
       <ul className="space-y-2">
         {requisitions.map((row) => (
@@ -212,7 +273,10 @@ export function HRHiringPanel({
           <select
             className={hrInputClass}
             value={kind}
-            onChange={(event) => setKind(event.target.value as HiringRecord)}
+            onChange={(event) => {
+              setDraftApplicationId('');
+              setKind(event.target.value as HiringRecord);
+            }}
           >
             <option value="candidate">Candidate</option>
             <option value="application">Application</option>
@@ -277,20 +341,32 @@ export function HRHiringPanel({
         {(kind === 'interview' || kind === 'offer') && (
           <label>
             Application{' '}
-            <select name="application" className={hrInputClass} required defaultValue="">
+            <select
+              name="application"
+              className={hrInputClass}
+              required
+              value={draftApplicationId}
+              onChange={(event) => setDraftApplicationId(event.target.value)}
+            >
               <option value="" disabled>
                 Choose application
               </option>
-              {data?.applications.items
-                .filter((row) => kind === 'interview' || row.stage === 'evaluation')
+              {applications.data?.items
+                .filter((row) =>
+                  kind === 'interview'
+                    ? ['shortlisted', 'interview', 'evaluation'].includes(row.stage)
+                    : row.stage === 'evaluation'
+                )
                 .map((row) => (
                   <option key={row.id} value={row.id}>
-                    {data.candidates.items.find((candidate) => candidate.id === row.candidate_id)
-                      ?.full_name ?? row.id}
+                    {row.candidate_name} · {row.position_title}
                   </option>
                 ))}
             </select>
           </label>
+        )}
+        {kind === 'offer' && canManageCVs && draftApplicationId && (
+          <HROfferDocumentPicker key={draftApplicationId} applicationId={draftApplicationId} />
         )}
         {kind === 'interview' && (
           <>
@@ -302,6 +378,44 @@ export function HRHiringPanel({
               Round number{' '}
               <input name="round" type="number" min="1" className={hrInputClass} required />
             </label>
+            <label>
+              Find portal interviewer{' '}
+              <input
+                type="search"
+                maxLength={120}
+                value={interviewerSearch}
+                onChange={(event) => {
+                  setInterviewerSearch(event.target.value);
+                  setInterviewerId('');
+                }}
+                className={hrInputClass}
+              />
+            </label>
+            <label>
+              Portal interviewer{' '}
+              <select
+                value={interviewerId}
+                onChange={(event) => setInterviewerId(event.target.value)}
+                className={hrInputClass}
+              >
+                <option value="">No invitation</option>
+                {interviewers.data?.items.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.full_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {interviewerSearch.trim().length >= 2 && interviewers.isFetching && (
+              <p role="status">Finding interviewers…</p>
+            )}
+            {interviewers.isError && (
+              <p role="alert">Could not find interviewers. Try another search.</p>
+            )}
+            {interviewers.data?.total === 0 && <p role="status">No matching portal accounts.</p>}
+            {(interviewers.data?.total ?? 0) > 20 && (
+              <p>Refine the search to narrow the results.</p>
+            )}
           </>
         )}
         {kind === 'onboarding' && (
@@ -338,14 +452,57 @@ export function HRHiringPanel({
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="space-y-2">
           <h4 className="font-semibold">Applications and interviews</h4>
-          {data?.applications.items.map((row) => (
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setApplicationOffset(0);
+              setApplicationFilters({ search: applicationSearch.trim(), stage: applicationStage });
+            }}
+          >
+            <label>
+              Find candidate applications
+              <input
+                type="search"
+                maxLength={120}
+                value={applicationSearch}
+                className={hrInputClass}
+                onChange={(event) => setApplicationSearch(event.target.value)}
+              />
+            </label>
+            <label>
+              Application stage
+              <select
+                className={hrInputClass}
+                value={applicationStage}
+                onChange={(event) => setApplicationStage(event.target.value as Stage | '')}
+              >
+                <option value="">All stages</option>
+                {applicationStages.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {stage}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className={hrButtonClass}>
+              Find applications
+            </button>
+          </form>
+          {applications.isPending && <p role="status">Loading applications…</p>}
+          {applications.isError && (
+            <p role="alert">{formatApiError(applications.error, 'Could not load applications.')}</p>
+          )}
+          {applications.isSuccess && applications.data.items.length === 0 && (
+            <p>No applications match.</p>
+          )}
+          {applications.data?.items.map((row) => (
             <article key={row.id} className="rounded border border-theme-border p-3">
               <p>
-                {data.candidates.items.find((candidate) => candidate.id === row.candidate_id)
-                  ?.full_name ?? row.id}{' '}
-                · {row.stage}
+                {row.candidate_name} · {row.candidate_code} · {row.stage}
               </p>
-              {data.interviews.items
+              <p>{row.position_title}</p>
+              {data?.interviews.items
                 .filter((interview) => interview.application_id === row.id)
                 .map((interview) => (
                   <div className="flex items-center gap-2" key={interview.id}>
@@ -355,17 +512,20 @@ export function HRHiringPanel({
                         : 'Unscheduled'}{' '}
                       · {interview.status}
                     </span>
-                    {interview.status === 'scheduled' && (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() =>
-                          void change(() => updateInterview(interview.id, { status: 'completed' }))
-                        }
-                      >
-                        Record interview completed
-                      </button>
-                    )}
+                    {interview.status === 'scheduled' &&
+                      !['withdrawn', 'rejected'].includes(row.stage) && (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() =>
+                            void change(() =>
+                              updateInterview(interview.id, { status: 'completed' })
+                            )
+                          }
+                        >
+                          Record interview completed
+                        </button>
+                      )}
                   </div>
                 ))}
               {stageSteps[row.stage] && (
@@ -379,11 +539,42 @@ export function HRHiringPanel({
                     )
                   }
                 >
-                  Mark {stageSteps[row.stage]}
+                  {row.stage === 'screening'
+                    ? 'Shortlist application'
+                    : row.stage === 'shortlisted'
+                      ? 'Start interview stage'
+                      : `Mark ${stageSteps[row.stage]}`}
                 </button>
               )}
+              <HRApplicationWithdrawal application={row} pending={pending} change={change} />
+              <HRApplicationRejection application={row} pending={pending} change={change} />
+              <HRApplicationHistory applicationId={row.id} />
             </article>
           ))}
+          {(applicationOffset > 0 ||
+            applicationOffset + applicationPageSize < (applications.data?.total ?? 0)) && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={hrButtonClass}
+                disabled={!applicationOffset || applications.isFetching}
+                onClick={() => setApplicationOffset(applicationOffset - applicationPageSize)}
+              >
+                Previous applications
+              </button>
+              <button
+                type="button"
+                className={hrButtonClass}
+                disabled={
+                  applications.isFetching ||
+                  applicationOffset + applicationPageSize >= (applications.data?.total ?? 0)
+                }
+                onClick={() => setApplicationOffset(applicationOffset + applicationPageSize)}
+              >
+                Next applications
+              </button>
+            </div>
+          )}
         </section>
         <section className="space-y-2">
           <h4 className="font-semibold">Offers and onboarding</h4>
@@ -394,6 +585,21 @@ export function HRHiringPanel({
                 {row.valid_until ? ` · Valid until ${row.valid_until}` : ''}
               </p>
               <div className="flex flex-wrap gap-2">
+                {canManageCVs && row.document_version_id && (
+                  <button
+                    className={hrButtonClass}
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      void change(async () => {
+                        const result = await getOfferDocumentDownload(row.id);
+                        window.location.assign(result.download_url);
+                      })
+                    }
+                  >
+                    Download offer file
+                  </button>
+                )}
                 {offerSteps[row.status] && (row.status !== 'pending_approval' || canApprove) && (
                   <button
                     className={hrButtonClass}
@@ -440,7 +646,10 @@ export function HRHiringPanel({
                       await reissueOffer(row.id, {
                         offer_code: String(formData.get('offer_code') ?? '').trim(),
                         proposed_title: String(formData.get('proposed_title') ?? '').trim(),
-                        valid_until: String(formData.get('valid_until') ?? '') || null
+                        valid_until: String(formData.get('valid_until') ?? '') || null,
+                        document_version_id:
+                          String(formData.get('document_version_id') ?? '') || null,
+                        expected_updated_at: row.updated_at
                       });
                       form.reset();
                     });
@@ -473,6 +682,13 @@ export function HRHiringPanel({
                       defaultValue={row.valid_until ?? ''}
                     />
                   </label>
+                  {canManageCVs && (
+                    <HROfferDocumentPicker
+                      applicationId={row.application_id}
+                      priorVersion={row.document_version_id}
+                      loadOnMount={false}
+                    />
+                  )}
                   <button className={hrButtonClass} type="submit" disabled={pending}>
                     Reissue offer
                   </button>
@@ -484,13 +700,15 @@ export function HRHiringPanel({
                   onSubmit={(event) => {
                     event.preventDefault();
                     const form = new FormData(event.currentTarget);
-                    void change(() =>
-                      convertOffer(row.id, {
-                        employee_code: String(form.get('code')),
-                        work_email: String(form.get('email') ?? '') || null,
-                        work_phone: String(form.get('phone') ?? '') || null,
-                        probation_days: Number(form.get('probation') ?? 0)
-                      })
+                    void change(
+                      () =>
+                        convertOffer(row.id, {
+                          employee_code: String(form.get('code')),
+                          work_email: String(form.get('email') ?? '') || null,
+                          work_phone: String(form.get('phone') ?? '') || null,
+                          probation_days: Number(form.get('probation') ?? 0)
+                        }),
+                      true
                     );
                   }}
                 >

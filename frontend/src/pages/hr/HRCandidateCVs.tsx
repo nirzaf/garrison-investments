@@ -15,12 +15,16 @@ import { hrButtonClass, hrInputClass } from './HRAccessForms';
 
 export function HRCandidateCVs({
   candidates,
-  reviewerId
+  reviewerId,
+  offerFiles = false
 }: {
   candidates: CandidateRecord[];
   reviewerId: string | undefined;
+  offerFiles?: boolean;
 }) {
   const client = useQueryClient();
+  const label = offerFiles ? 'offer file' : 'CV';
+  const documentType = offerFiles ? 'candidate_offer' : 'candidate_cv';
   const [candidateId, setCandidateId] = useState('');
   const [search, setSearch] = useState('');
   const matches = useQuery({
@@ -30,10 +34,10 @@ export function HRCandidateCVs({
   });
   const options = search ? (matches.data?.items ?? []) : candidates;
   const candidate = options.find((item) => item.id === candidateId);
-  const cvKey = ['hr', 'candidate-cv', candidateId];
+  const cvKey = ['hr', documentType, candidateId];
   const documents = useQuery({
     queryKey: cvKey,
-    queryFn: () => listHrDocuments({ candidate_id: candidateId, document_type: 'candidate_cv' }),
+    queryFn: () => listHrDocuments({ candidate_id: candidateId, document_type: documentType }),
     enabled: Boolean(candidate)
   });
   const cv = documents.data?.items[0];
@@ -52,7 +56,7 @@ export function HRCandidateCVs({
 
   return (
     <section className="space-y-3 rounded border border-theme-border p-3">
-      <h4 className="font-medium">Candidate CVs</h4>
+      <h4 className="font-medium">{offerFiles ? 'Candidate offer files' : 'Candidate CVs'}</h4>
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
@@ -65,15 +69,15 @@ export function HRCandidateCVs({
         }}
       >
         <label>
-          Search candidates
+          {offerFiles ? 'Search candidates for offer files' : 'Search candidates'}
           <input name="query" className={hrInputClass} />
         </label>
         <button type="submit" className={hrButtonClass} disabled={change.isPending}>
-          Find candidates
+          {offerFiles ? 'Find candidates for offer files' : 'Find candidates'}
         </button>
       </form>
       <label className="block">
-        CV candidate
+        {offerFiles ? 'Offer file candidate' : 'CV candidate'}
         <select
           className={hrInputClass}
           value={candidateId}
@@ -105,14 +109,14 @@ export function HRCandidateCVs({
       )}
       {documents.isError && (
         <p role="alert">
-          {formatApiError(documents.error, 'Could not load the CV.')}{' '}
+          {formatApiError(documents.error, `Could not load the ${label}.`)}{' '}
           <button type="button" className="underline" onClick={() => void documents.refetch()}>
             Retry
           </button>
         </p>
       )}
       {change.isError && (
-        <p role="alert">{formatApiError(change.error, 'Could not update the CV.')}</p>
+        <p role="alert">{formatApiError(change.error, `Could not update the ${label}.`)}</p>
       )}
       {candidate && documents.isSuccess && !pending && (
         <form
@@ -129,8 +133,8 @@ export function HRCandidateCVs({
                   ? uploadHrDocumentVersion(cv.id, file)
                   : uploadHrDocument({
                       file,
-                      title: `CV · ${candidate.candidate_code}`,
-                      document_type: 'candidate_cv',
+                      title: `${offerFiles ? 'Offer file' : 'CV'} · ${candidate.candidate_code}`,
+                      document_type: documentType,
                       category: 'confidential',
                       candidate_id: candidate.id
                     }),
@@ -139,17 +143,19 @@ export function HRCandidateCVs({
           }}
         >
           <label>
-            CV file (PDF, DOCX, PNG or JPEG, up to 60 MiB)
+            {offerFiles
+              ? 'Offer file (PDF, up to 60 MiB)'
+              : 'CV file (PDF, DOCX, PNG or JPEG, up to 60 MiB)'}
             <input
               name="file"
               className={hrInputClass}
               type="file"
-              accept=".pdf,.docx,.png,.jpg,.jpeg"
+              accept={offerFiles ? '.pdf' : '.pdf,.docx,.png,.jpg,.jpeg'}
               required
             />
           </label>
           <button type="submit" className={hrButtonClass} disabled={change.isPending}>
-            {cv ? 'Upload replacement CV' : 'Upload CV'}
+            {cv ? `Upload replacement ${label}` : `Upload ${label}`}
           </button>
         </form>
       )}
@@ -173,7 +179,7 @@ export function HRCandidateCVs({
                     })
                   }
                 >
-                  {version.status === 'pending' ? 'Download for review' : 'Download CV'}
+                  {version.status === 'pending' ? 'Download for review' : `Download ${label}`}
                 </button>
               )}
             </li>
@@ -198,7 +204,7 @@ export function HRCandidateCVs({
           }}
         >
           <label>
-            CV review reason (required to reject)
+            {label} review reason (required to reject)
             <input className={hrInputClass} name="notes" maxLength={500} />
           </label>
           <button
@@ -207,7 +213,7 @@ export function HRCandidateCVs({
             type="submit"
             value="approve"
           >
-            Approve CV
+            Approve {label}
           </button>
           <button
             className={hrButtonClass}
@@ -215,11 +221,11 @@ export function HRCandidateCVs({
             type="submit"
             value="reject"
           >
-            Reject CV
+            Reject {label}
           </button>
         </form>
       )}
-      {pending && !canReview && <p>Waiting for a different HR Manager to review this CV.</p>}
+      {pending && !canReview && <p>Waiting for a different HR Manager to review this {label}.</p>}
     </section>
   );
 }

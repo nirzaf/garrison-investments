@@ -1,20 +1,21 @@
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 import {
-  acknowledgeMyPolicy,
   cancelMyLeaveRequest,
   downloadMyHrDocument,
   getMyHrProfile,
   getMyLeaveBalances,
+  getMyLeaveUnits,
   listMyAttendance,
   listMyHrDocuments,
   listMyLeaveRequests,
   listMyLeaveTypes,
-  listMyPolicies,
   listMyServiceRequests,
   requestMyAttendanceCorrection,
   reopenMyServiceRequest,
+  resubmitMyLeaveRequest,
   submitMyLeaveRequest,
   submitMyServiceRequest,
   updateMyHrProfile,
@@ -24,12 +25,17 @@ import {
   type HrServiceRequestRecord,
   type LeaveBalanceItem,
   type LeaveRequestRecord,
-  type LeaveTypeRecord,
-  type PolicyDocumentRecord
+  type LeaveTypeRecord
 } from '../../api/hr';
 import { formatApiError } from '../../api/errors';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { HRResponseLetter } from './HRResponseLetter';
+import { HRLetterRecords } from './HRLetterRecords';
+import { HRPayslips } from './HRPayslips';
 import { HRMeWorkflowPanel } from './HRMeWorkflowPanel';
+import { HRMyTraining } from './HRMyTraining';
+import { HRPerformanceReviews } from './HRPerformanceReviews';
+import { HRMyPolicies } from './HRMyPolicies';
 
 export function HRMePage() {
   const [profile, setProfile] = useState<EmployeeSelfRecord | null>(null);
@@ -39,7 +45,6 @@ export function HRMePage() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEntryRecord[]>([]);
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
-  const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
   const [serviceRequests, setServiceRequests] = useState<HrServiceRequestRecord[]>([]);
   const [reopeningRequest, setReopeningRequest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +52,8 @@ export function HRMePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [personalPhone, setPersonalPhone] = useState('');
+  const [contactPending, setContactPending] = useState(false);
+  const [contactConflict, setContactConflict] = useState(false);
   const [personalEmail, setPersonalEmail] = useState('');
   const [residentialAddress, setResidentialAddress] = useState('');
   const [emergencyName, setEmergencyName] = useState('');
@@ -55,11 +62,25 @@ export function HRMePage() {
   const [leaveTypeId, setLeaveTypeId] = useState('');
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
-  const [leaveDays, setLeaveDays] = useState('1');
   const [leaveReason, setLeaveReason] = useState('');
   const [halfDayPeriod, setHalfDayPeriod] = useState<'' | 'morning' | 'afternoon'>('');
   const [leaveAttachment, setLeaveAttachment] = useState('');
   const [leavePending, setLeavePending] = useState(false);
+  const [editingLeave, setEditingLeave] = useState<LeaveRequestRecord | null>(null);
+  const [visibleLeaveCount, setVisibleLeaveCount] = useState(5);
+  const leaveDates = {
+    leave_type_id: leaveTypeId,
+    start_date: leaveStart,
+    end_date: leaveEnd,
+    is_half_day: Boolean(halfDayPeriod),
+    half_day_period: halfDayPeriod || null
+  };
+  const leaveUnits = useQuery({
+    queryKey: ['hr', 'self', profile?.employee.id, 'leave-units', leaveDates],
+    queryFn: () => getMyLeaveUnits(leaveDates),
+    enabled: Boolean(profile?.employee.id && leaveTypeId && leaveStart && leaveEnd),
+    retry: false
+  });
 
   const [reqType, setReqType] = useState<
     'employment_letter' | 'address_change' | 'general_inquiry'
@@ -67,26 +88,29 @@ export function HRMePage() {
   const [reqSubject, setReqSubject] = useState('');
   const [reqDesc, setReqDesc] = useState('');
 
+  const acceptContactSnapshot = useCallback((snapshot: EmployeeSelfRecord) => {
+    setProfile(snapshot);
+    setContactConflict(false);
+    setPersonalPhone(snapshot.personal_phone ?? '');
+    setPersonalEmail(snapshot.personal_email ?? '');
+    setResidentialAddress(snapshot.residential_address ?? '');
+    setEmergencyName(snapshot.emergency_contact_name ?? '');
+    setEmergencyPhone(snapshot.emergency_contact_phone ?? '');
+  }, []);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     setNotLinked(false);
     try {
-      const me = await getMyHrProfile();
-      setProfile(me);
-      setPersonalPhone(me.personal_phone ?? '');
-      setPersonalEmail(me.personal_email ?? '');
-      setResidentialAddress(me.residential_address ?? '');
-      setEmergencyName(me.emergency_contact_name ?? '');
-      setEmergencyPhone(me.emergency_contact_phone ?? '');
+      acceptContactSnapshot(await getMyHrProfile());
 
-      const [bal, types, reqs, att, docs, pols, sreqs] = await Promise.all([
+      const [bal, types, reqs, att, docs, sreqs] = await Promise.all([
         getMyLeaveBalances(),
         listMyLeaveTypes(),
         listMyLeaveRequests(),
         listMyAttendance(),
         listMyHrDocuments(),
-        listMyPolicies(),
         listMyServiceRequests()
       ]);
       setBalances(bal.items);
@@ -95,7 +119,6 @@ export function HRMePage() {
       setLeaveRequests(reqs.items);
       setAttendance(att.items);
       setDocuments(docs.items);
-      setPolicies(pols.items);
       setServiceRequests(sreqs.items);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
@@ -106,7 +129,7 @@ export function HRMePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [acceptContactSnapshot]);
 
   useEffect(() => {
     void loadAll();
@@ -114,51 +137,91 @@ export function HRMePage() {
 
   async function handleSaveContact(e: FormEvent) {
     e.preventDefault();
+    if (!profile || contactPending || contactConflict) return;
+    setContactPending(true);
     setError(null);
     setNotice(null);
     try {
       const updated = await updateMyHrProfile({
+        expected_revision: profile.employee.record_revision,
         personal_phone: personalPhone || null,
         personal_email: personalEmail || null,
         residential_address: residentialAddress || null,
         emergency_contact_name: emergencyName || null,
         emergency_contact_phone: emergencyPhone || null
       });
-      setProfile(updated);
+      acceptContactSnapshot(updated);
       setNotice('Personal HR contact details updated.');
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 409) setContactConflict(true);
       setError(formatApiError(err, 'Unable to update personal details.'));
+    } finally {
+      setContactPending(false);
     }
   }
 
   async function handleSubmitLeave(e: FormEvent) {
     e.preventDefault();
-    if (leavePending) return;
+    if (leavePending || leaveUnits.isFetching || !leaveUnits.data || leaveUnits.isError) return;
     setLeavePending(true);
     setError(null);
     setNotice(null);
     try {
-      await submitMyLeaveRequest({
-        leave_type_id: leaveTypeId,
-        start_date: leaveStart,
-        end_date: leaveEnd,
-        days_requested: leaveDays,
-        is_half_day: Boolean(halfDayPeriod),
-        half_day_period: halfDayPeriod || null,
+      const fields = {
+        ...leaveDates,
+        days_requested: leaveUnits.data.days_requested,
         attachment_document_id: leaveAttachment || null,
-        reason: leaveReason || null,
-        submit_immediately: true
-      });
-      setLeaveReason('');
-      setLeaveAttachment('');
-      setHalfDayPeriod('');
-      setNotice('Leave request submitted.');
-      await loadAll();
+        reason: leaveReason || null
+      };
+      const saved = editingLeave
+        ? await resubmitMyLeaveRequest(editingLeave.id, {
+            ...fields,
+            expected_revision: editingLeave.record_revision
+          })
+        : await submitMyLeaveRequest({ ...fields, submit_immediately: true });
+      setLeaveRequests((requests) =>
+        editingLeave
+          ? requests.map((request) => (request.id === saved.id ? saved : request))
+          : [saved, ...requests]
+      );
+      resetLeaveForm();
+      setNotice(editingLeave ? 'Leave request resubmitted.' : 'Leave request submitted.');
     } catch (err) {
       setError(formatApiError(err, 'Unable to submit leave request.'));
+      if (axios.isAxiosError(err) && err.response?.data?.error_code === 'LEAVE_UNITS_MISMATCH') {
+        void leaveUnits.refetch();
+      }
     } finally {
       setLeavePending(false);
     }
+  }
+
+  function resetLeaveForm() {
+    setEditingLeave(null);
+    setLeaveTypeId(leaveTypes[0]?.id ?? '');
+    setLeaveStart('');
+    setLeaveEnd('');
+    setLeaveReason('');
+    setLeaveAttachment('');
+    setHalfDayPeriod('');
+  }
+
+  function editLeave(request: LeaveRequestRecord) {
+    setEditingLeave(request);
+    setLeaveTypeId(
+      leaveTypes.some((type) => type.id === request.leave_type_id) ? request.leave_type_id : ''
+    );
+    setLeaveStart(request.start_date);
+    setLeaveEnd(request.end_date);
+    setLeaveReason(request.reason ?? '');
+    setLeaveAttachment(request.attachment_document_id ?? '');
+    setHalfDayPeriod(
+      request.half_day_period === 'morning' || request.half_day_period === 'afternoon'
+        ? request.half_day_period
+        : ''
+    );
+    setError(null);
+    setNotice(null);
   }
 
   async function cancelLeave(id: string) {
@@ -185,17 +248,6 @@ export function HRMePage() {
       window.open(res.download_url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setError(formatApiError(err, 'Unable to prepare HR document download.'));
-    }
-  }
-
-  async function handleAcknowledge(policyId: string) {
-    setError(null);
-    setNotice(null);
-    try {
-      await acknowledgeMyPolicy(policyId);
-      setNotice('Policy acknowledgement recorded.');
-    } catch (err) {
-      setError(formatApiError(err, 'Unable to acknowledge policy.'));
     }
   }
 
@@ -278,7 +330,10 @@ export function HRMePage() {
         </div>
       ) : null}
       {error ? (
-        <div className="rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-2 text-sm text-[var(--status-error-text)]">
+        <div
+          role="alert"
+          className="rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-2 text-sm text-[var(--status-error-text)]"
+        >
           {error}
         </div>
       ) : null}
@@ -297,6 +352,7 @@ export function HRMePage() {
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setPersonalPhone(e.target.value)}
               value={personalPhone}
+              disabled={contactPending}
             />
           </label>
           <label className="text-sm">
@@ -306,6 +362,7 @@ export function HRMePage() {
               onChange={(e) => setPersonalEmail(e.target.value)}
               type="email"
               value={personalEmail}
+              disabled={contactPending}
             />
           </label>
           <label className="text-sm md:col-span-2">
@@ -314,6 +371,7 @@ export function HRMePage() {
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setResidentialAddress(e.target.value)}
               value={residentialAddress}
+              disabled={contactPending}
             />
           </label>
           <label className="text-sm">
@@ -324,6 +382,7 @@ export function HRMePage() {
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setEmergencyName(e.target.value)}
               value={emergencyName}
+              disabled={contactPending}
             />
           </label>
           <label className="text-sm">
@@ -334,6 +393,7 @@ export function HRMePage() {
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setEmergencyPhone(e.target.value)}
               value={emergencyPhone}
+              disabled={contactPending}
             />
           </label>
           <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 text-xs text-theme-text-muted">
@@ -344,14 +404,26 @@ export function HRMePage() {
             <button
               className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
               type="submit"
+              disabled={contactPending || contactConflict}
             >
-              Save contact details
+              {contactPending ? 'Saving contact details…' : 'Save contact details'}
             </button>
+            {contactConflict && (
+              <button
+                className="rounded-md border border-theme-border px-4 py-2 text-sm font-semibold"
+                type="button"
+                onClick={() => void loadAll()}
+              >
+                Discard edits and reload contact details
+              </button>
+            )}
           </div>
         </form>
       </section>
 
       <HRMeWorkflowPanel />
+      <HRMyTraining />
+      <HRPerformanceReviews />
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs">
@@ -378,7 +450,9 @@ export function HRMePage() {
             className="mt-5 space-y-3 border-t border-theme-border pt-4"
             onSubmit={(e) => void handleSubmitLeave(e)}
           >
-            <h4 className="text-sm font-semibold text-theme-text-primary">Request Leave</h4>
+            <h4 className="text-sm font-semibold text-theme-text-primary">
+              {editingLeave ? 'Correct leave request' : 'Request Leave'}
+            </h4>
             <select
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setLeaveTypeId(e.target.value)}
@@ -393,7 +467,7 @@ export function HRMePage() {
                 </option>
               ))}
             </select>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <input
                 className="rounded-md border border-theme-border bg-theme-input px-2 py-1.5 text-sm"
                 onChange={(e) => setLeaveStart(e.target.value)}
@@ -410,17 +484,6 @@ export function HRMePage() {
                 aria-label="Leave ends"
                 value={leaveEnd}
               />
-              <input
-                className="rounded-md border border-theme-border bg-theme-input px-2 py-1.5 text-sm"
-                min="0.5"
-                onChange={(e) => setLeaveDays(e.target.value)}
-                placeholder="Days"
-                required
-                step="0.5"
-                type="number"
-                aria-label="Leave days"
-                value={leaveDays}
-              />
             </div>
             <label className="block text-sm">
               Half-day period
@@ -434,14 +497,24 @@ export function HRMePage() {
                 <option value="afternoon">Afternoon</option>
               </select>
             </label>
-            {leaveTypes.find((type) => type.id === leaveTypeId)?.requires_attachment && (
+            {leaveUnits.isFetching && <p role="status">Calculating scheduled leave days…</p>}
+            {leaveUnits.isError && (
+              <p role="alert">
+                {formatApiError(leaveUnits.error, 'Unable to calculate leave days.')}
+              </p>
+            )}
+            {leaveUnits.isSuccess && (
+              <p className="text-sm">Scheduled leave days: {leaveUnits.data.days_requested}</p>
+            )}
+            {(leaveTypes.find((type) => type.id === leaveTypeId)?.requires_attachment ||
+              leaveAttachment !== '') && (
               <label className="block text-sm">
                 Supporting document
                 <select
                   className="ml-2 rounded border border-theme-border bg-theme-input"
                   value={leaveAttachment}
                   onChange={(event) => setLeaveAttachment(event.target.value)}
-                  required
+                  required={leaveTypes.find((type) => type.id === leaveTypeId)?.requires_attachment}
                 >
                   <option value="">Choose a shared document</option>
                   {documents.map((document) => (
@@ -460,41 +533,77 @@ export function HRMePage() {
             />
             <button
               className="rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-              disabled={!leaveTypeId || leavePending}
+              disabled={!leaveUnits.isSuccess || leaveUnits.isFetching || leavePending}
               type="submit"
             >
-              Submit leave request
+              {editingLeave ? 'Resubmit leave request' : 'Submit leave request'}
             </button>
+            {editingLeave && (
+              <button
+                type="button"
+                className="ml-3 text-sm"
+                onClick={resetLeaveForm}
+                disabled={leavePending}
+              >
+                Cancel editing
+              </button>
+            )}
           </form>
 
           <div className="mt-4 space-y-2">
-            {leaveRequests.slice(0, 5).map((r) => (
+            {leaveRequests.slice(0, visibleLeaveCount).map((r) => (
               <div
                 className="flex items-center justify-between text-xs text-theme-text-secondary"
                 key={r.id}
               >
                 <span>
                   {r.start_date} to {r.end_date} ({r.days_requested}d)
+                  {r.status === 'rejected' && r.decision_notes && (
+                    <span className="block">{r.decision_notes}</span>
+                  )}
                 </span>
                 <StatusBadge tone={r.status === 'approved' ? 'success' : 'neutral'}>
                   {r.status}
                 </StatusBadge>
-                {['draft', 'submitted'].includes(r.status) && (
-                  <button
-                    type="button"
-                    className="font-semibold text-brand-600"
-                    disabled={leavePending}
-                    onClick={() => void cancelLeave(r.id)}
-                  >
-                    Cancel leave
-                  </button>
-                )}
+                {r.requested_by_id === profile.employee.user_id &&
+                  ['draft', 'rejected'].includes(r.status) && (
+                    <button
+                      type="button"
+                      className="font-semibold text-brand-600"
+                      disabled={leavePending}
+                      onClick={() => editLeave(r)}
+                    >
+                      Edit leave request
+                    </button>
+                  )}
+                {r.requested_by_id === profile.employee.user_id &&
+                  ['draft', 'submitted'].includes(r.status) && (
+                    <button
+                      type="button"
+                      className="font-semibold text-brand-600"
+                      disabled={leavePending}
+                      onClick={() => void cancelLeave(r.id)}
+                    >
+                      Cancel leave
+                    </button>
+                  )}
               </div>
             ))}
+            {leaveRequests.length > visibleLeaveCount && (
+              <button
+                type="button"
+                className="text-sm text-brand-600"
+                onClick={() => setVisibleLeaveCount((count) => count + 5)}
+              >
+                Show more leave requests
+              </button>
+            )}
           </div>
         </div>
 
         <div className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs space-y-5">
+          <HRLetterRecords />
+          <HRPayslips />
           <div>
             <h3 className="text-base font-semibold text-theme-text-primary">My HR Documents</h3>
             <div className="mt-2 space-y-2 text-sm">
@@ -522,31 +631,7 @@ export function HRMePage() {
             </div>
           </div>
 
-          <div>
-            <h3 className="text-base font-semibold text-theme-text-primary">Published Policies</h3>
-            <div className="mt-2 space-y-2 text-sm">
-              {policies.map((pol) => (
-                <div
-                  className="flex items-center justify-between rounded border border-theme-border px-3 py-2"
-                  key={pol.id}
-                >
-                  <div>
-                    <p className="font-medium text-theme-text-primary">
-                      {pol.title} v{pol.version}
-                    </p>
-                    <p className="text-xs text-theme-text-muted">{pol.content_summary}</p>
-                  </div>
-                  <button
-                    className="rounded border border-brand-600 px-2.5 py-1 text-xs font-semibold text-brand-600 hover:bg-brand-50"
-                    onClick={() => void handleAcknowledge(pol.id)}
-                    type="button"
-                  >
-                    Acknowledge
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+          <HRMyPolicies />
 
           <div>
             <h3 className="text-base font-semibold text-theme-text-primary">Recent Attendance</h3>
@@ -674,6 +759,12 @@ export function HRMePage() {
                       Download response document
                     </button>
                   ))}
+                {sr.generated_letter_id && (
+                  <HRResponseLetter
+                    key={sr.generated_letter_id}
+                    letterId={sr.generated_letter_id}
+                  />
+                )}
                 {sr.resolution_notes && (
                   <p className="basis-full whitespace-pre-wrap">{sr.resolution_notes}</p>
                 )}

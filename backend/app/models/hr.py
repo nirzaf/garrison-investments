@@ -1,3 +1,4 @@
+import hashlib
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -16,6 +18,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -265,6 +268,76 @@ class HrEmploymentHistory(TimestampMixin, Base):
     )
 
 
+class HrEmploymentPeriod(Base):
+    __tablename__ = "hr_employment_periods"
+    __table_args__ = (
+        Index(
+            "uq_hr_employment_periods_open",
+            "employee_id",
+            unique=True,
+            postgresql_where=text("ended_on IS NULL"),
+        ),
+        Index("ix_hr_employment_periods_employee_started", "employee_id", "started_on", "id"),
+        CheckConstraint(
+            "(ended_on IS NULL AND started_on IS NOT NULL AND separation_case_id IS NULL) OR "
+            "(ended_on IS NOT NULL AND separation_case_id IS NOT NULL "
+            "AND (started_on IS NULL OR started_on <= ended_on))",
+            name="employment_period_dates",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    started_on: Mapped[date | None] = mapped_column(Date)
+    ended_on: Mapped[date | None] = mapped_column(Date)
+    separation_case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_offboarding_cases.id", ondelete="RESTRICT"), unique=True
+    )
+    rehire_change_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_employment_changes.id", ondelete="RESTRICT"), unique=True
+    )
+    onboarding_case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_onboarding_cases.id", ondelete="RESTRICT"), unique=True
+    )
+
+
+class HrEmploymentChange(TimestampMixin, Base):
+    __tablename__ = "hr_employment_changes"
+    __table_args__ = (
+        Index("ix_hr_employment_changes_employee_created", "employee_id", "created_at", "id"),
+        CheckConstraint(
+            "(status = 'proposed' AND decided_by IS NULL AND decided_at IS NULL) OR "
+            "(status IN ('approved', 'rejected', 'applied') AND decided_by IS NOT NULL "
+            "AND decided_by <> proposed_by AND decided_at IS NOT NULL)",
+            name="employment_change_review",
+        ),
+        CheckConstraint(
+            "(status = 'applied' AND applied_by IS NOT NULL AND applied_at IS NOT NULL "
+            "AND applied_employee_revision = employee_revision + 1 "
+            "AND applied_employee_revision IS NOT NULL) OR "
+            "(status <> 'applied' AND applied_by IS NULL AND applied_at IS NULL "
+            "AND applied_employee_revision IS NULL)",
+            name="employment_change_apply",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    change_type: Mapped[str] = mapped_column(String(20))
+    effective_date: Mapped[date] = mapped_column(Date)
+    employee_revision: Mapped[int]
+    updates: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), server_default="proposed")
+    proposed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str | None] = mapped_column(Text)
+    applied_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_employee_revision: Mapped[int | None]
+
+
 class HrAccessRequest(TimestampMixin, Base):
     __tablename__ = "hr_access_requests"
 
@@ -446,9 +519,43 @@ class HrApplication(TimestampMixin, Base):
     overall_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     screening_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdrawal_reason: Mapped[str | None] = mapped_column(String(500))
+    retention_decision: Mapped[str | None] = mapped_column(String(32))
+    retention_review_on: Mapped[date | None] = mapped_column(Date)
+    retention_policy_reference: Mapped[str | None] = mapped_column(String(120))
     assigned_recruiter_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class HrCandidateCorrespondence(TimestampMixin, Base):
+    __tablename__ = "hr_candidate_correspondence"
+    __table_args__ = (
+        Index("ix_hr_candidate_correspondence_application", "application_id", "created_at", "id"),
+        CheckConstraint(
+            "(status = 'draft' AND decided_by IS NULL AND decided_at IS NULL "
+            "AND reason_encrypted IS NULL) OR "
+            "(status IN ('approved', 'rejected') AND decided_by IS NOT NULL "
+            "AND decided_at IS NOT NULL AND decided_by <> prepared_by "
+            "AND ((status = 'rejected') = (reason_encrypted IS NOT NULL)))",
+            name="candidate_correspondence_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    application_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_applications.id", ondelete="RESTRICT")
+    )
+    template_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_letter_templates.id", ondelete="RESTRICT")
+    )
+    content_encrypted: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(12), server_default="draft")
+    prepared_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason_encrypted: Mapped[str | None] = mapped_column(Text)
 
 
 class HrInterview(TimestampMixin, Base):
@@ -513,8 +620,12 @@ class HrOffer(TimestampMixin, Base):
         String(30), nullable=False, server_default=text("'draft'"), index=True
     )
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
-    version_number: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("1")
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    document_version_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey(
+            "hr_document_versions.id", name="fk_hr_offer_document_version", ondelete="RESTRICT"
+        ),
     )
     supersedes_offer_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("hr_offers.id", ondelete="SET NULL"), nullable=True
@@ -659,6 +770,18 @@ class HrDocumentVersion(TimestampMixin, Base):
 
 class HrPolicyDocument(TimestampMixin, Base):
     __tablename__ = "hr_policy_documents"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "document_version_number"],
+            ["hr_document_versions.document_id", "hr_document_versions.version_number"],
+            name="fk_hr_policy_exact_version",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "document_version_number IS NULL OR document_id IS NOT NULL",
+            name="hr_policy_version_requires_document",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -675,6 +798,12 @@ class HrPolicyDocument(TimestampMixin, Base):
     )
     requires_acknowledgement: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
+    )
+    document_version_number: Mapped[int | None] = mapped_column(Integer)
+    supersedes_policy_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "hr_policy_documents.id", name="fk_hr_policy_preceding_edition", ondelete="RESTRICT"
+        )
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     published_by_id: Mapped[UUID | None] = mapped_column(
@@ -725,6 +854,34 @@ class HrLetterTemplate(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
 
+class HrIssuedLetter(TimestampMixin, Base):
+    __tablename__ = "hr_issued_letters"
+    __table_args__ = (
+        Index("ix_hr_issued_letters_employee_created", "employee_id", "created_at", "id"),
+        CheckConstraint(
+            "(status = 'draft' AND decided_by IS NULL AND decided_at IS NULL "
+            "AND reason_encrypted IS NULL) OR "
+            "(status IN ('issued', 'rejected') AND decided_by IS NOT NULL "
+            "AND decided_at IS NOT NULL AND decided_by <> prepared_by "
+            "AND ((status = 'rejected') = (reason_encrypted IS NOT NULL)))",
+            name="hr_letter_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    template_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_letter_templates.id", ondelete="RESTRICT")
+    )
+    employee_revision: Mapped[int]
+    content_encrypted: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(12), server_default="draft")
+    prepared_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason_encrypted: Mapped[str | None] = mapped_column(Text)
+
+
 class HrServiceRequest(TimestampMixin, Base):
     __tablename__ = "hr_hr_requests"
 
@@ -752,6 +909,11 @@ class HrServiceRequest(TimestampMixin, Base):
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    generated_letter_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "hr_issued_letters.id", name="fk_hr_request_generated_letter", ondelete="RESTRICT"
+        )
+    )
     generated_document_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True),
         ForeignKey("hr_documents.id", ondelete="SET NULL"),
@@ -808,6 +970,48 @@ class HrShiftAssignment(TimestampMixin, Base):
     assigned_by_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class HrRosterAllocation(TimestampMixin, Base):
+    __tablename__ = "hr_roster_allocations"
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at AND planned_hours > 0", name="hr_roster_interval"),
+        CheckConstraint(
+            "(cancelled_at IS NULL AND cancellation_reason IS NULL) OR "
+            "(cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)",
+            name="hr_roster_cancellation",
+        ),
+        Index("ix_hr_roster_date_id", "work_date", "id"),
+        Index(
+            "ix_hr_roster_active_employee_start",
+            "employee_id",
+            "starts_at",
+            postgresql_where=text("cancelled_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"))
+    calendar_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_work_calendars.id", ondelete="RESTRICT")
+    )
+    shift_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_shift_assignments.id", ondelete="RESTRICT")
+    )
+    employee_name: Mapped[str] = mapped_column(String(255))
+    project_name: Mapped[str] = mapped_column(String(200))
+    work_date: Mapped[date] = mapped_column(Date)
+    timezone: Mapped[str] = mapped_column(String(64))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    planned_hours: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    created_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    cancellation_reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class HrManagerRecommendationMixin:
@@ -1012,6 +1216,17 @@ class HrLeaveType(TimestampMixin, Base):
 
 class HrLeavePolicy(TimestampMixin, Base):
     __tablename__ = "hr_leave_policies"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('legacy', 'draft', 'approved', 'rejected')",
+            name="hr_leave_policy_status",
+        ),
+        CheckConstraint(
+            "status = 'legacy' OR (effective_from IS NOT NULL AND effective_to IS NOT NULL "
+            "AND effective_from <= effective_to)",
+            name="hr_leave_policy_effective_window",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -1028,8 +1243,14 @@ class HrLeavePolicy(TimestampMixin, Base):
     accrual_frequency: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'annual'")
     )
+    prorate_by_calendar_day: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     max_carry_forward_days: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, server_default=text("0.00")
+    )
+    expire_excess_on_rollover: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
     allow_negative_balance: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
@@ -1039,6 +1260,14 @@ class HrLeavePolicy(TimestampMixin, Base):
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'draft'"))
+    effective_from: Mapped[date | None] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("users.id", name="fk_hr_leave_policy_creator", ondelete="SET NULL"),
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class HrLeaveRequest(HrManagerRecommendationMixin, TimestampMixin, Base):
@@ -1113,6 +1342,71 @@ class HrLeaveLedger(TimestampMixin, Base):
     )
 
 
+class HrLeaveAccrual(TimestampMixin, Base):
+    __tablename__ = "hr_leave_accruals"
+    __table_args__ = (
+        UniqueConstraint(
+            "employee_id", "leave_type_id", "period_start", name="uq_hr_leave_accrual_period"
+        ),
+        CheckConstraint("period_start <= period_end", name="leave_accrual_dates"),
+        CheckConstraint(
+            "(eligible_from IS NULL AND eligible_through IS NULL) OR "
+            "(eligible_from IS NOT NULL AND eligible_through IS NOT NULL AND "
+            "period_start <= eligible_from AND eligible_from <= eligible_through "
+            "AND eligible_through <= period_end)",
+            name="leave_accrual_eligible_dates",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    leave_type_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_types.id", ondelete="RESTRICT")
+    )
+    policy_id: Mapped[UUID] = mapped_column(ForeignKey("hr_leave_policies.id", ondelete="RESTRICT"))
+    ledger_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"), unique=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    eligible_from: Mapped[date | None] = mapped_column(Date)
+    eligible_through: Mapped[date | None] = mapped_column(Date)
+    plan_digest: Mapped[str] = mapped_column(String(64))
+
+
+class HrLeaveRollover(TimestampMixin, Base):
+    __tablename__ = "hr_leave_rollovers"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "leave_type_id", "source_year"),
+        CheckConstraint("carried_days >= 0 AND expired_days >= 0", name="nonnegative_days"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    employee_id: Mapped[UUID] = mapped_column(ForeignKey("hr_employees.id", ondelete="RESTRICT"))
+    leave_type_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_leave_types.id", ondelete="RESTRICT")
+    )
+    policy_id: Mapped[UUID] = mapped_column(ForeignKey("hr_leave_policies.id", ondelete="RESTRICT"))
+    source_year: Mapped[int] = mapped_column(Integer)
+    carried_days: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    expired_days: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    transferred_out_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"), unique=True
+    )
+    transferred_in_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"), unique=True
+    )
+    expiry_entry_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_leave_ledger.id", ondelete="RESTRICT"), unique=True
+    )
+    actor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    plan_digest: Mapped[str] = mapped_column(String(64))
+
+
 class HrOffboardingCase(TimestampMixin, Base):
     __tablename__ = "hr_offboarding_cases"
 
@@ -1172,6 +1466,78 @@ class HrClearanceStep(TimestampMixin, Base):
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class HrOffboardingCustody(Base):
+    __tablename__ = "hr_offboarding_custody"
+    __table_args__ = (
+        Index("ix_hr_offboarding_custody_case_recorded", "case_id", "recorded_at", "id"),
+        UniqueConstraint("case_id", "evidence_reference"),
+        CheckConstraint(
+            "(area = 'store_inventory' AND device_reference IS NULL AND "
+            "((kind = 'returned' AND movement_id IS NOT NULL) OR "
+            "(kind IN ('cleared', 'waived', 'flagged') AND movement_id IS NULL))) OR "
+            "(area = 'it_admin' AND movement_id IS NULL AND "
+            "((kind = 'cleared' AND device_reference IS NULL) OR "
+            "(kind IN ('returned', 'waived', 'flagged') AND device_reference IS NOT NULL)))",
+            name="hr_custody_area_kind",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_offboarding_cases.id", ondelete="RESTRICT")
+    )
+    area: Mapped[str] = mapped_column(String(16), server_default=text("'store_inventory'"))
+    device_reference: Mapped[str | None] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(12))
+    movement_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("inventory_movements.id", ondelete="RESTRICT"), unique=True
+    )
+    evidence_reference: Mapped[str] = mapped_column(String(100))
+    recorded_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class HrSeparationSettlement(Base):
+    __tablename__ = "hr_separation_settlements"
+    __table_args__ = (
+        Index("ix_hr_separation_settlements_case_created", "case_id", "created_at", "id"),
+        Index(
+            "uq_hr_separation_settlements_open",
+            "case_id",
+            unique=True,
+            postgresql_where=text("status = 'proposed'"),
+        ),
+        UniqueConstraint("case_id", "evidence_reference"),
+        CheckConstraint(
+            "outcome IN ('outstanding', 'settled', 'nothing_due')",
+            name="separation_settlement_outcome",
+        ),
+        CheckConstraint(
+            "(status = 'proposed' AND reviewed_by_id IS NULL AND reviewed_at IS NULL "
+            "AND review_reference IS NULL) OR "
+            "(status IN ('approved', 'rejected') AND reviewed_by_id IS NOT NULL "
+            "AND reviewed_by_id <> proposed_by_id AND reviewed_at IS NOT NULL "
+            "AND review_reference IS NOT NULL)",
+            name="separation_settlement_review",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_offboarding_cases.id", ondelete="RESTRICT")
+    )
+    outcome: Mapped[str] = mapped_column(String(16))
+    evidence_reference: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'proposed'"))
+    proposed_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_reference: Mapped[str | None] = mapped_column(String(100))
+
+
 # --- Policy-Gated P2 Models (HR-019 to HR-024) ---
 
 
@@ -1209,6 +1575,7 @@ class HrReviewCycle(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    rating_scale: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'draft'"))
 
 
@@ -1240,6 +1607,25 @@ class HrReview(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'draft'"))
 
 
+class HrPerformanceEvent(Base):
+    __tablename__ = "hr_performance_events"
+    __table_args__ = (UniqueConstraint("review_id", "revision"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    review_id: Mapped[UUID] = mapped_column(ForeignKey("hr_reviews.id", ondelete="RESTRICT"))
+    revision: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(32))
+    participant: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[str | None] = mapped_column(String(60))
+    previous_reviewer_id: Mapped[UUID | None] = mapped_column()
+    replacement_reviewer_id: Mapped[UUID | None] = mapped_column()
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class HrTrainingCourse(TimestampMixin, Base):
     __tablename__ = "hr_training_courses"
 
@@ -1257,6 +1643,28 @@ class HrTrainingCourse(TimestampMixin, Base):
         Boolean, nullable=False, server_default=text("false")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+
+class HrTrainingRequirement(TimestampMixin, Base):
+    __tablename__ = "hr_training_requirements"
+    __table_args__ = (
+        CheckConstraint(
+            "position_id IS NOT NULL OR project_id IS NOT NULL", name="training_rule_scope"
+        ),
+        UniqueConstraint(
+            "course_id", "position_id", "project_id", postgresql_nulls_not_distinct=True
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
+    course_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_training_courses.id", ondelete="RESTRICT")
+    )
+    position_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_positions.id", ondelete="RESTRICT")
+    )
+    project_id: Mapped[UUID | None] = mapped_column(ForeignKey("projects.id", ondelete="RESTRICT"))
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 
 
 class HrTrainingEnrollment(TimestampMixin, Base):
@@ -1305,6 +1713,24 @@ class HrCertification(TimestampMixin, Base):
         nullable=True,
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'valid'"))
+
+
+class HrTrainingCompletion(Base):
+    __tablename__ = "hr_training_completions"
+
+    enrollment_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_training_enrollments.id", ondelete="RESTRICT"), primary_key=True
+    )
+    certificate_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_certifications.id", ondelete="RESTRICT"), unique=True
+    )
+    document_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_document_versions.id", ondelete="RESTRICT"), unique=True
+    )
+    verified_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class HrBenefitType(TimestampMixin, Base):
@@ -1461,10 +1887,46 @@ class HrPayrollRun(TimestampMixin, Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_encrypted: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def snapshot_digest(self) -> str | None:
+        if self.snapshot_encrypted is None:
+            return None
+        return hashlib.sha256(self.snapshot_encrypted.encode()).hexdigest()
+
+
+class HrPayslipPublication(Base):
+    __tablename__ = "hr_payslip_publications"
+
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_runs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    published_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class HrPayrollExport(Base):
+    __tablename__ = "hr_payroll_exports"
+
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_runs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    exported_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    snapshot_digest: Mapped[str] = mapped_column(String(64))
+    csv_sha256: Mapped[str] = mapped_column(String(64))
+    format_version: Mapped[int]
+    exported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class HrPayrollLine(TimestampMixin, Base):
     __tablename__ = "hr_payroll_lines"
+    __table_args__ = (Index("ix_hr_payroll_lines_run_employee", "payroll_run_id", "employee_id"),)
 
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
@@ -1484,6 +1946,38 @@ class HrPayrollLine(TimestampMixin, Base):
     net_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     breakdown_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+
+class HrPayrollSettlementEvent(Base):
+    __tablename__ = "hr_payroll_settlement_events"
+    __table_args__ = (
+        Index("ix_hr_payroll_settlement_run_recorded", "run_id", "recorded_at", "id"),
+        CheckConstraint(
+            "(kind IN ('paid', 'failed') AND reverses_event_id IS NULL) OR "
+            "(kind = 'reversed' AND reverses_event_id IS NOT NULL)",
+            name="payroll_settlement_kind",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_exports.run_id", ondelete="RESTRICT")
+    )
+    payment_reference: Mapped[UUID] = mapped_column(
+        ForeignKey("hr_payroll_lines.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(12))
+    amount_encrypted: Mapped[str] = mapped_column(Text)
+    reverses_event_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hr_payroll_settlement_events.id", ondelete="RESTRICT")
+    )
+    occurred_on: Mapped[date] = mapped_column(Date)
+    evidence_encrypted: Mapped[str] = mapped_column(Text)
+    evidence_digest: Mapped[str] = mapped_column(String(64), unique=True)
+    recorded_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

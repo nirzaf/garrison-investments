@@ -675,6 +675,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/applications/{application_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Application */
+        get: operations["get_application_api_v1_hr_applications__application_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/applications/{application_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Application Activity */
+        get: operations["list_application_activity_api_v1_hr_applications__application_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/applications/{application_id}/correspondence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidate Correspondence */
+        get: operations["list_candidate_correspondence_api_v1_hr_applications__application_id__correspondence_get"];
+        put?: never;
+        /** Draft Candidate Correspondence */
+        post: operations["draft_candidate_correspondence_api_v1_hr_applications__application_id__correspondence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/applications/{application_id}/correspondence/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate Correspondence */
+        get: operations["get_candidate_correspondence_api_v1_hr_applications__application_id__correspondence__draft_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/applications/{application_id}/correspondence/{draft_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Candidate Correspondence */
+        post: operations["decide_candidate_correspondence_api_v1_hr_applications__application_id__correspondence__draft_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/applications/{application_id}/stage": {
         parameters: {
             query?: never;
@@ -884,6 +970,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/candidate-correspondence/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidate Letter Templates */
+        get: operations["list_candidate_letter_templates_api_v1_hr_candidate_correspondence_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/candidates": {
         parameters: {
             query?: never;
@@ -896,6 +999,23 @@ export interface paths {
         put?: never;
         /** Create Candidate */
         post: operations["create_candidate_api_v1_hr_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate */
+        get: operations["get_candidate_api_v1_hr_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1059,6 +1179,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hr Document */
+        get: operations["get_hr_document_api_v1_hr_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/documents/{document_id}/download": {
         parameters: {
             query?: never;
@@ -1146,6 +1283,92 @@ export interface paths {
         patch: operations["update_employee_api_v1_hr_employees__employee_id__patch"];
         trace?: never;
     };
+    "/api/v1/hr/employees/{employee_id}/employment-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employment Changes */
+        get: operations["list_employment_changes_api_v1_hr_employees__employee_id__employment_changes_get"];
+        put?: never;
+        /** Propose Employment Change */
+        post: operations["propose_employment_change_api_v1_hr_employees__employee_id__employment_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/employment-changes/{change_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employment Change */
+        get: operations["get_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/employment-changes/{change_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Employment Change */
+        post: operations["apply_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/employment-changes/{change_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Employment Change */
+        post: operations["decide_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/employment-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employment Periods */
+        get: operations["get_employment_periods_api_v1_hr_employees__employee_id__employment_periods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/employees/{employee_id}/history": {
         parameters: {
             query?: never;
@@ -1157,6 +1380,57 @@ export interface paths {
         get: operations["get_employee_history_api_v1_hr_employees__employee_id__history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employee Letters */
+        get: operations["list_employee_letters_api_v1_hr_employees__employee_id__letters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/letters/{letter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employee Letter */
+        get: operations["get_employee_letter_api_v1_hr_employees__employee_id__letters__letter_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/employees/{employee_id}/letters/{letter_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Letter */
+        post: operations["decide_letter_api_v1_hr_employees__employee_id__letters__letter_id__decision_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1354,6 +1628,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/interviews/interviewer-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interviewer Options */
+        get: operations["list_interviewer_options_api_v1_hr_interviews_interviewer_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/interviews/{interview_id}": {
         parameters: {
             query?: never;
@@ -1371,6 +1662,74 @@ export interface paths {
         patch: operations["update_interview_api_v1_hr_interviews__interview_id__patch"];
         trace?: never;
     };
+    "/api/v1/hr/leave/accrual/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Leave Accrual */
+        post: operations["apply_leave_accrual_api_v1_hr_leave_accrual_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/accrual/catch-up/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Leave Accrual Catch Up */
+        post: operations["apply_leave_accrual_catch_up_api_v1_hr_leave_accrual_catch_up_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/accrual/catch-up/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Leave Accrual Catch Up */
+        post: operations["preview_leave_accrual_catch_up_api_v1_hr_leave_accrual_catch_up_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/accrual/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Leave Accrual */
+        post: operations["preview_leave_accrual_api_v1_hr_leave_accrual_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/leave/balances/{employee_id}": {
         parameters: {
             query?: never;
@@ -1380,6 +1739,23 @@ export interface paths {
         };
         /** Get Employee Leave Balances */
         get: operations["get_employee_leave_balances_api_v1_hr_leave_balances__employee_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/employees/{employee_id}/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote Employee Leave Units */
+        get: operations["quote_employee_leave_units_api_v1_hr_leave_employees__employee_id__units_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1423,6 +1799,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/leave/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Leave Policy */
+        get: operations["get_leave_policy_api_v1_hr_leave_policies__policy_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/policies/{policy_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Leave Policy */
+        post: operations["decide_leave_policy_api_v1_hr_leave_policies__policy_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/leave/requests": {
         parameters: {
             query?: never;
@@ -1452,6 +1862,40 @@ export interface paths {
         put?: never;
         /** Decide Leave Request */
         post: operations["decide_leave_request_api_v1_hr_leave_requests__leave_request_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/rollover/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Leave Rollover */
+        post: operations["apply_leave_rollover_api_v1_hr_leave_rollover_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/leave/rollover/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Leave Rollover */
+        post: operations["preview_leave_rollover_api_v1_hr_leave_rollover_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1488,6 +1932,23 @@ export interface paths {
         put?: never;
         /** Create Letter Template */
         post: operations["create_letter_template_api_v1_hr_letter_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/letters/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft Letter */
+        post: operations["draft_letter_api_v1_hr_letters_drafts_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1649,6 +2110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/me/leave-requests/{request_id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Resubmit My Leave Request */
+        put: operations["resubmit_my_leave_request_api_v1_hr_me_leave_requests__request_id__submission_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/me/leave-types": {
         parameters: {
             query?: never;
@@ -1658,6 +2136,57 @@ export interface paths {
         };
         /** List My Leave Types */
         get: operations["list_my_leave_types_api_v1_hr_me_leave_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/leave-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quote My Leave Units */
+        get: operations["quote_my_leave_units_api_v1_hr_me_leave_units_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Letters */
+        get: operations["list_my_letters_api_v1_hr_me_letters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/letters/{letter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Letter */
+        get: operations["get_my_letter_api_v1_hr_me_letters__letter_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1718,6 +2247,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/me/payslips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Payslips */
+        get: operations["list_my_payslips_api_v1_hr_me_payslips_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/payslips/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Payslip */
+        get: operations["get_my_payslip_api_v1_hr_me_payslips__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/me/policies": {
         parameters: {
             query?: never;
@@ -1746,6 +2309,23 @@ export interface paths {
         put?: never;
         /** Acknowledge Hr Policy */
         post: operations["acknowledge_hr_policy_api_v1_hr_me_policies__policy_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/policies/{policy_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download My Policy */
+        get: operations["download_my_policy_api_v1_hr_me_policies__policy_id__download_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1840,6 +2420,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/me/training": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Training */
+        get: operations["get_my_training_api_v1_hr_me_training_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/me/training/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Training Requirements */
+        get: operations["get_my_training_requirements_api_v1_hr_me_training_requirements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/me/workflow-options": {
         parameters: {
             query?: never;
@@ -1909,6 +2523,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/offboarding/{case_id}/custody": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Offboarding Custody */
+        get: operations["get_offboarding_custody_api_v1_hr_offboarding__case_id__custody_get"];
+        put?: never;
+        /** Post Offboarding Custody */
+        post: operations["post_offboarding_custody_api_v1_hr_offboarding__case_id__custody_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/offboarding/{case_id}/settlement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Separation Settlement */
+        get: operations["get_separation_settlement_api_v1_hr_offboarding__case_id__settlement_get"];
+        put?: never;
+        /** Propose Offboarding Settlement */
+        post: operations["propose_offboarding_settlement_api_v1_hr_offboarding__case_id__settlement_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/offboarding/{case_id}/settlement/{event_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Offboarding Settlement */
+        post: operations["review_offboarding_settlement_api_v1_hr_offboarding__case_id__settlement__event_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/offers": {
         parameters: {
             query?: never;
@@ -1921,6 +2588,23 @@ export interface paths {
         put?: never;
         /** Create Offer */
         post: operations["create_offer_api_v1_hr_offers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/offers/{offer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Offer */
+        get: operations["get_offer_api_v1_hr_offers__offer_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1955,6 +2639,23 @@ export interface paths {
         put?: never;
         /** Decide Offer */
         post: operations["decide_offer_api_v1_hr_offers__offer_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/offers/{offer_id}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Offer Document */
+        get: operations["download_offer_document_api_v1_hr_offers__offer_id__document_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2011,6 +2712,23 @@ export interface paths {
         head?: never;
         /** Update Onboarding Task */
         patch: operations["update_onboarding_task_api_v1_hr_onboarding_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/hr/onboarding/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding Case */
+        get: operations["get_onboarding_case_api_v1_hr_onboarding__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/hr/onboarding/{case_id}/probation-review": {
@@ -2100,6 +2818,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/payroll/periods/{period_id}/time-inputs.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download Payroll Time Inputs */
+        post: operations["download_payroll_time_inputs_api_v1_hr_payroll_periods__period_id__time_inputs_csv_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/periods/{period_id}/time-inputs/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Payroll Time Inputs */
+        post: operations["preview_payroll_time_inputs_api_v1_hr_payroll_periods__period_id__time_inputs_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/payroll/policies": {
         parameters: {
             query?: never;
@@ -2153,6 +2905,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/payroll/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Payroll Run */
+        get: operations["read_payroll_run_api_v1_hr_payroll_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/payroll/runs/{run_id}/approve": {
         parameters: {
             query?: never;
@@ -2181,6 +2950,178 @@ export interface paths {
         put?: never;
         /** Calculate Payroll Run */
         post: operations["calculate_payroll_run_api_v1_hr_payroll_runs__run_id__calculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/payment-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Run Payment Export */
+        get: operations["download_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_get"];
+        put?: never;
+        /** Register Run Payment Export */
+        post: operations["register_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/payment-export/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Run Payment Export */
+        get: operations["preview_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/publish-payslips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Run Payslips */
+        post: operations["publish_run_payslips_api_v1_hr_payroll_runs__run_id__publish_payslips_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Settlement Summary */
+        get: operations["get_payroll_settlement_summary_api_v1_hr_payroll_runs__run_id__settlements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/settlements/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Settlement Events */
+        get: operations["get_payroll_settlement_events_api_v1_hr_payroll_runs__run_id__settlements_events_get"];
+        put?: never;
+        /** Add Payroll Settlement Event */
+        post: operations["add_payroll_settlement_event_api_v1_hr_payroll_runs__run_id__settlements_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/settlements/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Settlement Event */
+        get: operations["get_payroll_settlement_event_api_v1_hr_payroll_runs__run_id__settlements_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/payroll/runs/{run_id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Payroll Snapshot */
+        get: operations["get_payroll_snapshot_api_v1_hr_payroll_runs__run_id__snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/performance/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Participant Reviews */
+        get: operations["list_participant_reviews_api_v1_hr_performance_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/performance/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Participant Review */
+        get: operations["get_participant_review_api_v1_hr_performance_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/performance/reviews/{review_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Act On Performance Review */
+        post: operations["act_on_performance_review_api_v1_hr_performance_reviews__review_id__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2378,6 +3319,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/requests/assignees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Request Assignees */
+        get: operations["list_service_request_assignees_api_v1_hr_requests_assignees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/requests/{req_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Service Request */
+        get: operations["get_service_request_api_v1_hr_requests__req_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/requests/{req_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Service Request */
+        post: operations["assign_service_request_api_v1_hr_requests__req_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/requests/{req_id}/resolve": {
         parameters: {
             query?: never;
@@ -2407,6 +3399,23 @@ export interface paths {
         put?: never;
         /** Create Requisition */
         post: operations["create_requisition_api_v1_hr_requisitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/requisitions/{requisition_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Requisition */
+        get: operations["get_requisition_api_v1_hr_requisitions__requisition_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2460,6 +3469,41 @@ export interface paths {
         put?: never;
         /** Create Review */
         post: operations["create_review_api_v1_hr_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Roster */
+        get: operations["list_roster_api_v1_hr_roster_get"];
+        put?: never;
+        /** Create Roster Allocation */
+        post: operations["create_roster_allocation_api_v1_hr_roster_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/roster/{allocation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Roster Allocation */
+        post: operations["cancel_roster_allocation_api_v1_hr_roster__allocation_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2587,6 +3631,76 @@ export interface paths {
         head?: never;
         /** Update Training Enrollment */
         patch: operations["update_training_enrollment_api_v1_hr_training_enrollments__enrollment_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/hr/training/enrollments/{enrollment_id}/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Training Completion */
+        get: operations["get_training_completion_api_v1_hr_training_enrollments__enrollment_id__completion_get"];
+        put?: never;
+        /** Verify Training Completion */
+        post: operations["verify_training_completion_api_v1_hr_training_enrollments__enrollment_id__completion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/training/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Training Rules */
+        get: operations["get_training_rules_api_v1_hr_training_requirements_get"];
+        put?: never;
+        /** Create Training Rule */
+        post: operations["create_training_rule_api_v1_hr_training_requirements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/training/requirements/employees/{employee_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Employee Training Requirements */
+        get: operations["get_employee_training_requirements_api_v1_hr_training_requirements_employees__employee_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hr/training/requirements/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Training Rule */
+        delete: operations["remove_training_rule_api_v1_hr_training_requirements__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/imports/batches": {
@@ -3793,6 +4907,30 @@ export interface components {
             /** Errors */
             errors: components["schemas"]["ErrorDetail"][];
         };
+        /** ApplicationActivity */
+        ApplicationActivity: {
+            /** Actor Name */
+            actor_name: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Stage */
+            stage: string;
+        };
+        /** ApplicationActivityList */
+        ApplicationActivityList: {
+            /** Items */
+            items: components["schemas"]["ApplicationActivity"][];
+            /** Total */
+            total: number;
+        };
         /** ApplicationCreateRequest */
         ApplicationCreateRequest: {
             /**
@@ -3800,6 +4938,8 @@ export interface components {
              * Format: uuid
              */
             candidate_id: string;
+            /** Expected Requisition Updated At */
+            expected_requisition_updated_at?: string | null;
             /**
              * Requisition Id
              * Format: uuid
@@ -3808,10 +4948,64 @@ export interface components {
             /** Screening Notes */
             screening_notes?: string | null;
         };
+        /** ApplicationListItem */
+        ApplicationListItem: {
+            /** Assigned Recruiter Id */
+            assigned_recruiter_id: string | null;
+            /** Candidate Code */
+            candidate_code: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Overall Score */
+            overall_score: string | null;
+            /** Position Title */
+            position_title: string;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            /**
+             * Requisition Id
+             * Format: uuid
+             */
+            requisition_id: string;
+            /** Retention Decision */
+            retention_decision: ("retain_until_review" | "policy_review_required") | null;
+            /** Retention Policy Reference */
+            retention_policy_reference: string | null;
+            /** Retention Review On */
+            retention_review_on: string | null;
+            /** Screening Notes */
+            screening_notes: string | null;
+            /** Stage */
+            stage: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /** Withdrawn At */
+            withdrawn_at: string | null;
+        };
         /** ApplicationListResponse */
         ApplicationListResponse: {
             /** Items */
-            items: components["schemas"]["ApplicationResponse"][];
+            items: components["schemas"]["ApplicationListItem"][];
             /** Total */
             total: number;
         };
@@ -3843,6 +5037,12 @@ export interface components {
              * Format: uuid
              */
             requisition_id: string;
+            /** Retention Decision */
+            retention_decision: ("retain_until_review" | "policy_review_required") | null;
+            /** Retention Policy Reference */
+            retention_policy_reference: string | null;
+            /** Retention Review On */
+            retention_review_on: string | null;
             /** Screening Notes */
             screening_notes: string | null;
             /** Stage */
@@ -3852,9 +5052,15 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Withdrawal Reason */
+            withdrawal_reason: string | null;
+            /** Withdrawn At */
+            withdrawn_at: string | null;
         };
         /** ApplicationStageUpdateRequest */
         ApplicationStageUpdateRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Overall Score */
             overall_score?: number | string | null;
             /** Rejection Reason */
@@ -3865,7 +5071,27 @@ export interface components {
              * Stage
              * @enum {string}
              */
-            stage: "applied" | "screening" | "interview" | "evaluation" | "offer" | "hired" | "rejected" | "withdrawn";
+            stage: "applied" | "screening" | "shortlisted" | "interview" | "evaluation" | "offer" | "hired" | "rejected" | "withdrawn";
+            withdrawal?: components["schemas"]["ApplicationWithdrawalRequest"] | null;
+        };
+        /** ApplicationWithdrawalRequest */
+        ApplicationWithdrawalRequest: {
+            /**
+             * Expected Stage
+             * @enum {string}
+             */
+            expected_stage: "applied" | "screening" | "shortlisted" | "interview" | "evaluation" | "offer";
+            /** Reason */
+            reason: string;
+            /**
+             * Retention Decision
+             * @enum {string}
+             */
+            retention_decision: "retain_until_review" | "policy_review_required";
+            /** Retention Policy Reference */
+            retention_policy_reference?: string | null;
+            /** Retention Review On */
+            retention_review_on?: string | null;
         };
         /** ApprovalCreateRequest */
         ApprovalCreateRequest: {
@@ -4569,6 +5795,8 @@ export interface components {
         };
         /** Body_upload_hr_document_version_api_v1_hr_documents__document_id__versions_post */
         Body_upload_hr_document_version_api_v1_hr_documents__document_id__versions_post: {
+            /** Expected Latest Version */
+            expected_latest_version?: number | null;
             /** File */
             file: string;
         };
@@ -4696,6 +5924,63 @@ export interface components {
              */
             threshold_comparison: "greater_than";
         };
+        /** CandidateCorrespondenceCreateRequest */
+        CandidateCorrespondenceCreateRequest: {
+            /**
+             * Draft Id
+             * Format: uuid
+             */
+            draft_id: string;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+        };
+        /** CandidateCorrespondenceDecisionRequest */
+        CandidateCorrespondenceDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Expected Digest */
+            expected_digest: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** CandidateCorrespondenceDetail */
+        CandidateCorrespondenceDetail: {
+            /** Body */
+            body: string;
+            /**
+             * Can Decide
+             * @default false
+             */
+            can_decide: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Digest */
+            digest: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Template Name */
+            template_name: string;
+        };
         /** CandidateCreateRequest */
         CandidateCreateRequest: {
             /** Candidate Code */
@@ -4798,6 +6083,8 @@ export interface components {
             created_at: string;
             /** Document Id */
             document_id: string | null;
+            /** Effective Status */
+            readonly effective_status: string;
             /**
              * Employee Id
              * Format: uuid
@@ -5637,6 +6924,8 @@ export interface components {
             epf_number?: string | null;
             /** Etf Number */
             etf_number?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
             /** Gender */
             gender?: string | null;
             /** Marital Status */
@@ -5692,6 +6981,8 @@ export interface components {
             emergency_contact_phone?: string | null;
             /** Emergency Contact Relation */
             emergency_contact_relation?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
             /** Personal Email */
             personal_email?: string | null;
             /** Personal Phone */
@@ -5754,6 +7045,8 @@ export interface components {
             personal_email?: string | null;
             /** Personal Phone */
             personal_phone?: string | null;
+            /** Record Revision */
+            record_revision: number;
             /** Residential Address */
             residential_address?: string | null;
             /** Tax Id Masked */
@@ -5821,6 +7114,132 @@ export interface components {
             /** Work Phone */
             work_phone?: string | null;
         };
+        /** EmploymentChangeDecision */
+        EmploymentChangeDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Reason */
+            reason?: string | null;
+        };
+        /** EmploymentChangeFields */
+        EmploymentChangeFields: {
+            /** Contract End Date */
+            contract_end_date?: string | null;
+            /** Current Contract Document Id */
+            current_contract_document_id?: string | null;
+            /** Current Contract Version */
+            current_contract_version?: number | null;
+            /** Department Id */
+            department_id?: string | null;
+            /** Employment Category */
+            employment_category?: ("permanent" | "contract" | "probation" | "daily_wage" | "intern" | "consultant") | null;
+            /** First Name */
+            first_name?: string | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Last Name */
+            last_name?: string | null;
+            /** Manager Employee Id */
+            manager_employee_id?: string | null;
+            /** Position Id */
+            position_id?: string | null;
+            /** Probation Days */
+            probation_days?: number | null;
+            /** Renewal Contract Document Id */
+            renewal_contract_document_id?: string | null;
+            /** Renewal Contract Version */
+            renewal_contract_version?: number | null;
+            /** Separation Case Id */
+            separation_case_id?: string | null;
+            /** Work Location */
+            work_location?: string | null;
+        };
+        /** EmploymentChangeListResponse */
+        EmploymentChangeListResponse: {
+            /** Items */
+            items: components["schemas"]["EmploymentChangeResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** EmploymentChangeProposal */
+        EmploymentChangeProposal: {
+            /**
+             * Change Type
+             * @enum {string}
+             */
+            change_type: "transfer" | "promotion" | "category_amendment" | "contract_renewal" | "rehire" | "profile_correction";
+            /**
+             * Effective Date
+             * Format: date
+             */
+            effective_date: string;
+            /** Employee Revision */
+            employee_revision: number;
+            /** Reason */
+            reason: string;
+            updates: components["schemas"]["EmploymentChangeFields"];
+        };
+        /** EmploymentChangeResponse */
+        EmploymentChangeResponse: {
+            /** Applied At */
+            applied_at: string | null;
+            /** Applied By */
+            applied_by: string | null;
+            /** Applied Employee Revision */
+            applied_employee_revision: number | null;
+            /**
+             * Change Type
+             * @enum {string}
+             */
+            change_type: "transfer" | "promotion" | "category_amendment" | "contract_renewal" | "rehire" | "profile_correction";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decision Reason */
+            decision_reason: string | null;
+            /**
+             * Effective Date
+             * Format: date
+             */
+            effective_date: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Employee Revision */
+            employee_revision: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Proposed By
+             * Format: uuid
+             */
+            proposed_by: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "approved" | "rejected" | "applied";
+            /** Updates */
+            updates: {
+                [key: string]: string | number | null;
+            };
+        };
         /** EmploymentHistoryListResponse */
         EmploymentHistoryListResponse: {
             /** Items */
@@ -5864,6 +7283,31 @@ export interface components {
             } | null;
             /** Reason */
             reason: string | null;
+        };
+        /** EmploymentPeriodListResponse */
+        EmploymentPeriodListResponse: {
+            /** Items */
+            items: components["schemas"]["EmploymentPeriodResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** EmploymentPeriodResponse */
+        EmploymentPeriodResponse: {
+            /** Ended On */
+            ended_on: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Onboarding Case Id */
+            onboarding_case_id: string | null;
+            /** Rehire Change Id */
+            rehire_change_id: string | null;
+            /** Separation Case Id */
+            separation_case_id: string | null;
+            /** Started On */
+            started_on: string | null;
         };
         /** ErrorDetail */
         ErrorDetail: {
@@ -6317,6 +7761,31 @@ export interface components {
              */
             date_to: string;
         };
+        /** HrServiceRequestAssignee */
+        HrServiceRequestAssignee: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** HrServiceRequestAssignmentRequest */
+        HrServiceRequestAssignmentRequest: {
+            /**
+             * Assigned To Id
+             * Format: uuid
+             */
+            assigned_to_id: string;
+            /**
+             * Expected Updated At
+             * Format: date-time
+             */
+            expected_updated_at: string;
+            /** Reason */
+            reason: string;
+        };
         /** HrServiceRequestCreateRequest */
         HrServiceRequestCreateRequest: {
             /** Description */
@@ -6352,6 +7821,8 @@ export interface components {
             expected_updated_at?: string | null;
             /** Generated Document Id */
             generated_document_id?: string | null;
+            /** Generated Letter Id */
+            generated_letter_id?: string | null;
             /** Resolution Notes */
             resolution_notes?: string | null;
             /**
@@ -6378,6 +7849,8 @@ export interface components {
             employee_id: string;
             /** Generated Document Id */
             generated_document_id: string | null;
+            /** Generated Letter Id */
+            generated_letter_id: string | null;
             /**
              * Id
              * Format: uuid
@@ -6547,6 +8020,10 @@ export interface components {
              * Format: uuid
              */
             application_id: string;
+            /** Expected Application Updated At */
+            expected_application_updated_at?: string | null;
+            /** Interview Id */
+            interview_id?: string | null;
             /**
              * Interview Type
              * @default technical
@@ -6614,6 +8091,8 @@ export interface components {
         };
         /** InterviewUpdateRequest */
         InterviewUpdateRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Feedback Notes */
             feedback_notes?: string | null;
             /** Recommendation */
@@ -6622,6 +8101,23 @@ export interface components {
             score?: number | string | null;
             /** Status */
             status?: ("scheduled" | "completed" | "cancelled") | null;
+        };
+        /** InterviewerOption */
+        InterviewerOption: {
+            /** Full Name */
+            full_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** InterviewerOptions */
+        InterviewerOptions: {
+            /** Items */
+            items: components["schemas"]["InterviewerOption"][];
+            /** Total */
+            total: number;
         };
         /** InventoryItemCreateRequest */
         InventoryItemCreateRequest: {
@@ -6825,6 +8321,129 @@ export interface components {
             /** Tax Amount */
             tax_amount?: number | string | null;
         };
+        /** LeaveAccrualApplyRequest */
+        LeaveAccrualApplyRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Expected Digest */
+            expected_digest: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Month */
+            month?: number | null;
+            /** Year */
+            year: number;
+        };
+        /** LeaveAccrualCatchUpApplyRequest */
+        LeaveAccrualCatchUpApplyRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** End Month */
+            end_month: number;
+            /** Expected Digest */
+            expected_digest: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Start Month */
+            start_month: number;
+            /** Year */
+            year: number;
+        };
+        /** LeaveAccrualCatchUpRequest */
+        LeaveAccrualCatchUpRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** End Month */
+            end_month: number;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Start Month */
+            start_month: number;
+            /** Year */
+            year: number;
+        };
+        /** LeaveAccrualCatchUpResponse */
+        LeaveAccrualCatchUpResponse: {
+            /** Digest */
+            digest?: string | null;
+            /** Pending Days */
+            pending_days: string;
+            /** Periods */
+            periods: components["schemas"]["LeaveAccrualResponse"][];
+        };
+        /** LeaveAccrualRequest */
+        LeaveAccrualRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Month */
+            month?: number | null;
+            /** Year */
+            year: number;
+        };
+        /** LeaveAccrualResponse */
+        LeaveAccrualResponse: {
+            /** Days */
+            days: string;
+            /** Digest */
+            digest?: string | null;
+            /** Eligible From */
+            eligible_from?: string | null;
+            /** Eligible Through */
+            eligible_through?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Ledger Entry Id */
+            ledger_entry_id?: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Policy Id
+             * Format: uuid
+             */
+            policy_id: string;
+        };
         /** LeaveBalanceItem */
         LeaveBalanceItem: {
             /** Balance Days */
@@ -6932,8 +8551,23 @@ export interface components {
             approve_immediately: boolean;
             /** Code */
             code: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /**
+             * Effective To
+             * Format: date
+             */
+            effective_to: string;
             /** Employment Category */
             employment_category?: ("permanent" | "contract" | "probation" | "daily_wage" | "intern" | "consultant") | null;
+            /**
+             * Expire Excess On Rollover
+             * @default false
+             */
+            expire_excess_on_rollover: boolean;
             /**
              * Leave Type Id
              * Format: uuid
@@ -6946,6 +8580,21 @@ export interface components {
             max_carry_forward_days: number | string;
             /** Name */
             name: string;
+            /**
+             * Prorate By Calendar Day
+             * @default false
+             */
+            prorate_by_calendar_day: boolean;
+        };
+        /** LeavePolicyDecisionRequest */
+        LeavePolicyDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Reason */
+            reason?: string | null;
         };
         /** LeavePolicyListResponse */
         LeavePolicyListResponse: {
@@ -6973,8 +8622,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Created By Id */
+            created_by_id: string | null;
+            /** Effective From */
+            effective_from: string | null;
+            /** Effective To */
+            effective_to: string | null;
             /** Employment Category */
             employment_category: string | null;
+            /** Expire Excess On Rollover */
+            expire_excess_on_rollover: boolean;
             /**
              * Id
              * Format: uuid
@@ -6991,13 +8648,22 @@ export interface components {
             max_carry_forward_days: string;
             /** Name */
             name: string;
+            /** Prorate By Calendar Day */
+            prorate_by_calendar_day: boolean;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "legacy" | "draft" | "approved" | "rejected";
         };
         /** LeaveRequestCreateRequest */
         LeaveRequestCreateRequest: {
             /** Attachment Document Id */
             attachment_document_id?: string | null;
             /** Days Requested */
-            days_requested: number | string;
+            days_requested?: number | string | null;
             /** Employee Id */
             employee_id?: string | null;
             /**
@@ -7115,6 +8781,103 @@ export interface components {
              */
             updated_at: string;
         };
+        /** LeaveRequestResubmitRequest */
+        LeaveRequestResubmitRequest: {
+            /** Attachment Document Id */
+            attachment_document_id?: string | null;
+            /** Days Requested */
+            days_requested?: number | string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Half Day Period */
+            half_day_period?: ("morning" | "afternoon") | null;
+            /**
+             * Is Half Day
+             * @default false
+             */
+            is_half_day: boolean;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+        };
+        /** LeaveRolloverApplyRequest */
+        LeaveRolloverApplyRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Expected Digest */
+            expected_digest: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Source Year */
+            source_year: number;
+        };
+        /** LeaveRolloverRequest */
+        LeaveRolloverRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /** Source Year */
+            source_year: number;
+        };
+        /** LeaveRolloverResponse */
+        LeaveRolloverResponse: {
+            /** Carried Days */
+            carried_days: string;
+            /** Digest */
+            digest?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Expired Days */
+            expired_days: string;
+            /**
+             * Leave Type Id
+             * Format: uuid
+             */
+            leave_type_id: string;
+            /**
+             * Policy Id
+             * Format: uuid
+             */
+            policy_id: string;
+            /** Receipt Id */
+            receipt_id?: string | null;
+            /** Source Balance */
+            source_balance: string;
+            /** Source Year */
+            source_year: number;
+            /** Target Year */
+            target_year: number;
+        };
         /** LeaveTypeCreateRequest */
         LeaveTypeCreateRequest: {
             /**
@@ -7173,6 +8936,75 @@ export interface components {
             /** Requires Attachment */
             requires_attachment: boolean;
         };
+        /** LeaveUnitsResponse */
+        LeaveUnitsResponse: {
+            /** Days Requested */
+            days_requested: string;
+        };
+        /** LetterDecisionRequest */
+        LetterDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "issued" | "rejected";
+            /** Reason */
+            reason?: string | null;
+        };
+        /** LetterDetail */
+        LetterDetail: {
+            /** Body */
+            body: string;
+            /**
+             * Can Decide
+             * @default false
+             */
+            can_decide: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rejection Reason */
+            rejection_reason?: string | null;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Template Name */
+            template_name: string;
+        };
+        /** LetterDraftRequest */
+        LetterDraftRequest: {
+            /**
+             * Draft Id
+             * Format: uuid
+             */
+            draft_id: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Expected Digest */
+            expected_digest: string;
+            /** Extra Vars */
+            extra_vars?: {
+                [key: string]: string;
+            };
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+        };
         /** LetterGenerateRequest */
         LetterGenerateRequest: {
             /**
@@ -7190,10 +9022,19 @@ export interface components {
              */
             template_id: string;
         };
+        /** LetterListResponse */
+        LetterListResponse: {
+            /** Items */
+            items: components["schemas"]["LetterSummary"][];
+            /** Total */
+            total: number;
+        };
         /** LetterRenderResponse */
         LetterRenderResponse: {
             /** Body */
             body: string;
+            /** Digest */
+            digest?: string | null;
             /**
              * Employee Id
              * Format: uuid
@@ -7207,6 +9048,30 @@ export interface components {
              */
             template_id: string;
         };
+        /** LetterSummary */
+        LetterSummary: {
+            /**
+             * Can Decide
+             * @default false
+             */
+            can_decide: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /** Template Name */
+            template_name: string;
+        };
         /** LetterTemplateCreateRequest */
         LetterTemplateCreateRequest: {
             /** Body Template */
@@ -7217,7 +9082,7 @@ export interface components {
              * Letter Type
              * @enum {string}
              */
-            letter_type: "employment_confirmation" | "salary_confirmation" | "experience_letter" | "warning_letter" | "transfer_letter" | "custom";
+            letter_type: "employment_confirmation" | "salary_confirmation" | "experience_letter" | "warning_letter" | "transfer_letter" | "candidate_rejection" | "custom";
             /** Name */
             name: string;
             /**
@@ -7595,6 +9460,57 @@ export interface components {
             /** To Location Id */
             to_location_id: string | null;
         };
+        /** MyPolicyListResponse */
+        MyPolicyListResponse: {
+            /** Items */
+            items: components["schemas"]["MyPolicyResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** MyPolicyResponse */
+        MyPolicyResponse: {
+            /** Acknowledged At */
+            acknowledged_at: string | null;
+            /** Code */
+            code: string;
+            /** Content Summary */
+            content_summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Id */
+            document_id: string | null;
+            /** Document Version Number */
+            document_version_number: number | null;
+            /**
+             * Effective Date
+             * Format: date
+             */
+            effective_date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Current */
+            is_current: boolean;
+            /** Published At */
+            published_at: string | null;
+            /** Published By Id */
+            published_by_id: string | null;
+            /** Requires Acknowledgement */
+            requires_acknowledgement: boolean;
+            /** Supersedes Policy Id */
+            supersedes_policy_id: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: string;
+        };
         /** NotificationListResponse */
         NotificationListResponse: {
             /** Items */
@@ -7702,6 +9618,80 @@ export interface components {
             /** Rehire Eligible */
             rehire_eligible?: boolean | null;
         };
+        /** OffboardingCustodyListResponse */
+        OffboardingCustodyListResponse: {
+            /** Case Closed */
+            case_closed: boolean;
+            /** Clearance Status */
+            clearance_status: string;
+            /** Items */
+            items: components["schemas"]["OffboardingCustodyResponse"][];
+            /** Outstanding Devices */
+            outstanding_devices: number;
+            /** Total */
+            total: number;
+        };
+        /** OffboardingCustodyRequest */
+        OffboardingCustodyRequest: {
+            /**
+             * Area
+             * @default store_inventory
+             * @enum {string}
+             */
+            area: "store_inventory" | "it_admin";
+            /** Device Reference */
+            device_reference?: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "returned" | "cleared" | "waived" | "flagged";
+            /** Movement Id */
+            movement_id?: string | null;
+        };
+        /** OffboardingCustodyResponse */
+        OffboardingCustodyResponse: {
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "store_inventory" | "it_admin";
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Device Reference */
+            device_reference: string | null;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Movement Id */
+            movement_id: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /**
+             * Recorded By Id
+             * Format: uuid
+             */
+            recorded_by_id: string;
+        };
         /** OffboardingInitiateRequest */
         OffboardingInitiateRequest: {
             /**
@@ -7759,6 +9749,10 @@ export interface components {
             application_id: string;
             /** Currency */
             currency?: string | null;
+            /** Document Version Id */
+            document_version_id?: string | null;
+            /** Expected Application Updated At */
+            expected_application_updated_at?: string | null;
             /** Notes */
             notes?: string | null;
             /** Offer Code */
@@ -7780,6 +9774,8 @@ export interface components {
         };
         /** OfferDecisionRequest */
         OfferDecisionRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Expected Version Number */
             expected_version_number?: number | null;
             /** Notes */
@@ -7803,6 +9799,10 @@ export interface components {
         OfferReissueRequest: {
             /** Currency */
             currency?: string | null;
+            /** Document Version Id */
+            document_version_id?: string | null;
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Notes */
             notes?: string | null;
             /** Offer Code */
@@ -7840,6 +9840,8 @@ export interface components {
             created_at: string;
             /** Currency */
             currency: string;
+            /** Document Version Id */
+            document_version_id?: string | null;
             /**
              * Id
              * Format: uuid
@@ -8005,6 +10007,8 @@ export interface components {
         OnboardingTaskUpdateRequest: {
             /** Evidence Notes */
             evidence_notes?: string | null;
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /**
              * Status
              * @enum {string}
@@ -8242,6 +10246,64 @@ export interface components {
             /** Reference Number */
             reference_number: string | null;
         };
+        /** PayrollExportConfirmRequest */
+        PayrollExportConfirmRequest: {
+            /** Expected Csv Sha256 */
+            expected_csv_sha256: string;
+            /** Expected Snapshot Digest */
+            expected_snapshot_digest: string;
+        };
+        /** PayrollExportPreview */
+        PayrollExportPreview: {
+            /** Csv Sha256 */
+            csv_sha256: string;
+            /** Currency */
+            currency: string;
+            /** Deductions */
+            deductions: string;
+            /** Format Version */
+            format_version: number;
+            /** Gross */
+            gross: string;
+            /** Net */
+            net: string;
+            /**
+             * Pay Date
+             * Format: date
+             */
+            pay_date: string;
+            /** Payment Count */
+            payment_count: number;
+            receipt?: components["schemas"]["PayrollExportReceipt"] | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Snapshot Digest */
+            snapshot_digest: string;
+            /** Zero Net Count */
+            zero_net_count: number;
+        };
+        /** PayrollExportReceipt */
+        PayrollExportReceipt: {
+            /** Csv Sha256 */
+            csv_sha256: string;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Format Version */
+            format_version: number;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Snapshot Digest */
+            snapshot_digest: string;
+        };
         /** PayrollPeriodCreateRequest */
         PayrollPeriodCreateRequest: {
             /**
@@ -8348,6 +10410,16 @@ export interface components {
             /** Second Approved By Id */
             second_approved_by_id: string | null;
         };
+        /** PayrollRunApproveRequest */
+        PayrollRunApproveRequest: {
+            /** Expected Snapshot Digest */
+            expected_snapshot_digest: string;
+        };
+        /** PayrollRunCalculateRequest */
+        PayrollRunCalculateRequest: {
+            /** Employee Ids */
+            employee_ids: string[];
+        };
         /** PayrollRunCreateRequest */
         PayrollRunCreateRequest: {
             /** Notes */
@@ -8394,8 +10466,461 @@ export interface components {
             policy_id: string | null;
             /** Prepared By Id */
             prepared_by_id: string | null;
+            /** Snapshot Digest */
+            snapshot_digest: string | null;
             /** Status */
             status: string;
+        };
+        /** PayrollRunSnapshotResponse */
+        PayrollRunSnapshotResponse: {
+            /**
+             * Calculation Basis
+             * @constant
+             */
+            calculation_basis: "base_salary_only";
+            /** Currency */
+            currency: string;
+            /** Deductions */
+            deductions: string;
+            /** Digest */
+            digest: string;
+            /** Employee Deduction Rate */
+            employee_deduction_rate: string;
+            /** Gross */
+            gross: string;
+            /** Lines */
+            lines: components["schemas"]["PayrollSnapshotLine"][];
+            /** Net */
+            net: string;
+            /**
+             * Pay Date
+             * Format: date
+             */
+            pay_date: string;
+            /** Payslips Published At */
+            payslips_published_at: string | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Policy Id
+             * Format: uuid
+             */
+            policy_id: string;
+            /** Rounding */
+            rounding: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Status */
+            status: string;
+        };
+        /** PayrollSettlementEventResponse */
+        PayrollSettlementEventResponse: {
+            /** Amount */
+            amount: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "paid" | "failed" | "reversed";
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /**
+             * Payment Reference
+             * Format: uuid
+             */
+            payment_reference: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Reverses Event Id */
+            reverses_event_id: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** PayrollSettlementEventsResponse */
+        PayrollSettlementEventsResponse: {
+            /** Items */
+            items: components["schemas"]["PayrollSettlementEventResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** PayrollSettlementLine */
+        PayrollSettlementLine: {
+            /** Expected */
+            expected: string;
+            /** Net Paid */
+            net_paid: string;
+            /** Outstanding */
+            outstanding: string;
+            /**
+             * Payment Reference
+             * Format: uuid
+             */
+            payment_reference: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "failed" | "partial" | "settled" | "reversed";
+        };
+        /** PayrollSettlementRequest */
+        PayrollSettlementRequest: {
+            /** Amount */
+            amount: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /** Expected Csv Sha256 */
+            expected_csv_sha256: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "paid" | "failed" | "reversed";
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /**
+             * Payment Reference
+             * Format: uuid
+             */
+            payment_reference: string;
+            /** Reverses Event Id */
+            reverses_event_id?: string | null;
+        };
+        /** PayrollSettlementSummary */
+        PayrollSettlementSummary: {
+            /** Csv Sha256 */
+            csv_sha256: string;
+            /** Currency */
+            currency: string;
+            /** Expected */
+            expected: string;
+            /** Fully Reconciled */
+            fully_reconciled: boolean;
+            /** Net Paid */
+            net_paid: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Payments */
+            payments: components["schemas"]["PayrollSettlementLine"][];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** PayrollSnapshotLine */
+        PayrollSnapshotLine: {
+            /** Deductions */
+            deductions: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Gross */
+            gross: string;
+            /** Net */
+            net: string;
+            /**
+             * Payment Reference
+             * Format: uuid
+             */
+            payment_reference: string;
+            /**
+             * Term Id
+             * Format: uuid
+             */
+            term_id: string;
+        };
+        /** PayrollTimeDownloadRequest */
+        PayrollTimeDownloadRequest: {
+            /** Employee Ids */
+            employee_ids: string[];
+            /** Expected Csv Sha256 */
+            expected_csv_sha256: string;
+        };
+        /** PayrollTimeInputIssue */
+        PayrollTimeInputIssue: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "missing_locked_timesheet" | "timesheet_crosses_period" | "timesheet_not_locked" | "overlapping_timesheets" | "pending_attendance" | "attendance_without_schedule" | "attendance_without_timesheet" | "pending_attendance_correction" | "pending_overtime" | "overtime_without_timesheet" | "duplicate_approved_overtime" | "overtime_hours_mismatch";
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Record Id */
+            record_id?: string | null;
+        };
+        /** PayrollTimeInputPreview */
+        PayrollTimeInputPreview: {
+            /** Csv Sha256 */
+            csv_sha256: string | null;
+            /** Employee Count */
+            employee_count: number;
+            /** Issues */
+            issues: components["schemas"]["PayrollTimeInputIssue"][];
+            /** Overtime Hours */
+            overtime_hours: string | null;
+            /**
+             * Payroll Period Id
+             * Format: uuid
+             */
+            payroll_period_id: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Regular Hours */
+            regular_hours: string | null;
+            /** Timesheet Count */
+            timesheet_count: number;
+        };
+        /** PayslipDetail */
+        PayslipDetail: {
+            /** Currency */
+            currency: string;
+            /** Deductions */
+            deductions: string;
+            /** Gross */
+            gross: string;
+            /** Net */
+            net: string;
+            /**
+             * Pay Date
+             * Format: date
+             */
+            pay_date: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** PayslipListResponse */
+        PayslipListResponse: {
+            /** Items */
+            items: components["schemas"]["PayslipSummary"][];
+            /** Total */
+            total: number;
+        };
+        /** PayslipPublicationResponse */
+        PayslipPublicationResponse: {
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Snapshot Digest */
+            snapshot_digest: string;
+        };
+        /** PayslipSummary */
+        PayslipSummary: {
+            /**
+             * Pay Date
+             * Format: date
+             */
+            pay_date: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
+        /** PerformanceEventResponse */
+        PerformanceEventResponse: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "acknowledge_goals" | "record_progress" | "submit_self_review" | "submit_manager_review" | "calibrate" | "acknowledge_final" | "add_addendum" | "reassign_manager";
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Participant
+             * @enum {string}
+             */
+            participant: "employee" | "manager" | "hr";
+            /** Previous Reviewer Id */
+            previous_reviewer_id: string | null;
+            /** Rating */
+            rating: string | null;
+            /** Replacement Reviewer Id */
+            replacement_reviewer_id: string | null;
+            /** Revision */
+            revision: number;
+        };
+        /** PerformanceReviewActionRequest */
+        PerformanceReviewActionRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "acknowledge_goals" | "record_progress" | "submit_self_review" | "submit_manager_review" | "calibrate" | "acknowledge_final" | "add_addendum" | "reassign_manager";
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Notes */
+            notes?: string | null;
+            /** Rating */
+            rating?: string | null;
+            /** Replacement Reviewer Id */
+            replacement_reviewer_id?: string | null;
+        };
+        /** PerformanceReviewDetail */
+        PerformanceReviewDetail: {
+            /** Allowed Actions */
+            allowed_actions: ("acknowledge_goals" | "record_progress" | "submit_self_review" | "submit_manager_review" | "calibrate" | "acknowledge_final" | "add_addendum" | "reassign_manager")[];
+            /** Cycle Name */
+            cycle_name: string;
+            /** Employee Name */
+            employee_name: string;
+            /** Events */
+            events: components["schemas"]["PerformanceEventResponse"][];
+            /** Goals */
+            goals: components["schemas"]["GoalResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Participant
+             * @enum {string}
+             */
+            participant: "employee" | "manager" | "hr";
+            /** Rating Scale */
+            rating_scale: string[];
+            /** Replacement Reviewer Id */
+            replacement_reviewer_id?: string | null;
+            /** Replacement Reviewer Name */
+            replacement_reviewer_name?: string | null;
+            /** Revision */
+            revision: number;
+            /** Status */
+            status: string;
+        };
+        /** PerformanceReviewItem */
+        PerformanceReviewItem: {
+            /** Cycle Name */
+            cycle_name: string;
+            /** Employee Name */
+            employee_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Participant
+             * @enum {string}
+             */
+            participant: "employee" | "manager" | "hr";
+            /** Status */
+            status: string;
+        };
+        /** PerformanceReviewQueue */
+        PerformanceReviewQueue: {
+            /** Items */
+            items: components["schemas"]["PerformanceReviewItem"][];
+            /** Total */
+            total: number;
         };
         /** PhotoDecisionRequest */
         PhotoDecisionRequest: {
@@ -8463,6 +10988,10 @@ export interface components {
         };
         /** PolicyAcknowledgeRequest */
         PolicyAcknowledgeRequest: {
+            /** Expected Document Version */
+            expected_document_version?: number | null;
+            /** Expected Version */
+            expected_version: string;
             /** Notes */
             notes?: string | null;
         };
@@ -8475,6 +11004,8 @@ export interface components {
             acknowledged_at: string;
             /** Acknowledged By User Id */
             acknowledged_by_user_id: string | null;
+            /** Document Version Number */
+            document_version_number: number | null;
             /**
              * Employee Id
              * Format: uuid
@@ -8492,6 +11023,8 @@ export interface components {
              * Format: uuid
              */
             policy_id: string;
+            /** Policy Version */
+            policy_version: string;
         };
         /** PolicyDocumentCreateRequest */
         PolicyDocumentCreateRequest: {
@@ -8501,6 +11034,8 @@ export interface components {
             content_summary: string;
             /** Document Id */
             document_id?: string | null;
+            /** Document Version Number */
+            document_version_number?: number | null;
             /**
              * Effective Date
              * Format: date
@@ -8511,6 +11046,8 @@ export interface components {
              * @default true
              */
             requires_acknowledgement: boolean;
+            /** Supersedes Policy Id */
+            supersedes_policy_id?: string | null;
             /** Title */
             title: string;
             /**
@@ -8539,6 +11076,8 @@ export interface components {
             created_at: string;
             /** Document Id */
             document_id: string | null;
+            /** Document Version Number */
+            document_version_number: number | null;
             /**
              * Effective Date
              * Format: date
@@ -8557,6 +11096,8 @@ export interface components {
             published_by_id: string | null;
             /** Requires Acknowledgement */
             requires_acknowledgement: boolean;
+            /** Supersedes Policy Id */
+            supersedes_policy_id: string | null;
             /** Title */
             title: string;
             /** Version */
@@ -9317,6 +11858,8 @@ export interface components {
         };
         /** RequisitionDecisionRequest */
         RequisitionDecisionRequest: {
+            /** Expected Updated At */
+            expected_updated_at?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -9420,6 +11963,8 @@ export interface components {
             end_date: string;
             /** Name */
             name: string;
+            /** Rating Scale */
+            rating_scale?: string[];
             /**
              * Start Date
              * Format: date
@@ -9454,6 +11999,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Rating Scale */
+            rating_scale: string[];
             /**
              * Start Date
              * Format: date
@@ -9503,6 +12050,203 @@ export interface components {
             status: string;
             /** Summary Notes */
             summary_notes: string | null;
+        };
+        /** RosterAllocationCreateRequest */
+        RosterAllocationCreateRequest: {
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+        };
+        /** RosterAllocationListResponse */
+        RosterAllocationListResponse: {
+            /** Items */
+            items: components["schemas"]["RosterAllocationResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** RosterAllocationResponse */
+        RosterAllocationResponse: {
+            /**
+             * Calendar Id
+             * Format: uuid
+             */
+            calendar_id: string;
+            /** Cancellation Reason */
+            cancellation_reason: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Employee Name */
+            employee_name: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Planned Hours */
+            planned_hours: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Shift Id */
+            shift_id: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Timezone */
+            timezone: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+        };
+        /** RosterCancellationRequest */
+        RosterCancellationRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** SelfTrainingItem */
+        SelfTrainingItem: {
+            /** Certificate Expired */
+            certificate_expired: boolean;
+            /** Certificate Expiry */
+            certificate_expiry: string | null;
+            /** Completed Date */
+            completed_date: string | null;
+            /** Course Title */
+            course_title: string;
+            /**
+             * Enrollment Id
+             * Format: uuid
+             */
+            enrollment_id: string;
+            /** Scheduled Date */
+            scheduled_date: string | null;
+            /** Status */
+            status: string;
+            /** Verified */
+            verified: boolean;
+        };
+        /** SelfTrainingListResponse */
+        SelfTrainingListResponse: {
+            /** Items */
+            items: components["schemas"]["SelfTrainingItem"][];
+            /** Total */
+            total: number;
+        };
+        /** SeparationSettlementListResponse */
+        SeparationSettlementListResponse: {
+            /** Case Closed */
+            case_closed: boolean;
+            /** Clearance Status */
+            clearance_status: string;
+            /** Current Record Id */
+            current_record_id: string | null;
+            /** Items */
+            items: components["schemas"]["SeparationSettlementResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** SeparationSettlementProposal */
+        SeparationSettlementProposal: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /** Expected Record Id */
+            expected_record_id: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "outstanding" | "settled" | "nothing_due";
+        };
+        /** SeparationSettlementResponse */
+        SeparationSettlementResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Reference */
+            evidence_reference: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "outstanding" | "settled" | "nothing_due";
+            /**
+             * Proposed By Id
+             * Format: uuid
+             */
+            proposed_by_id: string;
+            /** Review Reference */
+            review_reference: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Reviewed By Id */
+            reviewed_by_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "approved" | "rejected";
+        };
+        /** SeparationSettlementReview */
+        SeparationSettlementReview: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Evidence Reference */
+            evidence_reference: string;
         };
         /** ShiftAssignmentCreateRequest */
         ShiftAssignmentCreateRequest: {
@@ -9990,6 +12734,60 @@ export interface components {
             token_type: string;
             user: components["schemas"]["AuthUserResponse"];
         };
+        /** TrainingCompletionRequest */
+        TrainingCompletionRequest: {
+            /**
+             * Completed Date
+             * Format: date
+             */
+            completed_date: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Score */
+            score?: number | string | null;
+            /** Version Number */
+            version_number: number;
+        };
+        /** TrainingCompletionResponse */
+        TrainingCompletionResponse: {
+            /**
+             * Certificate Id
+             * Format: uuid
+             */
+            certificate_id: string;
+            /**
+             * Completed Date
+             * Format: date
+             */
+            completed_date: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Enrollment Id
+             * Format: uuid
+             */
+            enrollment_id: string;
+            /** Score */
+            score: string | null;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+            /**
+             * Verified By Id
+             * Format: uuid
+             */
+            verified_by_id: string;
+            /** Version Number */
+            version_number: number;
+        };
         /** TrainingCourseCreateRequest */
         TrainingCourseCreateRequest: {
             /**
@@ -10109,6 +12907,72 @@ export interface components {
              * @enum {string}
              */
             status: "enrolled" | "in_progress" | "completed" | "no_show" | "cancelled";
+        };
+        /** TrainingRequirementCreateRequest */
+        TrainingRequirementCreateRequest: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Position Id */
+            position_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /** TrainingRequirementListResponse */
+        TrainingRequirementListResponse: {
+            /** Items */
+            items: components["schemas"]["TrainingRequirementResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** TrainingRequirementResponse */
+        TrainingRequirementResponse: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Title */
+            course_title: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Position Id */
+            position_id?: string | null;
+            /** Position Title */
+            position_title: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name: string | null;
+        };
+        /** TrainingRequirementStatus */
+        TrainingRequirementStatus: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Title */
+            course_title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "met" | "enrolled" | "expired" | "required";
+        };
+        /** TrainingRequirementStatusListResponse */
+        TrainingRequirementStatusListResponse: {
+            /** Items */
+            items: components["schemas"]["TrainingRequirementStatus"][];
+            /** Total */
+            total: number;
         };
         /** UnreadCountResponse */
         UnreadCountResponse: {
@@ -12098,6 +14962,11 @@ export interface operations {
         parameters: {
             query?: {
                 requisition_id?: string | null;
+                candidate_id?: string | null;
+                stage?: ("applied" | "screening" | "shortlisted" | "interview" | "evaluation" | "offer" | "hired" | "rejected" | "withdrawn") | null;
+                search?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -12145,6 +15014,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_application_api_v1_hr_applications__application_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_application_activity_api_v1_hr_applications__application_id__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationActivityList"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_candidate_correspondence_api_v1_hr_applications__application_id__correspondence_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    draft_candidate_correspondence_api_v1_hr_applications__application_id__correspondence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateCorrespondenceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateCorrespondenceDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_candidate_correspondence_api_v1_hr_applications__application_id__correspondence__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateCorrespondenceDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_candidate_correspondence_api_v1_hr_applications__application_id__correspondence__draft_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateCorrespondenceDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateCorrespondenceDetail"];
                 };
             };
             /** @description Invalid request */
@@ -12717,10 +15788,42 @@ export interface operations {
             };
         };
     };
+    list_candidate_letter_templates_api_v1_hr_candidate_correspondence_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterTemplateListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_candidates_api_v1_hr_candidates_get: {
         parameters: {
             query?: {
                 search?: string | null;
+                code?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -12763,6 +15866,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_candidate_api_v1_hr_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13143,6 +16277,8 @@ export interface operations {
                 candidate_id?: string | null;
                 category?: string | null;
                 document_type?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -13185,6 +16321,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrDocumentResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_hr_document_api_v1_hr_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13441,6 +16608,209 @@ export interface operations {
             };
         };
     };
+    list_employment_changes_api_v1_hr_employees__employee_id__employment_changes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentChangeListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_employment_change_api_v1_hr_employees__employee_id__employment_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentChangeProposal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentChangeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+                change_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentChangeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+                change_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentChangeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_employment_change_api_v1_hr_employees__employee_id__employment_changes__change_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+                change_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmploymentChangeDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentChangeResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_employment_periods_api_v1_hr_employees__employee_id__employment_periods_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentPeriodListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     get_employee_history_api_v1_hr_employees__employee_id__history_get: {
         parameters: {
             query?: never;
@@ -13459,6 +16829,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmploymentHistoryListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_employee_letters_api_v1_hr_employees__employee_id__letters_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                issued_only?: boolean;
+            };
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_employee_letter_api_v1_hr_employees__employee_id__letters__letter_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+                letter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_letter_api_v1_hr_employees__employee_id__letters__letter_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                employee_id: string;
+                letter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LetterDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterDetail"];
                 };
             };
             /** @description Invalid request */
@@ -13973,6 +17446,39 @@ export interface operations {
             };
         };
     };
+    list_interviewer_options_api_v1_hr_interviews_interviewer_options_get: {
+        parameters: {
+            query?: {
+                search?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewerOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     update_interview_api_v1_hr_interviews__interview_id__patch: {
         parameters: {
             query?: never;
@@ -14008,6 +17514,138 @@ export interface operations {
             };
         };
     };
+    apply_leave_accrual_api_v1_hr_leave_accrual_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveAccrualApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveAccrualResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_leave_accrual_catch_up_api_v1_hr_leave_accrual_catch_up_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveAccrualCatchUpApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveAccrualCatchUpResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_leave_accrual_catch_up_api_v1_hr_leave_accrual_catch_up_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveAccrualCatchUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveAccrualCatchUpResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_leave_accrual_api_v1_hr_leave_accrual_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveAccrualRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveAccrualResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     get_employee_leave_balances_api_v1_hr_leave_balances__employee_id__get: {
         parameters: {
             query?: {
@@ -14028,6 +17666,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveBalanceListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    quote_employee_leave_units_api_v1_hr_leave_employees__employee_id__units_get: {
+        parameters: {
+            query: {
+                leave_type_id: string;
+                start_date: string;
+                end_date: string;
+                is_half_day?: boolean;
+                half_day_period?: ("morning" | "afternoon") | null;
+            };
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveUnitsResponse"];
                 };
             };
             /** @description Invalid request */
@@ -14136,6 +17811,72 @@ export interface operations {
             };
         };
     };
+    get_leave_policy_api_v1_hr_leave_policies__policy_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeavePolicyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_leave_policy_api_v1_hr_leave_policies__policy_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeavePolicyDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeavePolicyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_leave_requests_api_v1_hr_leave_requests_get: {
         parameters: {
             query?: {
@@ -14223,6 +17964,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_leave_rollover_api_v1_hr_leave_rollover_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRolloverApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRolloverResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_leave_rollover_api_v1_hr_leave_rollover_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRolloverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRolloverResponse"];
                 };
             };
             /** @description Invalid request */
@@ -14347,6 +18154,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LetterTemplateResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    draft_letter_api_v1_hr_letters_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LetterDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterDetail"];
                 };
             };
             /** @description Invalid request */
@@ -14704,6 +18544,41 @@ export interface operations {
             };
         };
     };
+    resubmit_my_leave_request_api_v1_hr_me_leave_requests__request_id__submission_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequestResubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_my_leave_types_api_v1_hr_me_leave_types_get: {
         parameters: {
             query?: never;
@@ -14720,6 +18595,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveTypeListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    quote_my_leave_units_api_v1_hr_me_leave_units_get: {
+        parameters: {
+            query: {
+                leave_type_id: string;
+                start_date: string;
+                end_date: string;
+                is_half_day?: boolean;
+                half_day_period?: ("morning" | "afternoon") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveUnitsResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_letters_api_v1_hr_me_letters_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_my_letter_api_v1_hr_me_letters__letter_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                letter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LetterDetail"];
                 };
             };
             /** @description Invalid request */
@@ -14863,6 +18836,69 @@ export interface operations {
             };
         };
     };
+    list_my_payslips_api_v1_hr_me_payslips_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayslipListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_my_payslip_api_v1_hr_me_payslips__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayslipDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_my_policies_api_v1_hr_me_policies_get: {
         parameters: {
             query?: never;
@@ -14878,7 +18914,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PolicyDocumentListResponse"];
+                    "application/json": components["schemas"]["MyPolicyListResponse"];
                 };
             };
             /** @description Invalid request */
@@ -14914,6 +18950,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicyAcknowledgementResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    download_my_policy_api_v1_hr_me_policies__policy_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrDocumentDownloadResponse"];
                 };
             };
             /** @description Invalid request */
@@ -15183,6 +19250,70 @@ export interface operations {
             };
         };
     };
+    get_my_training_api_v1_hr_me_training_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfTrainingListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_my_training_requirements_api_v1_hr_me_training_requirements_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingRequirementStatusListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     get_my_workflow_options_api_v1_hr_me_workflow_options_get: {
         parameters: {
             query?: never;
@@ -15346,10 +19477,190 @@ export interface operations {
             };
         };
     };
+    get_offboarding_custody_api_v1_hr_offboarding__case_id__custody_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                event_id?: string | null;
+                area?: "store_inventory" | "it_admin";
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffboardingCustodyListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    post_offboarding_custody_api_v1_hr_offboarding__case_id__custody_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OffboardingCustodyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OffboardingCustodyResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_separation_settlement_api_v1_hr_offboarding__case_id__settlement_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                event_id?: string | null;
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeparationSettlementListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_offboarding_settlement_api_v1_hr_offboarding__case_id__settlement_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeparationSettlementProposal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeparationSettlementResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    review_offboarding_settlement_api_v1_hr_offboarding__case_id__settlement__event_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeparationSettlementReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeparationSettlementResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_offers_api_v1_hr_offers_get: {
         parameters: {
             query?: {
                 offer_status?: string | null;
+                application_id?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -15392,6 +19703,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_offer_api_v1_hr_offers__offer_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15480,6 +19822,37 @@ export interface operations {
             };
         };
     };
+    download_offer_document_api_v1_hr_offers__offer_id__document_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrDocumentDownloadResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     reissue_offer_api_v1_hr_offers__offer_id__reissue_post: {
         parameters: {
             query?: never;
@@ -15519,6 +19892,9 @@ export interface operations {
         parameters: {
             query?: {
                 employee_id?: string | null;
+                case_status?: string | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -15593,6 +19969,37 @@ export interface operations {
                 "application/json": components["schemas"]["OnboardingTaskUpdateRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingCaseResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_onboarding_case_api_v1_hr_onboarding__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -15839,6 +20246,76 @@ export interface operations {
             };
         };
     };
+    download_payroll_time_inputs_api_v1_hr_payroll_periods__period_id__time_inputs_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollTimeDownloadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_payroll_time_inputs_api_v1_hr_payroll_periods__period_id__time_inputs_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                period_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollRunCalculateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollTimeInputPreview"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_payroll_policies_api_v1_hr_payroll_policies_get: {
         parameters: {
             query?: never;
@@ -15994,7 +20471,7 @@ export interface operations {
             };
         };
     };
-    approve_payroll_run_api_v1_hr_payroll_runs__run_id__approve_post: {
+    read_payroll_run_api_v1_hr_payroll_runs__run_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16025,7 +20502,77 @@ export interface operations {
             };
         };
     };
+    approve_payroll_run_api_v1_hr_payroll_runs__run_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollRunApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollRunResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     calculate_payroll_run_api_v1_hr_payroll_runs__run_id__calculate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollRunCalculateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollRunResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    download_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -16042,7 +20589,370 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PayrollRunResponse"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    register_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollExportConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollExportReceipt"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_run_payment_export_api_v1_hr_payroll_runs__run_id__payment_export_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollExportPreview"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    publish_run_payslips_api_v1_hr_payroll_runs__run_id__publish_payslips_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollRunApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayslipPublicationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_payroll_settlement_summary_api_v1_hr_payroll_runs__run_id__settlements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettlementSummary"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_payroll_settlement_events_api_v1_hr_payroll_runs__run_id__settlements_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                payment_reference?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettlementEventsResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    add_payroll_settlement_event_api_v1_hr_payroll_runs__run_id__settlements_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayrollSettlementRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettlementEventResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_payroll_settlement_event_api_v1_hr_payroll_runs__run_id__settlements_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollSettlementEventResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_payroll_snapshot_api_v1_hr_payroll_runs__run_id__snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayrollRunSnapshotResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_participant_reviews_api_v1_hr_performance_reviews_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceReviewQueue"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_participant_review_api_v1_hr_performance_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceReviewDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    act_on_performance_review_api_v1_hr_performance_reviews__review_id__actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PerformanceReviewActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceReviewDetail"];
                 };
             };
             /** @description Invalid request */
@@ -16547,6 +21457,101 @@ export interface operations {
             };
         };
     };
+    list_service_request_assignees_api_v1_hr_requests_assignees_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrServiceRequestAssignee"][];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_service_request_api_v1_hr_requests__req_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrServiceRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    assign_service_request_api_v1_hr_requests__req_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                req_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HrServiceRequestAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HrServiceRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     resolve_service_request_api_v1_hr_requests__req_id__resolve_post: {
         parameters: {
             query?: never;
@@ -16586,6 +21591,9 @@ export interface operations {
         parameters: {
             query?: {
                 req_status?: string | null;
+                code?: string | null;
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -16628,6 +21636,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequisitionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_requisition_api_v1_hr_requisitions__requisition_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requisition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16794,6 +21833,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_roster_api_v1_hr_roster_get: {
+        parameters: {
+            query: {
+                date_from: string;
+                date_to: string;
+                project_id?: string | null;
+                employee_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterAllocationListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    create_roster_allocation_api_v1_hr_roster_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RosterAllocationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterAllocationResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_roster_allocation_api_v1_hr_roster__allocation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RosterCancellationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RosterAllocationResponse"];
                 };
             };
             /** @description Invalid request */
@@ -17151,6 +22294,202 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TrainingEnrollmentResponse"];
                 };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_training_completion_api_v1_hr_training_enrollments__enrollment_id__completion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                enrollment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingCompletionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_training_completion_api_v1_hr_training_enrollments__enrollment_id__completion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                enrollment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingCompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingCompletionResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_training_rules_api_v1_hr_training_requirements_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingRequirementListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    create_training_rule_api_v1_hr_training_requirements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingRequirementCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_employee_training_requirements_api_v1_hr_training_requirements_employees__employee_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                employee_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingRequirementStatusListResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_training_rule_api_v1_hr_training_requirements__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Invalid request */
             422: {

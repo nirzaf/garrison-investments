@@ -20,6 +20,7 @@ import {
 import { hrButtonClass, hrInputClass } from './HRAccessForms';
 import { HRWorkCalendar } from './HRWorkCalendar';
 import { HRAttendanceImport } from './HRAttendanceImport';
+import { HRRoster } from './HRRoster';
 
 type TimeForm = 'attendance' | 'correction' | 'timesheet' | 'overtime';
 
@@ -113,6 +114,7 @@ export function HRTimePanel({
     <section className="space-y-4 rounded-lg border border-theme-border bg-theme-card p-5">
       <h3 className="font-semibold">Attendance and time</h3>
       <HRWorkCalendar employees={employees} canReview={canReview} />
+      <HRRoster />
       <HRAttendanceImport />
       {ledger.isPending && <p role="status">Loading time records…</p>}
       {ledger.isError && (

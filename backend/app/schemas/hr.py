@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -10,9 +10,12 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    computed_field,
     field_validator,
     model_validator,
 )
+
+from app.utils.time import business_today
 
 # --- Enums / Literals ---
 
@@ -261,6 +264,148 @@ class EmployeeUpdateRequest(BaseModel):
     reason: str | None = None
 
 
+EmploymentChangeType = Literal[
+    "transfer",
+    "promotion",
+    "category_amendment",
+    "contract_renewal",
+    "rehire",
+    "profile_correction",
+]
+
+
+class EmploymentChangeFields(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    department_id: UUID | None = None
+    manager_employee_id: UUID | None = None
+    work_location: str | None = Field(default=None, max_length=160)
+    position_id: UUID | None = None
+    employment_category: EmploymentCategory | None = None
+    current_contract_document_id: UUID | None = None
+    current_contract_version: int | None = Field(default=None, ge=1)
+    renewal_contract_document_id: UUID | None = None
+    renewal_contract_version: int | None = Field(default=None, ge=1)
+    contract_end_date: date | None = None
+    separation_case_id: UUID | None = None
+    probation_days: int | None = Field(default=None, ge=1, le=365)
+    first_name: str | None = Field(default=None, max_length=120)
+    last_name: str | None = Field(default=None, max_length=120)
+    full_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("first_name", "last_name", "full_name")
+    @classmethod
+    def validate_corrected_name(cls, value: str | None) -> str:
+        if value is None or not value.strip():
+            raise ValueError("Enter a nonblank name or omit the unchanged field.")
+        return value.strip()
+
+
+class EmploymentChangeProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    change_type: EmploymentChangeType
+    effective_date: date
+    employee_revision: int = Field(ge=1)
+    updates: EmploymentChangeFields
+    reason: str = Field(min_length=2, max_length=500)
+
+    @model_validator(mode="after")
+    def check_changes(self) -> Self:
+        keys = self.updates.model_fields_set
+        valid = {
+            "transfer": {"department_id", "manager_employee_id", "work_location"},
+            "promotion": {"position_id"},
+            "category_amendment": {"employment_category"},
+            "rehire": {"employment_category", "separation_case_id", "probation_days"},
+            "profile_correction": {"first_name", "last_name", "full_name"},
+            "contract_renewal": {
+                "current_contract_document_id",
+                "current_contract_version",
+                "renewal_contract_document_id",
+                "renewal_contract_version",
+                "contract_end_date",
+            },
+        }
+        if not keys or not keys <= valid[self.change_type]:
+            raise ValueError("Choose fields that match this type of employment change.")
+        if self.change_type == "promotion" and self.updates.position_id is None:
+            raise ValueError("Select a position for promotion.")
+        if self.change_type == "category_amendment" and self.updates.employment_category is None:
+            raise ValueError("Select an employment category.")
+        if self.change_type == "rehire" and (
+            self.updates.separation_case_id is None or self.updates.employment_category is None
+        ):
+            raise ValueError("Select the completed separation and the new employment category.")
+        if self.change_type == "rehire" and (
+            (self.updates.employment_category == "probation")
+            != (self.updates.probation_days is not None)
+        ):
+            raise ValueError("Set the probation duration only for probationary rehire.")
+        if self.change_type == "contract_renewal":
+            if keys != valid["contract_renewal"] or any(
+                getattr(self.updates, key) is None for key in keys
+            ):
+                raise ValueError("Select both exact contract versions and the renewed end date.")
+            if (
+                self.updates.current_contract_document_id
+                == self.updates.renewal_contract_document_id
+            ):
+                raise ValueError("Select separate contracts with their own recorded expiry dates.")
+        if len(self.reason.strip()) < 2:
+            raise ValueError("Enter a reason for the proposed change.")
+        return self
+
+
+class EmploymentChangeDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "rejected"]
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class EmploymentChangeResponse(BaseModel):
+    id: UUID
+    employee_id: UUID
+    change_type: EmploymentChangeType
+    effective_date: date
+    employee_revision: int
+    updates: dict[str, str | int | None]
+    reason: str
+    status: Literal["proposed", "approved", "rejected", "applied"]
+    proposed_by: UUID
+    decided_by: UUID | None
+    decided_at: datetime | None
+    decision_reason: str | None
+    applied_by: UUID | None
+    applied_at: datetime | None
+    applied_employee_revision: int | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmploymentChangeListResponse(BaseModel):
+    items: list[EmploymentChangeResponse]
+    total: int
+
+
+class EmploymentPeriodResponse(BaseModel):
+    id: UUID
+    started_on: date | None
+    ended_on: date | None
+    separation_case_id: UUID | None
+    rehire_change_id: UUID | None
+    onboarding_case_id: UUID | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmploymentPeriodListResponse(BaseModel):
+    items: list[EmploymentPeriodResponse]
+    total: int
+
+
 class EmployeeStatusTransitionRequest(BaseModel):
     expected_revision: int = Field(ge=1)
     status: EmploymentStatus
@@ -313,6 +458,9 @@ class EmployeeManagerReviewRequest(BaseModel):
 
 
 class EmployeePrivateUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
     national_id: str | None = Field(default=None, max_length=64)
     passport_number: str | None = Field(default=None, max_length=64)
     date_of_birth: date | None = None
@@ -336,6 +484,7 @@ class EmployeePrivateUpdateRequest(BaseModel):
 
 class EmployeeSensitiveResponse(BaseModel):
     employee_id: UUID
+    record_revision: int
     national_id_masked: str | None = None
     passport_masked: str | None = None
     date_of_birth: date | None = None
@@ -380,6 +529,9 @@ class EmployeeSelfResponse(BaseModel):
 
 
 class EmployeeSelfUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
     preferred_name: str | None = Field(default=None, max_length=120)
     work_phone: str | None = Field(default=None, max_length=32)
     personal_email: EmailStr | None = None
@@ -558,6 +710,7 @@ class RequisitionDecisionRequest(BaseModel):
         "submitted", "approved", "rejected", "open", "on_hold", "filled", "closed", "cancelled"
     ]
     notes: str | None = None
+    expected_updated_at: AwareDatetime | None = None
 
 
 class RequisitionResponse(BaseModel):
@@ -626,22 +779,65 @@ class ApplicationCreateRequest(BaseModel):
     requisition_id: UUID
     candidate_id: UUID
     screening_notes: str | None = None
+    expected_requisition_updated_at: AwareDatetime | None = None
+
+
+ApplicationRetentionDecision = Literal["retain_until_review", "policy_review_required"]
+ApplicationStage = Literal[
+    "applied",
+    "screening",
+    "shortlisted",
+    "interview",
+    "evaluation",
+    "offer",
+    "hired",
+    "rejected",
+    "withdrawn",
+]
+
+
+class ApplicationWithdrawalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    expected_stage: Literal[
+        "applied", "screening", "shortlisted", "interview", "evaluation", "offer"
+    ]
+    reason: str = Field(min_length=2, max_length=500)
+    retention_decision: ApplicationRetentionDecision
+    retention_review_on: date | None = None
+    retention_policy_reference: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_review_plan(self) -> Self:
+        has_plan = (
+            self.retention_review_on is not None or self.retention_policy_reference is not None
+        )
+        if self.retention_decision == "retain_until_review":
+            if self.retention_review_on is None or self.retention_policy_reference is None:
+                raise ValueError("Provide the approved policy reference and review date.")
+        elif has_plan:
+            raise ValueError("Leave the date and policy reference unset until policy review.")
+        return self
 
 
 class ApplicationStageUpdateRequest(BaseModel):
-    stage: Literal[
-        "applied",
-        "screening",
-        "interview",
-        "evaluation",
-        "offer",
-        "hired",
-        "rejected",
-        "withdrawn",
-    ]
-    overall_score: Decimal | None = None
+    stage: ApplicationStage
+    expected_updated_at: AwareDatetime | None = None
+    overall_score: Decimal | None = Field(default=None, max_digits=5, decimal_places=2)
     screening_notes: str | None = None
     rejection_reason: str | None = None
+    withdrawal: ApplicationWithdrawalRequest | None = None
+
+    @model_validator(mode="after")
+    def validate_withdrawal(self) -> Self:
+        if (self.stage == "withdrawn") != (self.withdrawal is not None):
+            raise ValueError("The withdrawal plan is required only for a withdrawal.")
+        if self.withdrawal is not None and any(
+            value is not None
+            for value in (self.overall_score, self.screening_notes, self.rejection_reason)
+        ):
+            raise ValueError("Withdrawals cannot change screening or rejection details.")
+        return self
 
 
 class ApplicationResponse(BaseModel):
@@ -652,6 +848,11 @@ class ApplicationResponse(BaseModel):
     overall_score: Decimal | None
     screening_notes: str | None
     rejection_reason: str | None
+    withdrawn_at: datetime | None
+    withdrawal_reason: str | None
+    retention_decision: ApplicationRetentionDecision | None
+    retention_review_on: date | None
+    retention_policy_reference: str | None
     assigned_recruiter_id: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -659,13 +860,33 @@ class ApplicationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ApplicationListItem(ApplicationResponse):
+    candidate_name: str
+    candidate_code: str
+    position_title: str
+
+
 class ApplicationListResponse(BaseModel):
-    items: list[ApplicationResponse]
+    items: list[ApplicationListItem]
+    total: int
+
+
+class ApplicationActivity(BaseModel):
+    id: UUID
+    stage: str
+    actor_name: str | None
+    created_at: datetime
+
+
+class ApplicationActivityList(BaseModel):
+    items: list[ApplicationActivity]
     total: int
 
 
 class InterviewCreateRequest(BaseModel):
     application_id: UUID
+    interview_id: UUID | None = None
+    expected_application_updated_at: AwareDatetime | None = None
     round_number: int = Field(default=1, ge=1)
     interview_type: str = Field(default="technical", max_length=40)
     scheduled_at: datetime | None = None
@@ -674,6 +895,7 @@ class InterviewCreateRequest(BaseModel):
 
 
 class InterviewUpdateRequest(BaseModel):
+    expected_updated_at: AwareDatetime | None = None
     recommendation: Literal["pending", "strong_hire", "hire", "hold", "no_hire"] | None = None
     score: Decimal | None = None
     feedback_notes: str | None = None
@@ -703,9 +925,21 @@ class InterviewListResponse(BaseModel):
     total: int
 
 
+class InterviewerOption(BaseModel):
+    id: UUID
+    full_name: str
+
+
+class InterviewerOptions(BaseModel):
+    items: list[InterviewerOption]
+    total: int
+
+
 class OfferCreateRequest(BaseModel):
     offer_code: str = Field(min_length=1, max_length=40)
     application_id: UUID
+    expected_application_updated_at: AwareDatetime | None = None
+    document_version_id: UUID | None = None
     proposed_title: str = Field(min_length=2, max_length=160)
     proposed_department_id: UUID | None = None
     proposed_position_id: UUID | None = None
@@ -718,6 +952,8 @@ class OfferCreateRequest(BaseModel):
 
 
 class OfferReissueRequest(BaseModel):
+    expected_updated_at: AwareDatetime | None = None
+    document_version_id: UUID | None = None
     offer_code: str = Field(min_length=1, max_length=40)
     proposed_title: str = Field(min_length=2, max_length=160)
     proposed_department_id: UUID | None = None
@@ -741,6 +977,7 @@ class OfferDecisionRequest(BaseModel):
     ]
     valid_until: date | None = None
     expected_version_number: int | None = Field(default=None, ge=1)
+    expected_updated_at: AwareDatetime | None = None
     notes: str | None = None
 
 
@@ -765,6 +1002,7 @@ class OfferResponse(BaseModel):
     status: str
     valid_until: date | None = None
     version_number: int = 1
+    document_version_id: UUID | None = None
     supersedes_offer_id: UUID | None = None
     superseded_by_id: UUID | None = None
     superseded_at: datetime | None = None
@@ -807,6 +1045,7 @@ class OnboardingTaskResponse(BaseModel):
 class OnboardingTaskUpdateRequest(BaseModel):
     status: Literal["pending", "in_progress", "completed", "waived"]
     evidence_notes: str | None = None
+    expected_updated_at: AwareDatetime | None = None
 
 
 class OnboardingCaseCreateRequest(BaseModel):
@@ -1059,6 +1298,38 @@ class WorkScheduleResponse(BaseModel):
     shift: ShiftAssignmentResponse | None = None
     holiday: HolidayResponse | None = None
     is_workday: bool | None = None
+
+
+class RosterAllocationCreateRequest(BaseModel):
+    id: UUID
+    employee_id: UUID
+    project_id: UUID
+    work_date: date
+
+
+class RosterCancellationRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
+class RosterAllocationResponse(RosterAllocationCreateRequest):
+    calendar_id: UUID
+    shift_id: UUID | None
+    employee_name: str
+    project_name: str
+    timezone: str
+    starts_at: datetime
+    ends_at: datetime
+    planned_hours: Decimal
+    created_at: datetime
+    cancelled_at: datetime | None
+    cancellation_reason: str | None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RosterAllocationListResponse(BaseModel):
+    items: list[RosterAllocationResponse]
+    total: int
 
 
 class AttendanceEntryCreateRequest(BaseModel):
@@ -1333,11 +1604,28 @@ class LeavePolicyCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     leave_type_id: UUID
     employment_category: EmploymentCategory | None = None
-    annual_entitlement_days: Decimal = Field(ge=0)
+    annual_entitlement_days: Decimal = Field(ge=0, max_digits=5, decimal_places=2)
     accrual_frequency: Literal["annual", "monthly", "manual"] = "annual"
-    max_carry_forward_days: Decimal = Field(default=Decimal("0.00"), ge=0)
+    prorate_by_calendar_day: bool = False
+    max_carry_forward_days: Decimal = Field(
+        default=Decimal("0.00"), ge=0, max_digits=5, decimal_places=2
+    )
     allow_negative_balance: bool = False
+    expire_excess_on_rollover: bool = False
+    effective_from: date
+    effective_to: date
     approve_immediately: bool = False
+
+    @model_validator(mode="after")
+    def validate_proration(self) -> Self:
+        if self.prorate_by_calendar_day and self.accrual_frequency == "manual":
+            raise ValueError("Calendar-day proration requires monthly or annual accrual.")
+        return self
+
+
+class LeavePolicyDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class LeavePolicyResponse(BaseModel):
@@ -1348,8 +1636,15 @@ class LeavePolicyResponse(BaseModel):
     employment_category: str | None
     annual_entitlement_days: Decimal
     accrual_frequency: str
+    prorate_by_calendar_day: bool
     max_carry_forward_days: Decimal
     allow_negative_balance: bool
+    expire_excess_on_rollover: bool
+    status: Literal["legacy", "draft", "approved", "rejected"]
+    effective_from: date | None
+    effective_to: date | None
+    created_by_id: UUID | None
+    rejection_reason: str | None
     is_active: bool
     approved_by_id: UUID | None
     approved_at: datetime | None
@@ -1387,6 +1682,77 @@ class LeaveLedgerEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LeaveAccrualRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_id: UUID
+    leave_type_id: UUID
+    year: int = Field(ge=2020, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)
+
+
+class LeaveAccrualApplyRequest(LeaveAccrualRequest):
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LeaveAccrualResponse(BaseModel):
+    employee_id: UUID
+    leave_type_id: UUID
+    policy_id: UUID
+    period_start: date
+    period_end: date
+    eligible_from: date | None = None
+    eligible_through: date | None = None
+    days: Decimal
+    digest: str | None = None
+    ledger_entry_id: UUID | None = None
+
+
+class LeaveAccrualCatchUpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_id: UUID
+    leave_type_id: UUID
+    year: int = Field(ge=2020, le=2100)
+    start_month: int = Field(ge=1, le=12)
+    end_month: int = Field(ge=1, le=12)
+
+
+class LeaveAccrualCatchUpApplyRequest(LeaveAccrualCatchUpRequest):
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LeaveAccrualCatchUpResponse(BaseModel):
+    periods: list[LeaveAccrualResponse]
+    pending_days: Decimal
+    digest: str | None = None
+
+
+class LeaveRolloverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_id: UUID
+    leave_type_id: UUID
+    source_year: int = Field(ge=2020, le=2099)
+
+
+class LeaveRolloverApplyRequest(LeaveRolloverRequest):
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LeaveRolloverResponse(BaseModel):
+    employee_id: UUID
+    leave_type_id: UUID
+    policy_id: UUID
+    source_year: int
+    target_year: int
+    source_balance: Decimal
+    carried_days: Decimal
+    expired_days: Decimal
+    digest: str | None = None
+    receipt_id: UUID | None = None
+
+
 class LeaveBalanceItem(BaseModel):
     leave_type_id: UUID
     leave_type_code: str
@@ -1400,17 +1766,33 @@ class LeaveBalanceListResponse(BaseModel):
     items: list[LeaveBalanceItem]
 
 
-class LeaveRequestCreateRequest(BaseModel):
-    employee_id: UUID | None = None
+class LeaveUnitsQuery(BaseModel):
     leave_type_id: UUID
     start_date: date
     end_date: date
-    days_requested: Decimal = Field(gt=0, max_digits=6, decimal_places=2)
     is_half_day: bool = False
     half_day_period: Literal["morning", "afternoon"] | None = None
+
+
+class LeaveUnitsResponse(BaseModel):
+    days_requested: Decimal
+
+
+class LeaveRequestFields(LeaveUnitsQuery):
+    days_requested: Decimal | None = Field(default=None, gt=0, max_digits=6, decimal_places=2)
     reason: str | None = None
     attachment_document_id: UUID | None = None
+
+
+class LeaveRequestCreateRequest(LeaveRequestFields):
+    employee_id: UUID | None = None
     submit_immediately: bool = True
+
+
+class LeaveRequestResubmitRequest(LeaveRequestFields):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
 
 
 class LeaveRequestDecisionRequest(BaseModel):
@@ -1450,13 +1832,23 @@ class LeaveRequestListResponse(BaseModel):
 
 
 class PolicyDocumentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     code: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=2, max_length=200)
-    version: str = Field(default="1.0", max_length=20)
+    version: str = Field(default="1.0", min_length=1, max_length=20)
     effective_date: date
     content_summary: str = Field(min_length=5)
     document_id: UUID | None = None
+    document_version_number: int | None = Field(default=None, ge=1)
+    supersedes_policy_id: UUID | None = None
     requires_acknowledgement: bool = True
+
+    @model_validator(mode="after")
+    def check_policy_asset(self) -> Self:
+        if (self.document_id is None) != (self.document_version_number is None):
+            raise ValueError("Select the exact approved document version or publish a text policy.")
+        return self
 
 
 class PolicyDocumentResponse(BaseModel):
@@ -1467,6 +1859,8 @@ class PolicyDocumentResponse(BaseModel):
     effective_date: date
     content_summary: str
     document_id: UUID | None
+    document_version_number: int | None
+    supersedes_policy_id: UUID | None
     requires_acknowledgement: bool
     is_active: bool
     published_by_id: UUID | None
@@ -1481,7 +1875,21 @@ class PolicyDocumentListResponse(BaseModel):
     total: int
 
 
+class MyPolicyResponse(PolicyDocumentResponse):
+    is_current: bool
+    acknowledged_at: datetime | None
+
+
+class MyPolicyListResponse(BaseModel):
+    items: list[MyPolicyResponse]
+    total: int
+
+
 class PolicyAcknowledgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    expected_version: str = Field(min_length=1, max_length=20)
+    expected_document_version: int | None = Field(default=None, ge=1)
     notes: str | None = None
 
 
@@ -1492,6 +1900,8 @@ class PolicyAcknowledgementResponse(BaseModel):
     acknowledged_at: datetime
     acknowledged_by_user_id: UUID | None
     notes: str | None
+    policy_version: str
+    document_version_number: int | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1505,10 +1915,11 @@ class LetterTemplateCreateRequest(BaseModel):
         "experience_letter",
         "warning_letter",
         "transfer_letter",
+        "candidate_rejection",
         "custom",
     ]
     subject_template: str = Field(min_length=2, max_length=255)
-    body_template: str = Field(min_length=5)
+    body_template: str = Field(min_length=5, max_length=12000)
     requires_hr_manager: bool = False
 
 
@@ -1534,7 +1945,7 @@ class LetterTemplateListResponse(BaseModel):
 class LetterGenerateRequest(BaseModel):
     template_id: UUID
     employee_id: UUID
-    extra_vars: dict[str, str] = Field(default_factory=dict)
+    extra_vars: dict[str, str] = Field(default_factory=dict, max_length=32)
 
 
 class LetterRenderResponse(BaseModel):
@@ -1542,6 +1953,56 @@ class LetterRenderResponse(BaseModel):
     employee_id: UUID
     subject: str
     body: str
+    digest: str | None = None
+
+
+class LetterDraftRequest(LetterGenerateRequest):
+    draft_id: UUID
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class LetterDecisionRequest(BaseModel):
+    decision: Literal["issued", "rejected"]
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class LetterSummary(BaseModel):
+    id: UUID
+    template_name: str
+    status: str
+    can_decide: bool = False
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class LetterListResponse(BaseModel):
+    items: list[LetterSummary]
+    total: int
+
+
+class LetterDetail(LetterSummary):
+    subject: str
+    body: str
+    rejection_reason: str | None = None
+
+
+class CandidateCorrespondenceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: UUID
+    template_id: UUID
+
+
+class CandidateCorrespondenceDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: Literal["approved", "rejected"]
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class CandidateCorrespondenceDetail(LetterDetail):
+    digest: str
 
 
 class HrServiceRequestCreateRequest(BaseModel):
@@ -1562,7 +2023,21 @@ class HrServiceRequestResolveRequest(BaseModel):
     status: Literal["in_review", "approved", "completed", "rejected", "cancelled"]
     resolution_notes: str | None = None
     generated_document_id: UUID | None = None
+    generated_letter_id: UUID | None = None
     expected_updated_at: AwareDatetime | None = None
+
+
+class HrServiceRequestAssignmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assigned_to_id: UUID
+    expected_updated_at: AwareDatetime
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class HrServiceRequestAssignee(BaseModel):
+    id: UUID
+    full_name: str
 
 
 class HrServiceRequestReopenRequest(BaseModel):
@@ -1582,6 +2057,7 @@ class HrServiceRequestResponse(BaseModel):
     resolution_notes: str | None
     resolved_by_id: UUID | None
     resolved_at: datetime | None
+    generated_letter_id: UUID | None
     generated_document_id: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -1608,6 +2084,101 @@ class OffboardingInitiateRequest(BaseModel):
 class OffboardingStepUpdateRequest(BaseModel):
     status: Literal["pending", "cleared", "flagged", "waived"]
     notes: str | None = None
+
+
+OffboardingCustodyArea = Literal["store_inventory", "it_admin"]
+
+
+class OffboardingCustodyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: UUID
+    kind: Literal["returned", "cleared", "waived", "flagged"]
+    area: OffboardingCustodyArea = "store_inventory"
+    movement_id: UUID | None = None
+    device_reference: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"
+    )
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+    @model_validator(mode="after")
+    def check_evidence(self) -> Self:
+        if self.area == "store_inventory":
+            if self.device_reference is not None or (
+                (self.kind == "returned") != (self.movement_id is not None)
+            ):
+                raise ValueError("Only a store return uses a posted movement ID.")
+        elif self.movement_id is not None or (
+            (self.kind != "cleared") != (self.device_reference is not None)
+        ):
+            raise ValueError("IT device events require a device reference. IT sign-off omits it.")
+        if self.device_reference is not None:
+            self.device_reference = self.device_reference.upper()
+        return self
+
+
+class OffboardingCustodyResponse(BaseModel):
+    id: UUID
+    case_id: UUID
+    area: OffboardingCustodyArea
+    kind: str
+    movement_id: UUID | None
+    device_reference: str | None
+    evidence_reference: str
+    recorded_by_id: UUID
+    recorded_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OffboardingCustodyListResponse(BaseModel):
+    items: list[OffboardingCustodyResponse]
+    total: int
+    clearance_status: str
+    case_closed: bool
+    outstanding_devices: int
+
+
+SettlementOutcome = Literal["outstanding", "settled", "nothing_due"]
+SettlementDecision = Literal["approved", "rejected"]
+
+
+class SeparationSettlementProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: UUID
+    expected_record_id: UUID | None
+    outcome: SettlementOutcome
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+
+class SeparationSettlementReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: SettlementDecision
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+
+
+class SeparationSettlementResponse(BaseModel):
+    id: UUID
+    outcome: SettlementOutcome
+    status: Literal["proposed", "approved", "rejected"]
+    evidence_reference: str
+    proposed_by_id: UUID
+    created_at: datetime
+    reviewed_by_id: UUID | None
+    reviewed_at: datetime | None
+    review_reference: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SeparationSettlementListResponse(BaseModel):
+    items: list[SeparationSettlementResponse]
+    total: int
+    case_closed: bool
+    clearance_status: str
+    current_record_id: UUID | None
 
 
 class OffboardingCompleteRequest(BaseModel):
@@ -1698,6 +2269,21 @@ class ReviewCycleCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     start_date: date
     end_date: date
+    rating_scale: list[str] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def check_dates(self) -> Self:
+        if self.start_date > self.end_date:
+            raise ValueError("Cycle end cannot precede its start.")
+        labels = [label.strip() for label in self.rating_scale]
+        if (
+            any(not label or len(label) > 60 for label in labels)
+            or len({label.casefold() for label in labels}) != len(labels)
+            or len(labels) == 1
+        ):
+            raise ValueError("Enter 2–12 distinct rating labels, or leave the scale empty.")
+        self.rating_scale = labels
+        return self
 
 
 class ReviewCycleResponse(BaseModel):
@@ -1706,6 +2292,7 @@ class ReviewCycleResponse(BaseModel):
     name: str
     start_date: date
     end_date: date
+    rating_scale: list[str]
     status: str
     created_at: datetime
 
@@ -1748,12 +2335,89 @@ class ReviewListResponse(BaseModel):
     total: int
 
 
+PerformanceAction = Literal[
+    "acknowledge_goals",
+    "record_progress",
+    "submit_self_review",
+    "submit_manager_review",
+    "calibrate",
+    "acknowledge_final",
+    "add_addendum",
+    "reassign_manager",
+]
+PerformanceParticipant = Literal["employee", "manager", "hr"]
+
+
+class PerformanceReviewActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    event_id: UUID
+    expected_revision: int = Field(ge=0)
+    action: PerformanceAction
+    notes: str | None = Field(default=None, max_length=4000)
+    rating: str | None = Field(default=None, max_length=60)
+    replacement_reviewer_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def require_notes(self) -> Self:
+        if self.action not in {"acknowledge_goals", "acknowledge_final"} and not self.notes:
+            raise ValueError("Provide notes for this review action.")
+        if (self.action == "reassign_manager") != (self.replacement_reviewer_id is not None):
+            raise ValueError("Only a manager handoff requires a replacement reviewer.")
+        if self.rating is not None and (
+            not self.rating
+            or self.action not in {"submit_self_review", "submit_manager_review", "calibrate"}
+        ):
+            raise ValueError(
+                "A rating is available only on the assessment and calibration actions."
+            )
+        return self
+
+
+class PerformanceEventResponse(BaseModel):
+    id: UUID
+    revision: int
+    action: PerformanceAction
+    participant: PerformanceParticipant
+    actor_id: UUID
+    notes: str | None
+    rating: str | None
+    previous_reviewer_id: UUID | None
+    replacement_reviewer_id: UUID | None
+    occurred_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PerformanceReviewItem(BaseModel):
+    id: UUID
+    cycle_name: str
+    employee_name: str
+    status: str
+    participant: PerformanceParticipant
+
+
+class PerformanceReviewQueue(BaseModel):
+    items: list[PerformanceReviewItem]
+    total: int
+
+
+class PerformanceReviewDetail(PerformanceReviewItem):
+    revision: int
+    allowed_actions: list[PerformanceAction]
+    rating_scale: list[str]
+    replacement_reviewer_id: UUID | None = None
+    replacement_reviewer_name: str | None = None
+    goals: list[GoalResponse]
+    events: list[PerformanceEventResponse]
+
+
 class TrainingCourseCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=2, max_length=200)
     category: str = Field(default="safety", max_length=60)
     provider: str | None = Field(default=None, max_length=160)
-    duration_hours: Decimal | None = None
+    duration_hours: Decimal | None = Field(default=None, gt=0, max_digits=5, decimal_places=2)
     is_mandatory: bool = False
 
 
@@ -1776,6 +2440,44 @@ class TrainingCourseListResponse(BaseModel):
     total: int
 
 
+class TrainingRequirementCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: UUID
+    position_id: UUID | None = None
+    project_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> Self:
+        if self.position_id is None and self.project_id is None:
+            raise ValueError("Select a job position, a project site, or both.")
+        return self
+
+
+class TrainingRequirementResponse(TrainingRequirementCreateRequest):
+    id: UUID
+    is_active: bool
+    course_title: str
+    position_title: str | None
+    project_name: str | None
+
+
+class TrainingRequirementListResponse(BaseModel):
+    items: list[TrainingRequirementResponse]
+    total: int
+
+
+class TrainingRequirementStatus(BaseModel):
+    course_id: UUID
+    course_title: str
+    status: Literal["met", "enrolled", "expired", "required"]
+
+
+class TrainingRequirementStatusListResponse(BaseModel):
+    items: list[TrainingRequirementStatus]
+    total: int
+
+
 class TrainingEnrollmentCreateRequest(BaseModel):
     course_id: UUID
     employee_id: UUID
@@ -1786,6 +2488,26 @@ class TrainingEnrollmentUpdateRequest(BaseModel):
     status: Literal["enrolled", "in_progress", "completed", "no_show", "cancelled"]
     completed_date: date | None = None
     score: Decimal | None = None
+
+
+class TrainingCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    version_number: int = Field(ge=1)
+    completed_date: date
+    score: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
+
+
+class TrainingCompletionResponse(BaseModel):
+    enrollment_id: UUID
+    certificate_id: UUID
+    document_id: UUID
+    version_number: int
+    completed_date: date
+    score: Decimal | None
+    verified_by_id: UUID
+    verified_at: datetime
 
 
 class TrainingEnrollmentResponse(BaseModel):
@@ -1803,6 +2525,22 @@ class TrainingEnrollmentResponse(BaseModel):
 
 class TrainingEnrollmentListResponse(BaseModel):
     items: list[TrainingEnrollmentResponse]
+    total: int
+
+
+class SelfTrainingItem(BaseModel):
+    enrollment_id: UUID
+    course_title: str
+    status: str
+    scheduled_date: date | None
+    completed_date: date | None
+    verified: bool
+    certificate_expiry: date | None
+    certificate_expired: bool
+
+
+class SelfTrainingListResponse(BaseModel):
+    items: list[SelfTrainingItem]
     total: int
 
 
@@ -1829,6 +2567,14 @@ class CertificationResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_status(self) -> str:
+        if self.status in {"valid", "expiring"} and self.expiry_date is not None:
+            if self.expiry_date < business_today():
+                return "expired"
+        return self.status
 
 
 class CertificationListResponse(BaseModel):
@@ -2008,6 +2754,207 @@ class PayrollRunCreateRequest(BaseModel):
     notes: str | None = None
 
 
+class PayrollRunCalculateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_ids: list[UUID] = Field(min_length=1, max_length=1000)
+
+    @field_validator("employee_ids")
+    @classmethod
+    def unique_roster(cls, value: list[UUID]) -> list[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("Each employee may appear only once.")
+        return value
+
+
+class PayrollRunApproveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_snapshot_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollTimeDownloadRequest(PayrollRunCalculateRequest):
+    expected_csv_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+PayrollTimeIssueCode = Literal[
+    "missing_locked_timesheet",
+    "timesheet_crosses_period",
+    "timesheet_not_locked",
+    "overlapping_timesheets",
+    "pending_attendance",
+    "attendance_without_schedule",
+    "attendance_without_timesheet",
+    "pending_attendance_correction",
+    "pending_overtime",
+    "overtime_without_timesheet",
+    "duplicate_approved_overtime",
+    "overtime_hours_mismatch",
+]
+
+
+class PayrollTimeInputIssue(BaseModel):
+    employee_id: UUID
+    record_id: UUID | None = None
+    code: PayrollTimeIssueCode
+
+
+class PayrollTimeInputPreview(BaseModel):
+    payroll_period_id: UUID
+    period_start: date
+    period_end: date
+    employee_count: int
+    timesheet_count: int
+    regular_hours: Decimal | None
+    overtime_hours: Decimal | None
+    csv_sha256: str | None
+    issues: list[PayrollTimeInputIssue]
+
+
+class PayrollSnapshotLine(BaseModel):
+    employee_id: UUID
+    payment_reference: UUID
+    term_id: UUID
+    gross: Decimal
+    deductions: Decimal
+    net: Decimal
+
+
+class PayrollRunSnapshotResponse(BaseModel):
+    run_id: UUID
+    status: str
+    payslips_published_at: datetime | None
+    digest: str
+    policy_id: UUID
+    period_start: date
+    period_end: date
+    pay_date: date
+    calculation_basis: Literal["base_salary_only"]
+    currency: str
+    rounding: str
+    employee_deduction_rate: Decimal
+    lines: list[PayrollSnapshotLine]
+    gross: Decimal
+    deductions: Decimal
+    net: Decimal
+
+
+class PayrollExportConfirmRequest(PayrollRunApproveRequest):
+    expected_csv_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PayrollExportReceipt(BaseModel):
+    run_id: UUID
+    snapshot_digest: str
+    csv_sha256: str
+    format_version: int
+    exported_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayrollExportPreview(BaseModel):
+    run_id: UUID
+    snapshot_digest: str
+    csv_sha256: str
+    format_version: int
+    currency: str
+    pay_date: date
+    payment_count: int
+    zero_net_count: int
+    gross: Decimal
+    deductions: Decimal
+    net: Decimal
+    receipt: PayrollExportReceipt | None = None
+
+
+class PayrollSettlementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: UUID
+    payment_reference: UUID
+    expected_csv_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kind: Literal["paid", "failed", "reversed"]
+    amount: str = Field(pattern=r"^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$")
+    occurred_on: date
+    evidence_reference: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+    reverses_event_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_event(self) -> Self:
+        if (self.kind == "reversed") != (self.reverses_event_id is not None):
+            raise ValueError("Only a reversal references an original payment event.")
+        if (self.kind == "failed") != (Decimal(self.amount) == 0):
+            raise ValueError(
+                "Failed events have zero amount; other events require a positive amount."
+            )
+        return self
+
+
+class PayrollSettlementEventResponse(BaseModel):
+    id: UUID
+    run_id: UUID
+    payment_reference: UUID
+    kind: Literal["paid", "failed", "reversed"]
+    amount: Decimal
+    occurred_on: date
+    evidence_reference: str
+    reverses_event_id: UUID | None
+    recorded_at: datetime
+
+
+class PayrollSettlementEventsResponse(BaseModel):
+    items: list[PayrollSettlementEventResponse]
+    total: int
+
+
+class PayrollSettlementLine(BaseModel):
+    payment_reference: UUID
+    expected: Decimal
+    net_paid: Decimal
+    outstanding: Decimal
+    status: Literal["pending", "failed", "partial", "settled", "reversed"]
+
+
+class PayrollSettlementSummary(BaseModel):
+    run_id: UUID
+    csv_sha256: str
+    currency: str
+    expected: Decimal
+    net_paid: Decimal
+    outstanding: Decimal
+    fully_reconciled: bool
+    payments: list[PayrollSettlementLine]
+
+
+class PayslipPublicationResponse(BaseModel):
+    run_id: UUID
+    published_at: datetime
+    snapshot_digest: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PayslipSummary(BaseModel):
+    run_id: UUID
+    period_start: date
+    period_end: date
+    pay_date: date
+    published_at: datetime
+
+
+class PayslipListResponse(BaseModel):
+    items: list[PayslipSummary]
+    total: int
+
+
+class PayslipDetail(PayslipSummary):
+    currency: str
+    gross: Decimal
+    deductions: Decimal
+    net: Decimal
+
+
 class PayrollRunResponse(BaseModel):
     id: UUID
     payroll_period_id: UUID
@@ -2016,6 +2963,7 @@ class PayrollRunResponse(BaseModel):
     prepared_by_id: UUID | None
     approved_by_id: UUID | None
     approved_at: datetime | None
+    snapshot_digest: str | None
     notes: str | None
     created_at: datetime
 

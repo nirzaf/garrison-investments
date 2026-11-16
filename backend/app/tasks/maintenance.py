@@ -1,27 +1,38 @@
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from time import monotonic
+from uuid import UUID
 
 import structlog
-from sqlalchemy import select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models.daily_report import DailyReport
-from app.models.hr import HrEmployee, HrOnboardingCase, HrServiceRequest
+from app.models.hr import (
+    HrEmployee,
+    HrLeaveAccrual,
+    HrLeavePolicy,
+    HrLeaveType,
+    HrOnboardingCase,
+    HrServiceRequest,
+)
 from app.models.notification import Notification
 from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.supplier import Supplier
 from app.models.user import User
-from app.schemas.hr import HrReportWindow
+from app.schemas.hr import HrReportWindow, LeaveAccrualRequest
 from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
+from app.services.hr_leave_accrual import post_scheduled_leave_accrual
 from app.services.hr_reporting import count_report_credentials
 from app.services.notification_service import NotificationService
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
+from app.utils.exceptions import AppException
 from app.utils.permissions import (
     COMPANY_RESOURCE_ROLES,
     PERMISSION_HR_COMPLIANCE_MANAGE,
@@ -35,6 +46,101 @@ from app.utils.security import utc_now
 from app.utils.time import business_now, business_today
 
 logger = structlog.get_logger("celery.task")
+
+
+@celery_app.task(
+    name="post_hr_leave_accruals",
+    queue="maintenance",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+)
+def post_hr_leave_accruals() -> dict[str, int]:
+    return run_async_task(_post_hr_leave_accruals())
+
+
+async def _post_hr_leave_accruals() -> dict[str, int]:
+    counts = {"posted": 0, "already_posted": 0, "outside_schedule": 0, "blocked": 0}
+    policy_ids = set(get_settings().hr_scheduled_leave_policy_ids)
+    if not policy_ids:
+        return counts
+    today = business_today()
+    previous_month = today.replace(day=1) - timedelta(days=1)
+    previous_year = date(today.year - 1, 12, 31)
+    for frequency, start, end in (
+        ("monthly", previous_month.replace(day=1), previous_month),
+        ("annual", previous_year.replace(month=1, day=1), previous_year),
+    ):
+        async with AsyncSessionLocal() as session:
+            leave_types = list(
+                await session.execute(
+                    select(
+                        HrLeavePolicy.leave_type_id,
+                        func.bool_or(HrLeavePolicy.prorate_by_calendar_day),
+                    )
+                    .join(HrLeaveType, HrLeaveType.id == HrLeavePolicy.leave_type_id)
+                    .where(
+                        HrLeavePolicy.id.in_(policy_ids),
+                        HrLeavePolicy.status == "approved",
+                        HrLeavePolicy.approved_at.is_not(None),
+                        HrLeavePolicy.is_active.is_(True),
+                        HrLeavePolicy.accrual_frequency == frequency,
+                        HrLeavePolicy.effective_from <= start,
+                        HrLeavePolicy.effective_to >= end,
+                        HrLeaveType.is_active.is_(True),
+                        HrLeaveType.is_paid.is_(True),
+                    )
+                    .group_by(HrLeavePolicy.leave_type_id)
+                    .order_by(HrLeavePolicy.leave_type_id)
+                )
+            )
+        for leave_type, allows_partial_periods in leave_types:
+            cursor: UUID | None = None
+            while True:
+                stmt = select(HrEmployee.id).where(
+                    HrEmployee.deleted_at.is_(None),
+                    HrEmployee.join_date <= (end if allows_partial_periods else start),
+                    or_(
+                        HrEmployee.termination_date.is_(None),
+                        HrEmployee.termination_date > (start if allows_partial_periods else end),
+                    ),
+                    ~select(HrLeaveAccrual.id)
+                    .where(
+                        HrLeaveAccrual.employee_id == HrEmployee.id,
+                        HrLeaveAccrual.leave_type_id == leave_type,
+                        HrLeaveAccrual.period_start == start,
+                        HrLeaveAccrual.period_end == end,
+                    )
+                    .exists(),
+                )
+                if cursor is not None:
+                    stmt = stmt.where(HrEmployee.id > cursor)
+                async with AsyncSessionLocal() as session:
+                    employees = list(await session.scalars(stmt.order_by(HrEmployee.id).limit(200)))
+                if not employees:
+                    break
+                cursor = employees[-1]
+                for employee in employees:
+                    payload = LeaveAccrualRequest(
+                        employee_id=employee,
+                        leave_type_id=leave_type,
+                        year=start.year,
+                        month=start.month if frequency == "monthly" else None,
+                    )
+                    async with AsyncSessionLocal() as session:
+                        try:
+                            result = await post_scheduled_leave_accrual(
+                                session, payload, policy_ids
+                            )
+                        except AppException as error:
+                            if error.status_code not in {404, 409, 422}:
+                                raise
+                            counts["blocked"] += 1
+                        else:
+                            counts[result] += 1
+    logger.info("hr_scheduled_leave_accrual_finished", **counts)
+    return counts
 
 
 @celery_app.task(
@@ -333,17 +439,32 @@ async def _check_hr_service_request_sla() -> int:
         await session.execute(
             text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_request_sla'))")
         )
-        overdue = select(HrServiceRequest.id).where(
-            HrServiceRequest.status.in_(("open", "in_review", "approved")),
-            HrServiceRequest.created_at <= cutoff,
+        assignee = aliased(User)
+        overdue = (
+            select(HrServiceRequest.id)
+            .outerjoin(
+                assignee,
+                and_(
+                    assignee.id == HrServiceRequest.assigned_to_id,
+                    assignee.is_active.is_(True),
+                    assignee.deleted_at.is_(None),
+                    assignee.role.in_(roles_with_permission(PERMISSION_HR_REQUESTS_PROCESS)),
+                ),
+            )
+            .where(
+                HrServiceRequest.status.in_(("open", "in_review", "approved")),
+                HrServiceRequest.created_at <= cutoff,
+                or_(assignee.id.is_(None), assignee.id == User.id),
+            )
+            .correlate(User)
+            .exists()
         )
-        if not await session.scalar(select(overdue.exists())):
-            return 0
         return await _send_daily_hr_reminders(
             session,
             now=business_now(),
             permission=PERMISSION_HR_REQUESTS_PROCESS,
             notification_type="hr_service_request_sla",
+            recipient_filter=overdue,
             body="Open HR & Workforce and review overdue service requests.",
         )
 
@@ -406,6 +527,7 @@ async def _send_daily_hr_reminders(
     permission: str,
     notification_type: str,
     body: str,
+    recipient_filter: ColumnElement[bool] | None = None,
 ) -> int:
     today = now.date()
     start = datetime.combine(today, time.min, tzinfo=now.tzinfo)
@@ -415,16 +537,15 @@ async def _send_daily_hr_reminders(
         Notification.created_at >= start,
         Notification.created_at < end,
     )
-    recipients = (
-        await session.scalars(
-            select(User.id).where(
-                User.role.in_(roles_with_permission(permission)),
-                User.is_active.is_(True),
-                User.deleted_at.is_(None),
-                User.id.not_in(already_notified),
-            )
-        )
-    ).all()
+    eligible = select(User.id).where(
+        User.role.in_(roles_with_permission(permission)),
+        User.is_active.is_(True),
+        User.deleted_at.is_(None),
+        User.id.not_in(already_notified),
+    )
+    if recipient_filter is not None:
+        eligible = eligible.where(recipient_filter)
+    recipients = (await session.scalars(eligible)).all()
     notifications = NotificationService(session)
     for user_id in recipients:
         await notifications.create(

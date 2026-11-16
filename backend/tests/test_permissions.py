@@ -52,6 +52,8 @@ HR_MANAGER_GRANTS = HR_EXECUTIVE_GRANTS | {
     "hr:leave:approve",
     "hr:offboarding:manage",
     "hr:policy:manage",
+    "hr:training:manage",
+    "hr:performance:manage",
 }
 EFFECTIVE_GRANTS = {
     **{role: grants for role, grants in EXPECTED_GRANTS.items() if role != "hr_executive"},

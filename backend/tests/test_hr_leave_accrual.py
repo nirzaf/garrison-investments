@@ -1,0 +1,485 @@
+import asyncio
+from decimal import Decimal
+from uuid import uuid4
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import engine
+from app.models.user import User
+from app.schemas.hr import LeaveAccrualResponse
+from app.services import hr_leave_accrual
+from app.services.hr_leave_accrual import _credit, _prorated_credit
+from app.utils.exceptions import AppException
+from tests.test_hr import (
+    _auth,
+    _client,
+    _create_portal_user,
+    _login,
+    _publish_leave_calendar,
+    skip_if_database_unavailable,
+)
+
+
+@pytest.fixture(autouse=True)
+async def isolated_pool():
+    await engine.dispose()
+    yield
+    await engine.dispose()
+
+
+def test_monthly_rounding_reconciles_to_annual_entitlement() -> None:
+    annual = Decimal("10.01")
+    monthly = [_credit(annual, month) for month in range(1, 13)]
+    assert sum(monthly) == annual
+    assert monthly[:2] == [Decimal("0.83"), Decimal("0.84")]
+    assert _prorated_credit(Decimal("1.00"), 15, 29) == Decimal("0.52")
+    assert _prorated_credit(Decimal("10.01"), 183, 366) == Decimal("5.01")
+
+
+@pytest.mark.asyncio
+async def test_paid_accrual_is_reviewed_idempotent_and_reconciled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    _, hr_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    _, staff_email, _ = await _create_portal_user("quantity_surveyor", password)
+    base = "/api/v1/hr"
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+        staff = _auth(await _login(client, staff_email, password))
+
+        async def employee(join_date: str) -> str:
+            response = await client.post(
+                f"{base}/employees",
+                headers=hr,
+                json={
+                    "employee_code": f"AC-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Accrual",
+                    "employment_status": "active",
+                    "join_date": join_date,
+                },
+            )
+            assert response.status_code == 201, response.text
+            return str(response.json()["id"])
+
+        employee_id = await employee("2025-01-01")
+        partial_employee = await employee("2025-02-15")
+        leave_type = await client.post(
+            f"{base}/leave/types",
+            headers=hr,
+            json={"code": f"L-{uuid4().hex[:6]}", "name": "Synthetic paid accrual"},
+        )
+        assert leave_type.status_code == 201
+        leave_type_id = leave_type.json()["id"]
+        proposal = await client.post(
+            f"{base}/leave/policies",
+            headers=hr,
+            json={
+                "code": f"P-{uuid4().hex[:6]}",
+                "name": "Synthetic monthly entitlement",
+                "leave_type_id": leave_type_id,
+                "annual_entitlement_days": "10.01",
+                "accrual_frequency": "monthly",
+                "effective_from": "2025-01-01",
+                "effective_to": "2025-12-31",
+            },
+        )
+        assert proposal.status_code == 201, proposal.text
+        policy_id = proposal.json()["id"]
+        preview = f"{base}/leave/accrual/preview"
+        apply = f"{base}/leave/accrual/apply"
+        payload = {
+            "employee_id": employee_id,
+            "leave_type_id": leave_type_id,
+            "year": 2025,
+            "month": 2,
+        }
+        assert (await client.post(preview, headers=staff, json=payload)).status_code == 403
+        assert (await client.post(preview, headers=hr, json=payload)).status_code == 409
+        approved = await client.post(
+            f"{base}/leave/policies/{policy_id}/decision",
+            headers=reviewer,
+            json={"decision": "approved"},
+        )
+        assert approved.status_code == 200, approved.text
+        partial = await client.post(
+            preview, headers=hr, json={**payload, "employee_id": partial_employee}
+        )
+        assert partial.json()["error_code"] == "LEAVE_ACCRUAL_EMPLOYMENT_PERIOD"
+        annual = await client.post(preview, headers=hr, json={**payload, "month": None})
+        assert annual.json()["error_code"] == "LEAVE_ACCRUAL_FREQUENCY"
+        future = await client.post(preview, headers=hr, json={**payload, "year": 2100})
+        assert future.status_code == 422
+        quoted = await client.post(preview, headers=hr, json=payload)
+        assert quoted.status_code == 200, quoted.text
+        plan = quoted.json()
+        assert plan["days"] == "0.84" and plan["policy_id"] == policy_id
+        assert plan["ledger_entry_id"] is None
+        posting = {**payload, "expected_digest": plan["digest"]}
+        assert (await client.post(apply, headers=reviewer, json=posting)).status_code == 409
+        responses = await asyncio.gather(
+            *(client.post(apply, headers=hr, json=posting) for _ in range(2))
+        )
+        assert all(response.status_code == 200 for response in responses)
+        receipt = responses[0].json()["ledger_entry_id"]
+        assert receipt and responses[1].json()["ledger_entry_id"] == receipt
+        readback = await client.post(preview, headers=reviewer, json=payload)
+        assert readback.json()["ledger_entry_id"] == receipt and readback.json()["digest"] is None
+        overlapping = await client.post(preview, headers=hr, json={**payload, "month": None})
+        assert overlapping.status_code == 409
+        balances = await client.get(
+            f"{base}/leave/balances/{employee_id}?leave_year=2025", headers=hr
+        )
+        balance = next(
+            row for row in balances.json()["items"] if row["leave_type_id"] == leave_type_id
+        )
+        assert Decimal(balance["balance_days"]) == Decimal("0.84")
+        catch_up_employee = await employee("2025-01-01")
+        catch_up_payload = {
+            "employee_id": catch_up_employee,
+            "leave_type_id": leave_type_id,
+            "year": 2025,
+            "start_month": 1,
+            "end_month": 3,
+        }
+        catch_up = f"{base}/leave/accrual/catch-up"
+        first_month = {**payload, "employee_id": catch_up_employee, "month": 1}
+        first_quote = await client.post(preview, headers=hr, json=first_month)
+        first_saved = await client.post(
+            apply, headers=hr, json={**first_month, "expected_digest": first_quote.json()["digest"]}
+        )
+        assert first_saved.status_code == 200, first_saved.text
+        assert (
+            await client.post(f"{catch_up}/preview", headers=staff, json=catch_up_payload)
+        ).status_code == 403
+        assert (
+            await client.post(
+                f"{catch_up}/preview", headers=hr, json={**catch_up_payload, "start_month": 4}
+            )
+        ).status_code == 422
+        range_preview = await client.post(f"{catch_up}/preview", headers=hr, json=catch_up_payload)
+        assert range_preview.status_code == 200, range_preview.text
+        range_plan = range_preview.json()
+        assert range_plan["pending_days"] == "1.67"
+        assert [item["ledger_entry_id"] for item in range_plan["periods"]] == [
+            first_saved.json()["ledger_entry_id"],
+            None,
+            None,
+        ]
+        range_apply = {**catch_up_payload, "expected_digest": range_plan["digest"]}
+        assert (
+            await client.post(f"{catch_up}/apply", headers=reviewer, json=range_apply)
+        ).status_code == 409
+        assert (
+            await client.post(f"{catch_up}/apply", headers=hr, json={**range_apply, "end_month": 4})
+        ).status_code == 409
+        unchanged = await client.post(f"{catch_up}/preview", headers=hr, json=catch_up_payload)
+        assert unchanged.json() == range_plan
+        record = hr_leave_accrual._record_accrual
+
+        async def fail_on_last_credit(
+            session: AsyncSession, quote: LeaveAccrualResponse, digest: str, actor: User
+        ) -> LeaveAccrualResponse:
+            saved = await record(session, quote, digest, actor)
+            if quote.period_start.month == 3:
+                raise AppException("Synthetic posting failure.", status_code=409)
+            return saved
+
+        with monkeypatch.context() as failure:
+            failure.setattr(hr_leave_accrual, "_record_accrual", fail_on_last_credit)
+            assert (
+                await client.post(f"{catch_up}/apply", headers=hr, json=range_apply)
+            ).status_code == 409
+        after_rollback = await client.post(f"{catch_up}/preview", headers=hr, json=catch_up_payload)
+        assert after_rollback.json() == range_plan
+
+        range_responses = await asyncio.gather(
+            *(client.post(f"{catch_up}/apply", headers=hr, json=range_apply) for _ in range(2))
+        )
+        assert all(response.status_code == 200 for response in range_responses)
+        saved_range = range_responses[0].json()
+        assert saved_range == range_responses[1].json()
+        assert saved_range["digest"] is None
+        assert len({item["ledger_entry_id"] for item in saved_range["periods"]}) == 3
+        assert all(item["ledger_entry_id"] for item in saved_range["periods"])
+        assert (
+            await client.post(f"{catch_up}/preview", headers=reviewer, json=catch_up_payload)
+        ).json() == saved_range
+
+        manual = {
+            "employee_id": employee_id,
+            "leave_type_id": leave_type_id,
+            "entry_type": "opening_balance",
+            "days_delta": "4",
+            "leave_year": 2025,
+            "reason": "Synthetic opening",
+        }
+        assert (
+            await client.post(f"{base}/leave/ledger", headers=hr, json=manual)
+        ).status_code == 409
+        second_employee = await employee("2025-01-01")
+        opening = await client.post(
+            f"{base}/leave/ledger", headers=hr, json={**manual, "employee_id": second_employee}
+        )
+        assert opening.status_code == 201
+        blocked = await client.post(
+            preview, headers=hr, json={**payload, "employee_id": second_employee}
+        )
+        assert blocked.json()["error_code"] == "LEAVE_ACCRUAL_MANUAL_BALANCE"
+
+        rollover_preview = f"{base}/leave/rollover/preview"
+        rollover_apply = f"{base}/leave/rollover/apply"
+        rollover = {"employee_id": employee_id, "leave_type_id": leave_type_id, "source_year": 2025}
+        assert (
+            await client.post(rollover_preview, headers=staff, json=rollover)
+        ).status_code == 403
+        no_expiry = await client.post(rollover_preview, headers=hr, json=rollover)
+        assert no_expiry.json()["error_code"] == "LEAVE_ROLLOVER_EXPIRY_NOT_APPROVED"
+        closing = await client.post(
+            f"{base}/leave/policies",
+            headers=hr,
+            json={
+                "code": f"P-{uuid4().hex[:6]}",
+                "name": "Permanent year-end rule",
+                "leave_type_id": leave_type_id,
+                "employment_category": "permanent",
+                "annual_entitlement_days": "0",
+                "accrual_frequency": "manual",
+                "effective_from": "2025-12-31",
+                "effective_to": "2025-12-31",
+                "max_carry_forward_days": "0.50",
+                "expire_excess_on_rollover": True,
+            },
+        )
+        assert closing.status_code == 201
+        decision = await client.post(
+            f"{base}/leave/policies/{closing.json()['id']}/decision",
+            headers=reviewer,
+            json={"decision": "approved"},
+        )
+        assert decision.status_code == 200
+        await _publish_leave_calendar(client, hr, reviewer, "2025-12-01", "2025-12-31")
+        old_request = {
+            "employee_id": employee_id,
+            "leave_type_id": leave_type_id,
+            "start_date": "2025-12-10",
+            "end_date": "2025-12-10",
+        }
+        leave = await client.post(f"{base}/leave/requests", headers=hr, json=old_request)
+        assert leave.status_code == 201
+        pending = await client.post(rollover_preview, headers=hr, json=rollover)
+        assert pending.json()["error_code"] == "LEAVE_ROLLOVER_PENDING_REQUESTS"
+        adjustment = {**manual, "entry_type": "adjustment", "days_delta": "3"}
+        assert (
+            await client.post(f"{base}/leave/ledger", headers=hr, json=adjustment)
+        ).status_code == 201
+        leave_url = f"{base}/leave/requests/{leave.json()['id']}/decision"
+        assert (
+            await client.post(leave_url, headers=reviewer, json={"decision": "approved"})
+        ).status_code == 200
+        stale = await client.post(rollover_preview, headers=hr, json=rollover)
+        assert stale.status_code == 200
+        assert (
+            await client.post(f"{base}/leave/ledger", headers=hr, json=adjustment)
+        ).status_code == 201
+        assert (
+            await client.post(
+                rollover_apply,
+                headers=hr,
+                json={**rollover, "expected_digest": stale.json()["digest"]},
+            )
+        ).status_code == 409
+        quote = await client.post(rollover_preview, headers=hr, json=rollover)
+        assert quote.status_code == 200, quote.text
+        assert quote.json()["carried_days"] == "0.50"
+        assert quote.json()["expired_days"] == "5.34"
+        confirmation = {**rollover, "expected_digest": quote.json()["digest"]}
+        results = await asyncio.gather(
+            *(client.post(rollover_apply, headers=hr, json=confirmation) for _ in range(2))
+        )
+        assert all(row.status_code == 200 for row in results)
+        assert results[0].json()["receipt_id"] == results[1].json()["receipt_id"]
+        for year, expected in [(2025, "0"), (2026, "0.50")]:
+            balances = await client.get(
+                f"{base}/leave/balances/{employee_id}?leave_year={year}", headers=hr
+            )
+            balance = next(
+                row for row in balances.json()["items"] if row["leave_type_id"] == leave_type_id
+            )
+            assert Decimal(balance["balance_days"]) == Decimal(expected)
+        manual_late = await client.post(f"{base}/leave/ledger", headers=hr, json=adjustment)
+        assert manual_late.json()["error_code"] == "LEAVE_YEAR_CLOSED"
+        duplicate_carry = await client.post(
+            f"{base}/leave/ledger",
+            headers=hr,
+            json={**manual, "leave_year": 2026, "entry_type": "carry_forward"},
+        )
+        assert duplicate_carry.json()["error_code"] == "LEAVE_ROLLOVER_ALREADY_POSTED"
+        late_leave = await client.post(f"{base}/leave/requests", headers=hr, json=old_request)
+        assert late_leave.json()["error_code"] == "LEAVE_YEAR_CLOSED"
+        late_cancel = await client.post(leave_url, headers=reviewer, json={"decision": "cancelled"})
+        assert late_cancel.json()["error_code"] == "LEAVE_YEAR_CLOSED"
+        late_accrual = await client.post(preview, headers=hr, json={**payload, "month": 3})
+        assert late_accrual.json()["error_code"] == "LEAVE_YEAR_CLOSED"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_leave_accrual_uses_only_selected_reviewed_policies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.activity_log import ActivityLog
+    from app.models.hr import HrLeaveAccrual, HrLeaveLedger
+    from app.tasks import maintenance
+
+    await skip_if_database_unavailable()
+    fixed_today = date(2026, 3, 3)
+    monkeypatch.setattr(maintenance, "business_today", lambda: fixed_today)
+    monkeypatch.setattr(hr_leave_accrual, "business_today", lambda: fixed_today)
+    schedule: list[UUID] = []
+    monkeypatch.setattr(
+        maintenance, "get_settings", lambda: SimpleNamespace(hr_scheduled_leave_policy_ids=schedule)
+    )
+    _, hr_email, password = await _create_portal_user("hr_manager")
+    _, reviewer_email, _ = await _create_portal_user("hr_manager", password)
+    async with _client() as client:
+        hr = _auth(await _login(client, hr_email, password))
+        reviewer = _auth(await _login(client, reviewer_email, password))
+
+        async def create(path, body):
+            response = await client.post(f"/api/v1/hr/{path}", json=body, headers=hr)
+            assert response.status_code == 201, response.text
+            return response.json()["id"]
+
+        async def employee(join_date, category):
+            return await create(
+                "employees",
+                {
+                    "employee_code": f"SCHED-{uuid4().hex[:8]}",
+                    "first_name": "Synthetic",
+                    "last_name": "Accrual",
+                    "employment_status": "active",
+                    "employment_category": category,
+                    "join_date": join_date,
+                },
+            )
+
+        eligible = await employee("2024-01-01", "permanent")
+        override = await employee("2024-01-01", "contract")
+        partial = await employee("2026-02-15", "permanent")
+        monthly = await create("leave/types", {"code": f"LM-{uuid4().hex[:6]}", "name": "Monthly"})
+        annual = await create("leave/types", {"code": f"LA-{uuid4().hex[:6]}", "name": "Annual"})
+
+        async def policy(type_id, frequency, year, category=None, prorate=False):
+            return await create(
+                "leave/policies",
+                {
+                    "code": f"PS-{uuid4().hex[:8]}",
+                    "name": "Scheduled policy",
+                    "leave_type_id": type_id,
+                    "annual_entitlement_days": "10.01",
+                    "employment_category": category,
+                    "accrual_frequency": frequency,
+                    "prorate_by_calendar_day": prorate,
+                    "effective_from": f"{year}-01-01",
+                    "effective_to": f"{year}-12-31",
+                },
+            )
+
+        month_policy = await policy(monthly, "monthly", 2026, prorate=True)
+        unlisted = await policy(monthly, "monthly", 2026, "contract")
+        annual_policy = await policy(annual, "annual", 2025)
+        assert not any((await maintenance._post_hr_leave_accruals()).values())
+
+        schedule.extend([UUID(month_policy), UUID(annual_policy)])
+        assert not any((await maintenance._post_hr_leave_accruals()).values())
+        for policy_id in (month_policy, unlisted, annual_policy):
+            response = await client.post(
+                f"/api/v1/hr/leave/policies/{policy_id}/decision",
+                headers=reviewer,
+                json={"decision": "approved"},
+            )
+            assert response.status_code == 200, response.text
+
+        # The scheduled run must leave the manual receipt and its actor intact.
+        manual = {"employee_id": override, "leave_type_id": annual, "year": 2025}
+        preview = await client.post("/api/v1/hr/leave/accrual/preview", headers=hr, json=manual)
+        assert preview.status_code == 200
+        posted = await client.post(
+            "/api/v1/hr/leave/accrual/apply",
+            headers=hr,
+            json={**manual, "expected_digest": preview.json()["digest"]},
+        )
+        assert posted.status_code == 200
+        async with AsyncSessionLocal() as session:
+            manual_entry = await session.get(HrLeaveLedger, UUID(posted.json()["ledger_entry_id"]))
+            assert manual_entry is not None and manual_entry.actor_user_id is not None
+
+        runs = await asyncio.gather(
+            maintenance._post_hr_leave_accruals(), maintenance._post_hr_leave_accruals()
+        )
+        assert sum(counts["posted"] for counts in runs) >= 2
+        assert sum(counts["outside_schedule"] for counts in runs) >= 1
+        rerun = await maintenance._post_hr_leave_accruals()
+        assert rerun["posted"] == 0
+        async with AsyncSessionLocal() as session:
+            rows = (
+                await session.execute(
+                    select(HrLeaveAccrual, HrLeaveLedger)
+                    .join(HrLeaveLedger, HrLeaveLedger.id == HrLeaveAccrual.ledger_id)
+                    .where(
+                        HrLeaveAccrual.leave_type_id.in_([UUID(monthly), UUID(annual)]),
+                        HrLeaveAccrual.employee_id.in_(
+                            [UUID(eligible), UUID(override), UUID(partial)]
+                        ),
+                    )
+                )
+            ).all()
+            scheduled = {
+                (receipt.period_start, entry.days_delta)
+                for receipt, entry in rows
+                if entry.actor_user_id is None
+            }
+            assert scheduled == {
+                (date(2026, 2, 1), Decimal("0.84")),
+                (date(2026, 2, 1), Decimal("0.42")),
+                (date(2025, 1, 1), Decimal("10.01")),
+            }
+            assert len(rows) == 4
+            prorated = next(receipt for receipt, _ in rows if receipt.employee_id == UUID(partial))
+            assert (prorated.eligible_from, prorated.eligible_through) == (
+                date(2026, 2, 15),
+                date(2026, 2, 28),
+            )
+            audit = await session.scalars(
+                select(ActivityLog).where(
+                    ActivityLog.entity_id.in_(
+                        [entry.id for _, entry in rows if entry.actor_user_id is None]
+                    ),
+                    ActivityLog.action == "hr.leave_accrual.posted",
+                )
+            )
+            records = list(audit)
+            assert len(records) == 3
+            assert all(
+                row.user_id is None and row.new_values and row.new_values["source"] == "scheduled"
+                for row in records
+            )
+        readback = await client.post(
+            "/api/v1/hr/leave/accrual/preview",
+            headers=hr,
+            json={"employee_id": partial, "leave_type_id": monthly, "year": 2026, "month": 2},
+        )
+        assert readback.status_code == 200
+        assert readback.json()["ledger_entry_id"] == str(prorated.ledger_id)
+        assert readback.json()["eligible_from"] == "2026-02-15"

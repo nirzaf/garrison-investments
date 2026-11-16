@@ -1,5 +1,5 @@
 import { apiClient, EXPORT_TIMEOUT_MS } from './client';
-import type { components } from './schema';
+import type { components, paths } from './schema';
 
 export type HrSchemas = components['schemas'];
 
@@ -8,6 +8,36 @@ export type PositionRecord = HrSchemas['PositionResponse'];
 export type OrgChartResponse = HrSchemas['OrgChartResponse'];
 export type OrgChartNode = HrSchemas['OrgChartNode'];
 export type HrProjectAssignment = HrSchemas['HrProjectAssignmentResponse'];
+
+export async function listRoster(params: {
+  date_from: string;
+  date_to: string;
+  offset: number;
+  limit: number;
+  project_id?: string;
+  employee_id?: string;
+}) {
+  const { data } = await apiClient.get<HrSchemas['RosterAllocationListResponse']>('/hr/roster', {
+    params
+  });
+  return data;
+}
+
+export async function createRosterAllocation(payload: HrSchemas['RosterAllocationCreateRequest']) {
+  const { data } = await apiClient.post<HrSchemas['RosterAllocationResponse']>(
+    '/hr/roster',
+    payload
+  );
+  return data;
+}
+
+export async function cancelRosterAllocation(id: string, reason: string) {
+  const { data } = await apiClient.post<HrSchemas['RosterAllocationResponse']>(
+    `/hr/roster/${id}/cancel`,
+    { reason }
+  );
+  return data;
+}
 
 export async function listHrAssignmentProjects(search?: string) {
   const { data } = await apiClient.get<HrSchemas['ProjectOptionListResponse']>(
@@ -311,11 +341,29 @@ export async function createCandidate(payload: HrSchemas['CandidateCreateRequest
   return data;
 }
 
-export async function listApplications() {
-  const { data } = await apiClient.get<HrSchemas['ApplicationListResponse']>('/hr/applications');
+export async function listApplications(params?: {
+  search?: string;
+  stage?: HrSchemas['ApplicationStageUpdateRequest']['stage'];
+  offset?: number;
+  limit?: number;
+}) {
+  const { data } = await apiClient.get<HrSchemas['ApplicationListResponse']>('/hr/applications', {
+    params
+  });
   return data;
 }
 
+export async function listApplicationActivity(application: string, offset: number, limit: number) {
+  const { data } = await apiClient.get<HrSchemas['ApplicationActivityList']>(
+    `/hr/applications/${application}/activity`,
+    { params: { offset, limit } }
+  );
+  return data;
+}
+export async function getHrApplication(applicationId: string) {
+  const { data } = await apiClient.get<ApplicationRecord>(`/hr/applications/${applicationId}`);
+  return data;
+}
 export async function createApplication(payload: HrSchemas['ApplicationCreateRequest']) {
   const { data } = await apiClient.post<ApplicationRecord>('/hr/applications', payload);
   return data;
@@ -332,8 +380,65 @@ export async function updateApplicationStage(
   return data;
 }
 
+export async function listCandidateRejectionTemplates() {
+  const { data } = await apiClient.get<HrSchemas['LetterTemplateListResponse']>(
+    '/hr/candidate-correspondence/templates'
+  );
+  return data;
+}
+
+export async function listCandidateCorrespondence(
+  application: string,
+  offset: number,
+  limit: number
+) {
+  const { data } = await apiClient.get<HrSchemas['LetterListResponse']>(
+    `/hr/applications/${application}/correspondence`,
+    { params: { offset, limit } }
+  );
+  return data;
+}
+
+export async function getCandidateCorrespondence(application: string, draft: string) {
+  const { data } = await apiClient.get<HrSchemas['CandidateCorrespondenceDetail']>(
+    `/hr/applications/${application}/correspondence/${draft}`
+  );
+  return data;
+}
+
+export async function draftCandidateCorrespondence(
+  application: string,
+  payload: HrSchemas['CandidateCorrespondenceCreateRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['CandidateCorrespondenceDetail']>(
+    `/hr/applications/${application}/correspondence`,
+    payload
+  );
+  return data;
+}
+
+export async function decideCandidateCorrespondence(
+  application: string,
+  draft: string,
+  payload: HrSchemas['CandidateCorrespondenceDecisionRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['CandidateCorrespondenceDetail']>(
+    `/hr/applications/${application}/correspondence/${draft}/decision`,
+    payload
+  );
+  return data;
+}
+
 export async function listInterviews() {
   const { data } = await apiClient.get<HrSchemas['InterviewListResponse']>('/hr/interviews');
+  return data;
+}
+
+export async function listInterviewerOptions(search: string) {
+  const { data } = await apiClient.get<HrSchemas['InterviewerOptions']>(
+    '/hr/interviews/interviewer-options',
+    { params: { search, limit: 20 } }
+  );
   return data;
 }
 
@@ -352,6 +457,13 @@ export async function updateInterview(id: string, payload: HrSchemas['InterviewU
 
 export async function listOffers() {
   const { data } = await apiClient.get<HrSchemas['OfferListResponse']>('/hr/offers');
+  return data;
+}
+
+export async function getOfferDocumentDownload(offerId: string) {
+  const { data } = await apiClient.get<HrSchemas['HrDocumentDownloadResponse']>(
+    `/hr/offers/${offerId}/document`
+  );
   return data;
 }
 
@@ -420,6 +532,8 @@ export async function listHrDocuments(params?: {
   candidate_id?: string;
   category?: string;
   document_type?: string;
+  limit?: number;
+  offset?: number;
 }) {
   const { data } = await apiClient.get<HrSchemas['HrDocumentListResponse']>('/hr/documents', {
     params
@@ -434,6 +548,7 @@ export async function uploadHrDocument(params: {
   category: string;
   employee_id?: string;
   candidate_id?: string;
+  issue_date?: string;
   expiry_date?: string;
   is_employee_visible?: boolean;
 }) {
@@ -444,6 +559,7 @@ export async function uploadHrDocument(params: {
   formData.append('category', params.category);
   if (params.employee_id) formData.append('employee_id', params.employee_id);
   if (params.candidate_id) formData.append('candidate_id', params.candidate_id);
+  if (params.issue_date) formData.append('issue_date', params.issue_date);
   if (params.expiry_date) formData.append('expiry_date', params.expiry_date);
   formData.append('is_employee_visible', String(params.is_employee_visible ?? false));
   const { data } = await apiClient.post<HrDocumentRecord>('/hr/documents', formData, {
@@ -686,6 +802,67 @@ export async function createLeavePolicy(payload: HrSchemas['LeavePolicyCreateReq
   return data;
 }
 
+export async function previewLeaveAccrual(payload: HrSchemas['LeaveAccrualRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LeaveAccrualResponse']>(
+    '/hr/leave/accrual/preview',
+    payload
+  );
+  return data;
+}
+
+export async function previewLeaveAccrualCatchUp(payload: HrSchemas['LeaveAccrualCatchUpRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LeaveAccrualCatchUpResponse']>(
+    '/hr/leave/accrual/catch-up/preview',
+    payload
+  );
+  return data;
+}
+
+export async function applyLeaveAccrualCatchUp(
+  payload: HrSchemas['LeaveAccrualCatchUpApplyRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['LeaveAccrualCatchUpResponse']>(
+    '/hr/leave/accrual/catch-up/apply',
+    payload
+  );
+  return data;
+}
+
+export async function previewLeaveRollover(payload: HrSchemas['LeaveRolloverRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LeaveRolloverResponse']>(
+    '/hr/leave/rollover/preview',
+    payload
+  );
+  return data;
+}
+
+export async function applyLeaveRollover(payload: HrSchemas['LeaveRolloverApplyRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LeaveRolloverResponse']>(
+    '/hr/leave/rollover/apply',
+    payload
+  );
+  return data;
+}
+
+export async function applyLeaveAccrual(payload: HrSchemas['LeaveAccrualApplyRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LeaveAccrualResponse']>(
+    '/hr/leave/accrual/apply',
+    payload
+  );
+  return data;
+}
+
+export async function decideLeavePolicy(
+  id: string,
+  payload: HrSchemas['LeavePolicyDecisionRequest']
+) {
+  const { data } = await apiClient.post<LeavePolicyRecord>(
+    `/hr/leave/policies/${id}/decision`,
+    payload
+  );
+  return data;
+}
+
 export async function getLeaveBalances(employeeId: string, year?: number) {
   const { data } = await apiClient.get<HrSchemas['LeaveBalanceListResponse']>(
     `/hr/leave/balances/${employeeId}`,
@@ -751,6 +928,23 @@ export async function listServiceRequests() {
   return data;
 }
 
+export async function listServiceRequestAssignees() {
+  const { data } =
+    await apiClient.get<HrSchemas['HrServiceRequestAssignee'][]>('/hr/requests/assignees');
+  return data;
+}
+
+export async function assignServiceRequest(
+  reqId: string,
+  payload: HrSchemas['HrServiceRequestAssignmentRequest']
+) {
+  const { data } = await apiClient.post<HrServiceRequestRecord>(
+    `/hr/requests/${reqId}/assign`,
+    payload
+  );
+  return data;
+}
+
 export async function resolveServiceRequest(
   reqId: string,
   payload: HrSchemas['HrServiceRequestResolveRequest']
@@ -762,8 +956,82 @@ export async function resolveServiceRequest(
   return data;
 }
 
-export async function listOffboardingCases() {
-  const { data } = await apiClient.get<HrSchemas['OffboardingCaseListResponse']>('/hr/offboarding');
+export async function listOffboardingCases(employeeId?: string) {
+  const { data } = await apiClient.get<HrSchemas['OffboardingCaseListResponse']>(
+    '/hr/offboarding',
+    {
+      params: { employee_id: employeeId }
+    }
+  );
+  return data;
+}
+
+export async function listEmploymentPeriods(employeeId: string, offset: number, limit: number) {
+  const { data } = await apiClient.get<HrSchemas['EmploymentPeriodListResponse']>(
+    `/hr/employees/${employeeId}/employment-periods`,
+    { params: { offset, limit } }
+  );
+  return data;
+}
+
+export async function listOffboardingCustody(
+  caseId: string,
+  limit: number,
+  offset: number,
+  area: HrSchemas['OffboardingCustodyResponse']['area'],
+  signal?: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['OffboardingCustodyListResponse']>(
+    `/hr/offboarding/${caseId}/custody`,
+    { params: { limit, offset, area }, signal }
+  );
+  return data;
+}
+
+export async function recordOffboardingCustody(
+  caseId: string,
+  payload: HrSchemas['OffboardingCustodyRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['OffboardingCustodyResponse']>(
+    `/hr/offboarding/${caseId}/custody`,
+    payload
+  );
+  return data;
+}
+
+export async function listSeparationSettlements(
+  caseId: string,
+  limit: number,
+  offset: number,
+  signal?: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['SeparationSettlementListResponse']>(
+    `/hr/offboarding/${caseId}/settlement`,
+    { params: { limit, offset }, signal }
+  );
+  return data;
+}
+
+export async function proposeSeparationSettlement(
+  caseId: string,
+  payload: HrSchemas['SeparationSettlementProposal']
+) {
+  const { data } = await apiClient.post<HrSchemas['SeparationSettlementResponse']>(
+    `/hr/offboarding/${caseId}/settlement`,
+    payload
+  );
+  return data;
+}
+
+export async function reviewSeparationSettlement(
+  caseId: string,
+  eventId: string,
+  payload: HrSchemas['SeparationSettlementReview']
+) {
+  const { data } = await apiClient.post<HrSchemas['SeparationSettlementResponse']>(
+    `/hr/offboarding/${caseId}/settlement/${eventId}/review`,
+    payload
+  );
   return data;
 }
 
@@ -961,6 +1229,15 @@ export async function getMyLeaveBalances() {
   return data;
 }
 
+export async function getMyLeaveUnits(
+  params: paths['/api/v1/hr/me/leave-units']['get']['parameters']['query']
+) {
+  const { data } = await apiClient.get<HrSchemas['LeaveUnitsResponse']>('/hr/me/leave-units', {
+    params
+  });
+  return data;
+}
+
 export async function listMyLeaveRequests() {
   const { data } =
     await apiClient.get<HrSchemas['LeaveRequestListResponse']>('/hr/me/leave-requests');
@@ -974,6 +1251,17 @@ export async function submitMyLeaveRequest(payload: HrSchemas['LeaveRequestCreat
 
 export async function cancelMyLeaveRequest(id: string) {
   const { data } = await apiClient.post<LeaveRequestRecord>(`/hr/me/leave-requests/${id}/cancel`);
+  return data;
+}
+
+export async function resubmitMyLeaveRequest(
+  id: string,
+  payload: HrSchemas['LeaveRequestResubmitRequest']
+) {
+  const { data } = await apiClient.put<LeaveRequestRecord>(
+    `/hr/me/leave-requests/${id}/submission`,
+    payload
+  );
   return data;
 }
 
@@ -1006,14 +1294,24 @@ export async function downloadMyHrDocument(documentId: string) {
 }
 
 export async function listMyPolicies() {
-  const { data } = await apiClient.get<HrSchemas['PolicyDocumentListResponse']>('/hr/me/policies');
+  const { data } = await apiClient.get<HrSchemas['MyPolicyListResponse']>('/hr/me/policies');
   return data;
 }
 
-export async function acknowledgeMyPolicy(policyId: string, notes?: string) {
+export async function downloadMyPolicy(policyId: string) {
+  const { data } = await apiClient.get<HrDocumentDownloadRecord>(
+    `/hr/me/policies/${policyId}/download`
+  );
+  return data;
+}
+
+export async function acknowledgeMyPolicy(
+  policyId: string,
+  payload: HrSchemas['PolicyAcknowledgeRequest']
+) {
   const { data } = await apiClient.post<HrSchemas['PolicyAcknowledgementResponse']>(
     `/hr/me/policies/${policyId}/acknowledge`,
-    { notes }
+    payload
   );
   return data;
 }
@@ -1044,5 +1342,99 @@ export async function listMyReimbursements() {
 
 export async function submitMyReimbursement(payload: HrSchemas['ReimbursementCreateRequest']) {
   const { data } = await apiClient.post<ReimbursementRecord>('/hr/me/reimbursements', payload);
+  return data;
+}
+
+function hrLettersPath(employeeId?: string) {
+  return employeeId ? `/hr/employees/${employeeId}/letters` : '/hr/me/letters';
+}
+
+export async function listHrLetters(
+  employeeId: string | undefined,
+  offset: number,
+  limit: number,
+  issuedOnly = false
+) {
+  const { data } = await apiClient.get<HrSchemas['LetterListResponse']>(hrLettersPath(employeeId), {
+    params: { limit, offset, ...(employeeId && issuedOnly ? { issued_only: true } : {}) }
+  });
+  return data;
+}
+
+export async function getHrLetter(employeeId: string | undefined, letterId: string) {
+  const { data } = await apiClient.get<HrSchemas['LetterDetail']>(
+    `${hrLettersPath(employeeId)}/${letterId}`
+  );
+  return data;
+}
+
+export async function draftHrLetter(payload: HrSchemas['LetterDraftRequest']) {
+  const { data } = await apiClient.post<HrSchemas['LetterDetail']>('/hr/letters/drafts', payload);
+  return data;
+}
+
+export async function decideHrLetter(
+  employeeId: string,
+  letterId: string,
+  payload: HrSchemas['LetterDecisionRequest']
+) {
+  const { data } = await apiClient.post<HrSchemas['LetterDetail']>(
+    `${hrLettersPath(employeeId)}/${letterId}/decision`,
+    payload
+  );
+  return data;
+}
+
+function employmentChangesPath(employeeId: string) {
+  return `/hr/employees/${employeeId}/employment-changes`;
+}
+
+export async function listEmploymentChanges(employeeId: string, offset: number, limit: number) {
+  const { data } = await apiClient.get<HrSchemas['EmploymentChangeListResponse']>(
+    employmentChangesPath(employeeId),
+    { params: { offset, limit } }
+  );
+  return data;
+}
+
+export async function proposeEmploymentChange(
+  employeeId: string,
+  payload: HrSchemas['EmploymentChangeProposal']
+) {
+  const { data } = await apiClient.post<HrSchemas['EmploymentChangeResponse']>(
+    employmentChangesPath(employeeId),
+    payload
+  );
+  return data;
+}
+
+export async function decideEmploymentChange(
+  employeeId: string,
+  changeId: string,
+  payload: HrSchemas['EmploymentChangeDecision']
+) {
+  const { data } = await apiClient.post<HrSchemas['EmploymentChangeResponse']>(
+    `${employmentChangesPath(employeeId)}/${changeId}/decision`,
+    payload
+  );
+  return data;
+}
+
+export async function applyEmploymentChange(employeeId: string, changeId: string) {
+  const { data } = await apiClient.post<HrSchemas['EmploymentChangeResponse']>(
+    `${employmentChangesPath(employeeId)}/${changeId}/apply`
+  );
+  return data;
+}
+
+export async function listMyPayslips(limit: number, offset: number) {
+  const { data } = await apiClient.get<HrSchemas['PayslipListResponse']>('/hr/me/payslips', {
+    params: { limit, offset }
+  });
+  return data;
+}
+
+export async function getMyPayslip(runId: string) {
+  const { data } = await apiClient.get<HrSchemas['PayslipDetail']>(`/hr/me/payslips/${runId}`);
   return data;
 }

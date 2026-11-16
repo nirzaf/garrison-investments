@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy import func, or_, select, text
@@ -7,9 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.hr import (
     HrAccessRequest,
     HrDepartment,
+    HrDocument,
+    HrDocumentVersion,
     HrEmployee,
     HrEmployeePrivate,
+    HrEmploymentChange,
     HrEmploymentHistory,
+    HrEmploymentPeriod,
+    HrOffboardingCase,
     HrOnboardingCase,
     HrPosition,
 )
@@ -32,6 +38,9 @@ from app.schemas.hr import (
     EmployeeSensitiveResponse,
     EmployeeStatusTransitionRequest,
     EmployeeUpdateRequest,
+    EmploymentChangeDecision,
+    EmploymentChangeFields,
+    EmploymentChangeProposal,
     OnboardingCaseResponse,
     OrgChartNode,
     OrgChartResponse,
@@ -42,16 +51,19 @@ from app.schemas.hr import (
 from app.schemas.users import UserCreateRequest, UserUpdateRequest
 from app.services.hr_crypto import decrypt_hr_value, encrypt_hr_value, mask_identifier
 from app.services.hr_manager_review import eligible_reviewer
+from app.services.hr_offboarding_custody import confirmed_access_revocation
 from app.services.hr_project_assignment import ACTIVE_ASSIGNMENT_EMPLOYMENT
 from app.services.hr_workforce_service import HrWorkforceService
 from app.services.user_service import UserService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_OFFBOARDING_MANAGE,
     PERMISSION_HR_ONBOARDING_MANAGE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
     PERMISSION_USERS_MANAGE,
+    ensure_permission,
     has_permission,
     validate_role,
 )
@@ -254,7 +266,9 @@ class HrService(HrWorkforceService):
         self, position_id: UUID, *, exclude_employee_id: UUID | None, override: bool, actor: User
     ) -> None:
         pos = await self.session.scalar(
-            select(HrPosition).where(HrPosition.id == position_id, HrPosition.deleted_at.is_(None))
+            select(HrPosition)
+            .where(HrPosition.id == position_id, HrPosition.deleted_at.is_(None))
+            .with_for_update()
         )
         if pos is None:
             raise NotFoundException("Position")
@@ -562,6 +576,38 @@ class HrService(HrWorkforceService):
                 text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
             )
         emp = await self._require_employee(employee_id, for_update=True)
+        if emp.employment_status in ACTIVE_ASSIGNMENT_EMPLOYMENT and any(
+            name in payload.model_fields_set and getattr(payload, name) != getattr(emp, name)
+            for name in ("first_name", "last_name", "full_name")
+        ):
+            raise AppException(
+                "Propose a reviewed profile correction to change this employee's name.",
+                status_code=409,
+                error_code="PROFILE_CORRECTION_REQUIRED",
+            )
+        await self._stage_employee_update(emp, payload, actor, "updated", utc_now().date())
+        try:
+            await self.session.commit()
+            await self.session.refresh(emp)
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "Employee work email conflicts with another record.",
+                status_code=409,
+                error_code="EMPLOYEE_CONFLICT",
+            ) from exc
+        return await self._serialize_employee_detail(emp)
+
+    async def _stage_employee_update(
+        self,
+        emp: HrEmployee,
+        payload: EmployeeUpdateRequest,
+        actor: User,
+        change_type: str,
+        effective_date: date,
+        *,
+        contract_history: dict[str, object] | None = None,
+    ) -> None:
         if emp.record_revision != payload.expected_revision:
             raise AppException(
                 "Employee record has been modified by another user.",
@@ -590,6 +636,16 @@ class HrService(HrWorkforceService):
         for field in ("first_name", "last_name", "full_name"):
             if field in updates and not (updates[field] or "").strip():
                 raise AppException("Employee names cannot be blank.", status_code=422)
+        if "join_date" in updates and updates["join_date"] != emp.join_date:
+            if await self.session.scalar(
+                select(HrEmploymentPeriod.id)
+                .where(HrEmploymentPeriod.employee_id == emp.id)
+                .limit(1)
+            ):
+                raise AppException(
+                    "The recorded employment start cannot be edited through the profile.",
+                    status_code=409,
+                )
         if "employment_category" in updates and updates["employment_category"] is None:
             raise AppException("Choose an employment category.", status_code=422)
         if "employee_code" in updates:
@@ -617,6 +673,8 @@ class HrService(HrWorkforceService):
                 emp.line_manager_reviewer_id = None
 
         prev = self._employee_snapshot(emp)
+        if change_type == "profile_correction":
+            prev.update(first_name=emp.first_name, last_name=emp.last_name)
         for field, value in updates.items():
             if field == "work_email" and value is not None:
                 value = value.lower()
@@ -626,13 +684,16 @@ class HrService(HrWorkforceService):
 
         emp.record_revision += 1
         emp.updated_by_id = actor.id
+        next_snapshot = {**self._employee_snapshot(emp), **(contract_history or {})}
+        if change_type == "profile_correction":
+            next_snapshot.update(first_name=emp.first_name, last_name=emp.last_name)
         self.session.add(
             HrEmploymentHistory(
                 employee_id=emp.id,
-                change_type="updated",
-                effective_date=utc_now().date(),
+                change_type=change_type,
+                effective_date=effective_date,
                 previous_snapshot=prev,
-                new_snapshot=self._employee_snapshot(emp),
+                new_snapshot=next_snapshot,
                 reason=payload.reason or "Profile/assignment update",
                 actor_user_id=actor.id,
             )
@@ -644,17 +705,457 @@ class HrService(HrWorkforceService):
             entity_id=emp.id,
             new_values={"record_revision": emp.record_revision},
         )
-        try:
-            await self.session.commit()
-            await self.session.refresh(emp)
-        except IntegrityError as exc:
-            await self.session.rollback()
+
+    @staticmethod
+    def _check_employment_change_base(emp: HrEmployee, revision: int, effective_date: date) -> None:
+        if emp.record_revision != revision:
             raise AppException(
-                "Employee work email conflicts with another record.",
+                "The employee changed after this proposal. Prepare a fresh proposal.",
                 status_code=409,
-                error_code="EMPLOYEE_CONFLICT",
-            ) from exc
-        return await self._serialize_employee_detail(emp)
+                error_code="REVISION_CONFLICT",
+            )
+        if (
+            emp.employment_status not in ACTIVE_ASSIGNMENT_EMPLOYMENT
+            or (emp.join_date is not None and effective_date < emp.join_date)
+            or (emp.termination_date is not None and effective_date >= emp.termination_date)
+        ):
+            raise AppException(
+                "The employee must be in an eligible employment period.", status_code=409
+            )
+
+    async def list_employment_periods(
+        self, employee_id: UUID, limit: int, offset: int
+    ) -> tuple[list[HrEmploymentPeriod], int]:
+        await self._require_employee(employee_id)
+        filters = (HrEmploymentPeriod.employee_id == employee_id,)
+        rows = list(
+            await self.session.scalars(
+                select(HrEmploymentPeriod)
+                .where(*filters)
+                .order_by(
+                    HrEmploymentPeriod.started_on.desc().nulls_last(), HrEmploymentPeriod.id.desc()
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        total = await self.session.scalar(select(func.count(HrEmploymentPeriod.id)).where(*filters))
+        return rows, total or 0
+
+    async def _check_rehire(
+        self,
+        emp: HrEmployee,
+        fields: EmploymentChangeFields,
+        revision: int,
+        effective_date: date,
+        actor: User,
+    ) -> HrOffboardingCase:
+        ensure_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE)
+        ensure_permission(actor, PERMISSION_HR_OFFBOARDING_MANAGE)
+        if emp.user_id == actor.id:
+            raise PermissionDeniedException("rehire one's own employment record")
+        if emp.record_revision != revision:
+            raise AppException(
+                "The employee changed. Prepare a fresh proposal.",
+                status_code=409,
+                error_code="REVISION_CONFLICT",
+            )
+        if emp.employment_status not in {"resigned", "terminated", "archived"}:
+            raise AppException("Rehire requires a separated employee.", status_code=409)
+        latest = await self.session.scalar(
+            select(HrOffboardingCase)
+            .where(HrOffboardingCase.employee_id == emp.id, HrOffboardingCase.status == "completed")
+            .order_by(
+                HrOffboardingCase.completed_at.desc().nulls_last(), HrOffboardingCase.id.desc()
+            )
+            .limit(1)
+        )
+        if (
+            latest is None
+            or latest.id != fields.separation_case_id
+            or latest.rehire_eligible is not True
+            or emp.termination_date != latest.last_working_date
+        ):
+            raise AppException(
+                "Select the latest completed separation with confirmed rehire eligibility.",
+                status_code=409,
+            )
+        if effective_date <= latest.last_working_date:
+            raise AppException(
+                "Rehire must start after the prior last working day.", status_code=422
+            )
+        if emp.join_date is not None and emp.join_date > latest.last_working_date:
+            raise AppException("Resolve the prior employment dates before rehire.", status_code=409)
+        if emp.user_id:
+            await confirmed_access_revocation(self.session, emp)
+        if await self.session.scalar(
+            select(HrOnboardingCase.id)
+            .where(HrOnboardingCase.employee_id == emp.id, HrOnboardingCase.status != "completed")
+            .limit(1)
+        ):
+            raise AppException(
+                "Resolve the previous onboarding case before rehire.", status_code=409
+            )
+        return latest
+
+    async def _apply_rehire(
+        self, emp: HrEmployee, row: HrEmploymentChange, fields: EmploymentChangeFields, actor: User
+    ) -> None:
+        separation = await self._check_rehire(
+            emp, fields, row.employee_revision, row.effective_date, actor
+        )
+        prior = await self.session.scalar(
+            select(HrEmploymentPeriod).where(HrEmploymentPeriod.separation_case_id == separation.id)
+        )
+        if prior is None:
+            self.session.add(
+                HrEmploymentPeriod(
+                    employee_id=emp.id,
+                    started_on=emp.join_date,
+                    ended_on=separation.last_working_date,
+                    separation_case_id=separation.id,
+                )
+            )
+        previous = {
+            **self._employee_snapshot(emp),
+            "join_date": emp.join_date.isoformat() if emp.join_date else None,
+            "termination_date": separation.last_working_date.isoformat(),
+            "separation_case_id": str(separation.id),
+        }
+        emp.employment_status = "onboarding"
+        emp.employment_category = fields.employment_category or emp.employment_category
+        emp.join_date = row.effective_date
+        emp.termination_date = None
+        emp.confirmation_date = None
+        emp.manager_employee_id = None
+        emp.line_manager_reviewer_id = None
+        emp.primary_project_id = None
+        emp.work_calendar_id = None
+        emp.work_location = None
+        emp.position_id = None
+        emp.department_id = None
+        emp.record_revision += 1
+        emp.updated_by_id = actor.id
+        onboarding = await self._create_onboarding_case_internal(
+            employee_id=emp.id,
+            offer_id=None,
+            start_date=row.effective_date,
+            probation_end_date=(
+                row.effective_date + timedelta(days=fields.probation_days)
+                if fields.probation_days is not None
+                else None
+            ),
+            owner_user_id=actor.id,
+        )
+        period = HrEmploymentPeriod(
+            employee_id=emp.id,
+            started_on=row.effective_date,
+            rehire_change_id=row.id,
+            onboarding_case_id=onboarding.id,
+        )
+        self.session.add(period)
+        await self.session.flush()
+        self.session.add(
+            HrEmploymentHistory(
+                employee_id=emp.id,
+                change_type="rehire",
+                effective_date=row.effective_date,
+                previous_snapshot=previous,
+                new_snapshot={
+                    **self._employee_snapshot(emp),
+                    "join_date": row.effective_date.isoformat(),
+                    "employment_period_id": str(period.id),
+                    "onboarding_case_id": str(onboarding.id),
+                },
+                reason=row.reason,
+                actor_user_id=actor.id,
+            )
+        )
+
+    async def _check_employment_change_fields(
+        self, emp: HrEmployee, fields: EmploymentChangeFields
+    ) -> None:
+        values = fields.model_dump(exclude_unset=True)
+        if all(getattr(emp, name) == value for name, value in values.items()):
+            raise AppException("The proposal must change at least one value.", status_code=422)
+        if fields.department_id is not None and not await self.session.scalar(
+            select(HrDepartment.id).where(
+                HrDepartment.id == fields.department_id,
+                HrDepartment.is_active.is_(True),
+                HrDepartment.deleted_at.is_(None),
+            )
+        ):
+            raise NotFoundException("Active HR department")
+        if fields.position_id is not None and not await self.session.scalar(
+            select(HrPosition.id).where(
+                HrPosition.id == fields.position_id,
+                HrPosition.is_active.is_(True),
+                HrPosition.deleted_at.is_(None),
+            )
+        ):
+            raise NotFoundException("Active HR position")
+        if fields.manager_employee_id is not None:
+            manager = await self._require_employee(fields.manager_employee_id)
+            if manager.employment_status not in ACTIVE_ASSIGNMENT_EMPLOYMENT:
+                raise AppException("Select a current employee as manager.", status_code=422)
+            await self._validate_manager_assignment(emp.id, manager.id)
+
+    async def _check_contract_renewal(
+        self, emp: HrEmployee, fields: EmploymentChangeFields, effective_date: date, actor: User
+    ) -> None:
+        if emp.employment_category != "contract":
+            raise AppException("Contract renewals require contract employment.", status_code=409)
+        current_id = fields.current_contract_document_id
+        renewal_id = fields.renewal_contract_document_id
+        if current_id is None or renewal_id is None or current_id == renewal_id:
+            raise AppException("Select separate current and renewal contracts.", status_code=422)
+        docs = list(
+            await self.session.scalars(
+                select(HrDocument)
+                .where(
+                    HrDocument.id.in_((current_id, renewal_id)),
+                    HrDocument.employee_id == emp.id,
+                    HrDocument.candidate_id.is_(None),
+                    HrDocument.document_type == "contract",
+                    HrDocument.deleted_at.is_(None),
+                    HrDocument.status == "active",
+                )
+                .order_by(HrDocument.id)
+                .with_for_update()
+            )
+        )
+        if len(docs) != 2:
+            raise NotFoundException("Employee contract")
+        for doc in docs:
+            self._ensure_hr_doc_access(doc, actor)
+        by_id = {doc.id: doc for doc in docs}
+        current, renewal = by_id[current_id], by_id[renewal_id]
+        renewal_conditions = [
+            HrEmploymentChange.employee_id == emp.id,
+            HrEmploymentChange.change_type == "contract_renewal",
+            HrEmploymentChange.status == "applied",
+        ]
+        if emp.join_date is not None:
+            renewal_conditions.append(HrEmploymentChange.effective_date >= emp.join_date)
+        latest = await self.session.scalar(
+            select(HrEmploymentChange)
+            .where(*renewal_conditions)
+            .order_by(HrEmploymentChange.applied_employee_revision.desc())
+            .limit(1)
+        )
+        current_version = fields.current_contract_version
+        previous_version: tuple[str, ...] = ("active",)
+        if latest is not None:
+            if (
+                latest.updates["renewal_contract_document_id"] != str(current_id)
+                or latest.updates["renewal_contract_version"] != current_version
+                or current.expiry_date is None
+                or latest.updates["contract_end_date"] != current.expiry_date.isoformat()
+            ):
+                raise AppException("Start from the last applied contract term.", status_code=409)
+            previous_version = ("active", "superseded")
+
+        for doc, number, states in (
+            (current, current_version, previous_version),
+            (renewal, fields.renewal_contract_version, ("active",)),
+        ):
+            if not await self.session.scalar(
+                select(HrDocumentVersion.id).where(
+                    HrDocumentVersion.document_id == doc.id,
+                    HrDocumentVersion.version_number == number,
+                    HrDocumentVersion.status.in_(states),
+                )
+            ):
+                raise AppException(
+                    "A selected contract version is no longer eligible for renewal.",
+                    status_code=409,
+                )
+        if (
+            current.expiry_date is None
+            or (effective_date - current.expiry_date).days != 1
+            or renewal.expiry_date is None
+            or renewal.expiry_date != fields.contract_end_date
+            or renewal.expiry_date < effective_date
+        ):
+            raise AppException(
+                "Start the renewal the day after current expiry and match the new contract expiry.",
+                status_code=422,
+            )
+
+    async def get_employment_change(
+        self, employee_id: UUID, change_id: UUID, *, lock: bool = False
+    ) -> HrEmploymentChange:
+        query = select(HrEmploymentChange).where(
+            HrEmploymentChange.employee_id == employee_id, HrEmploymentChange.id == change_id
+        )
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        row = await self.session.scalar(query)
+        if row is None:
+            raise NotFoundException("Employment change")
+        return row
+
+    async def list_employment_changes(
+        self, employee_id: UUID, limit: int, offset: int
+    ) -> tuple[list[HrEmploymentChange], int]:
+        await self._require_employee(employee_id)
+        query = select(HrEmploymentChange).where(HrEmploymentChange.employee_id == employee_id)
+        rows = list(
+            await self.session.scalars(
+                query.order_by(HrEmploymentChange.created_at.desc(), HrEmploymentChange.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        total = await self.session.scalar(
+            select(func.count(HrEmploymentChange.id)).where(
+                HrEmploymentChange.employee_id == employee_id
+            )
+        )
+        return rows, total or 0
+
+    async def _record_employment_change(self, row: HrEmploymentChange, actor: User) -> None:
+        await self.audit.record(
+            action=f"hr.employment_change.{row.status}",
+            user_id=actor.id,
+            entity_type="hr_employment_changes",
+            entity_id=row.id,
+            new_values={
+                "employee_id": str(row.employee_id),
+                "change_type": row.change_type,
+                "effective_date": row.effective_date.isoformat(),
+            },
+        )
+
+    async def propose_employment_change(
+        self, employee_id: UUID, payload: EmploymentChangeProposal, actor: User
+    ) -> HrEmploymentChange:
+        ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        emp = await self._require_employee(employee_id, for_update=True)
+        if payload.change_type != "rehire":
+            self._check_employment_change_base(
+                emp, payload.employee_revision, payload.effective_date
+            )
+        if payload.effective_date < business_today():
+            raise AppException("The proposed date cannot be in the past.", status_code=422)
+        if payload.updates.work_location is not None:
+            payload.updates.work_location = payload.updates.work_location.strip() or None
+        if payload.change_type == "rehire":
+            await self._check_rehire(
+                emp, payload.updates, payload.employee_revision, payload.effective_date, actor
+            )
+        elif payload.change_type == "contract_renewal":
+            await self._check_contract_renewal(emp, payload.updates, payload.effective_date, actor)
+        else:
+            await self._check_employment_change_fields(emp, payload.updates)
+        row = HrEmploymentChange(
+            employee_id=employee_id,
+            employee_revision=emp.record_revision,
+            change_type=payload.change_type,
+            effective_date=payload.effective_date,
+            updates=payload.updates.model_dump(mode="json", exclude_unset=True),
+            reason=payload.reason.strip(),
+            proposed_by=actor.id,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        await self._record_employment_change(row, actor)
+        await self.session.commit()
+        return row
+
+    async def decide_employment_change(
+        self, employee_id: UUID, change_id: UUID, payload: EmploymentChangeDecision, actor: User
+    ) -> HrEmploymentChange:
+        ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        emp = await self._require_employee(employee_id, for_update=True)
+        row = await self.get_employment_change(employee_id, change_id, lock=True)
+        if actor.id in {row.proposed_by, emp.user_id}:
+            raise PermissionDeniedException("independent employment change review")
+        reason = (payload.reason or "").strip() or None
+        if payload.decision == "rejected" and reason is None:
+            raise AppException("Enter a reason for rejecting the proposal.", status_code=422)
+        if row.status != "proposed":
+            if (row.status, row.decided_by, row.decision_reason) == (
+                payload.decision,
+                actor.id,
+                reason,
+            ):
+                return row
+            raise AppException("This employment change already has a decision.", status_code=409)
+        if payload.decision == "approved":
+            if row.change_type == "rehire":
+                await self._check_rehire(
+                    emp,
+                    EmploymentChangeFields.model_validate(row.updates),
+                    row.employee_revision,
+                    row.effective_date,
+                    actor,
+                )
+            else:
+                self._check_employment_change_base(emp, row.employee_revision, row.effective_date)
+            if row.change_type == "contract_renewal":
+                await self._check_contract_renewal(
+                    emp,
+                    EmploymentChangeFields.model_validate(row.updates),
+                    row.effective_date,
+                    actor,
+                )
+        row.status = payload.decision
+        row.decided_by = actor.id
+        row.decided_at = utc_now()
+        row.decision_reason = reason
+        await self._record_employment_change(row, actor)
+        await self.session.commit()
+        return row
+
+    async def apply_employment_change(
+        self, employee_id: UUID, change_id: UUID, actor: User
+    ) -> HrEmploymentChange:
+        ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        # Match the lock order used by live reporting-line edits.
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('garrison.hr_reporting_lines'))")
+        )
+        emp = await self._require_employee(employee_id, for_update=True)
+        row = await self.get_employment_change(employee_id, change_id, lock=True)
+        if row.status == "applied":
+            return row
+        if row.status != "approved" or row.effective_date > business_today():
+            raise AppException(
+                "Apply an approved change on or after its effective date.", status_code=409
+            )
+        updates = EmploymentChangeFields.model_validate(row.updates)
+        if row.change_type == "rehire":
+            await self._apply_rehire(emp, row, updates, actor)
+        else:
+            self._check_employment_change_base(emp, row.employee_revision, row.effective_date)
+            contract_history = None
+            if row.change_type == "contract_renewal":
+                await self._check_contract_renewal(emp, updates, row.effective_date, actor)
+                employee_updates = {}
+                contract_history = row.updates
+            else:
+                await self._check_employment_change_fields(emp, updates)
+                employee_updates = updates.model_dump(exclude_unset=True)
+            await self._stage_employee_update(
+                emp,
+                EmployeeUpdateRequest(
+                    expected_revision=row.employee_revision,
+                    reason=row.reason,
+                    **employee_updates,
+                ),
+                actor,
+                row.change_type,
+                row.effective_date,
+                contract_history=contract_history,
+            )
+        row.status = "applied"
+        row.applied_by = actor.id
+        row.applied_at = utc_now()
+        row.applied_employee_revision = emp.record_revision
+        await self._record_employment_change(row, actor)
+        await self.session.commit()
+        return row
 
     async def transition_employee_status(
         self, employee_id: UUID, payload: EmployeeStatusTransitionRequest, actor: User
@@ -695,8 +1196,29 @@ class HrService(HrWorkforceService):
             .limit(1)
         ):
             raise AppException("Finish onboarding before activating the employee.", status_code=409)
+        eff_date = payload.effective_date or business_today()
+        if emp.employment_status == "onboarding":
+            rehire_case = await self.session.scalar(
+                select(HrOnboardingCase)
+                .join(
+                    HrEmploymentPeriod, HrOnboardingCase.id == HrEmploymentPeriod.onboarding_case_id
+                )
+                .where(
+                    HrEmploymentPeriod.employee_id == emp.id,
+                    HrEmploymentPeriod.ended_on.is_(None),
+                )
+            )
+            if rehire_case is not None:
+                if not rehire_case.start_date <= eff_date <= business_today():
+                    raise AppException(
+                        "Choose an activation date within the current employment period.",
+                        status_code=422,
+                    )
+                if payload.status == "active" and rehire_case.probation_end_date is not None:
+                    raise AppException(
+                        "Start the employee's reviewed probation first.", status_code=409
+                    )
         prev = self._employee_snapshot(emp)
-        eff_date = payload.effective_date or utc_now().date()
         emp.employment_status = payload.status
         if payload.status in {"terminated", "resigned"}:
             emp.termination_date = eff_date
@@ -840,7 +1362,7 @@ class HrService(HrWorkforceService):
     async def get_employee_private(
         self, employee_id: UUID, actor: User, *, reveal_sensitive: bool = False
     ) -> EmployeeSensitiveResponse:
-        await self._require_employee(employee_id)
+        employee = await self._require_employee(employee_id)
         priv = await self.session.scalar(
             select(HrEmployeePrivate).where(HrEmployeePrivate.employee_id == employee_id)
         )
@@ -853,10 +1375,13 @@ class HrService(HrWorkforceService):
         )
         await self.session.commit()
         if priv is None:
-            return EmployeeSensitiveResponse(employee_id=employee_id)
+            return EmployeeSensitiveResponse(
+                employee_id=employee_id, record_revision=employee.record_revision
+            )
         payroll_access = has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
         return EmployeeSensitiveResponse(
             employee_id=employee_id,
+            record_revision=employee.record_revision,
             national_id_masked=priv.national_id_masked,
             passport_masked=priv.passport_masked,
             date_of_birth=priv.date_of_birth,
@@ -900,7 +1425,11 @@ class HrService(HrWorkforceService):
     async def upsert_employee_private(
         self, employee_id: UUID, payload: EmployeePrivateUpdateRequest, actor: User
     ) -> EmployeeSensitiveResponse:
-        await self._require_employee(employee_id)
+        employee = await self._require_employee(employee_id, for_update=True)
+        self._verify_profile_revision(employee, payload.expected_revision)
+        updates = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        if not updates:
+            raise AppException("Supply at least one profile field.", status_code=422)
         priv = await self.session.scalar(
             select(HrEmployeePrivate).where(HrEmployeePrivate.employee_id == employee_id)
         )
@@ -908,7 +1437,6 @@ class HrService(HrWorkforceService):
             priv = HrEmployeePrivate(employee_id=employee_id)
             self.session.add(priv)
 
-        updates = payload.model_dump(exclude_unset=True)
         payroll_fields = {
             "bank_name",
             "bank_branch",
@@ -941,18 +1469,32 @@ class HrService(HrWorkforceService):
             else:
                 setattr(priv, key, value)
         priv.updated_by_id = actor.id
+        employee.updated_by_id = actor.id
+        employee.record_revision += 1
 
         await self.audit.record(
             action="hr.employee_private.updated",
             user_id=actor.id,
             entity_type="hr_employees",
             entity_id=employee_id,
-            new_values={"updated_fields": sorted(updates.keys())},
+            new_values={
+                "updated_fields": sorted(updates.keys()),
+                "record_revision": employee.record_revision,
+            },
         )
         await self._commit_and_refresh(priv)
         return await self.get_employee_private(employee_id, actor, reveal_sensitive=False)
 
     # --- Employee Self-Service (/api/v1/hr/me) ---
+
+    @staticmethod
+    def _verify_profile_revision(employee: HrEmployee, expected_revision: int) -> None:
+        if employee.record_revision != expected_revision:
+            raise AppException(
+                "The profile changed after you opened it. Reload the latest details before saving.",
+                status_code=409,
+                error_code="REVISION_CONFLICT",
+            )
 
     async def get_self_profile(self, actor: User) -> EmployeeSelfResponse:
         emp = await self._employee_for_user(actor)
@@ -978,14 +1520,17 @@ class HrService(HrWorkforceService):
     async def update_self_profile(
         self, payload: EmployeeSelfUpdateRequest, actor: User
     ) -> EmployeeSelfResponse:
-        emp = await self._employee_for_user(actor)
+        emp = await self._employee_for_user(actor, for_update=True)
+        self._verify_profile_revision(emp, payload.expected_revision)
+        updates = payload.model_dump(exclude_unset=True, exclude={"expected_revision"})
+        if not updates:
+            raise AppException("Supply at least one profile field.", status_code=422)
         priv = await self.session.scalar(
             select(HrEmployeePrivate).where(HrEmployeePrivate.employee_id == emp.id)
         )
         if priv is None:
             priv = HrEmployeePrivate(employee_id=emp.id)
             self.session.add(priv)
-        updates = payload.model_dump(exclude_unset=True)
         if "preferred_name" in updates:
             emp.preferred_name = updates["preferred_name"]
         if "work_phone" in updates:
@@ -1003,12 +1548,13 @@ class HrService(HrWorkforceService):
                 setattr(priv, field, val.lower() if field == "personal_email" and val else val)
         priv.updated_by_id = actor.id
         emp.updated_by_id = actor.id
+        emp.record_revision += 1
         await self.audit.record(
             action="hr.self_profile.updated",
             user_id=actor.id,
             entity_type="hr_employees",
             entity_id=emp.id,
-            new_values={"fields": sorted(updates.keys())},
+            new_values={"fields": sorted(updates.keys()), "record_revision": emp.record_revision},
         )
         await self._commit_and_refresh(emp, priv)
         return await self.get_self_profile(actor)
@@ -1079,6 +1625,17 @@ class HrService(HrWorkforceService):
                 status_code=409,
                 error_code="USER_ALREADY_LINKED",
             )
+
+    async def _check_reactivation_period(self, emp: HrEmployee, req: HrAccessRequest) -> None:
+        if emp.employment_status in {"resigned", "terminated", "archived", "notice_period"}:
+            raise AppException("Complete the reviewed rehire before reactivation.", status_code=409)
+        rehire_applied_at = await self.session.scalar(
+            select(HrEmploymentChange.applied_at)
+            .join(HrEmploymentPeriod, HrEmploymentPeriod.rehire_change_id == HrEmploymentChange.id)
+            .where(HrEmploymentPeriod.employee_id == emp.id, HrEmploymentPeriod.ended_on.is_(None))
+        )
+        if rehire_applied_at is not None and req.created_at <= rehire_applied_at:
+            raise AppException("Create a fresh access request after rehire.", status_code=409)
 
     async def create_access_request(
         self, payload: AccessRequestCreateRequest, actor: User
@@ -1263,6 +1820,8 @@ class HrService(HrWorkforceService):
             linked_user = await users_svc.get_user(target_uid)
             await self._verify_account_link(emp, linked_user)
         elif req.request_type in {"role_change", "deactivate", "reactivate"}:
+            if req.request_type == "reactivate":
+                await self._check_reactivation_period(emp, req)
             target_uid = emp.user_id or req.linked_user_id
             if not target_uid:
                 raise AppException(

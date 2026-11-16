@@ -94,6 +94,11 @@ if settings.hr_probation_review_reminder_days is not None:
         "task": "check_hr_probation_reviews",
         "schedule": crontab(hour=4, minute=45),
     }
+if settings.hr_scheduled_leave_policy_ids:
+    celery_app.conf.beat_schedule["post-hr-leave-accruals-daily"] = {
+        "task": "post_hr_leave_accruals",
+        "schedule": crontab(hour=5, minute=15),
+    }
 
 
 @setup_logging.connect

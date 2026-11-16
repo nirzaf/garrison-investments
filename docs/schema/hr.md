@@ -13,6 +13,36 @@ employee data. See the linked models and migrations for all column definitions
 and the [HR workspace guide](../HR_WORKFORCE.md) for the permission and
 feature-policy boundaries.
 
+Pending revisions [015](../../backend/alembic/versions/202605310015_hr_leave_policy_review.py)
+and [016](../../backend/alembic/versions/202605310016_validate_hr_leave_policy.py)
+add and validate leave policy review and effective-window constraints. Rows
+already present receive the `legacy` status and keep their approval and
+entitlement fields. New draft, approved and rejected policies require an
+ordered inclusive effective window. The nullable creator reference uses
+`SET NULL`, and an orphaned proposal cannot be approved.
+A new insert defaults to `draft`, so the old undated write path fails the
+effective-window constraint. Coordinate database and application activation
+within the production maintenance window.
+
+[Revision 017](../../backend/alembic/versions/202605310017_hr_leave_accrual.py)
+adds `hr_leave_accruals`. A receipt references an employee, leave type, dated
+policy and a unique ledger entry. The employee/leave type/period start is
+unique, and the date window is checked. The receipt and ledger credit commit
+together. Existing ledger rows retain their original amounts.
+
+[Revisions 045](../../backend/alembic/versions/202605310045_hr_leave_accrual_proration.py)
+and [046](../../backend/alembic/versions/202605310046_validate_hr_leave_proration.py)
+add opt-in proration to reviewed policies and optional eligible date bounds
+to accrual receipts. Both bounds are present for a prorated credit and must
+fall inside its requested period. Older and full-period receipts keep null
+bounds.
+
+[Revision 018](../../backend/alembic/versions/202605310018_hr_leave_rollover.py)
+adds an explicit, default-off expiry flag to leave policies and a rollover
+receipt keyed by employee, leave type and source year. Receipts link
+source and target transfer entries plus any expiry entry. Ledger writes
+and receipt creation share one employee lock and transaction.
+
 - Every table below has a UUID primary key named `id`. Requiredness of a foreign
   key is shown where present. The delete rule comes from PostgreSQL.
 - Calendar `revision` and HR `record_revision` counters default to 1. Services compare the
@@ -45,6 +75,8 @@ soft-delete column.
 | `hr_employees` | `line_manager_reviewer_id` → `hr_employees.id` (nullable, SET NULL)<br>`created_by_id` → `users.id` (nullable, SET NULL)<br>`department_id` → `hr_departments.id` (nullable, SET NULL)<br>`manager_employee_id` → `hr_employees.id` (nullable, SET NULL)<br>`position_id` → `hr_positions.id` (nullable, SET NULL)<br>`primary_project_id` → `projects.id` (nullable, SET NULL)<br>`updated_by_id` → `users.id` (nullable, SET NULL)<br>`user_id` → `users.id` (nullable, SET NULL)<br>`work_calendar_id` → `hr_work_calendars.id` (nullable, SET NULL) | `uq_hr_employees_employee_code`<br>`uq_hr_employees_user_id`<br>`uq_hr_employees_work_email`<br>`ix_hr_employees_employment_status`<br>`ix_hr_employees_full_name` | Yes |
 | `hr_employee_private` | `employee_id` → `hr_employees.id` (required, CASCADE)<br>`updated_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_employee_private_employee_id` | No |
 | `hr_employment_history` | `actor_user_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE) | `ix_hr_employment_history_employee_id` | No |
+| `hr_employment_periods` (local revision 029) | `employee_id` → `hr_employees.id` (required, RESTRICT)<br>`separation_case_id` → `hr_offboarding_cases.id`, `rehire_change_id` → `hr_employment_changes.id`, `onboarding_case_id` → `hr_onboarding_cases.id` (each nullable, unique, RESTRICT) | Employee, start date and ID. Partial unique index for one open period per employee | An open period requires a start date. A closed period requires a separation case and end date. A legacy start can remain unknown. |
+| `hr_employment_changes` (local revision 022) | `employee_id` → `hr_employees.id` (required, RESTRICT)<br>`proposed_by`, `decided_by`, `applied_by` → `users.id` (RESTRICT) | Employee/created index; independent-review and applied-revision checks. | No |
 | `hr_access_requests` | `admin_actioned_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`hr_approved_by_id` → `users.id` (nullable, SET NULL)<br>`linked_user_id` → `users.id` (nullable, SET NULL)<br>`requested_by_id` → `users.id` (nullable, SET NULL) | `ix_hr_access_requests_employee_id`<br>`ix_hr_access_requests_status` | No |
 
 ## Recruitment & onboarding
@@ -55,7 +87,7 @@ soft-delete column.
 | `hr_candidates` | `created_by_id` → `users.id` (nullable, SET NULL)<br>`resume_document_id` → `hr_documents.id` (nullable, SET NULL) | `uq_hr_candidates_candidate_code`<br>`ix_hr_candidates_email`<br>`ix_hr_candidates_full_name` | Yes |
 | `hr_applications` | `assigned_recruiter_id` → `users.id` (nullable, SET NULL)<br>`candidate_id` → `hr_candidates.id` (required, CASCADE)<br>`requisition_id` → `hr_requisitions.id` (required, CASCADE) | `uq_hr_application_req_cand`<br>`ix_hr_applications_stage` | No |
 | `hr_interviews` | `application_id` → `hr_applications.id` (required, CASCADE)<br>`interviewer_user_id` → `users.id` (nullable, SET NULL) | — | No |
-| `hr_offers` | `application_id` → `hr_applications.id` (required, CASCADE)<br>`approved_by_id` → `users.id` (nullable, SET NULL)<br>`converted_employee_id` → `hr_employees.id` (nullable, SET NULL)<br>`proposed_department_id` → `hr_departments.id` (nullable, SET NULL)<br>`proposed_position_id` → `hr_positions.id` (nullable, SET NULL)<br>`superseded_by_id` → `hr_offers.id` (nullable, SET NULL)<br>`supersedes_offer_id` → `hr_offers.id` (nullable, SET NULL) | `uq_hr_offers_offer_code`<br>`ix_hr_offers_status`<br>`ck_hr_offers_version_positive` (`version_number >= 1`) | No |
+| `hr_offers` | `document_version_id` → `hr_document_versions.id` (nullable, RESTRICT)<br>`application_id` → `hr_applications.id` (required, CASCADE)<br>`approved_by_id` → `users.id` (nullable, SET NULL)<br>`converted_employee_id` → `hr_employees.id` (nullable, SET NULL)<br>`proposed_department_id` → `hr_departments.id` (nullable, SET NULL)<br>`proposed_position_id` → `hr_positions.id` (nullable, SET NULL)<br>`superseded_by_id` → `hr_offers.id` (nullable, SET NULL)<br>`supersedes_offer_id` → `hr_offers.id` (nullable, SET NULL) | `uq_hr_offers_offer_code`<br>`ix_hr_offers_status`<br>`ck_hr_offers_version_positive` (`version_number >= 1`) | No |
 | `hr_onboarding_cases` | `employee_id` → `hr_employees.id` (required, CASCADE)<br>`offer_id` → `hr_offers.id` (nullable, SET NULL)<br>`owner_user_id` → `users.id` (nullable, SET NULL) | `ix_hr_onboarding_cases_employee_id` | No |
 | `hr_onboarding_tasks` | `assigned_user_id` → `users.id` (nullable, SET NULL)<br>`completed_by_id` → `users.id` (nullable, SET NULL)<br>`onboarding_case_id` → `hr_onboarding_cases.id` (required, CASCADE) | — | No |
 
@@ -66,7 +98,37 @@ soft-delete column.
 | `hr_documents` | `candidate_id` → `hr_candidates.id` (nullable, CASCADE)<br>`created_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (nullable, CASCADE) | `ix_hr_documents_employee_id`<br>`ix_hr_documents_expiry_date` | Yes |
 | `hr_document_versions` | `document_id` → `hr_documents.id` (required, CASCADE)<br>`uploaded_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_doc_version` | No |
 
+Pending [revision 038](../../backend/alembic/versions/202605310038_hr_application_withdrawal.py)
+adds nullable withdrawal date, reason, retention decision, policy reference,
+and review date to `hr_applications`. Existing applications retain their
+current stage. Previously withdrawn applications have no retroactively
+inferred decision. Related application, interview, and offer mutations
+serialize on the application row. The downgrade rejects recorded withdrawals.
+
+Pending [revision 039](../../backend/alembic/versions/202605310039_hr_candidate_correspondence.py)
+adds `hr_candidate_correspondence`, linked to its application, template,
+preparer and optional reviewer by restrictive foreign keys. Its decision
+constraint requires a reviewer distinct from the preparer and retains the
+time and encrypted reason for a rejected draft. The rendered subject and
+body are stored as encrypted text. The application/date index supports
+history queries. The downgrade rejects a populated correspondence ledger.
+
+Pending [revision 040](../../backend/alembic/versions/202605310040_index_hr_application_activity.py)
+adds a concurrent partial index on retained application events in
+`activity_log`. It indexes entity ID, event timestamp and event ID in
+history order. Application stages reuse the existing text column.
+The migration writes no new stage values and leaves historical events intact.
+
 ## Time, attendance & leave
+
+Pending [revision 037](../../backend/alembic/versions/202605310037_hr_roster_allocations.py)
+adds `hr_roster_allocations`. The employee, project, and calendar are required
+foreign keys, and an optional shift references the schedule override. Those
+references use `ON DELETE RESTRICT`. Creator and cancellation actors use
+`ON DELETE SET NULL`. The cancellation reason and time are stored together.
+Range reads use the work-date index and allocation mutations serialize on the
+employee row before checking active overlaps with the employee/start index.
+The migration creates an empty table and the downgrade rejects retained rows.
 
 | Table | Foreign keys | Additional keys and indexes | Soft-delete column |
 | --- | --- | --- | --- |
@@ -78,7 +140,7 @@ soft-delete column.
 | `hr_timesheets` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`manager_recommended_by_id` → `users.id` (nullable, SET NULL)<br>`project_id` → `projects.id` (nullable, SET NULL)<br>`submitted_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_timesheet_emp_period` | No |
 | `hr_overtime_requests` | `decided_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`manager_recommended_by_id` → `users.id` (nullable, SET NULL)<br>`project_id` → `projects.id` (nullable, SET NULL)<br>`requested_by_id` → `users.id` (nullable, SET NULL) | — | No |
 | `hr_leave_types` | — | `uq_hr_leave_types_code` | No |
-| `hr_leave_policies` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`leave_type_id` → `hr_leave_types.id` (required, CASCADE) | `uq_hr_leave_policies_code` | No |
+| `hr_leave_policies` | `approved_by_id` and `created_by_id` → `users.id` (nullable, SET NULL)<br>`leave_type_id` → `hr_leave_types.id` (required, CASCADE) | `uq_hr_leave_policies_code` | No |
 | `hr_leave_ledger` | `actor_user_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`leave_type_id` → `hr_leave_types.id` (required, RESTRICT)<br>`reference_request_id` → `hr_leave_requests.id` (nullable, SET NULL) | `ix_hr_leave_ledger_employee_id` | No |
 | `hr_leave_requests` | `attachment_document_id` → `hr_documents.id` (nullable, SET NULL)<br>`decided_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`leave_type_id` → `hr_leave_types.id` (required, RESTRICT)<br>`manager_recommended_by_id` → `users.id` (nullable, SET NULL)<br>`requested_by_id` → `users.id` (nullable, SET NULL) | `ix_hr_leave_requests_employee_id`<br>`ix_hr_leave_requests_status` | No |
 
@@ -88,10 +150,21 @@ soft-delete column.
 | --- | --- | --- | --- |
 | `hr_policy_documents` | `document_id` → `hr_documents.id` (nullable, SET NULL)<br>`published_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_policy_documents_code` | No |
 | `hr_policy_acknowledgements` | `acknowledged_by_user_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`policy_id` → `hr_policy_documents.id` (required, CASCADE) | `uq_hr_policy_ack_emp` | No |
+
+[Revision 041](../../backend/alembic/versions/202605310041_hr_policy_edition_binding.py)
+adds nullable document-version and preceding-edition references.
+The composite foreign key binds the document and version number to one vault
+record. [Revision 042](../../backend/alembic/versions/202605310042_validate_hr_policy_edition.py)
+validates both foreign keys and the version check. Existing links and
+receipts keep their original values. HR reviews previously unpinned
+file references before publishing a replacement.
 | `hr_letter_templates` | — | `uq_hr_letter_templates_code` | No |
-| `hr_hr_requests` | `assigned_to_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`generated_document_id` → `hr_documents.id` (nullable, SET NULL)<br>`resolved_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_hr_requests_request_code`<br>`ix_hr_hr_requests_status` | No |
+| `hr_issued_letters` (local revision 019) | `employee_id` → `hr_employees.id` (required, RESTRICT)<br>`template_id` → `hr_letter_templates.id` (required, RESTRICT)<br>`prepared_by` → `users.id` (required, RESTRICT)<br>`decided_by` → `users.id` (nullable until decision, RESTRICT) | `ix_hr_issued_letters_employee_created`<br>Check requires distinct reviewer and decision timestamp for terminal states. | No |
+| `hr_hr_requests` | `assigned_to_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`generated_document_id` → `hr_documents.id` (nullable, SET NULL)<br>`generated_letter_id` → `hr_issued_letters.id` (nullable, RESTRICT, local revisions 020/021)<br>`resolved_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_hr_requests_request_code`<br>`ix_hr_hr_requests_status` | No |
 | `hr_offboarding_cases` | `completed_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`initiated_by_id` → `users.id` (nullable, SET NULL) | `ix_hr_offboarding_cases_employee_id` | No |
 | `hr_clearance_steps` | `assigned_user_id` → `users.id` (nullable, SET NULL)<br>`cleared_by_id` → `users.id` (nullable, SET NULL)<br>`offboarding_case_id` → `hr_offboarding_cases.id` (required, CASCADE) | — | No |
+| `hr_offboarding_custody` (local revisions 028, 030 and 031) | `case_id` → `hr_offboarding_cases.id` (required, RESTRICT)<br>`movement_id` → `inventory_movements.id` (nullable, unique, RESTRICT)<br>`recorded_by_id` → `users.id` (required, RESTRICT) | `ix_hr_offboarding_custody_case_recorded` on case, timestamp and ID | Unique case and opaque evidence reference. Store return events require a movement. IT device events require a device reference. IT sign-off is case-wide and omits the device reference. |
+| `hr_separation_settlements` (local revision 032) | `case_id` → `hr_offboarding_cases.id` (required, RESTRICT)<br>`proposed_by_id` and `reviewed_by_id` → `users.id` (RESTRICT) | Case, timestamp and ID. Partial unique index for one proposed outcome per case | Unique case and opaque evidence reference. A final review requires a separate actor, timestamp and reference. |
 
 ## P2 governance & policy-gated modules
 
@@ -100,15 +173,21 @@ soft-delete column.
 | `hr_goals` | `employee_id` → `hr_employees.id` (required, CASCADE) | — | No |
 | `hr_review_cycles` | — | `uq_hr_review_cycles_code` | No |
 | `hr_reviews` | `cycle_id` → `hr_review_cycles.id` (required, CASCADE)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`reviewer_employee_id` → `hr_employees.id` (nullable, SET NULL) | — | No |
+| `hr_performance_events` (local revision 035) | `review_id` and `actor_id` (required, RESTRICT) | Unique review and revision | Retained actions, narrative notes, optional rating labels and former/replacement reviewer IDs (revision 036). Corrections append an event. |
 | `hr_training_courses` | — | `uq_hr_training_courses_code` | No |
 | `hr_training_enrollments` | `course_id` → `hr_training_courses.id` (required, CASCADE)<br>`employee_id` → `hr_employees.id` (required, CASCADE) | — | No |
 | `hr_certifications` | `document_id` → `hr_documents.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE) | `ix_hr_certifications_expiry_date` | No |
+| `hr_training_completions` (local revision 033) | `enrollment_id` → `hr_training_enrollments.id`, `certificate_id` → `hr_certifications.id`, `document_version_id` → `hr_document_versions.id`, `verified_by_id` → `users.id` (all required, RESTRICT) | Primary key on enrollment | Certificate and document version are independently unique. |
+| `hr_training_requirements` (local revision 034) | Course (required), HR position and project site (at least one required), all RESTRICT | Unique tuple across course, position and project. Null scopes compare equal | A combined rule matches both assignments. Deactivation retains the rule record. |
 | `hr_benefit_types` | — | `uq_hr_benefit_types_code` | No |
 | `hr_employee_benefits` | `benefit_type_id` → `hr_benefit_types.id` (required, CASCADE)<br>`employee_id` → `hr_employees.id` (required, CASCADE) | — | No |
 | `hr_reimbursement_claims` | `decided_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE)<br>`receipt_document_id` → `hr_documents.id` (nullable, SET NULL) | `uq_hr_reimbursement_claims_claim_code` | No |
 | `hr_compensation_terms` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (required, CASCADE) | — | No |
 | `hr_payroll_policies` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`second_approved_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_payroll_policies_code` | No |
 | `hr_payroll_periods` | — | `uq_hr_payroll_periods_period_code` | No |
-| `hr_payroll_runs` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`payroll_period_id` → `hr_payroll_periods.id` (required, CASCADE)<br>`policy_id` → `hr_payroll_policies.id` (nullable, SET NULL)<br>`prepared_by_id` → `users.id` (nullable, SET NULL) | — | No |
-| `hr_payroll_lines` | `employee_id` → `hr_employees.id` (required, CASCADE)<br>`payroll_run_id` → `hr_payroll_runs.id` (required, CASCADE) | — | No |
+| `hr_payroll_runs` | `approved_by_id` → `users.id` (nullable, SET NULL)<br>`payroll_period_id` → `hr_payroll_periods.id` (required, CASCADE)<br>`policy_id` → `hr_payroll_policies.id` (nullable, SET NULL)<br>`prepared_by_id` → `users.id` (nullable, SET NULL) | Local revision 023 adds nullable `snapshot_encrypted`. | No |
+| `hr_payroll_lines` | `employee_id` → `hr_employees.id` (required, CASCADE)<br>`payroll_run_id` → `hr_payroll_runs.id` (required, CASCADE) | Local revision 025 adds `ix_hr_payroll_lines_run_employee`. | No |
+| `hr_payslip_publications` (local revision 024) | `run_id` → `hr_payroll_runs.id` (required, RESTRICT)<br>`published_by_id` → `users.id` (required, RESTRICT) | One receipt per run. Contains the approved snapshot digest and publication timestamp. | No |
+| `hr_payroll_exports` (local revision 026) | `run_id` → `hr_payroll_runs.id` (required, RESTRICT)<br>`exported_by_id` → `users.id` (required, RESTRICT) | One receipt per run. Stores snapshot digest, exact file SHA-256, format version, actor and export timestamp. | No |
+| `hr_payroll_settlement_events` (local revision 027) | `run_id` → `hr_payroll_exports.run_id`<br>`payment_reference` → `hr_payroll_lines.id`<br>`reverses_event_id` → the original event<br>`recorded_by_id` → `users.id` (all RESTRICT) | Unique event UUID and keyed evidence digest. Encrypted amount and evidence. Index on run and recorded timestamp. | No |
 | `hr_cases` | `closed_by_id` → `users.id` (nullable, SET NULL)<br>`employee_id` → `hr_employees.id` (nullable, SET NULL)<br>`opened_by_id` → `users.id` (nullable, SET NULL) | `uq_hr_cases_case_code` | No |

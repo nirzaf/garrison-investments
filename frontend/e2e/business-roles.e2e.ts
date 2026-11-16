@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -53,6 +56,7 @@ interface SeededAccount {
   email: string;
   password: string;
   projectId: string;
+  projectCode: string;
 }
 
 interface LoginResult {
@@ -519,47 +523,520 @@ test('HR Manager creates a draft in the workspace and it persists across reload'
   await expect(page.getByText(/not linked|no employee/i).first()).toBeVisible();
 });
 
-test('HR saves a letter template and previews it with employee records', async ({
+test('independent HR Managers approve and apply an effective-dated employment change', async ({
   page,
+  browser,
+  request
+}) => {
+  const creator = await signIn(page, seedAccount('hr_manager'));
+  const code = `EMP-CHANGE-${Date.now()}`;
+  const headers = { Authorization: `Bearer ${creator.accessToken}` };
+  const created = await request.post('/api/v1/hr/employees', {
+    headers,
+    data: {
+      employee_code: code,
+      first_name: 'Synthetic',
+      last_name: 'Transfer',
+      employment_status: 'active',
+      join_date: '2025-01-01',
+      work_location: 'Original site'
+    }
+  });
+  expect(created.status()).toBe(201);
+  const employee = (await created.json()) as { id: string; record_revision: number };
+  const employeePath = `/api/v1/hr/employees/${employee.id}`;
+  const effective = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
+
+  async function openEmployee(target: Page) {
+    await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await target.getByRole('button', { name: 'Directory & Org' }).click();
+    await target.getByLabel('Search employees').fill(code);
+    await target
+      .getByRole('row')
+      .filter({ hasText: code })
+      .getByRole('button', { name: 'Inspect' })
+      .click();
+    await target.getByText('Reviewed employment changes', { exact: true }).click();
+  }
+
+  await openEmployee(page);
+  await page.getByLabel('New work location (optional)').fill('Synthetic new site');
+  await page.getByLabel('Effective date', { exact: true }).fill(effective);
+  await page.getByLabel('Employment change reason').fill('Synthetic site transfer');
+  await page.getByRole('button', { name: 'Propose employment change' }).click();
+  await expect(page.getByRole('heading', { name: /Transfer .* proposed/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve employment change' })).toHaveCount(0);
+
+  const reviewerContext = await browser.newContext();
+  try {
+    const reviewerPage = await reviewerContext.newPage();
+    const reviewer = await signIn(reviewerPage, seedAccount('hr_manager'));
+    await openEmployee(reviewerPage);
+    await reviewerPage.getByRole('button', { name: 'Approve employment change' }).click();
+    await expect(reviewerPage.getByRole('heading', { name: /Transfer .* approved/ })).toBeVisible();
+    let current = await request.get(employeePath, { headers });
+    expect(await current.json()).toMatchObject({
+      work_location: 'Original site',
+      record_revision: employee.record_revision
+    });
+    await reviewerPage.getByRole('button', { name: 'Apply due employment change' }).click();
+    await expect(reviewerPage.getByRole('heading', { name: /Transfer .* applied/ })).toBeVisible();
+    current = await request.get(employeePath, { headers });
+    expect(await current.json()).toMatchObject({
+      work_location: 'Synthetic new site',
+      record_revision: employee.record_revision + 1
+    });
+    await reviewerPage.reload();
+    await openEmployee(reviewerPage);
+    await expect(reviewerPage.getByRole('heading', { name: /Transfer .* applied/ })).toBeVisible();
+
+    const cli = (token: string, action: string, args: string[]) =>
+      JSON.parse(
+        execFileSync(
+          PYTHON_BIN,
+          [
+            '-m',
+            'scripts.garrisonctl',
+            'hr',
+            'employees',
+            'changes',
+            action,
+            '--employee-id',
+            employee.id,
+            ...args,
+            '--json'
+          ],
+          {
+            cwd: BACKEND_DIR,
+            encoding: 'utf8',
+            env: {
+              ...env,
+              GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+              GARRISON_ENVIRONMENT: 'test',
+              GARRISON_ACCESS_TOKEN: token
+            }
+          }
+        )
+      ).data;
+    const confirm = (token: string, action: string, args: string[]) => {
+      const plan = cli(token, action, [...args, '--dry-run']);
+      return cli(token, action, [...args, '--apply', '--expect', plan.plan_sha256]);
+    };
+    const temp = mkdtempSync(join(tmpdir(), 'garrison-employment-test-'));
+    try {
+      const file = join(temp, 'proposal.json');
+      writeFileSync(
+        file,
+        JSON.stringify({
+          change_type: 'category_amendment',
+          effective_date: effective,
+          reason: 'Synthetic category amendment',
+          updates: { employment_category: 'contract' }
+        }),
+        { mode: 0o600 }
+      );
+      const amendment = confirm(creator.accessToken, 'propose', ['--file', file]);
+      expect(amendment.status).toBe('proposed');
+      const changeId = ['--change-id', amendment.id];
+      expect(
+        confirm(reviewer.accessToken, 'decide', [...changeId, '--decision', 'approved']).status
+      ).toBe('approved');
+      expect(confirm(reviewer.accessToken, 'apply', changeId).status).toBe('applied');
+      expect(cli(reviewer.accessToken, 'list', []).items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: amendment.id, status: 'applied' })])
+      );
+      const applied = await request.get(employeePath, { headers });
+      expect(await applied.json()).toMatchObject({
+        employment_category: 'contract',
+        record_revision: employee.record_revision + 2
+      });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+    async function uploadContract(title: string, expiryDate: string) {
+      const uploaded = await request.post('/api/v1/hr/documents', {
+        headers,
+        multipart: {
+          title,
+          document_type: 'contract',
+          category: 'confidential',
+          employee_id: employee.id,
+          expiry_date: expiryDate,
+          file: {
+            name: 'synthetic-contract.pdf',
+            mimeType: 'application/pdf',
+            buffer: Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF')
+          }
+        }
+      });
+      expect(uploaded.status()).toBe(201);
+      const documentId = (await uploaded.json()).id as string;
+      const evidence = await request.post(
+        `/api/v1/hr/documents/${documentId}/versions/1/decision`,
+        {
+          headers: { Authorization: `Bearer ${reviewer.accessToken}` },
+          data: { decision: 'approve' }
+        }
+      );
+      expect(evidence.status()).toBe(200);
+      return documentId;
+    }
+    const shiftDate = (days: number) =>
+      new Date(Date.parse(`${effective}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+    const currentContract = await uploadContract('Previous synthetic contract', shiftDate(-1));
+    const renewalExpiry = shiftDate(180);
+    const renewalContract = await uploadContract('Renewed synthetic contract', renewalExpiry);
+    await page.reload();
+    await openEmployee(page);
+    await page.getByLabel('Change type').selectOption('contract_renewal');
+    await page.getByLabel('Current contract version').selectOption(`${currentContract}:1`);
+    await page.getByLabel('Renewal contract version').selectOption(`${renewalContract}:1`);
+    await page.getByLabel('Effective date', { exact: true }).fill(effective);
+    await page.getByLabel('Employment change reason').fill('Synthetic contract renewal');
+    await page.getByRole('button', { name: 'Propose employment change' }).click();
+    await expect(page.getByRole('heading', { name: /Contract renewal .* proposed/ })).toBeVisible();
+    await reviewerPage.reload();
+    await openEmployee(reviewerPage);
+    const renewal = reviewerPage
+      .getByRole('article')
+      .filter({ hasText: /Contract renewal .* proposed/ });
+    await expect(
+      renewal.getByRole('button', { name: 'Open renewal contract evidence · version 1' })
+    ).toBeVisible();
+    await renewal.getByRole('button', { name: 'Approve employment change' }).click();
+    const approvedRenewal = reviewerPage
+      .getByRole('article')
+      .filter({ hasText: /Contract renewal .* approved/ });
+    await approvedRenewal.getByRole('button', { name: 'Apply due employment change' }).click();
+    await expect(
+      reviewerPage.getByRole('heading', { name: /Contract renewal .* applied/ })
+    ).toBeVisible();
+    const history = await request.get(`${employeePath}/history`, { headers });
+    expect((await history.json()).items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          change_type: 'contract_renewal',
+          new_snapshot: expect.objectContaining({
+            renewal_contract_document_id: renewalContract,
+            renewal_contract_version: 1,
+            contract_end_date: renewalExpiry
+          })
+        })
+      ])
+    );
+  } finally {
+    await reviewerContext.close();
+  }
+});
+
+test('employees can open their own published payslip in My HR', async ({
+  page,
+  browser,
+  request
+}) => {
+  const contractor = seedAccount('quantity_surveyor');
+  const colleague = seedAccount('quantity_surveyor');
+  const maker = await signIn(page, seedAccount('hr_manager'));
+  const directorContext = await browser.newContext();
+  const reviewerContext = await browser.newContext();
+  const ownerContext = await browser.newContext();
+  const otherContext = await browser.newContext();
+  try {
+    const director = await signIn(await directorContext.newPage(), seedAccount());
+    const reviewer = await signIn(await reviewerContext.newPage(), seedAccount('hr_manager'));
+    const ownerPage = await ownerContext.newPage();
+    const owner = await signIn(ownerPage, contractor);
+    const otherPage = await otherContext.newPage();
+    const other = await signIn(otherPage, colleague);
+    async function link(account: SeededAccount, session: LoginResult) {
+      const employee = await request.post('/api/v1/hr/employees', {
+        headers: { Authorization: `Bearer ${maker.accessToken}` },
+        data: {
+          employee_code: `PAYSLIP-${session.userId.slice(0, 12)}`,
+          first_name: 'Synthetic',
+          last_name: 'Payslip',
+          employment_status: 'active',
+          join_date: '2025-01-01',
+          work_email: account.email
+        }
+      });
+      expect(employee.status()).toBe(201);
+      const employeeId = (await employee.json()).id as string;
+      const linked = await request.post(`/api/v1/hr/employees/${employeeId}/link-account`, {
+        headers: { Authorization: `Bearer ${director.accessToken}` },
+        data: { user_id: session.userId }
+      });
+      expect(linked.status()).toBe(200);
+      return employeeId;
+    }
+    const employeeId = await link(contractor, owner);
+    await link(colleague, other);
+    await ownerPage.getByRole('link', { name: 'My HR', exact: true }).click();
+    await ownerPage.getByText('My payslips', { exact: true }).click();
+    await expect(ownerPage.getByText('No payslips have been published for you.')).toBeVisible();
+    const seedOutput = execFileSync(
+      PYTHON_BIN,
+      [
+        '-m',
+        'tests.browser_fixtures',
+        'seed-employee-payslip',
+        '--employee-id',
+        employeeId,
+        '--maker-id',
+        maker.userId,
+        '--reviewer-id',
+        reviewer.userId
+      ],
+      { cwd: BACKEND_DIR, encoding: 'utf8' }
+    ).trim();
+    const { runId } = JSON.parse(seedOutput.slice(seedOutput.lastIndexOf('\n') + 1)) as {
+      runId: string;
+    };
+    expect(runId).toBeTruthy();
+    await ownerPage.reload();
+    await ownerPage.getByText('My payslips', { exact: true }).click();
+    await ownerPage
+      .getByRole('button', { name: 'Open payslip for 2025-01-01 to 2025-01-31' })
+      .click();
+    const slip = ownerPage
+      .getByRole('article')
+      .filter({ hasText: 'Payslip for 2025-01-01 to 2025-01-31' });
+    await expect(slip.getByText('LKR 100.05', { exact: true })).toBeVisible();
+    await expect(slip.getByText('LKR 10.01', { exact: true })).toBeVisible();
+    await expect(slip.getByText('LKR 90.04', { exact: true })).toBeVisible();
+    await slip.getByRole('button', { name: 'Close payslip' }).click();
+    await expect(slip).toHaveCount(0);
+
+    await otherPage.getByRole('link', { name: 'My HR', exact: true }).click();
+    await otherPage.getByText('My payslips', { exact: true }).click();
+    await expect(otherPage.getByText('No payslips have been published for you.')).toBeVisible();
+    const forbidden = await request.get(`/api/v1/hr/me/payslips/${runId}`, {
+      headers: { Authorization: `Bearer ${other.accessToken}` }
+    });
+    expect(forbidden.status()).toBe(404);
+    const cli = JSON.parse(
+      execFileSync(
+        PYTHON_BIN,
+        ['-m', 'scripts.garrisonctl', 'hr', 'payslip', 'show', '--run-id', runId, '--json'],
+        {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: owner.accessToken
+          }
+        }
+      )
+    );
+    expect(cli.data).toMatchObject({ run_id: runId, currency: 'LKR', net: '90.04' });
+  } finally {
+    await Promise.all([
+      directorContext.close(),
+      reviewerContext.close(),
+      ownerContext.close(),
+      otherContext.close()
+    ]);
+  }
+});
+
+test('HR previews and retains a letter for independent issuance and employee retrieval', async ({
+  page,
+  browser,
   request
 }) => {
   const session = await signIn(page, seedAccount('hr_manager'));
+  const worker = seedAccount('quantity_surveyor');
   const code = `LETTER-${Date.now()}`;
   const employee = await request.post('/api/v1/hr/employees', {
     headers: { Authorization: `Bearer ${session.accessToken}` },
-    data: { employee_code: code, first_name: 'Synthetic', last_name: 'Letter Employee' }
+    data: {
+      employee_code: code,
+      first_name: 'Synthetic',
+      last_name: 'Letter Employee',
+      work_email: worker.email,
+      employment_status: 'active'
+    }
   });
   expect(employee.status()).toBe(201);
   const employeeId = (await employee.json()).id as string;
+  const directorContext = await browser.newContext();
+  const workerContext = await browser.newContext();
+  const reviewerContext = await browser.newContext();
+  try {
+    const director = await signIn(await directorContext.newPage(), seedAccount());
+    const workerPage = await workerContext.newPage();
+    const linkedUser = await signIn(workerPage, worker);
+    const link = await request.post(`/api/v1/hr/employees/${employeeId}/link-account`, {
+      headers: { Authorization: `Bearer ${director.accessToken}` },
+      data: { user_id: linkedUser.userId }
+    });
+    expect(link.status()).toBe(200);
+    await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await page.getByRole('button', { name: 'Policies & Requests' }).click();
+    await page.getByLabel('Template code', { exact: true }).fill(code);
+    await page.getByLabel('Template name', { exact: true }).fill('Employment verification');
+    const subject = page.getByLabel('Letter subject template');
+    await subject.fill('Confirmation for {full_name');
+    await page
+      .getByLabel('Letter body template')
+      .fill('Employee {employee_code} requests {purpose}.');
+    await page.getByRole('button', { name: 'Save letter template' }).click();
+    await expect(page.getByText(/use named placeholders/i)).toBeVisible();
+    await expect(page.getByLabel('Template code', { exact: true })).toHaveValue(code);
+    await subject.fill('Confirmation for {full_name}');
+    await page.getByRole('button', { name: 'Save letter template' }).click();
+    await expect(page.getByText('Letter template saved.')).toBeVisible();
 
-  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
-  await page.getByRole('button', { name: 'Policies & Requests' }).click();
-  await page.getByLabel('Template code', { exact: true }).fill(code);
-  await page.getByLabel('Template name', { exact: true }).fill('Employment verification');
-  const subject = page.getByLabel('Letter subject template');
-  await subject.fill('Confirmation for {full_name');
-  await page
-    .getByLabel('Letter body template')
-    .fill('Employee {employee_code} requests {purpose}.');
-  await page.getByRole('button', { name: 'Save letter template' }).click();
-  await expect(page.getByText(/use named placeholders/i)).toBeVisible();
-  await expect(page.getByLabel('Template code', { exact: true })).toHaveValue(code);
-  await subject.fill('Confirmation for {full_name}');
-  await page.getByRole('button', { name: 'Save letter template' }).click();
-  await expect(page.getByText('Letter template saved.')).toBeVisible();
+    await page.reload();
+    await page.getByRole('button', { name: 'Policies & Requests' }).click();
+    await page.getByRole('combobox', { name: 'Letter template', exact: true }).selectOption({
+      label: `${code} · Employment verification`
+    });
+    await page.getByLabel('Find employee by name or code').fill(code);
+    await page.getByRole('button', { name: 'Find employee', exact: true }).click();
+    await page
+      .getByRole('combobox', { name: 'Letter employee', exact: true })
+      .selectOption(employeeId);
+    await page.getByLabel('purpose', { exact: true }).fill('a <b>staff</b> record');
+    await page.getByRole('button', { name: 'Preview letter' }).click();
+    await expect(page.getByText('Confirmation for Synthetic Letter Employee')).toBeVisible();
+    await expect(page.getByText(`Employee ${code} requests a <b>staff</b> record.`)).toBeVisible();
+    await page.getByRole('button', { name: 'Save draft for independent review' }).click();
+    await expect(page.getByText('Letter draft saved for review.')).toBeVisible();
+    await page.getByRole('button', { name: /Employment verification · draft/ }).click();
+    await expect(page.getByRole('button', { name: 'Approve and issue letter' })).toHaveCount(0);
+    await workerPage.getByRole('link', { name: 'My HR', exact: true }).click();
+    await expect(workerPage.getByText('No HR letters are available.')).toBeVisible();
+    const requestSubject = `Employment letter ${code}`;
+    await workerPage.getByPlaceholder('Subject', { exact: true }).fill(requestSubject);
+    await workerPage.getByRole('button', { name: 'Submit request', exact: true }).click();
+    await expect(
+      workerPage.getByText('HR service request submitted.', { exact: true })
+    ).toBeVisible();
 
-  await page.reload();
-  await page.getByRole('button', { name: 'Policies & Requests' }).click();
-  await page.getByRole('combobox', { name: 'Letter template', exact: true }).selectOption({
-    label: `${code} · Employment verification`
-  });
-  await page.getByLabel('Find employee by name or code').fill(code);
-  await page.getByRole('button', { name: 'Find employee', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Letter employee', exact: true }).selectOption(employeeId);
-  await page.getByLabel('purpose', { exact: true }).fill('a staff record');
-  await page.getByRole('button', { name: 'Preview letter' }).click();
-  await expect(page.getByText('Confirmation for Synthetic Letter Employee')).toBeVisible();
-  await expect(page.getByText(`Employee ${code} requests a staff record.`)).toBeVisible();
+    const reviewer = await reviewerContext.newPage();
+    await signIn(reviewer, seedAccount('hr_manager'));
+    await reviewer.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await reviewer.getByRole('button', { name: 'Policies & Requests' }).click();
+    await reviewer.getByLabel('Find employee by name or code').fill(code);
+    await reviewer.getByRole('button', { name: 'Find employee', exact: true }).click();
+    await reviewer
+      .getByRole('combobox', { name: 'Letter employee', exact: true })
+      .selectOption(employeeId);
+    await reviewer.getByRole('button', { name: /Employment verification · draft/ }).click();
+    await expect(
+      reviewer.getByText(`Employee ${code} requests a <b>staff</b> record.`)
+    ).toBeVisible();
+    await reviewer.getByRole('button', { name: 'Approve and issue letter' }).click();
+    await expect(
+      reviewer.getByRole('button', { name: /Employment verification · issued/ })
+    ).toBeVisible();
+
+    await workerPage.reload();
+    await workerPage.getByRole('button', { name: /Employment verification · issued/ }).click();
+    await expect(
+      workerPage.getByText(`Employee ${code} requests a <b>staff</b> record.`)
+    ).toBeVisible();
+    await expect(workerPage.getByRole('button', { name: 'Approve and issue letter' })).toHaveCount(
+      0
+    );
+    const runAsEmployee = (...args: string[]) =>
+      JSON.parse(
+        execFileSync(PYTHON_BIN, ['-m', 'scripts.garrisonctl', 'hr', 'letter', ...args, '--json'], {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: linkedUser.accessToken
+          }
+        })
+      );
+    const letterId = runAsEmployee('list').data.items[0].id as string;
+    expect(runAsEmployee('show', '--letter-id', letterId).data).toMatchObject({
+      id: letterId,
+      status: 'issued',
+      body: `Employee ${code} requests a <b>staff</b> record.`
+    });
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Policies & Requests' }).click();
+    const requestCard = page.getByText(requestSubject).locator('..');
+    await requestCard.getByRole('button', { name: 'Start review' }).click();
+    await requestCard.getByText('Attach issued letter', { exact: true }).click();
+    await requestCard.getByLabel('Issued response letter').selectOption(letterId);
+    await requestCard.getByRole('button', { name: 'Preview selected response letter' }).click();
+    await expect(
+      requestCard.getByText(`Employee ${code} requests a <b>staff</b> record.`)
+    ).toBeVisible();
+    await requestCard.getByRole('button', { name: 'Complete request' }).click();
+    await expect(requestCard).toContainText('(completed)');
+    await workerPage.reload();
+    const completedRequest = workerPage.getByText(requestSubject).locator('..');
+    await completedRequest.getByRole('button', { name: 'Open response letter' }).click();
+    await expect(
+      completedRequest.getByText(`Employee ${code} requests a <b>staff</b> record.`)
+    ).toBeVisible();
+    await completedRequest.getByRole('button', { name: /Reopen request/ }).click();
+    await expect(
+      workerPage.getByText('HR service request reopened.', { exact: true })
+    ).toBeVisible();
+    await workerPage.reload();
+    await expect(
+      completedRequest.getByRole('button', { name: 'Open response letter' })
+    ).toBeVisible();
+    const requests = await request.get('/api/v1/hr/me/requests', {
+      headers: { Authorization: `Bearer ${linkedUser.accessToken}` }
+    });
+    const reopened = (await requests.json()).items.find(
+      (row: { subject: string }) => row.subject === requestSubject
+    );
+    expect(reopened).toMatchObject({ status: 'open', generated_letter_id: letterId });
+    await page.reload();
+    await page.getByRole('button', { name: 'Policies & Requests' }).click();
+    await requestCard.getByRole('button', { name: 'Start review' }).click();
+    await expect(requestCard).toContainText('(in_review)');
+    const runCompletion = (...mode: string[]) =>
+      JSON.parse(
+        execFileSync(
+          PYTHON_BIN,
+          [
+            '-m',
+            'scripts.garrisonctl',
+            'hr',
+            'request',
+            'complete',
+            '--request-id',
+            reopened.id,
+            '--letter-id',
+            letterId,
+            ...mode,
+            '--json'
+          ],
+          {
+            cwd: BACKEND_DIR,
+            encoding: 'utf8',
+            env: {
+              ...env,
+              GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+              GARRISON_ENVIRONMENT: 'test',
+              GARRISON_ACCESS_TOKEN: session.accessToken
+            }
+          }
+        )
+      );
+    const completionPlan = runCompletion('--dry-run').data;
+    expect(completionPlan.proposed.generated_letter_id).toBe(letterId);
+    expect(runCompletion('--apply', '--expect', completionPlan.plan_sha256).data).toMatchObject({
+      status: 'completed',
+      generated_letter_id: letterId
+    });
+  } finally {
+    await Promise.all([directorContext.close(), workerContext.close(), reviewerContext.close()]);
+  }
 });
 
 test('candidate CVs stay private through upload, independent review and download', async ({
@@ -614,6 +1091,7 @@ test('candidate CVs stay private through upload, independent review and download
 });
 
 test('HR Manager creates a multi-headcount requisition, rejects it with a reason, and reissues an offer', async ({
+  browser,
   page,
   request
 }) => {
@@ -641,7 +1119,7 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
   // Prepare an evaluated application so offer creation and versioning can be exercised in the browser.
   const openReq = await request.post('/api/v1/hr/requisitions', {
     headers,
-    data: { requisition_code: `REQ-O-${unique}`, title: 'MEP Lead', headcount_requested: 2 }
+    data: { requisition_code: `REQ-O-${unique}`, title: 'MEP Lead', headcount_requested: 1 }
   });
   expect(openReq.status()).toBe(201);
   const openReqId = (await openReq.json()).id as string;
@@ -660,12 +1138,23 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
     data: { candidate_code: `CAND-UI-${unique}`, full_name: `Candidate ${unique}` }
   });
   expect(candidate.status()).toBe(201);
+  const candidateId = (await candidate.json()).id as string;
   const application = await request.post('/api/v1/hr/applications', {
     headers,
-    data: { requisition_id: openReqId, candidate_id: (await candidate.json()).id }
+    data: { requisition_id: openReqId, candidate_id: candidateId }
   });
   expect(application.status()).toBe(201);
   const appId = (await application.json()).id as string;
+  for (const stage of ['screening', 'shortlisted', 'interview']) {
+    expect(
+      (
+        await request.patch(`/api/v1/hr/applications/${appId}/stage`, {
+          headers,
+          data: { stage }
+        })
+      ).status()
+    ).toBe(200);
+  }
   const interview = await request.post('/api/v1/hr/interviews', {
     headers,
     data: { application_id: appId, interview_type: 'technical' }
@@ -679,20 +1168,51 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
       })
     ).status()
   ).toBe(200);
-  for (const stage of ['screening', 'interview', 'evaluation']) {
-    expect(
-      (
-        await request.patch(`/api/v1/hr/applications/${appId}/stage`, {
-          headers,
-          data: { stage }
-        })
-      ).status()
-    ).toBe(200);
-  }
+  expect(
+    (
+      await request.patch(`/api/v1/hr/applications/${appId}/stage`, {
+        headers,
+        data: { stage: 'evaluation' }
+      })
+    ).status()
+  ).toBe(200);
 
   await page.reload();
   await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
   await expect(reqItem).toContainText('Headcount 3 · rejected · Rejected: Budget deferred for Q4.');
+  const reviewerContext = await browser.newContext();
+  const reviewerPage = await reviewerContext.newPage();
+  const reviewer = await signIn(reviewerPage, seedAccount('hr_manager'));
+  const reviewerHeaders = { Authorization: `Bearer ${reviewer.accessToken}` };
+  await reviewerContext.close();
+
+  const fileForm = page.getByRole('combobox', { name: 'Offer file candidate', exact: true });
+  await fileForm.selectOption(candidateId);
+  const firstPdf = Buffer.from('%PDF-1.4\nOriginal offer terms\n%%EOF');
+  await page.getByLabel('Offer file (PDF, up to 60 MiB)').setInputFiles({
+    name: 'original-offer.pdf',
+    mimeType: 'application/pdf',
+    buffer: firstPdf
+  });
+  await page.getByRole('button', { name: 'Upload offer file', exact: true }).click();
+  await expect(page.getByText('original-offer.pdf · version 1 · pending')).toBeVisible();
+  const uploaded = await request.get('/api/v1/hr/documents', {
+    headers,
+    params: { candidate_id: candidateId, document_type: 'candidate_offer' }
+  });
+  expect(uploaded.ok()).toBeTruthy();
+  const docId = (await uploaded.json()).items[0].id as string;
+  const approve = async (version: number) => {
+    const decision = await request.post(
+      `/api/v1/hr/documents/${docId}/versions/${version}/decision`,
+      {
+        headers: reviewerHeaders,
+        data: { decision: 'approve' }
+      }
+    );
+    expect(decision.ok()).toBeTruthy();
+  };
+  await approve(1);
 
   const deadline = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   const createForm = page
@@ -702,6 +1222,9 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
   await createForm.getByLabel('Reference code').fill(`OFR-UI-${unique}`);
   await createForm.getByLabel('Proposed title').fill('Junior MEP Lead');
   await createForm.locator('select[name="application"]').selectOption(appId);
+  const initialFile = createForm.getByLabel('Approved offer PDF');
+  await expect(initialFile.getByRole('option', { name: 'original-offer.pdf · v1' })).toBeAttached();
+  await initialFile.selectOption({ label: 'original-offer.pdf · v1' });
   await createForm.getByLabel('Valid until').fill(deadline);
   await createForm.getByRole('button', { name: 'Save recruitment record' }).click();
 
@@ -709,8 +1232,23 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
     .getByRole('article')
     .filter({ hasText: `OFR-UI-${unique} · Junior MEP Lead` });
   await expect(v1Card).toContainText(`v1 · draft · Valid until ${deadline}`);
+  const secondPdf = Buffer.from('%PDF-1.4\nReplacement offer terms\n%%EOF');
+  const uploadSecond = await request.post(`/api/v1/hr/documents/${docId}/versions`, {
+    headers,
+    multipart: {
+      file: { name: 'updated-offer.pdf', mimeType: 'application/pdf', buffer: secondPdf }
+    }
+  });
+  expect(uploadSecond.status()).toBe(201);
+  await approve(2);
   await v1Card.getByLabel('Offer code').fill(`OFR-UI2-${unique}`);
   await v1Card.getByLabel('Proposed title').fill('Senior MEP Lead');
+  await v1Card.getByRole('button', { name: 'Find a replacement offer file' }).click();
+  const replacementFile = v1Card.getByLabel('Approved offer PDF');
+  await expect(
+    replacementFile.getByRole('option', { name: 'updated-offer.pdf · v2' })
+  ).toBeAttached();
+  await replacementFile.selectOption({ label: 'updated-offer.pdf · v2' });
   await v1Card.getByRole('button', { name: 'Reissue offer' }).click();
 
   const v2Card = page
@@ -718,11 +1256,75 @@ test('HR Manager creates a multi-headcount requisition, rejects it with a reason
     .filter({ hasText: `OFR-UI2-${unique} · Senior MEP Lead` });
   await expect(v2Card).toContainText('v2 · draft');
   await expect(v1Card).toContainText('v1 · superseded');
+  for (const [card, bytes] of [
+    [v1Card, firstPdf],
+    [v2Card, secondPdf]
+  ] as const) {
+    const downloadPromise = page.waitForEvent('download');
+    await card.getByRole('button', { name: 'Download offer file' }).click();
+    const artifact = await downloadPromise;
+    const path = await artifact.path();
+    expect(path).not.toBeNull();
+    expect(readFileSync(path!)).toEqual(bytes);
+  }
 
   await page.reload();
   await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
   await expect(v2Card).toContainText('v2 · draft');
   await expect(v1Card).toContainText('v1 · superseded');
+
+  for (const state of ['pending approval', 'approved', 'issued', 'accepted']) {
+    await v2Card.getByRole('button', { name: `Mark ${state}`, exact: true }).click();
+    await expect(v2Card).toContainText(`v2 · ${state.replace(' ', '_')}`);
+  }
+  const offers = await request.get('/api/v1/hr/offers', {
+    headers,
+    params: { offer_status: 'accepted' }
+  });
+  expect(offers.status()).toBe(200);
+  const offerRows = (await offers.json()).items as { id: string; offer_code: string }[];
+  const acceptedOffer = offerRows.find((row) => row.offer_code === `OFR-UI2-${unique}`);
+  expect(acceptedOffer).toBeDefined();
+  const cliStatus = () =>
+    JSON.parse(
+      execFileSync(
+        PYTHON_BIN,
+        [
+          '-m',
+          'scripts.garrisonctl',
+          'hr',
+          'offers',
+          'status',
+          '--offer-id',
+          acceptedOffer!.id,
+          '--json'
+        ],
+        {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: session.accessToken
+          }
+        }
+      )
+    ) as { data: { status: string; converted_employee_id: string | null } };
+  expect(cliStatus().data.status).toBe('accepted');
+  await v2Card.getByLabel('Employee code').fill(`HIRE-${unique}`);
+  await v2Card.getByRole('button', { name: 'Start onboarding from offer' }).click();
+  const filled = page.getByRole('listitem').filter({ hasText: `REQ-O-${unique}` });
+  await expect(filled).toContainText('Headcount 1 · filled');
+  await expect(v2Card).toContainText('v2 · converted');
+  expect(cliStatus().data).toMatchObject({
+    status: 'converted',
+    converted_employee_id: expect.any(String)
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await expect(filled).toContainText('Headcount 1 · filled');
+  await expect(v2Card).toContainText('v2 · converted');
 });
 
 test('HR extends and confirms probation from a completed onboarding case', async ({
@@ -742,7 +1344,8 @@ test('HR extends and confirms probation from a completed onboarding case', async
     }
   });
   expect(employee.status()).toBe(201);
-  const isoDate = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const isoDate = (days: number) =>
+    new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
   const created = await request.post('/api/v1/hr/onboarding', {
     headers,
     data: {
@@ -752,8 +1355,52 @@ test('HR extends and confirms probation from a completed onboarding case', async
     }
   });
   expect(created.status()).toBe(201);
-  const { tasks } = (await created.json()) as { tasks: { id: string }[] };
-  for (const task of tasks) {
+  const { id: caseId, tasks } = (await created.json()) as {
+    id: string;
+    tasks: { id: string }[];
+  };
+  const scratch = mkdtempSync(join(tmpdir(), 'garrison-onboarding-cli-'));
+  try {
+    const path = join(scratch, 'evidence.json');
+    const evidence = 'Verified synthetic checklist.';
+    writeFileSync(path, JSON.stringify({ status: 'completed', evidence_notes: evidence }), {
+      mode: 0o600
+    });
+    const taskCommand = [
+      '-m',
+      'scripts.garrisonctl',
+      'hr',
+      'onboarding',
+      'task',
+      '--case-id',
+      caseId,
+      '--task-id',
+      tasks[0].id,
+      '--file',
+      path,
+      '--json'
+    ];
+    const runTask = (...options: string[]) =>
+      execFileSync(PYTHON_BIN, [...taskCommand, ...options], {
+        cwd: BACKEND_DIR,
+        encoding: 'utf8',
+        env: {
+          ...env,
+          GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+          GARRISON_ENVIRONMENT: 'test',
+          GARRISON_ACCESS_TOKEN: session.accessToken
+        }
+      });
+    const preview = JSON.parse(runTask('--dry-run')) as { data: { plan_sha256: string } };
+    const receipt = runTask('--apply', '--expect', preview.data.plan_sha256);
+    expect(receipt).not.toContain(evidence);
+    expect(JSON.parse(receipt).data.tasks).toContainEqual(
+      expect.objectContaining({ id: tasks[0].id, status: 'completed' })
+    );
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  for (const task of tasks.slice(1)) {
     const completed = await request.patch(`/api/v1/hr/onboarding/tasks/${task.id}`, {
       headers,
       data: { status: 'completed', evidence_notes: 'Verified synthetic checklist.' }
@@ -766,13 +1413,19 @@ test('HR extends and confirms probation from a completed onboarding case', async
   await card.getByRole('button', { name: 'Start probation', exact: true }).click();
   await card.getByRole('combobox', { name: 'Probation outcome' }).selectOption('extend');
   await card.getByLabel('New probation end date', { exact: true }).fill(isoDate(15));
-  await card.getByLabel('Probation review reason', { exact: true }).fill('Extended for further review.');
+  await card
+    .getByLabel('Probation review reason', { exact: true })
+    .fill('Extended for further review.');
   await card.getByRole('button', { name: 'Record probation decision' }).click();
   await expect(card.getByText(`Probation end date ${isoDate(15)}`, { exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
-  await card.getByRole('combobox', { name: 'Confirmed employment category' }).selectOption('contract');
-  await card.getByLabel('Probation review reason', { exact: true }).fill('Confirmed based on documented results.');
+  await card
+    .getByRole('combobox', { name: 'Confirmed employment category' })
+    .selectOption('contract');
+  await card
+    .getByLabel('Probation review reason', { exact: true })
+    .fill('Confirmed based on documented results.');
   await card.getByRole('button', { name: 'Record probation decision' }).click();
   await expect(card.getByText('Employment active', { exact: true })).toBeVisible();
 });
@@ -790,7 +1443,9 @@ test('HR requests a project assignment for a director to approve', async ({
     const directorSession = await signIn(directorPage, director);
     const directorHeaders = { Authorization: `Bearer ${directorSession.accessToken}` };
     const projectEndpoint = `/api/v1/projects/${director.projectId}`;
-    const project = (await (await request.get(projectEndpoint, { headers: directorHeaders })).json()) as {
+    const project = (await (
+      await request.get(projectEndpoint, { headers: directorHeaders })
+    ).json()) as {
       name: string;
       code: string;
     };
@@ -812,24 +1467,35 @@ test('HR requests a project assignment for a director to approve', async ({
       }
     });
     expect(created.status()).toBe(201);
-    const linked = await request.post(`/api/v1/hr/employees/${(await created.json()).id}/link-account`, {
-      headers: directorHeaders,
-      data: { user_id: workerId }
-    });
+    const linked = await request.post(
+      `/api/v1/hr/employees/${(await created.json()).id}/link-account`,
+      {
+        headers: directorHeaders,
+        data: { user_id: workerId }
+      }
+    );
     expect(linked.status()).toBe(200);
 
     await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
     await page.getByRole('button', { name: 'Directory & Org', exact: true }).click();
     await page.getByLabel('Search employees').fill(employeeCode);
-    await page.getByRole('row').filter({ hasText: employeeCode }).getByRole('button', { name: 'Inspect' }).click();
+    await page
+      .getByRole('row')
+      .filter({ hasText: employeeCode })
+      .getByRole('button', { name: 'Inspect' })
+      .click();
     await page.getByLabel('Find project by name or code').fill(project.code);
     await page.getByRole('button', { name: 'Find project', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Assignment project' }).selectOption(director.projectId);
+    await page
+      .getByRole('combobox', { name: 'Assignment project' })
+      .selectOption(director.projectId);
     await page.getByLabel('Assignment reason').fill('Staffing review.');
     await page.getByRole('button', { name: 'Send assignment request' }).click();
     await expect(page.getByText('Request sent for project review.')).toBeVisible();
     const before = await request.get(`${projectEndpoint}/members`, { headers: directorHeaders });
-    expect((await before.json()).some((item: { user_id: string }) => item.user_id === workerId)).toBe(false);
+    expect(
+      (await before.json()).some((item: { user_id: string }) => item.user_id === workerId)
+    ).toBe(false);
 
     await directorPage.getByRole('link', { name: 'Projects', exact: true }).click();
     await directorPage.getByRole('button', { name: project.name, exact: true }).click();
@@ -838,11 +1504,15 @@ test('HR requests a project assignment for a director to approve', async ({
     await detail.getByRole('button', { name: 'Approve assignment', exact: true }).click();
     await expect(detail.getByText('Assignment decision recorded.')).toBeVisible();
     const after = await request.get(`${projectEndpoint}/members`, { headers: directorHeaders });
-    expect((await after.json()).some((item: { user_id: string }) => item.user_id === workerId)).toBe(true);
+    expect(
+      (await after.json()).some((item: { user_id: string }) => item.user_id === workerId)
+    ).toBe(true);
 
     await page.reload();
     await page.getByRole('button', { name: 'Directory & Org', exact: true }).click();
-    await expect(page.getByText(`Synthetic Assignment · ${project.code} · Add · approved`)).toBeVisible();
+    await expect(
+      page.getByText(`Synthetic Assignment · ${project.code} · Add · approved`)
+    ).toBeVisible();
   } finally {
     await directorContext.close();
   }
@@ -1053,7 +1723,9 @@ test('HR Manager filters the dashboard and exports the same report', async ({ pa
   await expect(
     page.getByText('Active workforce', { exact: true }).locator('..').locator('dd')
   ).toHaveText('1');
-  await expect(page.getByText('Scheduled training', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('Scheduled training', { exact: true }).locator('..').locator('dd')
+  ).toHaveText('0');
 
   const refreshed = page.waitForResponse(
     (response) =>
@@ -1176,6 +1848,27 @@ test('a direct manager recommends self-submitted time and HR makes the final dec
       data: { decision: 'approved', expected_revision: 2 }
     });
     expect(decision.status()).toBe(200);
+    const overtime = await request.post('/api/v1/hr/overtime', {
+      headers: hrHeaders,
+      data: {
+        employee_id: employeeId,
+        work_date: '2027-02-04',
+        requested_hours: '2.00',
+        reason: 'Synthetic pending overtime'
+      }
+    });
+    expect(overtime.status()).toBe(201);
+    await hrPage.getByRole('button', { name: 'Attendance', exact: true }).click();
+    await hrPage
+      .getByText(`Worker-${unique} · 2027-02-01 to 2027-02-05 · approved`, { exact: false })
+      .locator('..')
+      .getByRole('button', { name: 'Lock timesheet', exact: true })
+      .click();
+    await expect(
+      hrPage
+        .getByRole('alert')
+        .filter({ hasText: 'pending corrections and overtime before locking' })
+    ).toBeVisible();
     await staffPage.reload();
     await expect(
       staffPage.getByRole('listitem').filter({ hasText: '2027-02-01 to 2027-02-05' })
@@ -1193,18 +1886,49 @@ test('a linked employee manages their own leave and reopens a completed HR reque
 }) => {
   const director = seedAccount();
   const manager = seedAccount('hr_manager', director.projectId);
+  const reviewer = seedAccount('hr_manager', director.projectId);
   const worker = seedAccount('quantity_surveyor', director.projectId);
   const directorContext = await browser.newContext();
   const managerContext = await browser.newContext();
+  const reviewerContext = await browser.newContext();
   const workerContext = await browser.newContext();
   try {
     const directorSession = await signIn(await directorContext.newPage(), director);
+    await directorContext.close();
     const managerPage = await managerContext.newPage();
     const managerSession = await signIn(managerPage, manager);
     const workerPage = await workerContext.newPage();
     const workerSession = await signIn(workerPage, worker);
     const managerHeaders = { Authorization: `Bearer ${managerSession.accessToken}` };
+    const reviewerPage = await reviewerContext.newPage();
+    const reviewerSession = await signIn(reviewerPage, reviewer);
+    const reviewerHeaders = { Authorization: `Bearer ${reviewerSession.accessToken}` };
     const unique = Date.now().toString(36);
+    const calendarResponse = await request.post('/api/v1/hr/calendars', {
+      headers: managerHeaders,
+      data: {
+        code: `CAL-${unique}`,
+        name: 'Synthetic site calendar',
+        project_id: director.projectId,
+        work_days_json: ['MON', 'TUE', 'WED', 'THU', 'FRI'],
+        standard_start_time: '08:00',
+        standard_end_time: '17:00',
+        daily_hours: '8.00',
+        effective_from: '2026-12-01',
+        effective_to: '2026-12-31',
+        timezone: 'Asia/Colombo'
+      }
+    });
+    expect(calendarResponse.status()).toBe(201);
+    let calendar = (await calendarResponse.json()) as { id: string; revision: number };
+    for (const action of ['submit', 'approve', 'publish']) {
+      const decision = await request.post(`/api/v1/hr/calendars/${calendar.id}/decision`, {
+        headers: action === 'submit' ? managerHeaders : reviewerHeaders,
+        data: { action, expected_revision: calendar.revision }
+      });
+      expect(decision.status()).toBe(200);
+      calendar = (await decision.json()) as typeof calendar;
+    }
     const employee = await request.post('/api/v1/hr/employees', {
       headers: managerHeaders,
       data: {
@@ -1212,6 +1936,8 @@ test('a linked employee manages their own leave and reopens a completed HR reque
         first_name: 'Synthetic',
         last_name: 'Employee',
         work_email: worker.email,
+        join_date: '2025-01-01',
+        primary_project_id: director.projectId,
         employment_status: 'active'
       }
     });
@@ -1223,12 +1949,171 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     });
     expect(link.status()).toBe(200);
     const leaveName = `Synthetic leave ${unique}`;
+    const partialEmployee = await request.post('/api/v1/hr/employees', {
+      headers: managerHeaders,
+      data: {
+        employee_code: `PART-${unique}`,
+        first_name: 'Synthetic',
+        last_name: 'Midmonth',
+        join_date: '2025-02-15',
+        employment_status: 'active'
+      }
+    });
+    expect(partialEmployee.status()).toBe(201);
+    const partialEmployeeId = (await partialEmployee.json()).id as string;
     const leaveType = await request.post('/api/v1/hr/leave/types', {
       headers: managerHeaders,
-      data: { code: `LT-${unique}`, name: leaveName, is_paid: false }
+      data: { code: `LT-${unique}`, name: leaveName, is_paid: true }
     });
     expect(leaveType.status()).toBe(201);
     const leaveTypeId = (await leaveType.json()).id as string;
+
+    const policyCode = `POL-${unique}`;
+    await managerPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await managerPage.getByRole('button', { name: 'Leave', exact: true }).click();
+    await managerPage.getByText('Leave policy proposals', { exact: true }).click();
+    await managerPage.getByLabel('Policy code', { exact: true }).fill(policyCode);
+    await managerPage
+      .getByLabel('Policy name', { exact: true })
+      .fill('Synthetic monthly entitlement');
+    await managerPage
+      .getByRole('combobox', { name: 'Policy leave type' })
+      .selectOption(leaveTypeId);
+    await managerPage.getByLabel('Effective from', { exact: true }).fill('2025-01-01');
+    await managerPage.getByLabel('Effective through', { exact: true }).fill('2025-12-31');
+    await managerPage.getByLabel('Annual entitlement', { exact: true }).fill('12');
+    await managerPage.getByRole('combobox', { name: 'Accrual frequency' }).selectOption('monthly');
+    await managerPage.getByRole('checkbox', { name: /Prorate eligible calendar days/ }).check();
+    await managerPage.getByLabel('Maximum carry-forward', { exact: true }).fill('3');
+    await managerPage
+      .getByRole('checkbox', { name: 'Expire days above the carry-forward cap at year-end' })
+      .check();
+    await managerPage.getByRole('button', { name: 'Propose leave policy' }).click();
+    const staffDraft = managerPage.getByRole('article').filter({ hasText: policyCode });
+    await expect(staffDraft).toContainText('draft');
+    await expect(staffDraft.getByRole('button', { name: 'Approve leave policy' })).toHaveCount(0);
+    await reviewerPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await reviewerPage.getByRole('button', { name: 'Leave', exact: true }).click();
+    await reviewerPage.getByText('Leave policy proposals', { exact: true }).click();
+    const reviewPolicy = reviewerPage.getByRole('article').filter({ hasText: policyCode });
+    await expect(reviewPolicy).toContainText('Partial periods prorated by eligible calendar days');
+    await reviewPolicy.getByRole('button', { name: 'Approve leave policy' }).click();
+    await expect(reviewPolicy).toContainText('approved');
+    await reviewerPage.reload();
+    await reviewerPage.getByRole('button', { name: 'Leave', exact: true }).click();
+    await reviewerPage.getByText('Leave policy proposals', { exact: true }).click();
+    await expect(reviewPolicy).toContainText('approved');
+
+    await managerPage.getByText('Post approved leave accrual', { exact: true }).click();
+    const accrualEmployee = managerPage.getByRole('combobox', { name: 'Accrual employee' });
+    const accrualMonth = managerPage.getByRole('spinbutton', {
+      name: 'Accrual month (blank for full year)'
+    });
+    await accrualEmployee.selectOption(partialEmployeeId);
+    await managerPage
+      .getByRole('combobox', { name: 'Accrual leave type' })
+      .selectOption(leaveTypeId);
+    await managerPage.getByRole('spinbutton', { name: 'Accrual year' }).fill('2025');
+    await accrualMonth.fill('2');
+    await managerPage.getByRole('button', { name: 'Preview accrual' }).click();
+    await expect(managerPage.getByText('Days to credit: 0.50')).toBeVisible();
+    await expect(managerPage.getByText(/Prorated for 2025-02-15 through 2025-02-28/)).toBeVisible();
+    await managerPage.getByRole('button', { name: 'Confirm and post accrual' }).click();
+    await expect(managerPage.getByText(/Accrual posted. Ledger reference/)).toHaveCount(1);
+    await accrualEmployee.selectOption(employeeId);
+    await accrualMonth.fill('1');
+    await managerPage.getByRole('spinbutton', { name: 'Catch-up end month (optional)' }).fill('12');
+    await managerPage.getByRole('button', { name: 'Preview accrual' }).click();
+    await expect(managerPage.getByText('Days to credit: 12.00')).toBeVisible();
+    await managerPage.getByRole('button', { name: 'Confirm and post accrual' }).click();
+    await expect(managerPage.getByText(/Accrual posted. Ledger reference/)).toHaveCount(12);
+    const cliAccrual = JSON.parse(
+      execFileSync(
+        PYTHON_BIN,
+        [
+          '-m',
+          'scripts.garrisonctl',
+          'hr',
+          'leave',
+          'accrual',
+          'post',
+          '--employee-id',
+          employeeId,
+          '--leave-type-id',
+          leaveTypeId,
+          '--year',
+          '2025',
+          '--month',
+          '1',
+          '--through-month',
+          '12',
+          '--dry-run',
+          '--json'
+        ],
+        {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: managerSession.accessToken
+          }
+        }
+      )
+    ) as { data: { accrual: { periods: { days: string; ledger_entry_id: string }[] } } };
+    const receipts = cliAccrual.data.accrual.periods;
+    expect(new Set(receipts.map((period) => period.ledger_entry_id)).size).toBe(12);
+    expect(receipts).toHaveLength(12);
+    expect(receipts.every((period) => period.days === '1.00' && period.ledger_entry_id)).toBe(true);
+
+    await managerPage.getByText('Review year-end leave rollover', { exact: true }).click();
+    await managerPage.getByRole('combobox', { name: 'Rollover employee' }).selectOption(employeeId);
+    await managerPage
+      .getByRole('combobox', { name: 'Rollover leave type' })
+      .selectOption(leaveTypeId);
+    await managerPage.getByRole('spinbutton', { name: 'Source leave year' }).fill('2025');
+    await managerPage.getByRole('button', { name: 'Preview rollover' }).click();
+    await expect(managerPage.getByText('Carry to 2026: 3.00 days')).toBeVisible();
+    await expect(managerPage.getByText('Year-end expiry: 9.00 days')).toBeVisible();
+    await managerPage.getByRole('button', { name: 'Confirm and close leave year' }).click();
+    await expect(managerPage.getByText(/Rollover posted. Receipt/)).toBeVisible();
+    const cliRollover = JSON.parse(
+      execFileSync(
+        PYTHON_BIN,
+        [
+          '-m',
+          'scripts.garrisonctl',
+          'hr',
+          'leave',
+          'rollover',
+          'post',
+          '--employee-id',
+          employeeId,
+          '--leave-type-id',
+          leaveTypeId,
+          '--year',
+          '2025',
+          '--dry-run',
+          '--json'
+        ],
+        {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: managerSession.accessToken
+          }
+        }
+      )
+    ) as { data: { rollover: { carried_days: string; expired_days: string; receipt_id: string } } };
+    expect(cliRollover.data.rollover).toMatchObject({
+      carried_days: '3.00',
+      expired_days: '9.00',
+      receipt_id: expect.any(String)
+    });
 
     await workerPage.getByRole('link', { name: 'My HR', exact: true }).click();
     await expect(
@@ -1237,8 +2122,38 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await workerPage.getByLabel('Leave type', { exact: true }).selectOption(leaveTypeId);
     await workerPage.getByLabel('Leave starts').fill('2026-12-04');
     await workerPage.getByLabel('Leave ends').fill('2026-12-04');
+    await expect(workerPage.getByText('Scheduled leave days: 1', { exact: true })).toBeVisible();
     await workerPage.getByRole('button', { name: 'Submit leave request' }).click();
     await expect(workerPage.getByText('Leave request submitted.', { exact: true })).toBeVisible();
+    const workerHeaders = { Authorization: `Bearer ${workerSession.accessToken}` };
+    const ownLeave = await request.get('/api/v1/hr/me/leave-requests', { headers: workerHeaders });
+    expect(ownLeave.status()).toBe(200);
+    const original = (await ownLeave.json()).items[0] as { id: string; record_revision: number };
+    const returned = await request.post(`/api/v1/hr/leave/requests/${original.id}/decision`, {
+      headers: managerHeaders,
+      data: {
+        decision: 'rejected',
+        expected_revision: original.record_revision,
+        notes: 'Correct the leave date.'
+      }
+    });
+    expect(returned.status()).toBe(200);
+    await workerPage.reload();
+    await expect(workerPage.getByText('Correct the leave date.', { exact: true })).toBeVisible();
+    await workerPage.getByRole('button', { name: 'Edit leave request', exact: true }).click();
+    await expect(workerPage.getByLabel('Leave starts')).toHaveValue('2026-12-04');
+    await workerPage.getByLabel('Leave starts').fill('2026-12-07');
+    await workerPage.getByLabel('Leave ends').fill('2026-12-07');
+    await workerPage.getByRole('button', { name: 'Resubmit leave request', exact: true }).click();
+    await expect(workerPage.getByText('Leave request resubmitted.', { exact: true })).toBeVisible();
+    await workerPage.reload();
+    await expect(workerPage.getByText('2026-12-07 to 2026-12-07', { exact: false })).toBeVisible();
+    const reloadedLeave = await request.get('/api/v1/hr/me/leave-requests', {
+      headers: workerHeaders
+    });
+    expect((await reloadedLeave.json()).items).toMatchObject([
+      { id: original.id, status: 'submitted' }
+    ]);
     await workerPage.getByRole('button', { name: 'Cancel leave' }).click();
     await expect(workerPage.getByText('Leave request cancelled.', { exact: true })).toBeVisible();
     await workerPage.reload();
@@ -1251,27 +2166,1145 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     const subject = `Synthetic service request ${unique}`;
     await workerPage.getByPlaceholder('Subject', { exact: true }).fill(subject);
     await workerPage.getByRole('button', { name: 'Submit request', exact: true }).click();
-    await expect(workerPage.getByText('HR service request submitted.', { exact: true })).toBeVisible();
-    await managerPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await expect(
+      workerPage.getByText('HR service request submitted.', { exact: true })
+    ).toBeVisible();
+    await managerPage.reload();
     await managerPage.getByRole('button', { name: 'Policies & Requests' }).click();
     const reviewCard = managerPage.getByText(subject).locator('..');
     await reviewCard.getByRole('button', { name: 'Start review' }).click();
+    await expect(reviewCard).toContainText('(in_review)');
+    await reviewCard.getByText('Reassign request', { exact: true }).click();
+    await reviewCard.getByLabel('Assign to').selectOption(reviewerSession.userId);
+    await reviewCard.getByLabel('Handoff reason').fill('Synthetic shift handoff');
+    await reviewCard.getByRole('button', { name: 'Save assignment' }).click();
+    await expect(reviewCard.getByRole('button', { name: 'Complete request' })).toHaveCount(0);
+    await reviewerPage.reload();
+    await reviewerPage.getByRole('button', { name: 'Policies & Requests' }).click();
+    const assignedCard = reviewerPage.getByText(subject).locator('..');
     const response = 'Your synthetic request has been reviewed.';
-    await reviewCard.getByLabel('Response shared with the employee').fill(response);
-    await reviewCard.getByRole('button', { name: 'Complete request' }).click();
-    await expect(reviewCard).toContainText('(completed)');
+    await assignedCard.getByLabel('Response shared with the employee').fill(response);
+    await assignedCard.getByRole('button', { name: 'Complete request' }).click();
+    await expect(assignedCard).toContainText('(completed)');
     await workerPage.reload();
     const myRequest = workerPage.getByText(subject).locator('..');
     await expect(myRequest).toContainText(response);
     await myRequest.getByRole('button', { name: /Reopen request/ }).click();
-    await expect(workerPage.getByText('HR service request reopened.', { exact: true })).toBeVisible();
+    await expect(
+      workerPage.getByText('HR service request reopened.', { exact: true })
+    ).toBeVisible();
     await workerPage.reload();
     await expect(myRequest).toContainText('open');
     await expect(myRequest).toContainText(response);
     await expect(myRequest.getByRole('button', { name: /Reopen request/ })).toHaveCount(0);
+    const requestList = await request.get('/api/v1/hr/me/requests', { headers: workerHeaders });
+    const reopened = (await requestList.json()).items.find(
+      (row: { subject: string }) => row.subject === subject
+    );
+    expect(reopened).toMatchObject({ status: 'open', assigned_to_id: null });
+    const runAssignment = (...mode: string[]) =>
+      JSON.parse(
+        execFileSync(
+          PYTHON_BIN,
+          [
+            '-m',
+            'scripts.garrisonctl',
+            'hr',
+            'request',
+            'assign',
+            '--request-id',
+            reopened.id,
+            '--assignee-id',
+            reviewerSession.userId,
+            '--reason',
+            'Synthetic scheduled handoff',
+            ...mode,
+            '--json'
+          ],
+          {
+            cwd: BACKEND_DIR,
+            encoding: 'utf8',
+            env: {
+              ...env,
+              GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+              GARRISON_ENVIRONMENT: 'test',
+              GARRISON_ACCESS_TOKEN: managerSession.accessToken
+            }
+          }
+        )
+      );
+    const assignmentPlan = runAssignment('--dry-run').data;
+    expect(assignmentPlan).toMatchObject({
+      previous_assignee: null,
+      proposed: { assigned_to_id: reviewerSession.userId }
+    });
+    expect(runAssignment('--apply', '--expect', assignmentPlan.plan_sha256).data).toMatchObject({
+      status: 'open',
+      assigned_to_id: reviewerSession.userId
+    });
   } finally {
     await directorContext.close();
     await managerContext.close();
+    await reviewerContext.close();
     await workerContext.close();
+  }
+});
+
+test('HR closes offboarding and independently reviews rehire', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const manager = seedAccount('hr_manager', director.projectId);
+  const session = await signIn(page, manager);
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const marker = `Custody-${Date.now()}`;
+  const employee = await request.post('/api/v1/hr/employees', {
+    headers,
+    data: {
+      employee_code: marker,
+      first_name: 'Synthetic',
+      last_name: marker,
+      join_date: '2025-01-01',
+      employment_status: 'active'
+    }
+  });
+  expect(employee.status()).toBe(201);
+  const employeeId = (await employee.json()).id as string;
+  const started = await request.post('/api/v1/hr/offboarding', {
+    headers,
+    data: {
+      employee_id: employeeId,
+      separation_type: 'resignation',
+      last_working_date: '2026-07-31'
+    }
+  });
+  expect(started.status()).toBe(201);
+  const record = (await started.json()) as {
+    id: string;
+    steps: Array<{ id: string; department_area: string }>;
+  };
+  for (const step of record.steps.filter(
+    (entry) => !['store_inventory', 'it_admin', 'finance_accounts'].includes(entry.department_area)
+  )) {
+    const result = await request.patch(`/api/v1/hr/offboarding/steps/${step.id}`, {
+      headers,
+      data: { status: 'cleared', notes: 'Synthetic clearance' }
+    });
+    expect(result.status()).toBe(200);
+  }
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Policies & Requests' }).click();
+  const card = page.getByRole('article').filter({ hasText: marker });
+  await card.getByText('Inventory custody evidence', { exact: true }).click();
+  await expect(card.getByText('No custody evidence recorded.')).toBeVisible();
+  await expect(card.getByText(record.id, { exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Record clearance' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Complete offboarding' })).toHaveCount(0);
+
+  const directorContext = await browser.newContext();
+  try {
+    const directorPage = await directorContext.newPage();
+    const owner = await signIn(directorPage, director);
+    const posted = await request.post(`/api/v1/hr/offboarding/${record.id}/custody`, {
+      headers: { Authorization: `Bearer ${owner.accessToken}` },
+      data: {
+        event_id: crypto.randomUUID(),
+        kind: 'cleared',
+        evidence_reference: 'STORE-BROWSER-1'
+      }
+    });
+    expect(posted.status()).toBe(200);
+
+    await directorPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await directorPage.getByRole('button', { name: 'Access & Workbook', exact: true }).click();
+    await directorPage.getByLabel('Offboarding case ID').fill(record.id);
+    await directorPage.getByRole('button', { name: 'Open offboarding case' }).click();
+    const handover = directorPage.getByRole('region', { name: 'Offboarding IT handover' });
+    await handover.getByLabel('Device reference').fill('fixture-laptop');
+    await handover.getByLabel('IT evidence reference').fill('IT-PENDING-CHROME');
+    await handover.getByRole('button', { name: 'Record IT custody' }).click();
+    await expect(handover.getByText('Outstanding devices 1')).toBeVisible();
+    await expect(handover.getByRole('option', { name: 'Sign off IT handover' })).toBeDisabled();
+
+    await handover.getByLabel('IT custody action').selectOption('returned');
+    await handover.getByLabel('Device reference').fill('FIXTURE-LAPTOP');
+    await handover.getByLabel('IT evidence reference').fill('IT-RETURNED-CHROME');
+    await handover.getByRole('button', { name: 'Record IT custody' }).click();
+    await expect(handover.getByText('Outstanding devices 0')).toBeVisible();
+    await handover.getByLabel('IT custody action').selectOption('cleared');
+    await handover.getByLabel('IT evidence reference').fill('IT-SIGNOFF-CHROME');
+    await handover.getByRole('button', { name: 'Record IT custody' }).click();
+    await expect(handover.getByText('Current custody status cleared')).toBeVisible();
+
+    const finances = directorPage.getByRole('region', { name: 'Offboarding Finance settlement' });
+    await finances.getByText('Finance settlement evidence', { exact: true }).click();
+    await finances.getByLabel('Settlement outcome').selectOption('nothing_due');
+    await finances.getByLabel('Settlement evidence reference').fill('FIN-CHROME-01');
+    await finances.getByRole('button', { name: 'Propose settlement' }).click();
+    await expect(finances.getByText(/Nothing due · proposed · FIN-CHROME-01/)).toBeVisible();
+    await expect(
+      finances.getByText('A different director must review this proposal.')
+    ).toBeVisible();
+    await expect(finances.getByRole('button', { name: 'Record settlement review' })).toHaveCount(0);
+  } finally {
+    await directorContext.close();
+  }
+  await card.getByRole('button', { name: 'Refresh custody evidence' }).click();
+  await expect(card.getByText(/cleared · STORE-BROWSER-1/)).toBeVisible();
+  await card.getByText('IT handover evidence', { exact: true }).click();
+  await expect(card.getByText(/cleared · IT-SIGNOFF-CHROME/)).toBeVisible();
+  await expect(
+    card.getByText(/returned · IT-RETURNED-CHROME · Device FIXTURE-LAPTOP/)
+  ).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Record IT custody' })).toHaveCount(0);
+  await card.getByText('Finance settlement evidence', { exact: true }).click();
+  await expect(card.getByText(/Nothing due · proposed · FIN-CHROME-01/)).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Complete offboarding' })).toHaveCount(0);
+  const settlementContext = await browser.newContext();
+  try {
+    const reviewerPage = await settlementContext.newPage();
+    const financeReviewer = seedAccount('operations_director', director.projectId);
+    await signIn(reviewerPage, financeReviewer);
+    await reviewerPage.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await reviewerPage.getByRole('button', { name: 'Access & Workbook', exact: true }).click();
+    await reviewerPage.getByLabel('Offboarding case ID').fill(record.id);
+    await reviewerPage.getByRole('button', { name: 'Open offboarding case' }).click();
+    const finances = reviewerPage.getByRole('region', { name: 'Offboarding Finance settlement' });
+    await finances.getByText('Finance settlement evidence', { exact: true }).click();
+    await finances.getByLabel('Settlement decision').selectOption('approved');
+    await finances.getByLabel('Settlement review reference').fill('FIN-CHROME-REVIEW');
+    await finances.getByRole('button', { name: 'Record settlement review' }).click();
+    await expect(finances.getByText('Finance clearance cleared')).toBeVisible();
+  } finally {
+    await settlementContext.close();
+  }
+  await card.getByRole('button', { name: 'Refresh settlement evidence' }).click();
+  await expect(
+    card.getByText(/Nothing due · approved · FIN-CHROME-01 · Review FIN-CHROME-REVIEW/)
+  ).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Record settlement review' })).toHaveCount(0);
+  await card.getByLabel('Rehire eligibility').selectOption('yes');
+  await card.getByRole('button', { name: 'Complete offboarding' }).click();
+  await expect(card.getByText('2026-07-31 · completed')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Policies & Requests' }).click();
+  await expect(card.getByText('2026-07-31 · completed')).toBeVisible();
+  const result = await request.get(`/api/v1/hr/offboarding/${record.id}/custody`, { headers });
+  expect(result.status()).toBe(200);
+  expect((await result.json()).case_closed).toBe(true);
+
+  async function openEmployment(target: Page, navigate: boolean) {
+    if (navigate) await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await target.getByRole('button', { name: 'Directory & Org' }).click();
+    await target.getByLabel('Search employees').fill(marker);
+    await target
+      .getByRole('row')
+      .filter({ hasText: marker })
+      .getByRole('button', { name: 'Inspect' })
+      .click();
+    await target.getByText('Reviewed employment changes', { exact: true }).click();
+  }
+
+  await openEmployment(page, false);
+  const effective = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
+  await expect(page.getByText('2025-01-01 to 2026-07-31')).toBeVisible();
+  await page.getByLabel('Rehire employment category').selectOption('permanent');
+  await page.getByLabel('Effective date', { exact: true }).fill(effective);
+  await page.getByLabel('Employment change reason').fill('Synthetic independently reviewed return');
+  await page.getByRole('button', { name: 'Propose rehire' }).click();
+  await expect(page.getByRole('heading', { name: /Rehire .* proposed/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve employment change' })).toHaveCount(0);
+
+  const reviewerContext = await browser.newContext();
+  try {
+    const reviewerPage = await reviewerContext.newPage();
+    const reviewer = await signIn(reviewerPage, seedAccount('hr_manager', director.projectId));
+    await openEmployment(reviewerPage, true);
+    await reviewerPage.getByRole('button', { name: 'Approve employment change' }).click();
+    await reviewerPage.getByRole('button', { name: 'Apply due employment change' }).click();
+    await expect(reviewerPage.getByRole('heading', { name: /Rehire .* applied/ })).toBeVisible();
+    await expect(reviewerPage.getByText(`${effective} to present`)).toBeVisible();
+    await reviewerPage.reload();
+    await openEmployment(reviewerPage, false);
+    await expect(reviewerPage.getByText(`${effective} to present`)).toBeVisible();
+    await expect(reviewerPage.getByText('2025-01-01 to 2026-07-31')).toBeVisible();
+    await expect(reviewerPage.getByText(/Status: onboarding/)).toBeVisible();
+    const cli = JSON.parse(
+      execFileSync(
+        PYTHON_BIN,
+        [
+          '-m',
+          'scripts.garrisonctl',
+          'hr',
+          'employees',
+          'periods',
+          '--employee-id',
+          employeeId,
+          '--json'
+        ],
+        {
+          cwd: BACKEND_DIR,
+          encoding: 'utf8',
+          env: {
+            ...env,
+            GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+            GARRISON_ENVIRONMENT: 'test',
+            GARRISON_ACCESS_TOKEN: reviewer.accessToken
+          }
+        }
+      )
+    ).data;
+    expect(cli.total).toBe(2);
+    expect(cli.items).toMatchObject([
+      { started_on: effective, ended_on: null, onboarding_case_id: expect.any(String) },
+      { started_on: '2025-01-01', ended_on: '2026-07-31', separation_case_id: record.id }
+    ]);
+  } finally {
+    await reviewerContext.close();
+  }
+});
+
+test('HR verifies training against an independently approved certificate', async ({
+  page,
+  browser,
+  request
+}) => {
+  const account = seedAccount('hr_manager');
+  const worker = seedAccount('quantity_surveyor', account.projectId);
+  const session = await signIn(page, account);
+  const marker = `Training-${Date.now()}`;
+  const trainingDate = '2026-06-01';
+  const position = await request.post('/api/v1/hr/positions', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: { code: marker, title: `Position ${marker}` }
+  });
+  expect(position.status()).toBe(201);
+  const { id: positionId } = (await position.json()) as { id: string };
+  const employee = await request.post('/api/v1/hr/employees', {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: {
+      employee_code: marker,
+      first_name: 'Synthetic',
+      last_name: marker,
+      work_email: worker.email,
+      position_id: positionId,
+      employment_status: 'active'
+    }
+  });
+  expect(employee.status()).toBe(201);
+  const { id: employeeId } = (await employee.json()) as { id: string };
+
+  async function selectTrainingEmployee() {
+    await page.getByRole('button', { name: 'Training', exact: true }).click();
+    await page.getByLabel('Search training employee').fill(marker);
+    await page
+      .getByRole('combobox', { name: 'Training employee', exact: true })
+      .selectOption(employeeId);
+  }
+
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await selectTrainingEmployee();
+  await page.getByLabel('Course code').fill(marker);
+  await page.getByLabel('Course title').fill(`Safety ${marker}`);
+  await page.getByRole('button', { name: 'Create course' }).click();
+  await expect(page.getByText(`${marker} · Safety ${marker}`)).toBeVisible();
+  await page.getByText('Mandatory training rules', { exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Required course', exact: true })
+    .selectOption({ label: `Safety ${marker}` });
+  await page.getByRole('combobox', { name: 'Required job position' }).selectOption(positionId);
+  await page.getByRole('button', { name: 'Save training rule' }).click();
+  const mandatory = page.getByRole('region', { name: 'Mandatory training', exact: true });
+  await expect(mandatory.getByText(`Safety ${marker} · Required`)).toBeVisible();
+  await page
+    .getByRole('combobox', { name: 'Enrollment course' })
+    .selectOption({ label: `Safety ${marker}` });
+  await page.getByLabel('Scheduled training date').fill(trainingDate);
+  await page.getByRole('button', { name: 'Enroll employee' }).click();
+  const enrollment = page.getByRole('article').filter({ hasText: `Safety ${marker}` });
+  await expect(enrollment.getByText('Enrollment enrolled')).toBeVisible();
+  await expect(enrollment.getByRole('button', { name: 'Verify completion' })).toBeDisabled();
+
+  await page.getByLabel('Certificate title').fill(`Credential ${marker}`);
+  await page.getByLabel('Certificate issue date').fill(trainingDate);
+  await page.getByLabel('Certificate expiry').fill('2026-07-01');
+  await page.getByLabel('Certificate PDF').setInputFiles({
+    name: 'training.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n% synthetic certificate\n%%EOF\n')
+  });
+  const saved = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/hr/documents' &&
+      response.request().method() === 'POST'
+  );
+  await page.getByRole('button', { name: 'Upload training certificate' }).click();
+  const uploaded = await saved;
+  expect(uploaded.status()).toBe(201);
+  const document = (await uploaded.json()) as { id: string };
+  const reviewerContext = await browser.newContext();
+  try {
+    const reviewer = await signIn(
+      await reviewerContext.newPage(),
+      seedAccount('hr_manager', account.projectId)
+    );
+    const approved = await request.post(`/api/v1/hr/documents/${document.id}/versions/1/decision`, {
+      headers: { Authorization: `Bearer ${reviewer.accessToken}` },
+      data: { decision: 'approve' }
+    });
+    expect(approved.status()).toBe(200);
+  } finally {
+    await reviewerContext.close();
+  }
+
+  await page.reload();
+  await selectTrainingEmployee();
+  await enrollment
+    .getByRole('combobox', { name: 'Approved training certificate' })
+    .selectOption(document.id);
+  await enrollment.getByLabel('Training completion date').fill(trainingDate);
+  await enrollment.getByLabel('Training score').fill('95');
+  const savedCompletion = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname.endsWith('/completion')
+  );
+  await enrollment.getByRole('button', { name: 'Verify completion' }).click();
+  const completionResponse = await savedCompletion;
+  expect(completionResponse.status()).toBe(200);
+  const completion = (await completionResponse.json()) as { enrollment_id: string };
+
+  await expect(enrollment.getByText('Verified certificate version 1 · 2026-06-01')).toBeVisible();
+  await expect(page.getByText(`Credential ${marker} · expired · 2026-07-01`)).toBeVisible();
+
+  await page.reload();
+  await selectTrainingEmployee();
+  await enrollment.getByRole('button', { name: 'Show verified receipt' }).click();
+  await expect(enrollment.getByText('Verified certificate version 1 · 2026-06-01')).toBeVisible();
+  const receipt = JSON.parse(
+    execFileSync(
+      PYTHON_BIN,
+      [
+        '-m',
+        'scripts.garrisonctl',
+        'hr',
+        'training',
+        'completion',
+        'show',
+        '--enrollment-id',
+        completion.enrollment_id,
+        '--json'
+      ],
+      {
+        cwd: BACKEND_DIR,
+        encoding: 'utf8',
+        env: {
+          ...env,
+          GARRISON_API_BASE_URL: 'http://127.0.0.1:8425',
+          GARRISON_ENVIRONMENT: 'test',
+          GARRISON_ACCESS_TOKEN: session.accessToken
+        }
+      }
+    )
+  ).data;
+  expect(receipt).toMatchObject({
+    enrollment_id: completion.enrollment_id,
+    document_id: document.id,
+    version_number: 1
+  });
+
+  const employeeContext = await browser.newContext();
+  const directorContext = await browser.newContext();
+  try {
+    const workerPage = await employeeContext.newPage();
+    const linked = await signIn(workerPage, worker);
+    const director = await signIn(await directorContext.newPage(), seedAccount());
+    const link = await request.post(`/api/v1/hr/employees/${employeeId}/link-account`, {
+      headers: { Authorization: `Bearer ${director.accessToken}` },
+      data: { user_id: linked.userId }
+    });
+    expect(link.status()).toBe(200);
+    await workerPage.goto('/me/hr');
+    await workerPage.getByText('My training', { exact: true }).click();
+    await expect(workerPage.getByText(`Safety ${marker} · completed`)).toBeVisible();
+    await expect(workerPage.getByText('Certificate expired 2026-07-01')).toBeVisible();
+    await expect(workerPage.getByText(`Safety ${marker} · Expired`)).toBeVisible();
+    await expect(workerPage.getByRole('button', { name: 'Verify completion' })).toHaveCount(0);
+  } finally {
+    await employeeContext.close();
+    await directorContext.close();
+  }
+});
+
+test('employee and manager complete a scoped performance review with HR calibration', async ({
+  page,
+  browser,
+  request
+}) => {
+  const hr = await signIn(page, seedAccount('hr_manager'));
+  const headers = { Authorization: `Bearer ${hr.accessToken}` };
+  const marker = `Review-${Date.now()}`;
+  const employeeAccount = seedAccount('quantity_surveyor');
+  const managerAccount = seedAccount('group_project_manager');
+  const successorAccount = seedAccount('mep_project_manager');
+  const directorContext = await browser.newContext();
+  const employeeContext = await browser.newContext();
+  const managerContext = await browser.newContext();
+  const successorContext = await browser.newContext();
+  try {
+    const director = await signIn(await directorContext.newPage(), seedAccount());
+    const employeePage = await employeeContext.newPage();
+    const managerPage = await managerContext.newPage();
+    const successorPage = await successorContext.newPage();
+    const employee = await signIn(employeePage, employeeAccount);
+    const manager = await signIn(managerPage, managerAccount);
+    const successor = await signIn(successorPage, successorAccount);
+
+    async function link(email: string, userId: string, suffix: string, managerId?: string) {
+      const created = await request.post('/api/v1/hr/employees', {
+        headers,
+        data: {
+          employee_code: `${marker}-${suffix}`,
+          first_name: 'Synthetic',
+          last_name: `${marker} ${suffix}`,
+          work_email: email,
+          employment_status: 'active',
+          manager_employee_id: managerId
+        }
+      });
+      expect(created.status()).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+      const linked = await request.post(`/api/v1/hr/employees/${id}/link-account`, {
+        headers: { Authorization: `Bearer ${director.accessToken}` },
+        data: { user_id: userId }
+      });
+      expect(linked.status()).toBe(200);
+      return id;
+    }
+
+    const managerId = await link(managerAccount.email, manager.userId, 'manager');
+    const successorId = await link(successorAccount.email, successor.userId, 'successor');
+    const employeeId = await link(employeeAccount.email, employee.userId, 'employee', managerId);
+    const record = await request.get(`/api/v1/hr/employees/${employeeId}`, { headers });
+    const permission = await request.put(`/api/v1/hr/employees/${employeeId}/manager-review`, {
+      headers,
+      data: { enabled: true, expected_revision: (await record.json()).record_revision }
+    });
+    expect(permission.status()).toBe(200);
+
+    await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await page.getByRole('button', { name: 'Performance', exact: true }).click();
+    await page.getByLabel('Cycle code').fill(marker);
+    await page.getByLabel('Cycle name').fill(marker);
+    await page.getByLabel('Cycle starts').fill('2026-01-01');
+    await page.getByLabel('Cycle ends').fill('2026-12-31');
+    await page
+      .getByLabel('Rating labels (one per line, optional)')
+      .fill('Developing\nEstablished\nAdvanced');
+    await page.getByRole('button', { name: 'Create review cycle' }).click();
+    await page.getByLabel('Search review employee').fill(`${marker}-employee`);
+    await page.getByRole('combobox', { name: 'Review employee' }).selectOption(employeeId);
+    await page.getByRole('combobox', { name: 'Review cycle' }).selectOption({ label: marker });
+    await page.getByLabel('Goal title').fill('Confirm completion evidence');
+    await page.getByRole('button', { name: 'Add goal' }).click();
+    await page.getByRole('button', { name: 'Open draft review' }).click();
+
+    async function openReview(target: Page, self: boolean) {
+      if (self) await target.goto('/me/hr');
+      await target.getByText('Performance reviews', { exact: true }).click();
+      await target
+        .getByRole('button', { name: new RegExp(`Synthetic ${marker} employee`) })
+        .click();
+      await expect(target.getByText('Confirm completion evidence', { exact: true })).toBeVisible();
+    }
+
+    async function act(target: Page, action: string, notes?: string, rating?: string) {
+      const review = target.getByRole('region', { name: 'Selected performance review' });
+      await review.getByRole('combobox', { name: 'Review action' }).selectOption(action);
+      if (notes) await review.getByLabel('Review notes').fill(notes);
+      if (rating)
+        await review.getByRole('combobox', { name: 'Review rating' }).selectOption(rating);
+      const write = target.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname.endsWith('/actions')
+      );
+      await review.getByRole('button', { name: 'Record review action' }).click();
+      expect((await write).status()).toBe(200);
+    }
+
+    await openReview(employeePage, true);
+    await act(employeePage, 'acknowledge_goals');
+    await openReview(managerPage, true);
+    await act(managerPage, 'acknowledge_goals');
+    await employeePage.getByRole('button', { name: 'Refresh reviews' }).click();
+    await act(employeePage, 'submit_self_review', 'Synthetic employee feedback', 'Developing');
+    await managerPage.getByRole('button', { name: 'Refresh reviews' }).click();
+    await act(managerPage, 'submit_manager_review', 'Synthetic manager assessment', 'Established');
+    await employeePage.getByRole('button', { name: 'Refresh reviews' }).click();
+    await expect(employeePage.getByText('Synthetic manager assessment')).toHaveCount(0);
+    const current = await request.get(`/api/v1/hr/employees/${employeeId}`, { headers });
+    const changed = await request.patch(`/api/v1/hr/employees/${employeeId}`, {
+      headers,
+      data: {
+        manager_employee_id: successorId,
+        expected_revision: (await current.json()).record_revision
+      }
+    });
+    expect(changed.status()).toBe(200);
+    const enabled = await request.put(`/api/v1/hr/employees/${employeeId}/manager-review`, {
+      headers,
+      data: { enabled: true, expected_revision: (await changed.json()).record_revision }
+    });
+    expect(enabled.status()).toBe(200);
+    await openReview(page, false);
+    await act(page, 'reassign_manager', 'Synthetic authorized manager change');
+    await openReview(successorPage, true);
+    await act(successorPage, 'acknowledge_goals');
+    await act(successorPage, 'submit_manager_review', 'Synthetic successor assessment', 'Advanced');
+    await page.getByRole('button', { name: 'Refresh reviews' }).click();
+    await act(page, 'calibrate', 'Synthetic calibrated outcome', 'Advanced');
+    await employeePage.getByRole('button', { name: 'Refresh reviews' }).click();
+    await expect(employeePage.getByText('Synthetic successor assessment')).toBeVisible();
+    await expect(employeePage.getByText('Synthetic manager assessment')).toHaveCount(0);
+    await act(employeePage, 'acknowledge_final');
+    await expect(employeePage.getByRole('heading', { name: `${marker} · closed` })).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh reviews' }).click();
+    await act(page, 'add_addendum', 'Synthetic correction kept as an addendum');
+    await openReview(employeePage, true);
+    await expect(employeePage.getByText('Synthetic calibrated outcome')).toBeVisible();
+    await expect(employeePage.getByText('Synthetic correction kept as an addendum')).toBeVisible();
+  } finally {
+    await directorContext.close();
+    await employeeContext.close();
+    await managerContext.close();
+    await successorContext.close();
+  }
+});
+
+test('HR plans and cancels a roster allocation using a published schedule', async ({
+  page,
+  browser,
+  request
+}) => {
+  const site = seedAccount();
+  const hr = await signIn(page, seedAccount('hr_manager', site.projectId));
+  const headers = { Authorization: `Bearer ${hr.accessToken}` };
+  const reviewerContext = await browser.newContext();
+  try {
+    const reviewer = await signIn(
+      await reviewerContext.newPage(),
+      seedAccount('hr_manager', site.projectId)
+    );
+    const reviewerHeaders = { Authorization: `Bearer ${reviewer.accessToken}` };
+    const marker = `Roster-${Date.now().toString(36)}`;
+    const date = '2027-01-04';
+    const calendarResponse = await request.post('/api/v1/hr/calendars', {
+      headers,
+      data: {
+        code: marker,
+        name: 'Synthetic roster calendar',
+        project_id: site.projectId,
+        work_days_json: ['MON'],
+        standard_start_time: '07:30',
+        standard_end_time: '16:30',
+        daily_hours: '7.50',
+        effective_from: date,
+        effective_to: date,
+        timezone: 'Asia/Colombo'
+      }
+    });
+    expect(calendarResponse.status()).toBe(201);
+    let calendar = (await calendarResponse.json()) as { id: string; revision: number };
+    for (const action of ['submit', 'approve', 'publish']) {
+      const decision = await request.post(`/api/v1/hr/calendars/${calendar.id}/decision`, {
+        headers: action === 'submit' ? headers : reviewerHeaders,
+        data: { action, expected_revision: calendar.revision }
+      });
+      expect(decision.status()).toBe(200);
+      calendar = (await decision.json()) as typeof calendar;
+    }
+    const employeeResponse = await request.post('/api/v1/hr/employees', {
+      headers,
+      data: {
+        employee_code: marker,
+        first_name: 'Synthetic',
+        last_name: marker,
+        join_date: '2026-01-01',
+        primary_project_id: site.projectId,
+        employment_status: 'active'
+      }
+    });
+    expect(employeeResponse.status()).toBe(201);
+    const employee = (await employeeResponse.json()) as { id: string };
+
+    await page.getByRole('link', { name: 'HR & Workforce' }).click();
+    await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+    await page.getByRole('searchbox', { name: 'Find roster employee' }).fill(marker);
+    await page.getByRole('combobox', { name: 'Roster employee' }).selectOption(employee.id);
+    await page.getByRole('searchbox', { name: 'Find roster project' }).fill(site.projectCode);
+    await page.getByRole('combobox', { name: 'Roster project' }).selectOption(site.projectId);
+    await page.getByLabel('Allocation date').fill(date);
+    await page.getByRole('button', { name: 'Allocate shift' }).click();
+    const allocation = page.getByRole('listitem').filter({ hasText: `Synthetic ${marker}` });
+    await expect(allocation).toContainText('7.50 planned hours');
+    await page.getByRole('button', { name: 'Allocate shift' }).click();
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'overlapping allocation' })
+    ).toBeVisible();
+    await allocation.getByRole('button', { name: 'Cancel allocation' }).click();
+    await page.getByLabel('Roster cancellation reason').fill('Synthetic reschedule');
+    await page.getByRole('button', { name: 'Confirm roster cancellation' }).click();
+    await expect(allocation).toContainText('Cancelled · Synthetic reschedule');
+
+    await page.reload();
+    await page.getByRole('button', { name: 'Attendance', exact: true }).click();
+    await page.getByLabel('Roster from').fill(date);
+    await page.getByLabel('Roster to').fill(date);
+    await page.getByRole('button', { name: 'View roster' }).click();
+    await expect(allocation).toContainText('Cancelled · Synthetic reschedule');
+  } finally {
+    await reviewerContext.close();
+  }
+});
+
+test('HR independently corrects an employee name and stale My HR edits are rejected', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const maker = await signIn(page, seedAccount('hr_manager', director.projectId));
+  const owner = seedAccount('quantity_surveyor', director.projectId);
+  const makerHeaders = { Authorization: `Bearer ${maker.accessToken}` };
+  const directorContext = await browser.newContext();
+  const checkerContext = await browser.newContext();
+  const ownerContext = await browser.newContext();
+  try {
+    const directorSession = await signIn(await directorContext.newPage(), director);
+    const checkerPage = await checkerContext.newPage();
+    await signIn(checkerPage, seedAccount('hr_manager', director.projectId));
+    const ownerPage = await ownerContext.newPage();
+    const employeeSession = await signIn(ownerPage, owner);
+    const code = `EMP-PROFILE-${Date.now().toString(36)}`;
+    const created = await request.post('/api/v1/hr/employees', {
+      headers: makerHeaders,
+      data: {
+        employee_code: code,
+        first_name: 'Synthetic',
+        last_name: 'Prior',
+        employment_status: 'active',
+        work_email: owner.email,
+        join_date: '2025-01-01'
+      }
+    });
+    expect(created.status()).toBe(201);
+    const employee = (await created.json()) as { id: string };
+    const employeePath = `/api/v1/hr/employees/${employee.id}`;
+    const linked = await request.post(`${employeePath}/link-account`, {
+      headers: { Authorization: `Bearer ${directorSession.accessToken}` },
+      data: { user_id: employeeSession.userId }
+    });
+    expect(linked.status()).toBe(200);
+
+    async function openEmployee(target: Page) {
+      await target.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+      await target.getByRole('button', { name: 'Directory & Org' }).click();
+      await target.getByLabel('Search employees').fill(code);
+      await target
+        .getByRole('row')
+        .filter({ hasText: code })
+        .getByRole('button', { name: 'Inspect' })
+        .click();
+      await target.getByText('Reviewed employment changes', { exact: true }).click();
+    }
+
+    await ownerPage.getByRole('link', { name: 'My HR', exact: true }).click();
+    const contact = ownerPage.getByLabel('Personal Phone', { exact: true });
+    await contact.fill('000777');
+
+    await openEmployee(page);
+    await page
+      .getByRole('combobox', { name: 'Change type', exact: true })
+      .selectOption('profile_correction');
+    await page.getByLabel('Corrected last name').fill('Corrected');
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
+    await page.getByLabel('Effective date', { exact: true }).fill(today);
+    await page.getByLabel('Employment change reason').fill('Synthetic verified name correction');
+    await page.getByRole('button', { name: 'Propose employment change' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Profile name correction .* proposed/ })
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Approve employment change' })).toHaveCount(0);
+    await openEmployee(checkerPage);
+    await checkerPage.getByRole('button', { name: 'Approve employment change' }).click();
+    await checkerPage.getByRole('button', { name: 'Apply due employment change' }).click();
+    await expect(
+      checkerPage.getByRole('heading', { name: /Profile name correction .* applied/ })
+    ).toBeVisible();
+
+    await ownerPage.getByRole('button', { name: 'Save contact details' }).click();
+    await expect(
+      ownerPage.getByRole('alert').filter({ hasText: 'The profile changed after you opened it' })
+    ).toBeVisible();
+    await expect(contact).toHaveValue('000777');
+    await ownerPage
+      .getByRole('button', { name: 'Discard edits and reload contact details' })
+      .click();
+    await expect(contact).toHaveValue('');
+    await contact.fill('000888');
+    await ownerPage.getByRole('button', { name: 'Save contact details' }).click();
+    await expect(ownerPage.getByText('Personal HR contact details updated.')).toBeVisible();
+    await ownerPage.reload();
+    await expect(contact).toHaveValue('000888');
+    const result = await request.get(employeePath, { headers: makerHeaders });
+    expect(await result.json()).toMatchObject({ full_name: 'Synthetic Corrected' });
+
+    const nationalId = checkerPage.getByRole('textbox', { name: 'Update National ID' });
+    await nationalId.fill('SYNTHETIC-TEST-5331');
+    await checkerPage.getByRole('button', { name: 'Encrypt & Save' }).click();
+    await expect(
+      checkerPage.getByText('The profile changed after you opened it.', { exact: false })
+    ).toBeVisible();
+    await expect(nationalId).toHaveValue('SYNTHETIC-TEST-5331');
+    await checkerPage.getByRole('button', { name: 'Reload private vault' }).click();
+    await checkerPage.getByRole('button', { name: 'Encrypt & Save' }).click();
+    await expect(checkerPage.getByText(/National ID:.*5331/)).toBeVisible();
+    await expect(nationalId).toHaveValue('');
+  } finally {
+    await Promise.all([directorContext.close(), checkerContext.close(), ownerContext.close()]);
+  }
+});
+
+test('HR withdraws an application with a retention decision and cancels its interview', async ({
+  page,
+  request
+}) => {
+  const session = await signIn(page, seedAccount('hr_manager'));
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const marker = `Withdrawal-${Date.now().toString(36)}`;
+  const req = await request.post('/api/v1/hr/requisitions', {
+    headers,
+    data: { requisition_code: marker, title: 'Synthetic position' }
+  });
+  expect(req.status()).toBe(201);
+  const reqId = (await req.json()).id as string;
+  for (const step of ['submitted', 'approved', 'open']) {
+    const decision = await request.post(`/api/v1/hr/requisitions/${reqId}/decision`, {
+      headers,
+      data: { status: step }
+    });
+    expect(decision.status()).toBe(200);
+  }
+  const candidate = await request.post('/api/v1/hr/candidates', {
+    headers,
+    data: { candidate_code: marker, full_name: `Synthetic ${marker}` }
+  });
+  expect(candidate.status()).toBe(201);
+  const application = await request.post('/api/v1/hr/applications', {
+    headers,
+    data: { requisition_id: reqId, candidate_id: (await candidate.json()).id }
+  });
+  expect(application.status()).toBe(201);
+  const appId = (await application.json()).id as string;
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  const card = page.getByRole('article').filter({ hasText: `Synthetic ${marker}` });
+  await page.getByRole('searchbox', { name: 'Find candidate applications' }).fill(marker);
+  await page.getByRole('button', { name: 'Find applications' }).click();
+  await card.getByRole('button', { name: 'Mark screening' }).click();
+  await card.getByRole('button', { name: 'Shortlist application' }).click();
+  await expect(card).toContainText('shortlisted');
+  await card.getByText('Application stage history', { exact: true }).click();
+  await expect(card.getByRole('listitem').filter({ hasText: 'shortlisted' })).toBeVisible();
+  const newRecord = page.locator('form').filter({
+    has: page.getByRole('button', { name: 'Save recruitment record' })
+  });
+  await newRecord.getByLabel('New record').selectOption('interview');
+  await newRecord.locator('select[name="application"]').selectOption(appId);
+  await newRecord.getByLabel('Interview time').fill('2028-01-05T10:00');
+  await newRecord.getByLabel('Round number').fill('1');
+  const profile = await request.get('/api/v1/auth/me', { headers });
+  expect(profile.ok()).toBeTruthy();
+  const fullName = (await profile.json()).full_name as string;
+  await newRecord.getByRole('searchbox', { name: 'Find portal interviewer' }).fill(fullName);
+  const interviewer = newRecord.getByRole('combobox', { name: 'Portal interviewer', exact: true });
+  await interviewer.selectOption(session.userId);
+  await newRecord.getByRole('button', { name: 'Save recruitment record' }).click();
+  await expect(card.getByRole('button', { name: 'Record interview completed' })).toBeVisible();
+  await card.getByRole('button', { name: 'Withdraw application' }).click();
+  await expect(card.getByRole('button', { name: 'Confirm withdrawal' })).toBeDisabled();
+  await card.getByLabel('Withdrawal reason').fill('Candidate requested withdrawal.');
+  await card
+    .getByRole('combobox', { name: 'Retention decision' })
+    .selectOption('retain_until_review');
+  const reviewDate = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  await card.getByLabel('Retention review date').fill(reviewDate);
+  await card.getByLabel('Approved retention policy reference').fill('SYNTHETIC-RETENTION-1');
+  await card.getByRole('button', { name: 'Confirm withdrawal' }).click();
+  await expect(card).toContainText('withdrawn');
+  await expect(card).toContainText('· cancelled');
+  await expect(card.getByRole('button', { name: 'Withdraw application' })).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  await expect(card).toContainText(`Retain until review on ${reviewDate}`);
+  await expect(card).toContainText('SYNTHETIC-RETENTION-1');
+  await expect(card).toContainText('Candidate requested withdrawal.');
+  await page.getByRole('link', { name: 'Notifications', exact: true }).click();
+  await expect(page.getByText('Recruitment interview invitation', { exact: true })).toBeVisible();
+  await expect(page.getByText('Recruitment interview cancelled', { exact: true })).toBeVisible();
+  await expect(page.getByText(`Synthetic ${marker}`, { exact: false })).toHaveCount(0);
+  expect(
+    await (await request.get(`/api/v1/hr/applications/${appId}`, { headers })).json()
+  ).toMatchObject({ retention_decision: 'retain_until_review', retention_review_on: reviewDate });
+});
+
+test('a second HR Manager approves the exact candidate rejection letter', async ({
+  page,
+  browser,
+  request
+}) => {
+  const maker = await signIn(page, seedAccount('hr_manager'));
+  const headers = { Authorization: `Bearer ${maker.accessToken}` };
+  const marker = `Candidate-Letter-${Date.now().toString(36)}`;
+  const req = await request.post('/api/v1/hr/requisitions', {
+    headers,
+    data: { requisition_code: marker, title: 'Synthetic Planner' }
+  });
+  expect(req.status()).toBe(201);
+  const reqId = (await req.json()).id as string;
+  for (const step of ['submitted', 'approved', 'open']) {
+    expect(
+      (
+        await request.post(`/api/v1/hr/requisitions/${reqId}/decision`, {
+          headers,
+          data: { status: step }
+        })
+      ).status()
+    ).toBe(200);
+  }
+  const candidate = await request.post('/api/v1/hr/candidates', {
+    headers,
+    data: { candidate_code: marker, full_name: `Synthetic ${marker}` }
+  });
+  expect(candidate.status()).toBe(201);
+  expect(
+    (
+      await request.post('/api/v1/hr/applications', {
+        headers,
+        data: { requisition_id: reqId, candidate_id: (await candidate.json()).id }
+      })
+    ).status()
+  ).toBe(201);
+
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Policies & Requests', exact: true }).click();
+  await page.getByLabel('Template code').fill(marker);
+  await page.getByLabel('Template name').fill(marker);
+  await page
+    .getByRole('combobox', { name: 'Letter type', exact: true })
+    .selectOption('candidate_rejection');
+  await page.getByLabel('Letter subject template').fill('Application for {position_title}');
+  await page
+    .getByLabel('Letter body template')
+    .fill('Dear {candidate_name}, thank you for applying.');
+  await page.getByRole('button', { name: 'Save letter template' }).click();
+  await expect(page.getByText('Letter template saved.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Recruitment', exact: true }).click();
+  const application = page.getByRole('article').filter({ hasText: `Synthetic ${marker}` });
+  await application.getByRole('button', { name: 'Reject application', exact: true }).click();
+  await application
+    .getByLabel('Internal application rejection reason')
+    .fill('Synthetic internal reason');
+  await application.getByRole('button', { name: 'Confirm application rejection' }).click();
+  await application.getByText('Candidate correspondence', { exact: true }).click();
+  await application
+    .getByRole('combobox', { name: 'Candidate rejection template' })
+    .selectOption({ label: marker });
+  await application.getByRole('button', { name: 'Draft candidate correspondence' }).click();
+  const draft = application.getByRole('region', { name: 'Selected correspondence' });
+  await expect(draft).toContainText('Application for Synthetic Planner');
+  await expect(draft).toContainText(`Dear Synthetic ${marker}, thank you for applying.`);
+  await expect(draft).not.toContainText('Synthetic internal reason');
+  await expect(draft.getByRole('button', { name: 'Approve candidate correspondence' })).toHaveCount(
+    0
+  );
+
+  const reviewerContext = await browser.newContext();
+  try {
+    const reviewer = await reviewerContext.newPage();
+    await signIn(reviewer, seedAccount('hr_manager'));
+    async function openCorrespondence(status: string) {
+      await reviewer.getByRole('button', { name: 'Recruitment', exact: true }).click();
+      const card = reviewer.getByRole('article').filter({ hasText: `Synthetic ${marker}` });
+      await card.getByText('Candidate correspondence', { exact: true }).click();
+      await card.getByRole('button', { name: `Open ${marker} · ${status}` }).click();
+      return card.getByRole('region', { name: 'Selected correspondence' });
+    }
+    await reviewer.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    const reviewed = await openCorrespondence('draft');
+    await reviewed.getByRole('button', { name: 'Approve candidate correspondence' }).click();
+    await expect(reviewed).toContainText('Status approved');
+    await reviewer.reload();
+    const retained = await openCorrespondence('approved');
+    await expect(retained).toContainText(`Dear Synthetic ${marker}, thank you for applying.`);
+    await expect(
+      retained.getByRole('button', { name: 'Approve candidate correspondence' })
+    ).toHaveCount(0);
+  } finally {
+    await reviewerContext.close();
+  }
+});
+
+test('policy replacement preserves the acknowledged file and requires a new receipt', async ({
+  page,
+  browser,
+  request
+}) => {
+  const director = seedAccount();
+  const hr = await signIn(page, seedAccount('hr_manager', director.projectId));
+  const headers = { Authorization: `Bearer ${hr.accessToken}` };
+  const directorContext = await browser.newContext();
+  const reviewerContext = await browser.newContext();
+  const employeeContext = await browser.newContext();
+  try {
+    const directorSession = await signIn(await directorContext.newPage(), director);
+    const reviewer = await signIn(
+      await reviewerContext.newPage(),
+      seedAccount('hr_manager', director.projectId)
+    );
+    const reviewerHeaders = { Authorization: `Bearer ${reviewer.accessToken}` };
+    const worker = seedAccount('quantity_surveyor', director.projectId);
+    const employeePage = await employeeContext.newPage();
+    const employeeSession = await signIn(employeePage, worker);
+    const marker = `Policy-${Date.now().toString(36)}`;
+    const employee = await request.post('/api/v1/hr/employees', {
+      headers,
+      data: {
+        employee_code: marker,
+        first_name: 'Synthetic',
+        last_name: 'Policy Reader',
+        work_email: worker.email,
+        employment_status: 'active',
+        join_date: '2025-01-01'
+      }
+    });
+    expect(employee.status()).toBe(201);
+    const linked = await request.post(
+      `/api/v1/hr/employees/${(await employee.json()).id}/link-account`,
+      {
+        headers: { Authorization: `Bearer ${directorSession.accessToken}` },
+        data: { user_id: employeeSession.userId }
+      }
+    );
+    expect(linked.status()).toBe(200);
+
+    const original = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n% first policy\n%%EOF');
+    const updated = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n% second policy\n%%EOF');
+    await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+    await page.getByRole('button', { name: 'Docs & Compliance', exact: true }).click();
+    await page.getByLabel('Document title', { exact: true }).fill(marker);
+    await page.getByLabel('Upload company policy file').check();
+    await page.getByLabel('HR document file').setInputFiles({
+      name: 'policy-original.pdf',
+      mimeType: 'application/pdf',
+      buffer: original
+    });
+    const uploaded = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/hr/documents') && response.request().method() === 'POST'
+    );
+    await page.getByRole('button', { name: 'Upload HR document' }).click();
+    const file = await uploaded;
+    expect(file.status()).toBe(201);
+    const documentId = (await file.json()).id as string;
+    const documentCard = page.getByRole('article').filter({ hasText: marker });
+
+    async function approveVersion(number: number) {
+      const decision = await request.post(
+        `/api/v1/hr/documents/${documentId}/versions/${number}/decision`,
+        {
+          headers: reviewerHeaders,
+          data: { decision: 'approve' }
+        }
+      );
+      expect(decision.status()).toBe(200);
+    }
+    const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' });
+    const today = dateFormat.format(new Date());
+    const yesterday = dateFormat.format(new Date(Date.now() - 86_400_000));
+
+    async function publish(version: number, effectiveDate: string, predecessor?: string) {
+      await page.getByRole('button', { name: 'Policies & Requests', exact: true }).click();
+      await page.getByLabel('Policy code').fill(`${marker}-${version}`);
+      await page.getByLabel('Policy title').fill(marker);
+      await page.getByLabel('Policy edition', { exact: true }).fill(`${version}.0`);
+      await page.getByLabel('Policy effective date').fill(effectiveDate);
+      if (predecessor) {
+        await page
+          .getByRole('combobox', { name: 'Replaces policy edition' })
+          .selectOption(predecessor);
+      }
+      await page.getByLabel('Policy summary').fill(`Synthetic edition ${version} body`);
+      await page.getByLabel('Attach approved company policy file').check();
+      await page
+        .getByRole('combobox', { name: 'Policy file version' })
+        .selectOption(`${documentId}:${version}`);
+      const publication = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/hr/policies') && response.request().method() === 'POST'
+      );
+      await page.getByRole('button', { name: 'Publish policy' }).click();
+      const response = await publication;
+      expect(response.status()).toBe(201);
+      await expect(page.getByText('Policy edition published.')).toBeVisible();
+      return ((await response.json()) as { id: string }).id;
+    }
+
+    await approveVersion(1);
+    const firstId = await publish(1, yesterday);
+    await employeePage.getByRole('link', { name: 'My HR', exact: true }).click();
+    const current = employeePage.getByRole('article').filter({ hasText: `${marker} v1.0` });
+    await current.getByRole('button', { name: 'Acknowledge policy edition' }).click();
+    await expect(current).toContainText('Acknowledged');
+
+    await page.getByRole('button', { name: 'Docs & Compliance', exact: true }).click();
+    await documentCard.getByLabel('Replacement file').setInputFiles({
+      name: 'policy-replacement.pdf',
+      mimeType: 'application/pdf',
+      buffer: updated
+    });
+    await documentCard.getByRole('button', { name: 'Submit replacement' }).click();
+    await expect(documentCard).toContainText('Version 2 · pending');
+    await approveVersion(2);
+    await publish(2, today, firstId);
+
+    await employeePage.getByRole('button', { name: 'Reload policies' }).click();
+    const replacement = employeePage.getByRole('article').filter({ hasText: `${marker} v2.0` });
+    await expect(current).toContainText('Previous edition');
+    await expect(current).toContainText('Acknowledged');
+    await expect(
+      replacement.getByRole('button', { name: 'Acknowledge policy edition' })
+    ).toBeVisible();
+    const [historicalFile] = await Promise.all([
+      employeePage.waitForEvent('download'),
+      current.getByRole('button', { name: 'Download policy file v1' }).click()
+    ]);
+    expect(readFileSync(await historicalFile.path())).toEqual(original);
+    const [newFile] = await Promise.all([
+      employeePage.waitForEvent('download'),
+      replacement.getByRole('button', { name: 'Download policy file v2' }).click()
+    ]);
+    expect(readFileSync(await newFile.path())).toEqual(updated);
+    await replacement.getByRole('button', { name: 'Acknowledge policy edition' }).click();
+    await expect(replacement).toContainText('Acknowledged');
+    await employeePage.reload();
+    await expect(replacement).toContainText('Acknowledged');
+  } finally {
+    await Promise.all([directorContext.close(), reviewerContext.close(), employeeContext.close()]);
   }
 });

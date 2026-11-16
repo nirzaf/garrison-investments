@@ -67,7 +67,8 @@ HR directory, document or final-decision permissions. See [HR and workforce](HR_
 
 The backend defines 16 standard and 21 HR permission keys. No current role is
 granted `hr:cases:restricted`, `hr:payroll:approve`, `hr:payroll:prepare`,
-`hr:payroll:sensitive`, `hr:performance:manage`, or `hr:training:manage`.
+or `hr:payroll:sensitive`.
+HR Manager has `hr:training:manage` for training and `hr:performance:manage` for setting up and calibrating reviews. Linked employees and explicitly authorized current direct managers act only on their own or assigned reviews.
 The associated permission-gated workflows cannot be operated by assigning a
 current portal role. [Permission definitions and grants](../backend/app/utils/permissions.py)
 

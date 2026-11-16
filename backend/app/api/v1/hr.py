@@ -9,15 +9,18 @@ from fastapi.responses import Response
 
 from app.api.dependencies import CurrentUser, DbSession, require_permission
 from app.config import get_settings
+from app.models.hr import HrEmployee
 from app.models.user import User
 from app.schemas.hr import (
     AccessRequestCreateRequest,
     AccessRequestDecisionRequest,
     AccessRequestListResponse,
     AccessRequestResponse,
+    ApplicationActivityList,
     ApplicationCreateRequest,
     ApplicationListResponse,
     ApplicationResponse,
+    ApplicationStage,
     ApplicationStageUpdateRequest,
     AttendanceCorrectionCreateRequest,
     AttendanceCorrectionDecisionRequest,
@@ -32,6 +35,9 @@ from app.schemas.hr import (
     BenefitTypeCreateRequest,
     BenefitTypeListResponse,
     BenefitTypeResponse,
+    CandidateCorrespondenceCreateRequest,
+    CandidateCorrespondenceDecisionRequest,
+    CandidateCorrespondenceDetail,
     CandidateCreateRequest,
     CandidateListResponse,
     CandidateResponse,
@@ -59,8 +65,14 @@ from app.schemas.hr import (
     EmployeeSensitiveResponse,
     EmployeeStatusTransitionRequest,
     EmployeeUpdateRequest,
+    EmploymentChangeDecision,
+    EmploymentChangeListResponse,
+    EmploymentChangeProposal,
+    EmploymentChangeResponse,
     EmploymentHistoryListResponse,
     EmploymentHistoryResponse,
+    EmploymentPeriodListResponse,
+    EmploymentPeriodResponse,
     ExpiringComplianceResponse,
     GoalCreateRequest,
     GoalListResponse,
@@ -83,6 +95,8 @@ from app.schemas.hr import (
     HrProjectAssignmentResponse,
     HrReportFilters,
     HrReportSiteListResponse,
+    HrServiceRequestAssignee,
+    HrServiceRequestAssignmentRequest,
     HrServiceRequestCreateRequest,
     HrServiceRequestListResponse,
     HrServiceRequestReopenRequest,
@@ -91,23 +105,41 @@ from app.schemas.hr import (
     HrSummaryReportResponse,
     HrWorkflowOptionsResponse,
     InterviewCreateRequest,
+    InterviewerOptions,
     InterviewListResponse,
     InterviewResponse,
     InterviewUpdateRequest,
+    LeaveAccrualApplyRequest,
+    LeaveAccrualCatchUpApplyRequest,
+    LeaveAccrualCatchUpRequest,
+    LeaveAccrualCatchUpResponse,
+    LeaveAccrualRequest,
+    LeaveAccrualResponse,
     LeaveBalanceListResponse,
     LeaveLedgerAdjustRequest,
     LeaveLedgerEntryResponse,
     LeavePolicyCreateRequest,
+    LeavePolicyDecisionRequest,
     LeavePolicyListResponse,
     LeavePolicyResponse,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
     LeaveRequestListResponse,
     LeaveRequestResponse,
+    LeaveRequestResubmitRequest,
+    LeaveRolloverApplyRequest,
+    LeaveRolloverRequest,
+    LeaveRolloverResponse,
     LeaveTypeCreateRequest,
     LeaveTypeListResponse,
     LeaveTypeResponse,
+    LeaveUnitsQuery,
+    LeaveUnitsResponse,
+    LetterDecisionRequest,
+    LetterDetail,
+    LetterDraftRequest,
     LetterGenerateRequest,
+    LetterListResponse,
     LetterRenderResponse,
     LetterTemplateCreateRequest,
     LetterTemplateListResponse,
@@ -116,9 +148,14 @@ from app.schemas.hr import (
     ManagerReviewItemResponse,
     ManagerReviewKind,
     ManagerReviewListResponse,
+    MyPolicyListResponse,
     OffboardingCaseListResponse,
     OffboardingCaseResponse,
     OffboardingCompleteRequest,
+    OffboardingCustodyArea,
+    OffboardingCustodyListResponse,
+    OffboardingCustodyRequest,
+    OffboardingCustodyResponse,
     OffboardingInitiateRequest,
     OffboardingStepUpdateRequest,
     OfferConvertRequest,
@@ -137,15 +174,33 @@ from app.schemas.hr import (
     OvertimeRequestListResponse,
     OvertimeRequestResponse,
     OvertimeSelfCreateRequest,
+    PayrollExportConfirmRequest,
+    PayrollExportPreview,
+    PayrollExportReceipt,
     PayrollPeriodCreateRequest,
     PayrollPeriodListResponse,
     PayrollPeriodResponse,
     PayrollPolicyCreateRequest,
     PayrollPolicyListResponse,
     PayrollPolicyResponse,
+    PayrollRunApproveRequest,
+    PayrollRunCalculateRequest,
     PayrollRunCreateRequest,
     PayrollRunListResponse,
     PayrollRunResponse,
+    PayrollRunSnapshotResponse,
+    PayrollSettlementEventResponse,
+    PayrollSettlementEventsResponse,
+    PayrollSettlementRequest,
+    PayrollSettlementSummary,
+    PayrollTimeDownloadRequest,
+    PayrollTimeInputPreview,
+    PayslipDetail,
+    PayslipListResponse,
+    PayslipPublicationResponse,
+    PerformanceReviewActionRequest,
+    PerformanceReviewDetail,
+    PerformanceReviewQueue,
     PolicyAcknowledgementResponse,
     PolicyAcknowledgeRequest,
     PolicyDocumentCreateRequest,
@@ -170,6 +225,15 @@ from app.schemas.hr import (
     ReviewCycleResponse,
     ReviewListResponse,
     ReviewResponse,
+    RosterAllocationCreateRequest,
+    RosterAllocationListResponse,
+    RosterAllocationResponse,
+    RosterCancellationRequest,
+    SelfTrainingListResponse,
+    SeparationSettlementListResponse,
+    SeparationSettlementProposal,
+    SeparationSettlementResponse,
+    SeparationSettlementReview,
     ShiftAssignmentCreateRequest,
     ShiftAssignmentListResponse,
     ShiftAssignmentResponse,
@@ -179,6 +243,8 @@ from app.schemas.hr import (
     TimesheetResponse,
     TimesheetSelfCreateRequest,
     TimesheetSelfResubmitRequest,
+    TrainingCompletionRequest,
+    TrainingCompletionResponse,
     TrainingCourseCreateRequest,
     TrainingCourseListResponse,
     TrainingCourseResponse,
@@ -186,6 +252,9 @@ from app.schemas.hr import (
     TrainingEnrollmentListResponse,
     TrainingEnrollmentResponse,
     TrainingEnrollmentUpdateRequest,
+    TrainingRequirementCreateRequest,
+    TrainingRequirementListResponse,
+    TrainingRequirementStatusListResponse,
     WorkbookApplyRequest,
     WorkbookApplyResponse,
     WorkbookPreviewResponse,
@@ -199,10 +268,39 @@ from app.schemas.hr import (
 from app.schemas.projects import ProjectOptionListResponse
 from app.services.audit_service import AuditService
 from app.services.hr_attendance_import import MAX_ATTENDANCE_CSV_BYTES, review_attendance_csv
+from app.services.hr_leave_accrual import process_leave_accrual, process_leave_accrual_catch_up
+from app.services.hr_leave_rollover import process_leave_rollover
 from app.services.hr_manager_review import (
     can_review_direct_reports,
     list_manager_reviews,
     recommend_request,
+)
+from app.services.hr_offboarding_custody import list_offboarding_custody, record_offboarding_custody
+from app.services.hr_payroll_export import (
+    download_payroll_export,
+    preview_payroll_export,
+    register_payroll_export,
+)
+from app.services.hr_payroll_settlement import (
+    list_payroll_settlement_events,
+    read_payroll_settlement_event,
+    record_payroll_settlement,
+    summarize_payroll_settlements,
+)
+from app.services.hr_payroll_snapshot import (
+    approve_payroll_snapshot,
+    calculate_payroll_snapshot,
+    get_payroll_run,
+    list_employee_payslips,
+    publish_payslips,
+    read_employee_payslip,
+    read_payroll_snapshot,
+)
+from app.services.hr_payroll_time import payroll_time_inputs
+from app.services.hr_performance import (
+    get_performance_review,
+    list_performance_reviews,
+    record_performance_action,
 )
 from app.services.hr_project_assignment import HrProjectAssignmentService
 from app.services.hr_reporting import (
@@ -212,9 +310,24 @@ from app.services.hr_reporting import (
     get_hr_summary,
     list_hr_report_sites,
 )
+from app.services.hr_separation_settlement import (
+    list_separation_settlements,
+    propose_separation_settlement,
+    review_separation_settlement,
+)
 from app.services.hr_service import HrService
+from app.services.hr_training_requirements import (
+    deactivate_rule,
+    list_employee_requirements,
+    list_rules,
+    save_rule,
+)
 from app.services.hr_workbook import apply_workbook, parse_workbook_bytes, preview_workbook
-from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
+from app.utils.exceptions import (
+    AppException,
+    NotFoundException,
+    PermissionDeniedException,
+)
 from app.utils.permissions import (
     PERMISSION_HR_ATTENDANCE_APPROVE,
     PERMISSION_HR_ATTENDANCE_RECORD,
@@ -237,6 +350,7 @@ from app.utils.permissions import (
     PERMISSION_HR_REPORTS_VIEW,
     PERMISSION_HR_REQUESTS_PROCESS,
     PERMISSION_HR_TRAINING_MANAGE,
+    PERMISSION_INVENTORY_MANAGE,
     PERMISSION_USERS_MANAGE,
     has_permission,
 )
@@ -311,7 +425,10 @@ CanViewHrReports = Annotated[User, Depends(require_permission(PERMISSION_HR_REPO
 
 
 @router.get("/me", response_model=EmployeeSelfResponse)
-async def get_my_hr_profile(current_user: CurrentUser, session: DbSession) -> EmployeeSelfResponse:
+async def get_my_hr_profile(
+    current_user: CurrentUser, session: DbSession, response: Response
+) -> EmployeeSelfResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).get_self_profile(current_user)
 
 
@@ -320,8 +437,50 @@ async def update_my_hr_profile(
     payload: EmployeeSelfUpdateRequest,
     current_user: CurrentUser,
     session: DbSession,
+    response: Response,
 ) -> EmployeeSelfResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).update_self_profile(payload, current_user)
+
+
+@router.get("/me/training/requirements", response_model=TrainingRequirementStatusListResponse)
+async def get_my_training_requirements(
+    current_user: CurrentUser,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TrainingRequirementStatusListResponse:
+    employee = await HrService(session).require_self_employee(current_user)
+    return await list_employee_requirements(session, employee, limit=limit, offset=offset)
+
+
+@router.get("/me/training", response_model=SelfTrainingListResponse)
+async def get_my_training(
+    current_user: CurrentUser,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> SelfTrainingListResponse:
+    return await HrService(session).list_self_training(current_user, limit=limit, offset=offset)
+
+
+@router.get("/me/payslips", response_model=PayslipListResponse)
+async def list_my_payslips(
+    current_user: CurrentUser,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PayslipListResponse:
+    employee = await HrService(session).require_self_employee(current_user)
+    return await list_employee_payslips(session, employee.id, limit, offset)
+
+
+@router.get("/me/payslips/{run_id}", response_model=PayslipDetail)
+async def get_my_payslip(
+    run_id: UUID, current_user: CurrentUser, session: DbSession
+) -> PayslipDetail:
+    employee = await HrService(session).require_self_employee(current_user)
+    return await read_employee_payslip(session, run_id, employee.id, current_user)
 
 
 @router.get("/me/leave-types", response_model=LeaveTypeListResponse)
@@ -473,6 +632,17 @@ async def get_my_leave_balances(
     return await svc.get_leave_balances(emp.id, leave_year=leave_year)
 
 
+@router.get("/me/leave-units", response_model=LeaveUnitsResponse)
+async def quote_my_leave_units(
+    payload: Annotated[LeaveUnitsQuery, Query()],
+    current_user: CurrentUser,
+    session: DbSession,
+) -> LeaveUnitsResponse:
+    service = HrService(session)
+    employee = await service.require_self_employee(current_user)
+    return LeaveUnitsResponse(days_requested=await service.get_leave_units(employee, payload))
+
+
 @router.get("/me/leave-requests", response_model=LeaveRequestListResponse)
 async def list_my_leave_requests(
     current_user: CurrentUser, session: DbSession
@@ -495,6 +665,17 @@ async def submit_my_leave_request(
     emp = await svc.require_self_employee(current_user)
     scoped = payload.model_copy(update={"employee_id": emp.id})
     req = await svc.create_leave_request(scoped, current_user, own_request=True)
+    return LeaveRequestResponse.model_validate(req)
+
+
+@router.put("/me/leave-requests/{request_id}/submission", response_model=LeaveRequestResponse)
+async def resubmit_my_leave_request(
+    request_id: UUID,
+    payload: LeaveRequestResubmitRequest,
+    current_user: CurrentUser,
+    session: DbSession,
+) -> LeaveRequestResponse:
+    req = await HrService(session).resubmit_own_leave_request(request_id, payload, current_user)
     return LeaveRequestResponse.model_validate(req)
 
 
@@ -562,15 +743,20 @@ async def download_my_hr_document(
     return await HrService(session).get_self_hr_document_download_url(document_id, current_user)
 
 
-@router.get("/me/policies", response_model=PolicyDocumentListResponse)
+@router.get("/me/policies", response_model=MyPolicyListResponse)
 async def list_my_policies(
-    current_user: CurrentUser, session: DbSession
-) -> PolicyDocumentListResponse:
-    await HrService(session).require_self_employee(current_user)
-    rows, total = await HrService(session).list_policy_documents()
-    return PolicyDocumentListResponse(
-        items=[PolicyDocumentResponse.model_validate(r) for r in rows], total=total
-    )
+    current_user: CurrentUser, session: DbSession, response: Response
+) -> MyPolicyListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_self_policies(current_user)
+
+
+@router.get("/me/policies/{policy_id}/download", response_model=HrDocumentDownloadResponse)
+async def download_my_policy(
+    policy_id: UUID, current_user: CurrentUser, session: DbSession, response: Response
+) -> HrDocumentDownloadResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).get_self_policy_download_url(policy_id, current_user)
 
 
 @router.post("/me/policies/{policy_id}/acknowledge", response_model=PolicyAcknowledgementResponse)
@@ -579,9 +765,10 @@ async def acknowledge_hr_policy(
     payload: PolicyAcknowledgeRequest,
     current_user: CurrentUser,
     session: DbSession,
+    response: Response,
 ) -> PolicyAcknowledgementResponse:
-    ack = await HrService(session).acknowledge_policy(policy_id, payload, current_user)
-    return PolicyAcknowledgementResponse.model_validate(ack)
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).acknowledge_policy(policy_id, payload, current_user)
 
 
 @router.get("/me/requests", response_model=HrServiceRequestListResponse)
@@ -797,6 +984,76 @@ async def update_employee(
     return await HrService(session).update_employee(employee_id, payload, actor)
 
 
+@router.get(
+    "/employees/{employee_id}/employment-changes", response_model=EmploymentChangeListResponse
+)
+async def list_employment_changes(
+    employee_id: UUID,
+    _: CanAccessSensitive,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EmploymentChangeListResponse:
+    rows, total = await HrService(session).list_employment_changes(employee_id, limit, offset)
+    return EmploymentChangeListResponse(
+        items=[EmploymentChangeResponse.model_validate(row) for row in rows], total=total
+    )
+
+
+@router.post(
+    "/employees/{employee_id}/employment-changes",
+    status_code=201,
+    response_model=EmploymentChangeResponse,
+)
+async def propose_employment_change(
+    employee_id: UUID,
+    payload: EmploymentChangeProposal,
+    actor: CanAccessSensitive,
+    session: DbSession,
+) -> EmploymentChangeResponse:
+    change = await HrService(session).propose_employment_change(employee_id, payload, actor)
+    return EmploymentChangeResponse.model_validate(change)
+
+
+@router.get(
+    "/employees/{employee_id}/employment-changes/{change_id}",
+    response_model=EmploymentChangeResponse,
+)
+async def get_employment_change(
+    employee_id: UUID, change_id: UUID, _: CanAccessSensitive, session: DbSession
+) -> EmploymentChangeResponse:
+    change = await HrService(session).get_employment_change(employee_id, change_id)
+    return EmploymentChangeResponse.model_validate(change)
+
+
+@router.post(
+    "/employees/{employee_id}/employment-changes/{change_id}/decision",
+    response_model=EmploymentChangeResponse,
+)
+async def decide_employment_change(
+    employee_id: UUID,
+    change_id: UUID,
+    payload: EmploymentChangeDecision,
+    actor: CanAccessSensitive,
+    session: DbSession,
+) -> EmploymentChangeResponse:
+    change = await HrService(session).decide_employment_change(
+        employee_id, change_id, payload, actor
+    )
+    return EmploymentChangeResponse.model_validate(change)
+
+
+@router.post(
+    "/employees/{employee_id}/employment-changes/{change_id}/apply",
+    response_model=EmploymentChangeResponse,
+)
+async def apply_employment_change(
+    employee_id: UUID, change_id: UUID, actor: CanAccessSensitive, session: DbSession
+) -> EmploymentChangeResponse:
+    change = await HrService(session).apply_employment_change(employee_id, change_id, actor)
+    return EmploymentChangeResponse.model_validate(change)
+
+
 @router.put("/employees/{employee_id}/manager-review", response_model=EmployeeDetailResponse)
 async def set_employee_manager_review(
     employee_id: UUID,
@@ -817,6 +1074,22 @@ async def transition_employee_status(
     return await HrService(session).transition_employee_status(employee_id, payload, actor)
 
 
+@router.get(
+    "/employees/{employee_id}/employment-periods", response_model=EmploymentPeriodListResponse
+)
+async def get_employment_periods(
+    employee_id: UUID,
+    _: CanReadEmployees,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EmploymentPeriodListResponse:
+    rows, total = await HrService(session).list_employment_periods(employee_id, limit, offset)
+    return EmploymentPeriodListResponse(
+        items=[EmploymentPeriodResponse.model_validate(row) for row in rows], total=total
+    )
+
+
 @router.get("/employees/{employee_id}/history", response_model=EmploymentHistoryListResponse)
 async def get_employee_history(
     employee_id: UUID, _: CanReadEmployees, session: DbSession
@@ -832,8 +1105,10 @@ async def get_employee_private(
     employee_id: UUID,
     actor: CanAccessSensitive,
     session: DbSession,
+    response: Response,
     reveal_sensitive: Annotated[bool, Query()] = False,
 ) -> EmployeeSensitiveResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).get_employee_private(
         employee_id, actor, reveal_sensitive=reveal_sensitive
     )
@@ -845,7 +1120,9 @@ async def upsert_employee_private(
     payload: EmployeePrivateUpdateRequest,
     actor: CanAccessSensitive,
     session: DbSession,
+    response: Response,
 ) -> EmployeeSensitiveResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).upsert_employee_private(employee_id, payload, actor)
 
 
@@ -952,10 +1229,25 @@ async def list_requisitions(
     _: CanManageRecruitment,
     session: DbSession,
     req_status: Annotated[str | None, Query()] = None,
+    code: Annotated[str | None, Query(min_length=1, max_length=40)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RequisitionListResponse:
-    rows, total = await HrService(session).list_requisitions(status=req_status)
+    rows, total = await HrService(session).list_requisitions(
+        status=req_status, code=code, limit=limit, offset=offset
+    )
     return RequisitionListResponse(
         items=[RequisitionResponse.model_validate(r) for r in rows], total=total
+    )
+
+
+@router.get("/requisitions/{requisition_id}", response_model=RequisitionResponse)
+async def get_requisition(
+    requisition_id: UUID, _: CanManageRecruitment, session: DbSession, response: Response
+) -> RequisitionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return RequisitionResponse.model_validate(
+        await HrService(session).get_requisition(requisition_id)
     )
 
 
@@ -984,12 +1276,27 @@ async def decide_requisition(
 async def list_candidates(
     _: CanManageRecruitment,
     session: DbSession,
-    search: Annotated[str | None, Query()] = None,
+    response: Response,
+    search: Annotated[str | None, Query(max_length=255)] = None,
+    code: Annotated[str | None, Query(min_length=1, max_length=40)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> CandidateListResponse:
-    rows, total = await HrService(session).list_candidates(search=search)
+    response.headers["Cache-Control"] = "no-store"
+    rows, total = await HrService(session).list_candidates(
+        search=search, code=code, limit=limit, offset=offset
+    )
     return CandidateListResponse(
         items=[CandidateResponse.model_validate(r) for r in rows], total=total
     )
+
+
+@router.get("/candidates/{candidate_id}", response_model=CandidateResponse)
+async def get_candidate(
+    candidate_id: UUID, _: CanManageRecruitment, session: DbSession, response: Response
+) -> CandidateResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return CandidateResponse.model_validate(await HrService(session).get_candidate(candidate_id))
 
 
 @router.post("/candidates", response_model=CandidateResponse, status_code=status.HTTP_201_CREATED)
@@ -1004,11 +1311,22 @@ async def create_candidate(
 async def list_applications(
     _: CanManageRecruitment,
     session: DbSession,
+    response: Response,
     requisition_id: Annotated[UUID | None, Query()] = None,
+    candidate_id: Annotated[UUID | None, Query()] = None,
+    stage: ApplicationStage | None = None,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ApplicationListResponse:
-    rows, total = await HrService(session).list_applications(requisition_id=requisition_id)
-    return ApplicationListResponse(
-        items=[ApplicationResponse.model_validate(r) for r in rows], total=total
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_applications(
+        requisition_id=requisition_id,
+        candidate_id=candidate_id,
+        stage=stage,
+        search=search,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -1016,8 +1334,12 @@ async def list_applications(
     "/applications", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_application(
-    payload: ApplicationCreateRequest, actor: CanManageRecruitment, session: DbSession
+    payload: ApplicationCreateRequest,
+    actor: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
 ) -> ApplicationResponse:
+    response.headers["Cache-Control"] = "no-store"
     row = await HrService(session).create_application(payload, actor)
     return ApplicationResponse.model_validate(row)
 
@@ -1028,9 +1350,111 @@ async def update_application_stage(
     payload: ApplicationStageUpdateRequest,
     actor: CanManageRecruitment,
     session: DbSession,
+    response: Response,
 ) -> ApplicationResponse:
+    response.headers["Cache-Control"] = "no-store"
     row = await HrService(session).update_application_stage(application_id, payload, actor)
     return ApplicationResponse.model_validate(row)
+
+
+@router.get("/applications/{application_id}", response_model=ApplicationResponse)
+async def get_application(
+    application_id: UUID, _: CanManageRecruitment, session: DbSession, response: Response
+) -> ApplicationResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return ApplicationResponse.model_validate(
+        await HrService(session).get_application(application_id)
+    )
+
+
+@router.get("/applications/{application_id}/activity", response_model=ApplicationActivityList)
+async def list_application_activity(
+    application_id: UUID,
+    _: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ApplicationActivityList:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_application_activity(
+        application_id, limit=limit, offset=offset
+    )
+
+
+@router.get("/candidate-correspondence/templates", response_model=LetterTemplateListResponse)
+async def list_candidate_letter_templates(
+    _: CanManageRecruitment, session: DbSession, response: Response
+) -> LetterTemplateListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    rows, total = await HrService(session).list_letter_templates(candidate=True)
+    return LetterTemplateListResponse(
+        items=[LetterTemplateResponse.model_validate(r) for r in rows], total=total
+    )
+
+
+@router.get("/applications/{application_id}/correspondence", response_model=LetterListResponse)
+async def list_candidate_correspondence(
+    application_id: UUID,
+    actor: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LetterListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_candidate_correspondence(
+        application_id, actor, limit=limit, offset=offset
+    )
+
+
+@router.post(
+    "/applications/{application_id}/correspondence",
+    response_model=CandidateCorrespondenceDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def draft_candidate_correspondence(
+    application_id: UUID,
+    payload: CandidateCorrespondenceCreateRequest,
+    actor: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+) -> CandidateCorrespondenceDetail:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).draft_candidate_correspondence(application_id, payload, actor)
+
+
+@router.get(
+    "/applications/{application_id}/correspondence/{draft_id}",
+    response_model=CandidateCorrespondenceDetail,
+)
+async def get_candidate_correspondence(
+    application_id: UUID,
+    draft_id: UUID,
+    actor: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+) -> CandidateCorrespondenceDetail:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).get_candidate_correspondence(application_id, draft_id, actor)
+
+
+@router.post(
+    "/applications/{application_id}/correspondence/{draft_id}/decision",
+    response_model=CandidateCorrespondenceDetail,
+)
+async def decide_candidate_correspondence(
+    application_id: UUID,
+    draft_id: UUID,
+    payload: CandidateCorrespondenceDecisionRequest,
+    actor: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+) -> CandidateCorrespondenceDetail:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).decide_candidate_correspondence(
+        application_id, draft_id, payload, actor
+    )
 
 
 @router.get("/interviews", response_model=InterviewListResponse)
@@ -1042,6 +1466,21 @@ async def list_interviews(
     rows, total = await HrService(session).list_interviews(application_id=application_id)
     return InterviewListResponse(
         items=[InterviewResponse.model_validate(r) for r in rows], total=total
+    )
+
+
+@router.get("/interviews/interviewer-options", response_model=InterviewerOptions)
+async def list_interviewer_options(
+    _: CanManageRecruitment,
+    session: DbSession,
+    response: Response,
+    search: Annotated[str, Query(max_length=120)] = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> InterviewerOptions:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).list_interviewer_options(
+        search=search.strip(), limit=limit, offset=offset
     )
 
 
@@ -1069,9 +1508,27 @@ async def list_offers(
     _: CanManageRecruitment,
     session: DbSession,
     offer_status: Annotated[str | None, Query()] = None,
+    application_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> OfferListResponse:
-    rows, total = await HrService(session).list_offers(status=offer_status)
+    rows, total = await HrService(session).list_offers(
+        status=offer_status, application_id=application_id, limit=limit, offset=offset
+    )
     return OfferListResponse(items=[OfferResponse.model_validate(r) for r in rows], total=total)
+
+
+@router.get("/offers/{offer_id}", response_model=OfferResponse)
+async def get_offer(offer_id: UUID, _: CanManageRecruitment, session: DbSession) -> OfferResponse:
+    return OfferResponse.model_validate(await HrService(session).get_offer(offer_id))
+
+
+@router.get("/offers/{offer_id}/document", response_model=HrDocumentDownloadResponse)
+async def download_offer_document(
+    offer_id: UUID, actor: CanManageRecruitment, session: DbSession, response: Response
+) -> HrDocumentDownloadResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).download_offer_document(offer_id, actor)
 
 
 @router.post("/offers", response_model=OfferResponse, status_code=status.HTTP_201_CREATED)
@@ -1122,10 +1579,25 @@ async def convert_offer(
 async def list_onboarding(
     _: CanManageOnboarding,
     session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
+    case_status: Annotated[str | None, Query(max_length=30)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> OnboardingCaseListResponse:
-    items, total = await HrService(session).list_onboarding_cases(employee_id=employee_id)
+    response.headers["Cache-Control"] = "no-store"
+    items, total = await HrService(session).list_onboarding_cases(
+        employee_id=employee_id, status=case_status, limit=limit, offset=offset
+    )
     return OnboardingCaseListResponse(items=items, total=total)
+
+
+@router.get("/onboarding/{case_id}", response_model=OnboardingCaseResponse)
+async def get_onboarding_case(
+    case_id: UUID, _: CanManageOnboarding, session: DbSession, response: Response
+) -> OnboardingCaseResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).get_onboarding_case(case_id)
 
 
 @router.post(
@@ -1164,17 +1636,23 @@ async def record_probation_review(
 async def list_hr_documents(
     actor: CanManageDocuments,
     session: DbSession,
+    response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
     candidate_id: Annotated[UUID | None, Query()] = None,
     category: Annotated[str | None, Query()] = None,
     document_type: Annotated[str | None, Query(max_length=40)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> HrDocumentListResponse:
+    response.headers["Cache-Control"] = "no-store"
     items, total = await HrService(session).list_hr_documents(
         actor=actor,
         employee_id=employee_id,
         candidate_id=candidate_id,
         category=category,
         document_type=document_type,
+        limit=limit,
+        offset=offset,
     )
     return HrDocumentListResponse(items=items, total=total)
 
@@ -1211,6 +1689,14 @@ async def upload_hr_document(
     )
 
 
+@router.get("/documents/{document_id}", response_model=HrDocumentResponse)
+async def get_hr_document(
+    document_id: UUID, actor: CanManageDocuments, session: DbSession, response: Response
+) -> HrDocumentResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await HrService(session).get_hr_document_detail(document_id, actor)
+
+
 @router.post(
     "/documents/{document_id}/versions", response_model=HrDocumentResponse, status_code=201
 )
@@ -1219,8 +1705,11 @@ async def upload_hr_document_version(
     actor: CanManageDocuments,
     session: DbSession,
     file: Annotated[UploadFile, File()],
+    expected_latest_version: Annotated[int | None, Form(ge=0)] = None,
 ) -> HrDocumentResponse:
-    return await HrService(session).upload_hr_document_version(document_id, file, actor)
+    return await HrService(session).upload_hr_document_version(
+        document_id, file, actor, expected_latest_version=expected_latest_version
+    )
 
 
 @router.post(
@@ -1243,8 +1732,10 @@ async def download_hr_document(
     document_id: UUID,
     actor: CanManageDocuments,
     session: DbSession,
+    response: Response,
     version_number: Annotated[int | None, Query(ge=1)] = None,
 ) -> HrDocumentDownloadResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).get_hr_document_download_url(
         document_id, actor, version_number=version_number
     )
@@ -1308,6 +1799,51 @@ async def get_work_schedule(
     session: DbSession,
 ) -> WorkScheduleResponse:
     return await HrService(session).get_work_schedule(employee_id, work_date)
+
+
+@router.get("/roster", response_model=RosterAllocationListResponse)
+async def list_roster(
+    _: CanRecordAttendance,
+    session: DbSession,
+    date_from: date,
+    date_to: date,
+    project_id: UUID | None = None,
+    employee_id: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> RosterAllocationListResponse:
+    rows, total = await HrService(session).list_roster_allocations(
+        date_from=date_from,
+        date_to=date_to,
+        project_id=project_id,
+        employee_id=employee_id,
+        limit=limit,
+        offset=offset,
+    )
+    return RosterAllocationListResponse(
+        items=[RosterAllocationResponse.model_validate(row) for row in rows], total=total
+    )
+
+
+@router.post(
+    "/roster", response_model=RosterAllocationResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_roster_allocation(
+    payload: RosterAllocationCreateRequest, actor: CanRecordAttendance, session: DbSession
+) -> RosterAllocationResponse:
+    row = await HrService(session).create_roster_allocation(payload, actor)
+    return RosterAllocationResponse.model_validate(row)
+
+
+@router.post("/roster/{allocation_id}/cancel", response_model=RosterAllocationResponse)
+async def cancel_roster_allocation(
+    allocation_id: UUID,
+    payload: RosterCancellationRequest,
+    actor: CanRecordAttendance,
+    session: DbSession,
+) -> RosterAllocationResponse:
+    row = await HrService(session).cancel_roster_allocation(allocation_id, payload.reason, actor)
+    return RosterAllocationResponse.model_validate(row)
 
 
 @router.get("/holidays", response_model=HolidayListResponse)
@@ -1536,6 +2072,21 @@ async def create_leave_type(
     return LeaveTypeResponse.model_validate(row)
 
 
+@router.get("/leave/policies/{policy_id}", response_model=LeavePolicyResponse)
+async def get_leave_policy(
+    policy_id: UUID, _: CanManageLeave, session: DbSession
+) -> LeavePolicyResponse:
+    return LeavePolicyResponse.model_validate(await HrService(session).get_leave_policy(policy_id))
+
+
+@router.post("/leave/policies/{policy_id}/decision", response_model=LeavePolicyResponse)
+async def decide_leave_policy(
+    policy_id: UUID, payload: LeavePolicyDecisionRequest, actor: CanManagePolicy, session: DbSession
+) -> LeavePolicyResponse:
+    row = await HrService(session).decide_leave_policy(policy_id, payload, actor)
+    return LeavePolicyResponse.model_validate(row)
+
+
 @router.get("/leave/policies", response_model=LeavePolicyListResponse)
 async def list_leave_policies(_: CanManageLeave, session: DbSession) -> LeavePolicyListResponse:
     rows, total = await HrService(session).list_leave_policies()
@@ -1572,6 +2123,65 @@ async def adjust_leave_ledger(
 ) -> LeaveLedgerEntryResponse:
     row = await HrService(session).adjust_leave_ledger(payload, actor)
     return LeaveLedgerEntryResponse.model_validate(row)
+
+
+@router.post("/leave/accrual/preview", response_model=LeaveAccrualResponse)
+async def preview_leave_accrual(
+    payload: LeaveAccrualRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveAccrualResponse:
+    return await process_leave_accrual(session, payload, actor)
+
+
+@router.post("/leave/accrual/apply", response_model=LeaveAccrualResponse)
+async def apply_leave_accrual(
+    payload: LeaveAccrualApplyRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveAccrualResponse:
+    return await process_leave_accrual(
+        session, payload, actor, expected_digest=payload.expected_digest
+    )
+
+
+@router.post("/leave/accrual/catch-up/preview", response_model=LeaveAccrualCatchUpResponse)
+async def preview_leave_accrual_catch_up(
+    payload: LeaveAccrualCatchUpRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveAccrualCatchUpResponse:
+    return await process_leave_accrual_catch_up(session, payload, actor)
+
+
+@router.post("/leave/accrual/catch-up/apply", response_model=LeaveAccrualCatchUpResponse)
+async def apply_leave_accrual_catch_up(
+    payload: LeaveAccrualCatchUpApplyRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveAccrualCatchUpResponse:
+    return await process_leave_accrual_catch_up(
+        session, payload, actor, expected_digest=payload.expected_digest
+    )
+
+
+@router.post("/leave/rollover/preview", response_model=LeaveRolloverResponse)
+async def preview_leave_rollover(
+    payload: LeaveRolloverRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveRolloverResponse:
+    return await process_leave_rollover(session, payload, actor)
+
+
+@router.post("/leave/rollover/apply", response_model=LeaveRolloverResponse)
+async def apply_leave_rollover(
+    payload: LeaveRolloverApplyRequest, actor: CanApproveLeave, session: DbSession
+) -> LeaveRolloverResponse:
+    return await process_leave_rollover(
+        session, payload, actor, expected_digest=payload.expected_digest
+    )
+
+
+@router.get("/leave/employees/{employee_id}/units", response_model=LeaveUnitsResponse)
+async def quote_employee_leave_units(
+    employee_id: UUID,
+    payload: Annotated[LeaveUnitsQuery, Query()],
+    _: CanManageLeave,
+    session: DbSession,
+) -> LeaveUnitsResponse:
+    units = await HrService(session).quote_employee_leave_units(employee_id, payload)
+    return LeaveUnitsResponse(days_requested=units)
 
 
 @router.get("/leave/requests", response_model=LeaveRequestListResponse)
@@ -1658,6 +2268,62 @@ async def render_letter(
     return await HrService(session).render_letter(payload, actor)
 
 
+@router.post("/letters/drafts", response_model=LetterDetail, status_code=201)
+async def draft_letter(
+    payload: LetterDraftRequest, actor: CanProcessRequests, session: DbSession
+) -> LetterDetail:
+    return await HrService(session).draft_letter(payload, actor)
+
+
+@router.get("/employees/{employee_id}/letters", response_model=LetterListResponse)
+async def list_employee_letters(
+    employee_id: UUID,
+    actor: CanProcessRequests,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    issued_only: bool = False,
+) -> LetterListResponse:
+    return await HrService(session).list_letters(
+        employee_id, actor, limit, offset, issued_only=issued_only
+    )
+
+
+@router.get("/employees/{employee_id}/letters/{letter_id}", response_model=LetterDetail)
+async def get_employee_letter(
+    employee_id: UUID, letter_id: UUID, actor: CanProcessRequests, session: DbSession
+) -> LetterDetail:
+    return await HrService(session).get_letter(letter_id, employee_id, actor)
+
+
+@router.post("/employees/{employee_id}/letters/{letter_id}/decision", response_model=LetterDetail)
+async def decide_letter(
+    employee_id: UUID,
+    letter_id: UUID,
+    payload: LetterDecisionRequest,
+    actor: CanProcessRequests,
+    session: DbSession,
+) -> LetterDetail:
+    return await HrService(session).decide_letter(employee_id, letter_id, payload, actor)
+
+
+@router.get("/me/letters", response_model=LetterListResponse)
+async def list_my_letters(
+    current_user: CurrentUser,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LetterListResponse:
+    return await HrService(session).list_letters(None, current_user, limit, offset)
+
+
+@router.get("/me/letters/{letter_id}", response_model=LetterDetail)
+async def get_my_letter(
+    letter_id: UUID, current_user: CurrentUser, session: DbSession
+) -> LetterDetail:
+    return await HrService(session).get_letter(letter_id, None, current_user)
+
+
 @router.get("/requests", response_model=HrServiceRequestListResponse)
 async def list_service_requests(
     _: CanProcessRequests,
@@ -1677,6 +2343,32 @@ async def create_service_request(
     payload: HrServiceRequestCreateRequest, actor: CanProcessRequests, session: DbSession
 ) -> HrServiceRequestResponse:
     row = await HrService(session).create_service_request(payload, actor)
+    return HrServiceRequestResponse.model_validate(row)
+
+
+@router.get("/requests/assignees", response_model=list[HrServiceRequestAssignee])
+async def list_service_request_assignees(
+    _: CanProcessRequests, session: DbSession
+) -> list[HrServiceRequestAssignee]:
+    return await HrService(session).list_service_request_assignees()
+
+
+@router.get("/requests/{req_id}", response_model=HrServiceRequestResponse)
+async def get_service_request(
+    req_id: UUID, _: CanProcessRequests, session: DbSession
+) -> HrServiceRequestResponse:
+    row = await HrService(session).get_service_request(req_id)
+    return HrServiceRequestResponse.model_validate(row)
+
+
+@router.post("/requests/{req_id}/assign", response_model=HrServiceRequestResponse)
+async def assign_service_request(
+    req_id: UUID,
+    payload: HrServiceRequestAssignmentRequest,
+    actor: CanProcessRequests,
+    session: DbSession,
+) -> HrServiceRequestResponse:
+    row = await HrService(session).assign_service_request(req_id, payload, actor)
     return HrServiceRequestResponse.model_validate(row)
 
 
@@ -1721,6 +2413,83 @@ async def update_clearance_step(
     session: DbSession,
 ) -> OffboardingCaseResponse:
     return await HrService(session).update_clearance_step(step_id, payload, actor)
+
+
+@router.get("/offboarding/{case_id}/custody", response_model=OffboardingCustodyListResponse)
+async def get_offboarding_custody(
+    case_id: UUID,
+    session: DbSession,
+    actor: Annotated[
+        User,
+        Depends(
+            require_any_permission(
+                PERMISSION_HR_OFFBOARDING_MANAGE,
+                PERMISSION_INVENTORY_MANAGE,
+                PERMISSION_USERS_MANAGE,
+            )
+        ),
+    ],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    event_id: Annotated[UUID | None, Query()] = None,
+    area: Annotated[OffboardingCustodyArea, Query()] = "store_inventory",
+) -> OffboardingCustodyListResponse:
+    return await list_offboarding_custody(
+        session, case_id, actor, limit=limit, offset=offset, event_id=event_id, area=area
+    )
+
+
+@router.post("/offboarding/{case_id}/custody", response_model=OffboardingCustodyResponse)
+async def post_offboarding_custody(
+    case_id: UUID,
+    payload: OffboardingCustodyRequest,
+    session: DbSession,
+    actor: Annotated[
+        User, Depends(require_any_permission(PERMISSION_INVENTORY_MANAGE, PERMISSION_USERS_MANAGE))
+    ],
+) -> OffboardingCustodyResponse:
+    event = await record_offboarding_custody(session, case_id, payload, actor)
+    return OffboardingCustodyResponse.model_validate(event)
+
+
+@router.get("/offboarding/{case_id}/settlement", response_model=SeparationSettlementListResponse)
+async def get_separation_settlement(
+    case_id: UUID,
+    session: DbSession,
+    actor: Annotated[
+        User,
+        Depends(require_any_permission(PERMISSION_HR_OFFBOARDING_MANAGE, PERMISSION_USERS_MANAGE)),
+    ],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    event_id: Annotated[UUID | None, Query()] = None,
+) -> SeparationSettlementListResponse:
+    return await list_separation_settlements(
+        session, case_id, actor, limit=limit, offset=offset, event_id=event_id
+    )
+
+
+@router.post("/offboarding/{case_id}/settlement", response_model=SeparationSettlementResponse)
+async def propose_offboarding_settlement(
+    case_id: UUID, payload: SeparationSettlementProposal, session: DbSession, actor: CanManageUsers
+) -> SeparationSettlementResponse:
+    row = await propose_separation_settlement(session, case_id, payload, actor)
+    return SeparationSettlementResponse.model_validate(row)
+
+
+@router.post(
+    "/offboarding/{case_id}/settlement/{event_id}/review",
+    response_model=SeparationSettlementResponse,
+)
+async def review_offboarding_settlement(
+    case_id: UUID,
+    event_id: UUID,
+    payload: SeparationSettlementReview,
+    session: DbSession,
+    actor: CanManageUsers,
+) -> SeparationSettlementResponse:
+    row = await review_separation_settlement(session, case_id, event_id, payload, actor)
+    return SeparationSettlementResponse.model_validate(row)
 
 
 @router.post("/offboarding/{case_id}/complete", response_model=OffboardingCaseResponse)
@@ -1800,6 +2569,87 @@ async def create_review(
     return ReviewResponse.model_validate(row)
 
 
+@router.get("/performance/reviews", response_model=PerformanceReviewQueue)
+async def list_participant_reviews(
+    actor: CurrentUser,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PerformanceReviewQueue:
+    response.headers["Cache-Control"] = "no-store"
+    return await list_performance_reviews(session, actor, limit=limit, offset=offset)
+
+
+@router.get("/performance/reviews/{review_id}", response_model=PerformanceReviewDetail)
+async def get_participant_review(
+    review_id: UUID,
+    actor: CurrentUser,
+    session: DbSession,
+    response: Response,
+) -> PerformanceReviewDetail:
+    response.headers["Cache-Control"] = "no-store"
+    return await get_performance_review(session, review_id, actor)
+
+
+@router.post("/performance/reviews/{review_id}/actions", response_model=PerformanceReviewDetail)
+async def act_on_performance_review(
+    review_id: UUID,
+    payload: PerformanceReviewActionRequest,
+    actor: CurrentUser,
+    session: DbSession,
+    response: Response,
+) -> PerformanceReviewDetail:
+    response.headers["Cache-Control"] = "no-store"
+    return await record_performance_action(session, review_id, payload, actor)
+
+
+@router.get("/training/requirements", response_model=TrainingRequirementListResponse)
+async def get_training_rules(
+    _: CanManageTraining,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TrainingRequirementListResponse:
+    return await list_rules(session, limit=limit, offset=offset)
+
+
+@router.post("/training/requirements")
+async def create_training_rule(
+    payload: TrainingRequirementCreateRequest,
+    actor: CanManageTraining,
+    session: DbSession,
+) -> dict[str, UUID]:
+    return {"id": await save_rule(session, payload, actor)}
+
+
+@router.delete("/training/requirements/{rule_id}", status_code=204)
+async def remove_training_rule(
+    rule_id: UUID,
+    actor: CanManageTraining,
+    session: DbSession,
+) -> Response:
+    await deactivate_rule(session, rule_id, actor)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/training/requirements/employees/{employee_id}",
+    response_model=TrainingRequirementStatusListResponse,
+)
+async def get_employee_training_requirements(
+    employee_id: UUID,
+    _: CanManageTraining,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TrainingRequirementStatusListResponse:
+    employee = await session.get(HrEmployee, employee_id)
+    if employee is None or employee.deleted_at is not None:
+        raise NotFoundException("Employee")
+    return await list_employee_requirements(session, employee, limit=limit, offset=offset)
+
+
 @router.get("/training/courses", response_model=TrainingCourseListResponse)
 async def list_training_courses(
     _: CanManageTraining, session: DbSession
@@ -1853,6 +2703,27 @@ async def update_training_enrollment(
 ) -> TrainingEnrollmentResponse:
     row = await HrService(session).update_training_enrollment(enrollment_id, payload, actor)
     return TrainingEnrollmentResponse.model_validate(row)
+
+
+@router.get(
+    "/training/enrollments/{enrollment_id}/completion", response_model=TrainingCompletionResponse
+)
+async def get_training_completion(
+    enrollment_id: UUID, _: CanManageTraining, session: DbSession
+) -> TrainingCompletionResponse:
+    return await HrService(session).get_training_completion(enrollment_id)
+
+
+@router.post(
+    "/training/enrollments/{enrollment_id}/completion", response_model=TrainingCompletionResponse
+)
+async def verify_training_completion(
+    enrollment_id: UUID,
+    payload: TrainingCompletionRequest,
+    actor: CanManageTraining,
+    session: DbSession,
+) -> TrainingCompletionResponse:
+    return await HrService(session).complete_training_enrollment(enrollment_id, payload, actor)
 
 
 @router.get("/certifications", response_model=CertificationListResponse)
@@ -2024,6 +2895,51 @@ async def create_payroll_period(
     return PayrollPeriodResponse.model_validate(row)
 
 
+@router.post(
+    "/payroll/periods/{period_id}/time-inputs/preview",
+    response_model=PayrollTimeInputPreview,
+)
+async def preview_payroll_time_inputs(
+    period_id: UUID,
+    payload: PayrollRunCalculateRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
+    response: Response,
+) -> PayrollTimeInputPreview:
+    result, _ = await payroll_time_inputs(session, period_id, payload.employee_ids, actor)
+    response.headers["Cache-Control"] = "no-store"
+    return result
+
+
+@router.post(
+    "/payroll/periods/{period_id}/time-inputs.csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+async def download_payroll_time_inputs(
+    period_id: UUID,
+    payload: PayrollTimeDownloadRequest,
+    actor: CanPreparePayroll,
+    session: DbSession,
+) -> Response:
+    result, content = await payroll_time_inputs(
+        session,
+        period_id,
+        payload.employee_ids,
+        actor,
+        expected_csv_sha256=payload.expected_csv_sha256,
+    )
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="payroll-time-{period_id}.csv"',
+            "X-Payroll-Export-SHA256": result.csv_sha256 or "",
+        },
+    )
+
+
 @router.get("/payroll/runs", response_model=PayrollRunListResponse)
 async def list_payroll_runs(_: CanPreparePayroll, session: DbSession) -> PayrollRunListResponse:
     rows, total = await HrService(session).list_payroll_runs()
@@ -2042,20 +2958,123 @@ async def create_payroll_run(
     return PayrollRunResponse.model_validate(row)
 
 
+@router.get("/payroll/runs/{run_id}", response_model=PayrollRunResponse)
+async def read_payroll_run(
+    run_id: UUID, _: CanPreparePayroll, session: DbSession
+) -> PayrollRunResponse:
+    return PayrollRunResponse.model_validate(await get_payroll_run(session, run_id))
+
+
 @router.post("/payroll/runs/{run_id}/calculate", response_model=PayrollRunResponse)
 async def calculate_payroll_run(
-    run_id: UUID, actor: CanPreparePayroll, session: DbSession
+    run_id: UUID, payload: PayrollRunCalculateRequest, actor: CanPreparePayroll, session: DbSession
 ) -> PayrollRunResponse:
-    row = await HrService(session).calculate_payroll_run(run_id, actor)
+    row = await calculate_payroll_snapshot(session, run_id, payload.employee_ids, actor)
     return PayrollRunResponse.model_validate(row)
+
+
+@router.get("/payroll/runs/{run_id}/snapshot", response_model=PayrollRunSnapshotResponse)
+async def get_payroll_snapshot(
+    run_id: UUID, actor: CanReadPayrollSensitive, session: DbSession
+) -> PayrollRunSnapshotResponse:
+    return await read_payroll_snapshot(session, run_id, actor)
 
 
 @router.post("/payroll/runs/{run_id}/approve", response_model=PayrollRunResponse)
 async def approve_payroll_run(
-    run_id: UUID, actor: CanApprovePayroll, session: DbSession
+    run_id: UUID, payload: PayrollRunApproveRequest, actor: CanApprovePayroll, session: DbSession
 ) -> PayrollRunResponse:
-    row = await HrService(session).approve_payroll_run(run_id, actor)
+    row = await approve_payroll_snapshot(session, run_id, payload.expected_snapshot_digest, actor)
     return PayrollRunResponse.model_validate(row)
+
+
+@router.post("/payroll/runs/{run_id}/publish-payslips", response_model=PayslipPublicationResponse)
+async def publish_run_payslips(
+    run_id: UUID, payload: PayrollRunApproveRequest, actor: CanApprovePayroll, session: DbSession
+) -> PayslipPublicationResponse:
+    result = await publish_payslips(session, run_id, payload.expected_snapshot_digest, actor)
+    return PayslipPublicationResponse.model_validate(result)
+
+
+@router.get("/payroll/runs/{run_id}/payment-export/preview", response_model=PayrollExportPreview)
+async def preview_run_payment_export(
+    run_id: UUID, actor: CanApprovePayroll, session: DbSession
+) -> PayrollExportPreview:
+    return await preview_payroll_export(session, run_id, actor)
+
+
+@router.post("/payroll/runs/{run_id}/payment-export", response_model=PayrollExportReceipt)
+async def register_run_payment_export(
+    run_id: UUID, payload: PayrollExportConfirmRequest, actor: CanApprovePayroll, session: DbSession
+) -> PayrollExportReceipt:
+    result = await register_payroll_export(session, run_id, payload, actor)
+    return PayrollExportReceipt.model_validate(result)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/payment-export",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+async def download_run_payment_export(
+    run_id: UUID, actor: CanApprovePayroll, session: DbSession
+) -> Response:
+    content, digest = await download_payroll_export(session, run_id, actor)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="payroll-handoff-{run_id}.csv"',
+            "X-Payroll-Export-SHA256": digest,
+        },
+    )
+
+
+@router.get("/payroll/runs/{run_id}/settlements", response_model=PayrollSettlementSummary)
+async def get_payroll_settlement_summary(
+    run_id: UUID, actor: CanApprovePayroll, session: DbSession
+) -> PayrollSettlementSummary:
+    return await summarize_payroll_settlements(session, run_id, actor)
+
+
+@router.get(
+    "/payroll/runs/{run_id}/settlements/events", response_model=PayrollSettlementEventsResponse
+)
+async def get_payroll_settlement_events(
+    run_id: UUID,
+    actor: CanApprovePayroll,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    payment_reference: Annotated[UUID | None, Query()] = None,
+) -> PayrollSettlementEventsResponse:
+    return await list_payroll_settlement_events(
+        session,
+        run_id,
+        actor,
+        limit=limit,
+        offset=offset,
+        payment_reference=payment_reference,
+    )
+
+
+@router.get(
+    "/payroll/runs/{run_id}/settlements/events/{event_id}",
+    response_model=PayrollSettlementEventResponse,
+)
+async def get_payroll_settlement_event(
+    run_id: UUID, event_id: UUID, actor: CanApprovePayroll, session: DbSession
+) -> PayrollSettlementEventResponse:
+    return await read_payroll_settlement_event(session, run_id, event_id, actor)
+
+
+@router.post(
+    "/payroll/runs/{run_id}/settlements/events", response_model=PayrollSettlementEventResponse
+)
+async def add_payroll_settlement_event(
+    run_id: UUID, payload: PayrollSettlementRequest, actor: CanApprovePayroll, session: DbSession
+) -> PayrollSettlementEventResponse:
+    return await record_payroll_settlement(session, run_id, payload, actor)
 
 
 @router.get("/cases", response_model=HrCaseListResponse)

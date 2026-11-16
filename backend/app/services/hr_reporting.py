@@ -24,6 +24,7 @@ from app.models.hr import (
     HrOnboardingCase,
     HrRequisition,
     HrServiceRequest,
+    HrTrainingCompletion,
     HrTrainingEnrollment,
 )
 from app.models.project import Project
@@ -81,6 +82,10 @@ async def count_report_credentials(
         HrDocument.id.in_(ordinary_documents),
         HrDocument.employee_id.in_(employee_ids),
         HrDocument.expiry_date.between(window.date_from, window.date_to),
+        ~select(HrTrainingCompletion.enrollment_id)
+        .join(HrCertification, HrCertification.id == HrTrainingCompletion.certificate_id)
+        .where(HrCertification.document_id == HrDocument.id)
+        .exists(),
     )
     certifications = select(func.count(HrCertification.id)).where(
         HrCertification.employee_id.in_(employee_ids),

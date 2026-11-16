@@ -328,6 +328,28 @@ Set `TMPDIR` to a private recovery volume with room for all decrypted artifacts.
 
 The restore checks decrypted bytes before writing and checks the resulting schema, database references, and restored object checksums. Start the isolated application and open the required protected files under authorized and forbidden accounts. Include the backup set identity, source SHA, schema head, UTC timings, missing or corrupt artifact tests, key access, and actual recovery results in the release evidence. Local fixtures establish tool behavior. The release still requires a drill with the approved destination, retained data scope, operator, and measured targets.
 
+For a synthetic HR recovery drill, run the readback checker from `backend/`
+with the restored application and its object store on explicit loopback
+origins. Supply short-lived tokens for a restored HR Manager, the employee
+whose policy receipts are being checked, and a different linked employee without
+access to the selected evidence. Provide them securely as
+`HR_RECOVERY_HR_TOKEN`, `HR_RECOVERY_EMPLOYEE_TOKEN`, and
+`HR_RECOVERY_OUTSIDER_TOKEN`. Keep the expected plan outside the repository in
+an owner-only file. The plan contains the synthetic employee and personnel
+document UUIDs, the identifier SHA-256, at least two personnel version numbers
+and hashes, current and previous policy UUIDs with their edition labels,
+current flags, pinned version numbers and file hashes, and the application
+and correspondence UUIDs with the approved correspondence digest. See
+[`RecoveryPlan`](../backend/scripts/verify_hr_recovery.py) for the JSON fields.
+The checker prints counts. Protected API reads can record ordinary access
+audit events on the restored database.
+
+```bash
+python -m scripts.verify_hr_recovery \
+  --api http://127.0.0.1:8000 --objects http://127.0.0.1:9000 \
+  --plan "$HR_READBACK_PLAN"
+```
+
 If a restore is interrupted, record the phase and keep the targets isolated. PostgreSQL rolls back the interrupted database transaction. A database restored in an earlier phase or objects copied before a later failure can still remain. Treat the attempt as incomplete and retry the same verified backup set into new empty databases, a new bucket, and a new configuration directory. Record the interrupted attempt and the retry separately. Keep the last verified recovery point available throughout the drill.
 
 ### Data checks and repairs

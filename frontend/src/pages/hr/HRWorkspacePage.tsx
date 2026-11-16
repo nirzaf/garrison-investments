@@ -1,14 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   applyHrWorkbook,
   createDepartment,
   createEmployee,
   createLeaveType,
-  createLeavePolicy,
   adjustLeaveLedger,
-  createPolicy,
   createPosition,
   createRequisition,
   decideLeaveRequest,
@@ -31,6 +29,7 @@ import {
   listPolicies,
   listPositions,
   listRequisitions,
+  listServiceRequestAssignees,
   listServiceRequests,
   previewHrWorkbook,
   resolveServiceRequest,
@@ -60,10 +59,20 @@ import {
 import { formatApiError as errMsg } from '../../api/errors';
 import { HRAccessForms } from './HRAccessForms';
 import { HROffboarding } from './HROffboarding';
+import { HRTraining } from './HRTraining';
+import { HRPerformanceReviews, HRPerformanceSetup } from './HRPerformanceReviews';
+import { HRDirectorOffboarding } from './HROffboardingCustody';
 import { HRSummaryPanel } from './HRSummaryPanel';
 import { HRTimePanel } from './HRTimePanel';
+import { HRLeavePolicies } from './HRLeavePolicies';
+import { HRLeaveAccrual } from './HRLeaveAccrual';
+import { HRLeaveRollover } from './HRLeaveRollover';
 import { HRHiringPanel } from './HRHiringPanel';
+import { HREmploymentChanges } from './HREmploymentChanges';
 import { HRLettersPanel } from './HRLettersPanel';
+import { HRPolicyPublication } from './HRPolicyPublication';
+import { HRIssuedLetterPicker, HRResponseLetter } from './HRResponseLetter';
+import { HRServiceRequestAssignment } from './HRServiceRequestAssignment';
 import { HRProjectAssignments } from './HRProjectAssignments';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { useAuth } from '../../context/useAuth';
@@ -76,7 +85,9 @@ type HrTab =
   | 'documents'
   | 'attendance'
   | 'leave'
-  | 'operations';
+  | 'operations'
+  | 'training'
+  | 'performance';
 
 function OrgBranch({ node }: { node: OrgChartNode }) {
   return (
@@ -118,6 +129,9 @@ export function HRWorkspacePage() {
     null
   );
   const [privateVault, setPrivateVault] = useState<EmployeeSensitiveRecord | null>(null);
+  const selectedVault = privateVault?.employee_id === selectedEmp?.id ? privateVault : null;
+  const [vaultPending, setVaultPending] = useState(false);
+  const employeeSelection = useRef(0);
 
   const [accessRequests, setAccessRequests] = useState<AccessRequestRecord[]>([]);
   const [wbFile, setWbFile] = useState<File | null>(null);
@@ -132,6 +146,10 @@ export function HRWorkspacePage() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
   const [serviceReqs, setServiceReqs] = useState<HrServiceRequestRecord[]>([]);
+  const [requestAssignees, setRequestAssignees] = useState<
+    Awaited<ReturnType<typeof listServiceRequestAssignees>>
+  >([]);
+  const [requestLetters, setRequestLetters] = useState<Record<string, string>>({});
   const [requestResponses, setRequestResponses] = useState<Record<string, string>>({});
   const [offboarding, setOffboarding] = useState<OffboardingCaseRecord[]>([]);
 
@@ -161,6 +179,7 @@ export function HRWorkspacePage() {
   const [reqHeadcount, setReqHeadcount] = useState('1');
 
   const [docTitle, setDocTitle] = useState('');
+  const [uploadCompanyPolicy, setUploadCompanyPolicy] = useState(false);
   const [docCategory, setDocCategory] = useState<
     'ordinary' | 'confidential' | 'medical' | 'compensation' | 'disciplinary'
   >('ordinary');
@@ -169,11 +188,6 @@ export function HRWorkspacePage() {
 
   const [ltCode, setLtCode] = useState('');
   const [ltName, setLtName] = useState('');
-
-  const [polCode, setPolCode] = useState('');
-  const [polTitle, setPolTitle] = useState('');
-  const [polSummary, setPolSummary] = useState('');
-  const [polDate, setPolDate] = useState('');
 
   const loadCore = useCallback(async () => {
     try {
@@ -207,7 +221,12 @@ export function HRWorkspacePage() {
       }
       if (hasPerm('hr:employees:read')) setPolicies((await listPolicies()).items);
       if (hasPerm('hr:requests:process')) {
-        setServiceReqs((await listServiceRequests()).items);
+        const [requests, assignees] = await Promise.all([
+          listServiceRequests(),
+          listServiceRequestAssignees()
+        ]);
+        setServiceReqs(requests.items);
+        setRequestAssignees(assignees);
       }
       if (hasPerm('hr:offboarding:manage')) {
         setOffboarding((await listOffboardingCases()).items);
@@ -223,20 +242,23 @@ export function HRWorkspacePage() {
   }, [loadCore]);
 
   async function selectEmployee(empId: string) {
+    const selection = ++employeeSelection.current;
     setError(null);
+    setVaultPending(false);
     setPrivateVault(null);
     setEmploymentHistory(null);
     setVaultNationalId('');
     try {
       const detail = await getEmployee(empId);
+      if (selection !== employeeSelection.current) return;
       setSelectedEmp(detail);
       if (hasPerm('hr:employees:sensitive')) {
-        setPrivateVault(await getEmployeePrivate(empId, false));
-      } else {
-        setPrivateVault(null);
+        const vault = await getEmployeePrivate(empId, false);
+        if (selection === employeeSelection.current) setPrivateVault(vault);
       }
     } catch (err) {
-      setError(errMsg(err, 'Unable to load employee detail.'));
+      if (selection === employeeSelection.current)
+        setError(errMsg(err, 'Unable to load employee detail.'));
     }
   }
 
@@ -296,6 +318,8 @@ export function HRWorkspacePage() {
       setEmpLast('');
       setEmpEmail('');
       setEmpPhone('');
+      ++employeeSelection.current;
+      setVaultPending(false);
       setPrivateVault(null);
       setSelectedEmp(created);
       setNotice(`Employee ${created.employee_code} created.`);
@@ -307,18 +331,43 @@ export function HRWorkspacePage() {
 
   async function handleSavePrivateVault(e: FormEvent) {
     e.preventDefault();
-    if (!selectedEmp) return;
+    if (!selectedEmp || vaultPending || !vaultNationalId.trim() || !selectedVault) return;
+    const selection = employeeSelection.current;
+    setVaultPending(true);
     setError(null);
     setNotice(null);
     try {
       const updated = await upsertEmployeePrivate(selectedEmp.id, {
-        ...(vaultNationalId ? { national_id: vaultNationalId } : {})
+        expected_revision: selectedVault.record_revision,
+        national_id: vaultNationalId
       });
+      if (selection !== employeeSelection.current) return;
       setPrivateVault(updated);
       setVaultNationalId('');
       setNotice('Encrypted private vault updated.');
+      const detail = await getEmployee(selectedEmp.id);
+      if (selection === employeeSelection.current) setSelectedEmp(detail);
     } catch (err) {
-      setError(errMsg(err, 'Failed to update sensitive vault.'));
+      if (selection === employeeSelection.current)
+        setError(errMsg(err, 'Could not save or reload the private vault.'));
+    } finally {
+      if (selection === employeeSelection.current) setVaultPending(false);
+    }
+  }
+
+  async function reloadPrivateVault(reveal: boolean) {
+    if (!selectedEmp || vaultPending) return;
+    const selection = employeeSelection.current;
+    setVaultPending(true);
+    setError(null);
+    try {
+      const vault = await getEmployeePrivate(selectedEmp.id, reveal);
+      if (selection === employeeSelection.current) setPrivateVault(vault);
+    } catch (err) {
+      if (selection === employeeSelection.current)
+        setError(errMsg(err, 'Could not reload the private vault.'));
+    } finally {
+      if (selection === employeeSelection.current) setVaultPending(false);
     }
   }
 
@@ -375,10 +424,14 @@ export function HRWorkspacePage() {
       await uploadHrDocument({
         file: docFile,
         title: docTitle,
-        document_type: 'contract',
-        category: docCategory,
-        employee_id: selectedEmp?.id,
-        is_employee_visible: shareDocument && docCategory === 'ordinary' && Boolean(selectedEmp)
+        document_type: uploadCompanyPolicy ? 'policy' : 'contract',
+        category: uploadCompanyPolicy ? 'ordinary' : docCategory,
+        employee_id: uploadCompanyPolicy ? undefined : selectedEmp?.id,
+        is_employee_visible:
+          !uploadCompanyPolicy &&
+          shareDocument &&
+          docCategory === 'ordinary' &&
+          Boolean(selectedEmp)
       });
       setDocTitle('');
       setDocFile(null);
@@ -415,6 +468,8 @@ export function HRWorkspacePage() {
     { key: 'documents', label: 'Docs & Compliance', visible: hasPerm('hr:documents:manage') },
     { key: 'attendance', label: 'Attendance', visible: hasPerm('hr:attendance:record') },
     { key: 'leave', label: 'Leave', visible: hasPerm('hr:leave:manage') },
+    { key: 'training', label: 'Training', visible: hasPerm('hr:training:manage') },
+    { key: 'performance', label: 'Performance', visible: hasPerm('hr:performance:manage') },
     {
       key: 'operations',
       label: 'Policies & Requests',
@@ -721,6 +776,23 @@ export function HRWorkspacePage() {
                     Status: {selectedEmp.employment_status} · Revision:{' '}
                     {selectedEmp.record_revision}
                   </p>
+                  {hasPerm('hr:employees:sensitive') && (
+                    <HREmploymentChanges
+                      key={selectedEmp.id}
+                      employee={selectedEmp}
+                      actorId={user?.id}
+                      departments={departments}
+                      positions={positions}
+                      refreshEmployee={async () => {
+                        const updated = await getEmployee(selectedEmp.id);
+                        setSelectedEmp((current) =>
+                          current?.id === updated.id ? updated : current
+                        );
+                        setEmploymentHistory(null);
+                        await loadCore();
+                      }}
+                    />
+                  )}
                   {hasPerm('hr:employees:manage') && (
                     <form
                       key={selectedEmp.id + selectedEmp.record_revision}
@@ -866,7 +938,10 @@ export function HRWorkspacePage() {
                           void runChange(async () => {
                             const updated = await transitionEmployeeStatus(selectedEmp.id, {
                               expected_revision: selectedEmp.record_revision,
-                              status: 'active',
+                              status:
+                                selectedEmp.employment_category === 'probation'
+                                  ? 'on_probation'
+                                  : 'active',
                               reason: 'HR Manager reviewed employee record'
                             });
                             setSelectedEmp(updated);
@@ -905,34 +980,44 @@ export function HRWorkspacePage() {
                         Encrypted Private Vault
                       </p>
                       <p className="text-xs">
-                        National ID: {privateVault?.national_id_masked || 'Unset'}
+                        National ID: {selectedVault?.national_id_masked || 'Unset'}
                       </p>
                       <input
+                        aria-label="Update National ID"
                         className="w-full rounded border border-theme-border bg-theme-input px-2 py-1 text-xs"
                         onChange={(e) => setVaultNationalId(e.target.value)}
                         placeholder="Update National ID"
                         value={vaultNationalId}
+                        disabled={vaultPending}
                       />
                       <div className="flex gap-2">
                         <button
                           className="rounded bg-brand-600 px-2.5 py-1 text-xs text-white"
                           type="submit"
+                          disabled={vaultPending || !selectedVault || !vaultNationalId.trim()}
                         >
                           Encrypt & Save
                         </button>
                         <button
                           className="rounded border border-theme-border px-2.5 py-1 text-xs"
-                          onClick={() =>
-                            void getEmployeePrivate(selectedEmp.id, true).then(setPrivateVault)
-                          }
+                          onClick={() => void reloadPrivateVault(true)}
+                          disabled={vaultPending}
                           type="button"
                         >
                           Reveal sensitive
                         </button>
+                        <button
+                          className="rounded border border-theme-border px-2.5 py-1 text-xs"
+                          onClick={() => void reloadPrivateVault(false)}
+                          disabled={vaultPending}
+                          type="button"
+                        >
+                          Reload private vault
+                        </button>
                       </div>
-                      {privateVault?.national_id_plain ? (
+                      {selectedVault?.national_id_plain ? (
                         <p className="text-xs text-amber-700">
-                          National ID: {privateVault.national_id_plain}
+                          National ID: {selectedVault.national_id_plain}
                         </p>
                       ) : null}
                     </form>
@@ -959,6 +1044,13 @@ export function HRWorkspacePage() {
               onChange={loadCore}
             />
           </div>
+
+          {hasPerm('users:manage') && (
+            <HRDirectorOffboarding
+              actorId={user?.id}
+              canReviewSettlement={hasPerm('financial:view')}
+            />
+          )}
 
           {hasPerm('hr:employees:read') && (
             <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-4">
@@ -1092,7 +1184,16 @@ export function HRWorkspacePage() {
                 required
                 value={docTitle}
               />
+              <label className="block text-sm">
+                <input
+                  type="checkbox"
+                  checked={uploadCompanyPolicy}
+                  onChange={(event) => setUploadCompanyPolicy(event.target.checked)}
+                />{' '}
+                Upload company policy file
+              </label>
               <select
+                disabled={uploadCompanyPolicy}
                 className="w-full rounded border border-theme-border bg-theme-input px-2.5 py-1.5 text-sm"
                 onChange={(e) =>
                   setDocCategory(
@@ -1101,7 +1202,7 @@ export function HRWorkspacePage() {
                   )
                 }
                 aria-label="Document category"
-                value={docCategory}
+                value={uploadCompanyPolicy ? 'ordinary' : docCategory}
               >
                 <option value="ordinary">Ordinary</option>
                 {hasPerm('hr:employees:sensitive') && (
@@ -1117,7 +1218,7 @@ export function HRWorkspacePage() {
                 aria-label="HR document file"
                 type="file"
               />
-              {selectedEmp && docCategory === 'ordinary' && (
+              {!uploadCompanyPolicy && selectedEmp && docCategory === 'ordinary' && (
                 <label className="block text-sm">
                   <input
                     type="checkbox"
@@ -1322,68 +1423,18 @@ export function HRWorkspacePage() {
                 </button>
               </form>
             )}
+            {hasPerm('hr:policy:manage') && user && (
+              <HRLeavePolicies userId={user.id} leaveTypes={leaveTypes} />
+            )}
+            {hasPerm('hr:leave:approve') && (
+              <>
+                <HRLeaveAccrual employees={employees} leaveTypes={leaveTypes} />
+                <HRLeaveRollover employees={employees} leaveTypes={leaveTypes} />
+              </>
+            )}
             {hasPerm('hr:policy:manage') && leaveTypes.length > 0 && (
               <details className="border-t border-theme-border pt-3 text-sm">
-                <summary>Approved leave policy and opening balance</summary>
-                <form
-                  className="mt-2 grid gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const form = event.currentTarget;
-                    const values = new FormData(form);
-                    void runChange(async () => {
-                      await createLeavePolicy({
-                        code: String(values.get('code')),
-                        name: String(values.get('name')),
-                        leave_type_id: String(values.get('type')),
-                        annual_entitlement_days: String(values.get('entitlement')),
-                        accrual_frequency: 'manual',
-                        max_carry_forward_days: '0',
-                        allow_negative_balance: false,
-                        approve_immediately: true
-                      });
-                      form.reset();
-                    }, 'Could not record leave policy.');
-                  }}
-                >
-                  <label>
-                    Policy code{' '}
-                    <input
-                      name="code"
-                      className="rounded border border-theme-border bg-theme-input px-2"
-                      required
-                    />
-                  </label>
-                  <label>
-                    Policy name{' '}
-                    <input
-                      name="name"
-                      className="rounded border border-theme-border bg-theme-input px-2"
-                      required
-                    />
-                  </label>
-                  <label>
-                    Leave type{' '}
-                    <select name="type" required>
-                      {leaveTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Approved manual entitlement{' '}
-                    <input name="entitlement" type="number" min="0" step="0.01" required />
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={pending}
-                    className="rounded bg-brand-600 px-3 py-1 text-white"
-                  >
-                    Record approved policy
-                  </button>
-                </form>
+                <summary>Record opening leave balance</summary>
                 <form
                   className="mt-4 grid gap-2"
                   onSubmit={(event) => {
@@ -1526,75 +1577,31 @@ export function HRWorkspacePage() {
         </div>
       )}
 
+      {tab === 'performance' && hasPerm('hr:performance:manage') && (
+        <div className="space-y-4">
+          <HRPerformanceSetup />
+          <HRPerformanceReviews />
+        </div>
+      )}
+
+      {tab === 'training' && hasPerm('hr:training:manage') && (
+        <HRTraining canManageDocuments={hasPerm('hr:documents:manage')} />
+      )}
+
       {tab === 'operations' && (
         <div className="grid gap-6 lg:grid-cols-2">
           {(hasPerm('hr:policy:manage') || hasPerm('hr:requests:process')) && (
             <HRLettersPanel
               canCreate={hasPerm('hr:policy:manage')}
+              canIssue={user?.role === 'hr_manager'}
               canRender={hasPerm('hr:requests:process') && hasPerm('hr:employees:read')}
             />
           )}
-          <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
-            <h3 className="text-base font-semibold">HR Policies ({policies.length})</h3>
-            {hasPerm('hr:policy:manage') && (
-              <form
-                className="space-y-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void createPolicy({
-                    code: polCode,
-                    title: polTitle,
-                    version: '1.0',
-                    effective_date: polDate,
-                    content_summary: polSummary,
-                    requires_acknowledgement: true
-                  })
-                    .then(() => {
-                      setPolCode('');
-                      setPolTitle('');
-                      setPolSummary('');
-                      return loadCore();
-                    })
-                    .catch((err) => setError(errMsg(err, 'Policy publish failed')));
-                }}
-              >
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    className="rounded border border-theme-border bg-theme-input px-2 py-1 text-xs"
-                    onChange={(e) => setPolCode(e.target.value)}
-                    placeholder="POL-01"
-                    required
-                    value={polCode}
-                  />
-                  <input
-                    className="col-span-2 rounded border border-theme-border bg-theme-input px-2 py-1 text-xs"
-                    onChange={(e) => setPolTitle(e.target.value)}
-                    placeholder="Safety & Conduct Policy"
-                    required
-                    value={polTitle}
-                  />
-                </div>
-                <input
-                  className="w-full rounded border border-theme-border bg-theme-input px-2 py-1 text-xs"
-                  onChange={(e) => setPolDate(e.target.value)}
-                  required
-                  type="date"
-                  value={polDate}
-                />
-                <textarea
-                  className="w-full rounded border border-theme-border bg-theme-input px-2 py-1 text-xs"
-                  onChange={(e) => setPolSummary(e.target.value)}
-                  placeholder="Summary..."
-                  required
-                  rows={2}
-                  value={polSummary}
-                />
-                <button className="rounded bg-brand-600 px-3 py-1 text-xs text-white" type="submit">
-                  Publish policy
-                </button>
-              </form>
-            )}
-          </div>
+          <HRPolicyPublication
+            policies={policies}
+            canPublish={hasPerm('hr:policy:manage')}
+            refresh={loadCore}
+          />
 
           <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
             <h3 className="text-base font-semibold">
@@ -1608,8 +1615,32 @@ export function HRWorkspacePage() {
                 <span>
                   {sr.request_code} — {sr.subject} ({sr.status})
                 </span>
+                {sr.generated_letter_id && (
+                  <HRResponseLetter
+                    key={sr.generated_letter_id}
+                    letterId={sr.generated_letter_id}
+                    employeeId={sr.employee_id}
+                  />
+                )}
                 {sr.description && <p className="whitespace-pre-wrap">{sr.description}</p>}
-                {sr.status === 'open' && (
+                {['open', 'in_review', 'approved'].includes(sr.status) && (
+                  <>
+                    <p>
+                      Assigned to:{' '}
+                      {sr.assigned_to_id
+                        ? (requestAssignees.find((assignee) => assignee.id === sr.assigned_to_id)
+                            ?.full_name ?? 'Unavailable HR user')
+                        : 'Unassigned'}
+                    </p>
+                    <HRServiceRequestAssignment
+                      request={sr}
+                      assignees={requestAssignees}
+                      pending={pending}
+                      onChange={runChange}
+                    />
+                  </>
+                )}
+                {sr.status === 'open' && (!sr.assigned_to_id || sr.assigned_to_id === user?.id) && (
                   <div>
                     <button
                       className="rounded bg-brand-600 px-2 py-1 text-white"
@@ -1630,51 +1661,67 @@ export function HRWorkspacePage() {
                     </button>
                   </div>
                 )}
-                {['in_review', 'approved'].includes(sr.status) && (
-                  <form
-                    className="space-y-2"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const response = requestResponses[sr.id];
-                      void runChange(async () => {
-                        await resolveServiceRequest(sr.id, {
-                          status: 'completed',
-                          expected_updated_at: sr.updated_at,
-                          ...(response?.trim() ? { resolution_notes: response.trim() } : {})
-                        });
-                        setRequestResponses((current) => {
-                          const next = { ...current };
-                          delete next[sr.id];
-                          return next;
-                        });
-                      }, 'Unable to complete HR service request.');
-                    }}
-                  >
-                    <label className="block">
-                      Response shared with the employee
-                      <textarea
-                        className="mt-1 block w-full rounded border border-theme-border bg-theme-input p-2"
-                        disabled={pending}
-                        maxLength={2000}
-                        onChange={(event) =>
-                          setRequestResponses((current) => ({
-                            ...current,
-                            [sr.id]: event.target.value
-                          }))
-                        }
-                        rows={2}
-                        value={requestResponses[sr.id] ?? sr.resolution_notes ?? ''}
-                      />
-                    </label>
-                    <button
-                      className="rounded bg-brand-600 px-2 py-1 text-white"
-                      disabled={pending}
-                      type="submit"
+                {['in_review', 'approved'].includes(sr.status) &&
+                  (!sr.assigned_to_id || sr.assigned_to_id === user?.id) && (
+                    <form
+                      className="space-y-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const response = requestResponses[sr.id];
+                        const letter = requestLetters[sr.id];
+                        void runChange(async () => {
+                          await resolveServiceRequest(sr.id, {
+                            status: 'completed',
+                            expected_updated_at: sr.updated_at,
+                            ...(letter ? { generated_letter_id: letter } : {}),
+                            ...(response?.trim() ? { resolution_notes: response.trim() } : {})
+                          });
+                          setRequestLetters((current) => {
+                            const next = { ...current };
+                            delete next[sr.id];
+                            return next;
+                          });
+                          setRequestResponses((current) => {
+                            const next = { ...current };
+                            delete next[sr.id];
+                            return next;
+                          });
+                        }, 'Unable to complete HR service request.');
+                      }}
                     >
-                      Complete request
-                    </button>
-                  </form>
-                )}
+                      <label className="block">
+                        Response shared with the employee
+                        <textarea
+                          className="mt-1 block w-full rounded border border-theme-border bg-theme-input p-2"
+                          disabled={pending}
+                          maxLength={2000}
+                          onChange={(event) =>
+                            setRequestResponses((current) => ({
+                              ...current,
+                              [sr.id]: event.target.value
+                            }))
+                          }
+                          rows={2}
+                          value={requestResponses[sr.id] ?? sr.resolution_notes ?? ''}
+                        />
+                      </label>
+                      <HRIssuedLetterPicker
+                        employeeId={sr.employee_id}
+                        value={requestLetters[sr.id] ?? ''}
+                        onChange={(value) =>
+                          setRequestLetters((current) => ({ ...current, [sr.id]: value }))
+                        }
+                        disabled={pending}
+                      />
+                      <button
+                        className="rounded bg-brand-600 px-2 py-1 text-white"
+                        disabled={pending}
+                        type="submit"
+                      >
+                        Complete request
+                      </button>
+                    </form>
+                  )}
               </div>
             ))}
             {hasPerm('hr:offboarding:manage') && (

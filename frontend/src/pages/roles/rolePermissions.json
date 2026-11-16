@@ -142,7 +142,9 @@
       "hr:policy:manage",
       "hr:recruitment:manage",
       "hr:reports:view",
-      "hr:requests:process"
+      "hr:requests:process",
+      "hr:training:manage",
+      "hr:performance:manage"
     ],
     "administrative_executive": [
       "users:read",

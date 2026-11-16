@@ -63,15 +63,345 @@ subcommand's `--help`.
 | `hr departments`, `hr positions` | `list`, `create` | Employee read or manage permission. |
 | `hr access-requests` | `list`, `create`, `decide` | Request stage and actor determine HR versus director access. |
 | `hr attendance` | `list`, `correction` | Attendance recording permission. |
-| `hr documents` | `list`, `upload` | HR document management and category checks. |
-| `hr leave` | `policy show`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management or leave approval. |
+| `hr documents` | `list`, `status`, `upload`, `upload-version`, `decide`, `download` | Manage HR vault files, including independently reviewed candidate CVs and offer PDFs. |
+| `hr leave` | `policy show`, `policy propose`, `policy decide`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management, leave approval or policy management, depending on the command. |
+| `hr offers` | `list`, `status`, `draft`, `decide`, `reissue`, `convert` | Follow offer status and version history. Conversion requires an accepted offer and an open requisition with capacity. |
+| `hr requisitions` | `list`, `status`, `create`, `decide` | Find requisitions, record requested headcount, and move a requisition through its approval and hiring states. |
+| `hr candidates` | `list`, `status`, `create` | Find or register candidates and inspect their details in an owner-only file. |
+| `hr applications` | `list`, `status`, `create`, `stage`, `activity`, `shortlist`, `withdraw` | Link a candidate to an open requisition, track the stage, and record screening and evaluation decisions. |
+| `hr onboarding` | `list`, `status`, `create`, `task`, `probation` | Track checklists, start direct-hire onboarding and record probation outcomes. |
+| `hr interviews` | `list`, `schedule`, `update` | List an application's interviews, schedule a round, and record feedback and outcomes. |
+| `hr correspondence` | `templates`, `list`, `status`, `draft`, `decide` | Prepare and independently review rejection correspondence. |
 | `hr compliance` | `expiring` | Compliance management. |
-| `hr offboarding` | `list`, `initiate`, `complete` | Offboarding management and case preconditions. |
+| `hr offboarding` | `list`, `initiate`, `custody list`, `custody record`, `settlement list/propose/review`, `complete` | Offboarding management and case preconditions. |
 | `hr` | `workbook-reconcile`, `summary`, `reports summary`, `reports sites` | Employee management for workbook reconciliation. Report viewing for summaries and sites. |
 
 Use `hr reports sites` to page through primary site IDs and
 `hr reports summary --project-id ID --department-id ID --date-from YYYY-MM-DD --date-to YYYY-MM-DD`
 to filter the report. Both dates are required when applying a date range.
+
+Use `hr documents list --candidate-id ID --document-type candidate_cv` to
+find a candidate's vault record. The first upload uses
+`hr documents upload --candidate-id ID --category confidential --document-type candidate_cv --title TITLE --file FILE --dry-run`.
+Use `candidate_offer` for an offer PDF. Later uploads use
+`hr documents upload-version --document-id ID --file FILE --dry-run`.
+Apply the corresponding preview with the same arguments and
+`--apply --expect PLAN_SHA256`. If an upload response is lost, check
+`hr documents status --document-id ID` and compare the recorded version hash
+before attempting a replacement.
+
+A different HR Manager can use
+`hr documents download --document-id ID --version N --output NEW_FILE`
+to review the exact candidate file in a new mode-0600 file. If object storage
+uses a different public origin from the API, specify its trusted origin with
+`--object-origin https://HOST`. The CLI verifies size and checksum before
+writing and omits the signed link from output.
+Use `hr documents decide --document-id ID --version N --sha256 DIGEST --decision approve --dry-run`
+with the downloaded checksum. For `reject`, add
+`--reason-file PRIVATE_FILE.txt`. Apply the reviewed plan with
+`--apply --expect PLAN_SHA256`.
+
+Use `hr requisitions list --code CODE` to find an exact code, or
+`--req-status STATUS --limit 20 --offset OFFSET` to page through a stage.
+Create a draft with `hr requisitions create --file PRIVATE.json --dry-run`.
+Supply `requisition_code`, `title` and any optional hiring fields, including
+`headcount_requested`, `target_join_date`, `justification` and
+`budget_notes`. Apply the reviewed file with `--apply --expect PLAN_SHA256`.
+If a response is lost, look up the original code before retrying.
+
+Use `hr requisitions decide --requisition-id ID --file PRIVATE.json --dry-run`
+with a `status` and, for rejection, the reason in `notes`. Submitting a draft
+requires recruitment access. Every other transition also requires
+`hr:employees:sensitive`. Repeat with
+`--apply --expect PLAN_SHA256`. Review a fresh preview after a change to the
+requisition. Budget notes, justification and rejection reasons stay out of
+console output. To review them, use
+`hr requisitions status --requisition-id ID --output NEW_FILE.json`.
+
+Use `hr offers status --offer-id ID --json` to check the offer state. Add
+`--output NEW_FILE.json` to review terms and notes in a new owner-only file. Run
+`hr offers list --application-id ID --limit 20` to find versions for an
+application. Draft with `hr offers draft --file PRIVATE.json --dry-run`.
+The owner-only terms file includes `application_id`, `offer_code` and
+`proposed_title`. It can also include a validity date, join date, department,
+position, currency and notes. Use a new code for
+`hr offers reissue --offer-id ID --file PRIVATE.json --dry-run` and omit the
+application ID from the replacement file. Reissue preserves the original offer
+and verifies the links in both directions. Recruitment offers do not accept
+salary values.
+Include `document_version_id` to attach the candidate's approved offer PDF
+from the HR vault. Reissuing an offer with a PDF requires a different
+approved version. The offer status reports the pinned version identifier.
+
+Use `hr offers decide --offer-id ID --file PRIVATE.json --dry-run` with the
+requested `status` and optional `notes` and `valid_until`. The deadline may
+be changed before or at issuance. Approval requires the existing
+`hr:employees:sensitive` permission. Apply any offer preview with the same
+file and `--apply --expect PLAN_SHA256`. If the result is uncertain, check
+the offer code and current version before retrying. Offer notes are omitted
+from terminal output.
+
+Run
+`hr offers convert --offer-id ID --employee-code CODE --dry-run --json`
+and repeat with `--apply --expect PLAN_SHA256` after reviewing the plan.
+Supply `--probation-days` in both calls when needed. The command verifies the
+converted employee through the offer and reports the onboarding case ID.
+If the result is uncertain, check the offer status before taking further action.
+
+Use `hr onboarding list --employee-id ID` and
+`hr onboarding status --case-id ID` to find a case and its task IDs. Add
+`--output NEW_FILE.json` to save private evidence for review. For direct hires,
+`hr onboarding create --file PRIVATE.json --dry-run` takes `employee_id`,
+`start_date`, and optional `probation_end_date` and `owner_user_id`.
+
+`hr onboarding task --case-id ID --task-id ID --file PRIVATE.json --dry-run`
+takes `status` and optional `evidence_notes`. Completion and waiver require
+evidence. Waiver and case closure require sensitive HR access. The portal
+checks that the employee does not approve their own checklist.
+
+After the checklist is complete and the employee has moved to
+`on_probation`, use
+`hr onboarding probation --case-id ID --file PRIVATE.json --dry-run`.
+Supply `outcome` and `reason`, plus `new_end_date` for an extension or
+`confirmed_category` when confirming a probation-category employee.
+Apply each reviewed plan with the same file and `--apply --expect PLAN_SHA256`.
+Re-run the preview after an intervening task or employee change.
+
+Use `hr candidates list --code CODE` for an exact candidate lookup. Register
+a candidate with `hr candidates create --file PRIVATE.json --dry-run` and
+include `candidate_code`, `full_name` and any optional contact or experience
+fields. Use `hr applications create --file PRIVATE.json --dry-run` with
+`candidate_id`, `requisition_id` and optional `screening_notes`. Apply each
+preview with the same file and `--apply --expect PLAN_SHA256`. After an
+uncertain write, check the original candidate code or use
+`hr applications list --candidate-id ID --requisition-id ID`.
+
+Use `hr applications status --application-id ID` to check the application.
+For private details, add `--output NEW_FILE.json` to application or candidate
+status. Record screening, interview, evaluation, offer or rejection with
+`hr applications stage --application-id ID --file PRIVATE.json --dry-run`.
+Use the requested `stage` and optional `screening_notes` or `overall_score`.
+Rejection requires `rejection_reason`. Evaluation requires a completed
+interview. Re-run the preview if the record changes before applying.
+To shortlist an application in screening, use
+`hr applications shortlist --application-id ID --dry-run`, then apply with
+`--apply --expect PLAN_SHA256`. Use
+`hr applications activity --application-id ID --limit 20` to read recorded
+stages and actors.
+Then use `hr applications withdraw --application-id ID --decision-file FILE --dry-run`.
+The owner-only JSON file contains `expected_stage`, `reason`, and
+`retention_decision`. A decision of `retain_until_review` also requires
+`retention_review_on` in YYYY-MM-DD format and `retention_policy_reference`.
+Use `policy_review_required` if these values are pending. Apply the same
+file with `--apply --expect PLAN_SHA256`. The preview and receipt omit the
+withdrawal reason.
+
+Use `hr interviews list --application-id ID` to check an application's rounds.
+For `hr interviews schedule --file PRIVATE.json --dry-run`, the owner-only JSON
+contains `application_id`, a new `interview_id` UUID and `scheduled_at`
+including a UTC offset. Optional fields are `round_number`, `interview_type`,
+`interviewer_user_id` and `interviewer_name`. Repeat with the same file and
+`--apply --expect PLAN_SHA256`. Keep the same interview UUID for an identical
+retry. If the result is uncertain, list the interviews and check that UUID.
+With an active `interviewer_user_id`, scheduling sends a generic portal
+invitation. A name alone is for the HR record and sends no notification.
+
+For `hr interviews update --application-id ID --interview-id ID --file PRIVATE.json --dry-run`,
+include the fields that should change from `status`, `recommendation`, `score`
+and `feedback_notes`. Apply the reviewed plan in the same way. Review a fresh
+preview after a concurrent edit. The CLI omits interviewer names, scores and
+feedback text from console output.
+
+Use `hr correspondence templates` to find an active rejection template
+and `hr correspondence list --application-id ID` to check existing drafts.
+Prepare correspondence for a rejected application with
+`hr correspondence draft --application-id ID --draft-id NEW_UUID --template-id ID --dry-run`.
+Repeat with the same UUID and arguments and `--apply --expect PLAN_SHA256`.
+If the write result is uncertain, read the draft using the same UUID.
+
+An independent reviewer can open the exact record with
+`hr correspondence status --application-id ID --draft-id ID --output NEW_FILE.json`.
+The file contains protected content and is created with mode 0600. The command
+refuses to overwrite an existing file. Review the contents in private and use
+its digest with
+`hr correspondence decide --application-id ID --draft-id ID --decision approved --content-sha256 DIGEST --dry-run`.
+For `rejected`, also supply `--reason-file PRIVATE_FILE.txt` with the review
+reason in UTF-8. Apply the reviewed plan with `--apply --expect PLAN_SHA256`.
+The CLI reports the persisted decision without printing the letter or reason.
+Approval records the decision in HR and does not send an email.
+
+`hr leave requests submit` previews the selected employee's leave units from
+the published schedule and rechecks the quote on apply. Omit `--days` to use
+the calculated amount or supply it to assert the expected total. For permitted
+single-day half-day leave, pass `--half-day-period morning` or
+`--half-day-period afternoon`. If the quote changes, review a fresh dry run.
+
+Use `hr leave policy propose --file POLICY.json --dry-run` to preview a
+dated proposal. The JSON uses the leave policy creation contract, including
+`effective_from` and `effective_to`. A second HR Manager uses
+`hr leave policy decide --policy-id ID --decision approved --dry-run`
+or chooses `rejected` and provides `--reason`. Apply either command with
+its own `--apply --expect PLAN_SHA256`. Use `hr leave policy show` to
+inspect the effective windows and current decisions.
+
+`hr leave accrual post --employee-id ID --leave-type-id ID --year YYYY --dry-run`
+previews a closed annual period. Add `--month N` for an approved monthly
+policy. Add `--through-month N` to preview an inclusive range of closed
+months in that year. Review each policy and ledger reference, then apply with
+`--apply --expect PLAN_SHA256`. Catch-up credits only missing periods, and an
+ineligible period prevents the range from posting. Use the same dry run to
+read back stored ledger references after posting or an uncertain result.
+
+Payroll commands require the corresponding prepare, approve and sensitive
+permissions. The current portal role catalogue has no payroll grant. With
+separately authorized test permissions, use
+`hr payroll calculate --run-id ID --roster-file FILE --dry-run` for a draft,
+with a JSON array of employee UUIDs. Use
+`hr payroll snapshot --run-id ID` to inspect the frozen inputs and amounts,
+then `hr payroll approve --run-id ID --dry-run` as an independent reviewer.
+Each write requires its own `--apply --expect PLAN_SHA256`. Review payroll
+output in an authorized private terminal.
+
+Use `hr payroll time-inputs --period-id ID --roster-file FILE` to preview
+locked time inputs. Supply a JSON array of employee UUIDs in an owner-only
+file. Review the roster, the date window and any blocking issues. When the
+preview supplies a digest, rerun the same command with
+`--sha256 CSV_SHA256 --output FILE`. The CLI verifies the CSV digest and
+creates a new owner-only file. The export contains time quantities and opaque
+record IDs. Approved overtime must reconcile to the timesheet. Payroll rates,
+salary, and payment instructions stay in their own workflows.
+
+The reviewer who approved a locked run can inspect
+`hr payroll publish-payslips --run-id ID --dry-run` and publish with
+`--apply --expect PLAN_SHA256`. The preview and receipt contain no employee
+amounts. Linked employees use `hr payslip list` and
+`hr payslip show --run-id ID` for statements published to their own account.
+The scheduled pay date is separate from settlement confirmation.
+
+The run approver can use
+`hr payroll payment-export register --run-id ID --dry-run` to reconcile
+the protected Finance handoff and register it with
+`--apply --expect PLAN_SHA256`. Save the exact registered bytes with
+`hr payroll payment-export download --run-id ID --sha256 CSV_SHA256 --output FILE`.
+Download verifies the receipt digest and creates a new owner-only file.
+The CSV contains no names, email addresses or bank details. The employee
+mapping is available only in the protected payroll snapshot.
+
+Use `hr payroll settlement summary --run-id ID` for outstanding amounts and
+`hr payroll settlement events --run-id ID` for the protected event history.
+To acknowledge an external result, run
+`hr payroll settlement record --run-id ID --event-file FILE --dry-run`.
+The owner-only JSON file contains `event_id`, `payment_reference`, `kind`
+(`paid`, `failed` or `reversed`), `amount` as a decimal string, `occurred_on`
+as a date, and an opaque `evidence_reference`. A reversal also requires
+`reverses_event_id`. Confirm with `--apply --expect PLAN_SHA256`. Use the same
+event UUID and evidence reference on retry. Never put account details into
+the evidence reference.
+
+HR Managers and inventory owners can inspect a case's custody history with
+`hr offboarding custody list --case-id ID`. Inventory owners first post any
+stock return using the inventory workflow, with reference type
+`hr_offboarding_cases` and the HR case ID as the reference ID. Then run
+`hr offboarding custody record --case-id ID --event-id UUID --kind returned
+--movement-id ID --evidence-reference REF --dry-run`. The custody command
+records a reference to the existing stock movement. Use a fresh event UUID for
+each new event and reuse it when retrying the same event. For `cleared`,
+`waived`, or `flagged`, omit the movement ID and supply an opaque evidence
+reference for the attestation or exception. Confirm each write with
+`--apply --expect PLAN_SHA256`. After an interrupted response, check the
+exact receipt with `custody list --case-id ID --event-id UUID` before retrying.
+
+For IT handover, directors use `hr offboarding custody list --area it_admin
+--case-id ID`. The record command uses the same preview and apply workflow.
+Pass `--area it_admin --device-reference ID` to flag or record a return,
+or to waive an already flagged device with an approved evidence reference.
+For the final `--kind cleared` sign-off, omit the device reference and supply
+the overall handover reference. IT sign-off requires zero unresolved devices
+and verified portal deactivation for a linked user. Both HR and directors
+can inspect IT receipts with the case ID.
+
+List accessible reviews with `hr performance list`. Read one review with
+`hr performance show --review-id ID`. The same participant checks and
+publication stage apply as in the portal.
+
+To verify training against already approved ordinary employee evidence,
+use `hr training completion verify --enrollment-id ID --document-id ID
+--version-number NUMBER --completed-date YYYY-MM-DD --dry-run`. Add
+`--score` when applicable, then confirm with `--apply --expect PLAN_SHA256`.
+Check the receipt using `hr training completion show --enrollment-id ID`.
+A renewal uses its own enrollment and approved evidence. Inspect configured
+scopes with `hr training requirements list` and an employee’s current
+requirements with `hr training requirements employee --employee-id ID`.
+
+For separation settlement, use `hr offboarding settlement list --case-id ID`.
+A director with Finance access runs
+`hr offboarding settlement propose --case-id ID --event-id UUID --outcome
+OUTCOME --evidence-reference REF --dry-run`. Use `outstanding`, `settled` or
+`nothing_due`. A different director uses `hr offboarding settlement review
+--case-id ID --event-id UUID --decision approved --evidence-reference REF
+--dry-run`, or records a rejection with its own reference. Both writes require
+`--apply --expect PLAN_SHA256`. Check the exact receipt with
+`settlement list --case-id ID --event-id UUID` after an interrupted response.
+Use opaque references to the approved Finance evidence. Keep financial details
+in their approved system of record.
+
+Use `hr employees changes list --employee-id ID` to inspect reviewed employment
+changes. For `changes propose --employee-id ID --file FILE --dry-run`, the
+JSON object contains `change_type`, `effective_date`, `reason` and `updates`.
+For example, a `transfer` can set `updates.work_location`; specify the employee
+revision through the CLI's live preview. A different HR Manager uses
+`changes decide --employee-id ID --change-id ID --decision approved --dry-run`.
+For a rejection, supply an operational `--reason`. Run
+`changes apply --employee-id ID --change-id ID --dry-run` for a due approved
+proposal. Each write requires its own `--apply --expect PLAN_SHA256`.
+
+For rehire, use `change_type: rehire` with the new start as `effective_date`.
+Set `updates.separation_case_id` to the latest completed eligible separation
+and supply `updates.employment_category`. Include `updates.probation_days` for
+probationary rehire. Use the existing independently reviewed `changes decide`
+and `changes apply` commands. Check old and new periods via
+`hr employees periods --employee-id ID`; the new period identifies its
+onboarding case and reviewed change. Portal access continues through a fresh
+director-fulfilled request.
+
+For a `contract_renewal` proposal, `updates` contains
+`current_contract_document_id`, `current_contract_version`,
+`renewal_contract_document_id`, `renewal_contract_version`, and
+`contract_end_date` (`YYYY-MM-DD`). Both referenced versions must be
+available to the reviewing HR Managers, and the end date must match the
+renewal's vault expiry. Review the exact evidence before approving.
+
+Use `hr request assignees` to list eligible HR users. Run
+`hr request assign --request-id ID --assignee-id ID --reason "Shift handoff" --dry-run`
+before assigning or reassigning an active request. Confirm the preview using
+`--apply --expect PLAN_SHA256`. Assignment preserves the request's status and
+SLA clock. Use an operational reason without personal or confidential details.
+
+Use `hr request complete --request-id ID --letter-id ID --dry-run`
+to preview completion with an already-issued letter for that employee.
+The letter argument is optional. Pass `--response-file FILE` with a JSON
+string to share response text. After review, apply with
+`--apply --expect PLAN_SHA256`. The dry run can display private letter or
+response text, so review it in a private terminal.
+
+Use `hr letter list` and `hr letter show --letter-id ID` for your own issued
+letters. HR Managers can add `--employee-id ID` to inspect a selected employee's
+draft and issued history.
+
+`hr letter draft --employee-id ID --template-id ID --letter-id NEW_UUID --file FILE --dry-run`
+renders the letter for review. Use a private JSON file containing an
+`extra_vars` mapping, or `{}` if the template needs no inputs. Keep the same
+letter UUID for the matching apply and a retry. A different HR Manager uses
+`hr letter decide --employee-id ID --letter-id ID --decision issued --dry-run`
+to review and issue. For `rejected`, pass `--reason-file FILE` containing a
+JSON string. Apply each command with its own `--apply --expect PLAN_SHA256`.
+Use a private terminal because previews and reads display letter text.
+
+`hr leave rollover post --employee-id ID --leave-type-id ID --year YYYY --dry-run`
+previews the closing balance, carry and expiry for one employee and leave
+type. Review the source ledger and reconcile any missing accrual before
+applying with `--apply --expect PLAN_SHA256`. Posting closes that source
+year. A subsequent dry run shows the existing receipt.
 
 ### Inspect identities, roles and projects
 

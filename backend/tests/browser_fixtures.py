@@ -104,10 +104,20 @@ async def seed(role: str, existing_project_id: UUID | None) -> None:
                     )
                 )
             project_id = str(project.id)
+            project_code = project.code
             await session.commit()
     finally:
         await engine.dispose()
-    print(json.dumps({"email": email, "password": password, "projectId": project_id}))
+    print(
+        json.dumps(
+            {
+                "email": email,
+                "password": password,
+                "projectId": project_id,
+                "projectCode": project_code,
+            }
+        )
+    )
 
 
 async def seed_delegation() -> None:
@@ -313,6 +323,106 @@ async def expire_login_challenge(challenge_id: UUID) -> None:
         await engine.dispose()
 
 
+async def seed_employee_payslip(employee_id: UUID, maker_id: UUID, reviewer_id: UUID) -> None:
+    # This key belongs only to the Playwright run and is shared by its API and fixture process.
+    os.environ["HR_ENCRYPTION_KEY"] = os.environ["BROWSER_TEST_HR_ENCRYPTION_KEY"]
+    from app.database import AsyncSessionLocal, engine
+    from app.models.hr import HrEmployee
+    from app.models.user import User
+    from app.schemas.hr import (
+        CompensationTermCreateRequest,
+        PayrollPeriodCreateRequest,
+        PayrollPolicyCreateRequest,
+        PayrollRunCreateRequest,
+    )
+    from app.services.hr_payroll_snapshot import (
+        approve_payroll_snapshot,
+        calculate_payroll_snapshot,
+        publish_payslips,
+    )
+    from app.services.hr_service import HrService
+    from app.utils.permissions import (
+        PERMISSION_HR_PAYROLL_APPROVE,
+        PERMISSION_HR_PAYROLL_PREPARE,
+        PERMISSION_HR_PAYROLL_SENSITIVE,
+        ROLE_PERMISSIONS,
+    )
+
+    try:
+        async with AsyncSessionLocal() as session:
+            employee = await session.get(HrEmployee, employee_id)
+            maker = await session.get(User, maker_id)
+            reviewer = await session.get(User, reviewer_id)
+            recipient = (
+                await session.get(User, employee.user_id) if employee and employee.user_id else None
+            )
+            if (
+                employee is None
+                or maker is None
+                or reviewer is None
+                or recipient is None
+                or len({maker.id, reviewer.id, recipient.id}) != 3
+                or maker.role != "hr_manager"
+                or reviewer.role != "hr_manager"
+                or not all(
+                    user.email.startswith("browser-") and user.email.endswith("@example.com")
+                    for user in (maker, reviewer, recipient)
+                )
+            ):
+                raise ValueError("Expected three distinct browser fixture accounts.")
+            # Scoped to this short-lived test process. The API retains its standard role grants.
+            ROLE_PERMISSIONS["hr_manager"] |= {
+                PERMISSION_HR_PAYROLL_PREPARE,
+                PERMISSION_HR_PAYROLL_APPROVE,
+                PERMISSION_HR_PAYROLL_SENSITIVE,
+            }
+            service = HrService(session)
+            await service.create_compensation_term(
+                CompensationTermCreateRequest(
+                    employee_id=employee.id,
+                    effective_from=date(2025, 1, 1),
+                    base_salary="100.05",
+                    currency="LKR",
+                ),
+                maker,
+            )
+            period = await service.create_payroll_period(
+                PayrollPeriodCreateRequest(
+                    period_code="Synthetic Chrome payroll",
+                    period_start=date(2025, 1, 1),
+                    period_end=date(2025, 1, 31),
+                    pay_date=date(2025, 2, 1),
+                ),
+                maker,
+            )
+            policy = await service.create_payroll_policy(
+                PayrollPolicyCreateRequest(
+                    code=f"CHROME-PAY-{employee.id.hex[:8]}",
+                    name="Synthetic Chrome policy",
+                    rules_json={
+                        "calculation_basis": "base_salary_only",
+                        "currency": "LKR",
+                        "rounding": "half_up",
+                        "pay_frequency": "monthly",
+                        "employee_deduction_rate": "0.10",
+                    },
+                ),
+                maker,
+            )
+            await service.approve_payroll_policy(policy.id, reviewer)
+            draft = await service.create_payroll_run(
+                PayrollRunCreateRequest(payroll_period_id=period.id, policy_id=policy.id), maker
+            )
+            run = await calculate_payroll_snapshot(session, draft.id, [employee.id], maker)
+            digest = run.snapshot_digest
+            assert digest is not None
+            await approve_payroll_snapshot(session, run.id, digest, reviewer)
+            await publish_payslips(session, run.id, digest, reviewer)
+            print(json.dumps({"runId": str(run.id)}))
+    finally:
+        await engine.dispose()
+
+
 if __name__ == "__main__":
     from app.utils.permissions import VALID_ROLES
 
@@ -324,6 +434,7 @@ if __name__ == "__main__":
             "seed-supervisor",
             "seed-delegation",
             "seed-analytics-finance",
+            "seed-employee-payslip",
             "serve",
             "expire-login",
         ],
@@ -331,6 +442,9 @@ if __name__ == "__main__":
     parser.add_argument("--role", choices=sorted(VALID_ROLES), default="managing_director")
     parser.add_argument("--project-id", type=UUID)
     parser.add_argument("--challenge-id", type=UUID)
+    parser.add_argument("--employee-id", type=UUID)
+    parser.add_argument("--maker-id", type=UUID)
+    parser.add_argument("--reviewer-id", type=UUID)
     args = parser.parse_args()
     if args.command == "expire-login" and args.challenge_id is None:
         parser.error("expire-login requires --challenge-id")
@@ -343,6 +457,10 @@ if __name__ == "__main__":
         asyncio.run(expire_login_challenge(args.challenge_id))
     elif args.command == "seed-delegation":
         asyncio.run(seed_delegation())
+    elif args.command == "seed-employee-payslip":
+        if not (args.employee_id and args.maker_id and args.reviewer_id):
+            parser.error("seed-employee-payslip needs employee, maker and reviewer IDs")
+        asyncio.run(seed_employee_payslip(args.employee_id, args.maker_id, args.reviewer_id))
     elif args.command == "seed-analytics-finance":
         asyncio.run(seed_analytics_finance(args.project_id))
     else:

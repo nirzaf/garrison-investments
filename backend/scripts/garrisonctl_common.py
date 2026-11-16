@@ -137,6 +137,20 @@ def sha256_json(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def write_private_bytes(path: Path, data: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if path.read_bytes() != data:
+            raise OSError("Private output verification failed.")
+    except OSError:
+        path.unlink(missing_ok=True)
+        raise
+
+
 def read_private_bytes(path: Path, *, max_bytes: int = PRIVATE_LIMIT) -> bytes:
     flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
     try:

@@ -1,0 +1,1012 @@
+# HR completion ledger
+
+This ledger reconciles the two HR completion prompts by capability (P01–P16).
+The historical HR IDs below refer to the matching requirements in the local
+*Garrisons HR Atomic Implementation Spec*, section 7. The separately named
+`Garrisons_HR_Full_Atomic_Implementation_Spec.md` was unavailable. The local
+spec is restricted because its appendix contains staff data. Its earlier
+two-role proposal is superseded by the single HR Manager decision.
+
+## Baseline
+
+- Clean main worktree at `ec298833ccffccabf65916202894736f494a72a4`, matching
+  the local `origin/main` reference and the supplied GitHub baseline. No staged,
+  unstaged or untracked work was present before the changes below.
+- Alembic source head `202605310014`. An empty loopback PostgreSQL 18 test
+  database upgraded to head with Python 3.14.7. The frontend tooling ran on
+  Node 26.13.0 locally. The hosted CI definition pins its own tool versions.
+- Production activation and business acceptance are separate from the local
+  engineering work below. See the [workforce guide](HR_WORKFORCE.md) for the
+  last verified deployed revision and the [maintenance runbook](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
+  for the next deployment.
+
+## Requirement register
+
+| Packet and historical source | Local evidence and engineering status | Remaining behavior or input and acceptance check |
+| --- | --- | --- |
+| P01 · HR-001–004, HR-007 · organization and employee records | **Implemented and locally verified for directory, profile and name-correction workflows.** Current employees' name corrections use independent review. Private-vault and My HR edits verify the same employee revision. See Slice 27. | Verify business use of older employment periods with missing start dates. Operational use requires authorized accounts and dedicated encryption key custody. |
+| P02 · HR-005/006 · workbook and access | **Implemented paths; unverified live.** `hr_workbook.py` previews and applies drafts, and the HR access workflow uses the user service for director fulfillment. Browser and CLI expose the workflow. See `test_hr_c_three_party_access_requests_and_session_revocation` and `test_hr_d_workbook_preview_and_idempotent_apply`. | The recovered account-role workbook matches the supplied digest. Its identity and role dispositions remain in the restricted reconciliation plan. Verify the approved personnel roster, account identities and final access outside Git. Verify retry creates no duplicate draft/request and neither linking nor a reporting line adds project access. |
+| P03 · HR-008–011 · recruitment and onboarding | **Portal and CLI workflows verified locally.** Requisitions, CVs, applications, interviews, offers and onboarding are available in both interfaces. Offer versions can pin reviewed confidential PDFs. Internal interview invitations and cancellations use generic in-app notices. The terminal also records onboarding checklist and probation decisions. See Slices 28–30 and 33–41. | Verify with approved release test records. Confirm operational retention and correspondence wording. |
+| P04 · HR-002/011 · employment changes | **Partial.** Reviewed transfers, promotions, category amendments and version-bound contract renewals apply on or after their effective date with one history entry. Manager transfer clears the former review authority. `HRProbationReview` handles confirmation and extensions. | Reviewed rehiring now records a new period and onboarding checklist. An approved automatic activation schedule and production business acceptance remain open. |
+| P05 · HR-007/013 · workforce planning | **Implemented and locally verified for whole-shift allocations.** `HRWorkCalendar` resolves published calendars and shifts. `HRRoster` allocates the resolved shift to a project and keeps cancellation history. `hr_project_assignment.py` handles project access separately. See Slice 25. | Verify representative rosters with the business before production activation. The local workflow assigns a single published workday or shift per employee and date. |
+| P06 · HR-014/015 · attendance and time | **Implemented and locally verified for time capture, review and locked time export.** The payroll preparer can preview and export reconciled time for an explicit roster. Pending overtime prevents timesheet lock. See Slice 26. | Verify overnight and partial punch behavior against approved rules. Employee submissions and manager recommendations need approved opt-in settings and verified links. Production payroll authorization and roster coverage review remain open. |
+| P07 · HR-016/017 · leave | **Partial.** Published schedules determine units. Dated policies require independent HR review. HR can post reviewed accrual, catch up across closed months, and roll over the year from the ledger, including explicit policy-authorized expiry of excess days. The scheduled worker can post designated policies, including independently approved calendar-day proration. See Slices 42–43. | Specify destination-year carry expiry rules, audited corrections to closed years, and payroll handoff. Confirm policy selection and publish missing work calendar periods before activation. |
+| P08 · HR-012/018 · documents, policies and letters | **Versioned files and policy editions implemented and locally verified.** Policies link to the exact approved files and maintain separate acknowledgement receipts after replacement. `HRLettersPanel` keeps encrypted drafts for independent issuance. See Slice 31. | Reconcile any legacy policy file links. Confirm company templates, the approved compensation source for salary letters, retention and any delivery to former employees. |
+| P09 · HR-018 · service requests | **Implemented and locally verified for handoffs and response letters.** HR can assign active requests, the assignee can complete one with a same-employee issued letter, and overdue reminders follow the eligible assignee. My HR keeps the exact letter visible on reopening. | Confirm the live SLA threshold and routing. Verify representative sensitive responses and templates with business UAT. |
+| P10 · HR-021/022 · compensation and obligations | **Partial and role gated.** `create_compensation_term`, `create_employee_benefit` and `decide_reimbursement` implement parts of the domain. | Define independent review, effective compensation changes, receipts, advances and traceable approved obligations. Verify overlap, duplicate claim/recovery and no general finance posting. Duties and applicable policy need approval. |
+| P11 · HR-023 · payroll and settlement | **Partial and role gated.** An explicit roster and approved base-only policy produce a frozen encrypted snapshot. Independent approval binds to the reviewed digest and locks the payroll period. The approver can publish employee-scoped payslips and register a balanced, reproducible internal Finance export. The settlement API and CLI reconcile failed, partial, duplicate and reversed external outcomes. | Add the remaining approved earnings and deductions, approved execution mapping and live settlement sign-off. Verify against separately approved worked examples, authority and currency rules. |
+| P12 · HR-019/020 · development and learning | **Implemented and locally verified.** HR configures mandatory training, verifies exact certificate versions and opens participant-scoped reviews with optional cycle ratings. Employees and authorized managers acknowledge goals and submit assessments. HR records handoffs, calibrates and appends corrections. See Slices 21–24. | Supply the company’s approved cycle labels where ratings are required. Verify production reminder routing and business acceptance. |
+| P13 · HR-024 · employee relations | **Partial and role gated.** `create_hr_case`, `list_hr_cases` and `close_hr_case` cover basic restricted case operations. | Design participant and conflict checks before assigning case authority, then add evidence, investigation, decision and appeal paths. Verify denied discovery and downloads across case participants. Confirm engagement scope separately. |
+| P14 · HR-025 · separation and custody | **Implemented and locally verified.** Offboarding requires director access cutoff, IT handover, inventory custody and independent Finance settlement review. Explicit rehire preserves prior periods and uses independent approval. See Slices 17–20. | Verify physical handover, settlement evidence policy, director assignments and authorization in business UAT. Production activation remains open. |
+| P15 · HR-026–028 · reporting and CLI | **Partial.** `hr_reporting.py`, `HRSummaryPanel` and `garrisonctl_hr.py` cover aggregate exports and multiple HR administrative workflows. | Add terminal coverage for the remaining recruitment, time, document decision and other accepted lifecycle commands as their slices land. Verify read/preview/apply/readback, actor-bound plans, export totals and field scope. |
+| P16 · HR-029/030 · reliability and handover | **Synthetic recovery verified; operational acceptance pending.** HR reminders use existing tasks. An isolated restore at revision 042 recovered HR records, exact file versions and encrypted data. See Slice 32. | Run the recovery and migration procedure with the approved off-host destination, key custody, retained data and measured recovery targets. Record retention policy and business acceptance separately. Preserve retain-only audit mode and technical CI/CD. |
+
+Paths in the [workforce guide](HR_WORKFORCE.md#core-workflows) lead to the router,
+services, frontend and role definitions. [CLI administration](CLI_ADMINISTRATION.md#workforce-administration)
+owns the command reference.
+
+## Authority to preserve
+
+| Duty | Current boundary |
+| --- | --- |
+| Employee | Active linked account acts on its own eligible records. |
+| Manager recommendation | Authorized current direct manager, only for the assigned employee and enabled workflow. HR makes the final decision. |
+| HR processing and independent review | HR Manager acts under the existing action-specific grants. Where independent approval applies, the second actor must be distinct. Directors fulfill approved account handoffs through the user service. |
+| Payroll preparation, approval and settlement | Separate duties require approved actor assignments and policy. Current roles have no payroll grant. |
+| Confidential case participation | No active role grant. An approved design also needs record-level participant and conflict checks. |
+
+## Slice 1 · enforce vacancies at offer conversion
+
+P03 / historical HR-008 headcount consistency and HR-010 one-time conversion.
+Use the existing conversion endpoint and browser action. Serialize decisions
+on the requisition row after taking the application and offer locks in the
+order used by reissue. Count persisted hired applications. A successful final
+hire changes the requisition to filled and records an audit event in the same
+transaction as the employee and onboarding case. Held or closed requisitions
+reject conversion, and an early manual filled decision is rejected. A retry
+of a converted offer returns its existing case.
+
+The service is in `backend/app/services/hr_workforce_service.py` and the browser
+action is in `frontend/src/pages/hr/HRHiringPanel.tsx`. The additive offer-detail
+endpoint uses the same recruitment permission as the existing offer list.
+`garrisonctl hr offers status` and `convert` use it for a minimal status view,
+an actor-bound plan, and readback after conversion. See the
+[CLI guide](CLI_ADMINISTRATION.md#workforce-administration). Conversion clients
+keep the same request and response fields. This slice requires no new migration. Existing
+historical over-capacity rows or incorrectly filled requisitions need a reviewed
+read-only reconciliation before any correction.
+
+Acceptance requires one success and one capacity conflict on concurrent
+authenticated conversions for the final vacancy, one hired application,
+identical case and employee IDs on replay, a 403 for a non-HR actor, and a
+Chrome reload that still shows filled and converted.
+
+The pre-fix API regression reproduced two HTTP 200 conversions for one
+vacancy. The post-fix test also exercises premature filled, hold/reopen and
+authorized status readback. The CLI regression covers stale plan refusal,
+private note omission and confirmed status after apply with a mock transport.
+
+Local verification on 16 November 2026 used isolated PostgreSQL 18.6,
+Redis 8.10.1, Moto 5.2.2 and Google Chrome 157.0.8103.79:
+
+- `pytest -q -rs tests/test_hr.py tests/test_hr_attendance_import.py tests/test_permissions.py tests/test_openapi_contract.py --tb=short`
+  passed 50, with zero skips and a Celery deprecation warning.
+- Backend Ruff lint, mypy and OpenAPI check passed. Frontend ESLint,
+  generated API type check and build passed. `npm test` passed 50.
+- `npm run test:browser -- --grep 'multi-headcount requisition' --workers=1`
+  passed in Chrome. The scenario converted an accepted offer, verified the
+  filled requisition after reload and checked the real CLI status before
+  and after conversion through the isolated API.
+- Full repository CI, populated backup upgrade rehearsal and production
+  acceptance have no execution result for this uncommitted slice.
+
+## Slice 2 · employee leave correction and resubmission
+
+P07 / HR-017. My HR edits employee-submitted drafts and rejected requests
+through `PUT /api/v1/hr/me/leave-requests/{request_id}/submission`. The
+endpoint matches the active employee and original submitter, verifies the
+record revision and repeats creation validation. It locks the request and
+employee, retains the request ID, resets the current decision and
+recommendation fields, and audits the status transition without copying
+private reasons. Prior status transitions remain in the audit trail.
+The existing ledger is affected only by the later HR decision.
+
+`test_manager_recommendations_are_scoped_advisory_and_revision_checked`
+exercises original-submitter scope, foreign employee payload rejection,
+cross-year validation, concurrent resubmission, a fresh recommendation and a
+single approval debit and reversal. No new database migration is required.
+The same isolated backend command recorded for Slice 1 passed 50 tests with
+zero skips. Frontend lint, generated contracts, 50 unit tests and build passed.
+Chrome passed `npm run test:browser -- --grep 'a linked employee manages their own leave' --workers=1`.
+It exercised rejection feedback, prefilled correction, same-ID persistence
+after reload and cancellation.
+
+## Slice 3 · calendar based leave units
+
+P07 / HR-016 and HR-017. The self-service and HR quote endpoints calculate
+leave days for the same dates used to submit or resubmit. A single bounded
+PostgreSQL query resolves the applicable published calendar for each date,
+including assigned shifts, with holidays excluded. The server fails closed
+for missing coverage, ranges with no workdays and requests spanning two
+years. A valid half day counts as 0.50. A supplied total is an assertion
+against the schedule. The browser shows the quote and the CLI binds it to
+the dry-run plan.
+
+Rollout requires published work calendars covering the dates employees can
+request. No database migration is required. Already submitted requests keep
+their recorded units, including historical submissions that permitted a
+caller-supplied total. Review unresolved historical requests through the
+existing HR decision workflow before posting their ledger effects.
+
+Local verification used disposable PostgreSQL 18.6, Redis and Moto. The
+HR, attendance import, permission and OpenAPI suites passed 50 tests with
+zero skips. The CLI plan test passed separately with a mock transport.
+Frontend lint, generated types, 50 unit tests and build passed. The Chrome
+leave regression passed against the isolated API and checked the displayed
+quote, correction, resubmission and persisted record after reload.
+
+## Slice 4 · effective dates and independent leave policy review
+
+P07 / HR-016. HR Managers can propose a dated policy and a different HR Manager
+can approve it or reject it with a reason. The API serializes approvals by
+leave type and rejects overlapping inclusive windows for the same category.
+Leave approval resolves the applicable category and date rules for every day
+of the request before allowing a negative balance. Approved windows are
+immutable in the portal. The browser and CLI use the same workflow.
+
+[Revisions 015](../backend/alembic/versions/202605310015_hr_leave_policy_review.py)
+and [016](../backend/alembic/versions/202605310016_validate_hr_leave_policy.py)
+preserve older rows as legacy policies with their original approval metadata.
+Existing approved legacy policies remain fallback balance rules. Accrual
+will require a dated approval. Rehearsal on PostgreSQL 18.6 upgraded a
+synthetic legacy approval from 014, validated the constraints, preserved the
+15-day entitlement and rejected an undated insert from an old writer.
+The application and schema require a coordinated maintenance rollout.
+
+The isolated HR, attendance import, permissions and OpenAPI suites passed
+50 tests with zero skips. They exercised self-review denial, concurrent
+overlap rejection, adjacent windows, rejection and balance enforcement across
+a policy boundary. The CLI proposal and independent review test passed with
+a mock transport. Frontend lint, generated types, 50 unit tests and build
+passed. Chrome verified draft creation, absence of a creator approval
+control, independent review and persisted approval after reload in
+`npm run test:browser -- --grep 'a linked employee manages their own leave' --workers=1`.
+
+## Slice 5 · reviewed posting for closed accrual periods
+
+HR can post one closed month or year using a dated, independently approved
+policy and complete employment history for the entire period. The browser
+and CLI show the server's calculation and require explicit confirmation.
+The ledger credit and [receipt](../backend/alembic/versions/202605310017_hr_leave_accrual.py)
+are written in one transaction under the employee lock. An exact replay
+returns the same receipt, and overlapping periods or years with unreconciled
+opening balances or manual accruals are rejected. A manual opening balance
+or manual accrual is also rejected after policy-backed posting starts.
+Monthly rounding reconciles to the annual amount.
+
+Local PostgreSQL verification covered review authority, partial or future
+periods, mixed frequencies, actor mismatch, concurrent retries and
+balance reconciliation. The focused HR, attendance, permissions and
+contract suite passed 52 tests with zero skips. Frontend lint, generated
+types, 50 unit tests and build passed. Chrome previewed and posted annual
+accrual and the CLI read back its receipt against the isolated browser API.
+The 016-to-017 rehearsal preserved the seven existing ledger rows and their
+18.00-day total in a disposable database.
+
+## Slice 6 · year-end rollover and explicit expiry
+
+HR previews and posts the balance for one employee and paid leave type for
+a completed year. The dated closing policy sets the carry cap and must
+explicitly authorize expiry above it. The transfer debit, matching credit,
+expiry debit and receipt commit together. Source-year closure blocks late
+requests and ledger changes. An exact retry returns the existing receipt,
+and stale amounts, pending leave, destination opening balances and duplicate
+manual carry are rejected. The preview only uses posted entries and HR
+must reconcile missing accrual before confirming.
+
+[Revision 018](../backend/alembic/versions/202605310018_hr_leave_rollover.py)
+preserved the 11 existing ledger rows, 27.68-day total and two accrual
+receipts when applied to an isolated 017 database. Existing policies
+defaulted to expiry disabled. No production migration was run.
+
+## Slice 7 · monthly accrual catch-up
+
+The leave workspace and `garrisonctl hr leave accrual post` can preview an
+inclusive range of closed months for one employee, paid leave type and
+calendar year. The preview includes posted receipts and only totals credits
+still due. It requires eligible employment and dated approved rules for
+each missing period. Apply binds the preview to its actor and range,
+commits missing credits together and returns persisted receipts on retry.
+No database migration is required for catch-up.
+
+Verification on a freshly migrated disposable PostgreSQL database: 52
+targeted backend tests passed, including role denial, stale range, a
+rollback after both new credits were staged and concurrent replay. All
+50 frontend unit tests passed. The Chrome scenario posted 12 months,
+confirmed 12 distinct receipts through CLI preview, and used that balance
+in the year-end rollover and subsequent leave workflow. Backend typing,
+lint and generated API contract checks passed.
+
+Automatic scheduling, approved partial-period rules and broader HR
+acceptance are still open.
+
+
+## Slice 8 · retained HR letters
+
+A preview binds employee revision, template, exact text and preparing HR
+Manager. A retained draft encrypts its content using the HR key. A
+different HR Manager reviews that immutable snapshot and issues it to a
+linked employee with an active portal account or rejects it with an
+encrypted reason. The employee sees only issued letters tied to their
+current employee profile. The audit event includes record references
+and actor, with no letter contents. The workspace and CLI support
+preview, draft, decision and readback.
+
+[Revision 019](../backend/alembic/versions/202605310019_hr_issued_letters.py)
+was rehearsed on an empty database and an isolated populated revision
+018 clone. The populated upgrade preserved 39 employee records, one
+template, and 18 leave-ledger records and created an empty letter
+register. A downgrade rehearsal with two retained letters refused to
+drop the table and left both letters intact.
+
+All 52 targeted backend tests and 50 frontend unit tests passed. Chrome
+verified independent issuance, owner retrieval after reload and CLI
+list/show, and reran the employee leave and rollover scenario. The API
+tests verified duplicate decisions, stale employee revisions, encrypted
+storage, rejection, and metadata-only audit records. The CLI write
+commands were checked by lint and typing and use those same endpoints.
+
+Production was untouched. Approved salary source, company
+letter acceptance, retention, and former-employee delivery remain open.
+
+
+## Slice 9 · service request handoff
+
+Eligible processors select an active HR assignee and record an operational
+reason. The assignment changes under a row lock with an expected timestamp.
+Handoffs preserve status, original submission timestamp and shared response.
+The audit records both assignees and the reason. The next overdue sweep routes
+generic in-app reminders to the current eligible owner, or to all eligible
+processors for an unassigned or unavailable owner. Reminders stay opt-in and
+deduplicate per recipient and business date.
+
+All 52 targeted PostgreSQL-backed backend tests and 50 frontend unit tests
+passed. The API tests verified concurrent assignment, permission and audit
+behavior, and the SLA tests verified transfer, deduplication and fallback
+routing. Chrome verified a UI handoff, completion by the new assignee, owner
+reopening, then CLI preview, apply and API readback for assignment of the
+reopened request. No database migration is needed for this slice.
+
+
+## Slice 10 · issued letter delivery from a service request
+
+Completion can reference a previously issued letter for the same employee.
+The reference and completion are committed together with an audit event
+containing the prior and new IDs. Assignments and employee reopening preserve
+the reference. My HR opens the exact retained snapshot through the existing
+owner-only letter API. Drafts and letters from another employee are rejected,
+and the selected attachment requires the current request timestamp.
+
+[Revision 020](../backend/alembic/versions/202605310020_hr_service_request_letter.py)
+adds the nullable reference. [Revision 021](../backend/alembic/versions/202605310021_validate_hr_request_letter_fk.py)
+validates the foreign key. An isolated populated revision 019 clone preserved
+all three existing requests and two retained letters. The migration left
+all existing response references unset. On a separate test database a
+downgrade refused to drop the reference after an attachment was made.
+
+Chrome verified the assigned HR user's letter preview and attachment,
+employee retrieval after reload, and reopening without losing the
+response. It also verified CLI dry run, apply and readback when
+completing the reopened request with the same issued letter. The
+separate employee leave and service-request handoff regression passed.
+The focused PostgreSQL suite and frontend unit suite passed.
+
+
+## Slice 11 · effective-dated employment changes
+
+HR proposes a transfer, promotion or category amendment from the employee
+detail. A second HR Manager reviews the immutable proposal. Applying a due
+approved change rechecks the employee revision, target and position headcount,
+updates the employee and records the dated history and audit together. An
+exact application retry returns the retained outcome. A reporting-line move
+clears the advisory reviewer grant and preserves portal and project access.
+The directory still supports immediate authorized contact updates. See Slice 27
+for the subsequent reviewed name-correction workflow.
+
+[Revision 022](../backend/alembic/versions/202605310022_hr_employment_changes.py)
+preserved 40 employees, 44 history rows and one service response-letter link
+when applied to an isolated populated revision 021 clone. The downgrade guard
+preserved five proposal rows in a separate populated 022 trial. No change
+was deployed.
+
+All 53 focused backend tests and 50 frontend tests passed. The backend
+suite covered denial, future-date enforcement, stale rejection, promotion
+capacity, concurrent replay, and the reporting-line grant change. Chrome
+verified the transfer through separate proposer and reviewer sessions and
+confirmed CLI proposal, approval, application and readback for a category
+amendment. The independent letter/response workflow also passed its Chrome
+regression.
+
+
+## Slice 12 · reviewed contract renewals
+
+Contract renewals reuse the dated employment proposal and approval flow.
+The selected contract documents must belong to the employee and each
+must carry the specified reviewed version and expiry. The renewal starts
+one day after the current term ends. Approval and application recheck
+the exact versions under document locks. Application retains the term
+dates and evidence references in the proposal and employment history.
+Later renewals must start from the last applied term. No new migration
+or role permission is required. Renewal expiry records a date and does
+not drive separation or payroll calculations.
+
+The 54-test PostgreSQL-backed suite covered pending and foreign evidence,
+date mismatch, version supersession, latest-term enforcement, and exact
+apply replay. Production was untouched.
+
+Chrome verified contract evidence selection, approval by a second HR
+Manager, due-date application, and exact version and expiry readback
+from employment history. Two Chrome scenarios and 50 frontend unit
+tests passed. Backend typing, lint, API contracts and the frontend
+production build passed.
+
+
+## Slice 13 · frozen payroll review
+
+The protected API and CLI support an explicit roster for a closed monthly
+period. The calculation selects the approved whole-period term effective
+for each worker, uses policy-declared currency and rounding, and freezes
+the policy inputs and encrypted lines. A retry uses the stored snapshot.
+An independent reviewer can read the protected amounts and approve the
+exact digest. Approval rechecks line integrity, blocks overlapping
+approvals, and locks the period. No portal roles gained payroll permission.
+
+[Revision 023](../backend/alembic/versions/202605310023_hr_payroll_snapshot.py)
+preserved the 46 employee records and eight employment-change records on a
+populated disposable clone. Legacy runs receive no inferred snapshot.
+Synthetic permission tests verified calculation, independent approval,
+rounding, protected read, altered-line rejection and competing runs.
+CLI plan and readback were tested against a mocked API transport.
+
+All 56 targeted backend tests and 50 frontend tests passed, along with
+lint, typing, API contract checks and the frontend production build.
+An isolated downgrade refused to discard two frozen snapshots.
+
+
+## Slice 14 · employee payslip publication
+
+The actor who approved a locked run can publish its exact snapshot. The
+publication receipt preserves the digest, actor and timestamp. An
+identical retry returns the same receipt. Linked employees see only
+their own published statement through My HR or the CLI. The detail uses
+the frozen period dates and decrypts only the caller's line. Publication
+does not execute payment, change role grants, or send notifications.
+
+[Revision 024](../backend/alembic/versions/202605310024_hr_payslip_publication.py)
+adds the receipt.
+[Revision 025](../backend/alembic/versions/202605310025_index_hr_payroll_run_lines.py)
+adds the lookup index. The populated upgrade preserved both existing
+snapshots and both lines, with no payslips automatically published.
+
+All 56 targeted backend tests and 50 frontend tests passed. Chrome
+verified owner retrieval and CLI readback against a real published
+fixture, plus denial for a second linked employee. The letter issue
+and retrieval regression also passed in Chrome. A populated downgrade
+rehearsal refused to remove the receipt or its lookup index.
+
+
+## Slice 15 · protected Finance handoff export
+
+A locked and approved run previews a currency total, payment rows, zero-net
+line count, snapshot digest and CSV SHA-256. The approving actor registers
+the exact preview. The protected download reproduces those bytes and
+contains opaque line references, currency and positive net amounts.
+The payroll snapshot exposes the corresponding employee IDs only to
+authorized payroll readers. The CLI verifies the digest before creating
+a private file and refuses to overwrite it.
+
+[Revision 026](../backend/alembic/versions/202605310026_hr_payroll_exports.py)
+adds an export receipt. The isolated upgrade preserved two payroll snapshots
+and one payslip publication and created no export automatically.
+
+All 75 targeted backend tests and 50 frontend tests passed. The API
+checks verified accounting totals, zero-net exclusion, repeatable bytes,
+access denial and receipt tampering. CLI tests verified digest checking,
+mode 0600, and refusal to overwrite an existing file. An isolated
+downgrade refused to delete the registered receipt. The frontend build
+and backend lint, typing and API contract checks passed.
+
+
+## Slice 16 · external settlement reconciliation
+
+The protected API and CLI acknowledge external paid, failed and reversed
+events using an exact registered CSV digest, payment reference, event UUID
+and unique opaque evidence reference. Appended records preserve the approved
+payroll and export. A paid event cannot exceed the outstanding balance and a
+reversal cannot exceed the remaining amount on its original payment. The
+summary reports current outstanding amounts, including after a reversal.
+Raw evidence and event amounts are encrypted and excluded from audit values.
+
+[Revision 027](../backend/alembic/versions/202605310027_hr_payroll_settlements.py)
+preserved the existing export and payslip publication on a populated
+disposable database and created no settlement events automatically.
+
+All 76 targeted backend tests and 50 frontend tests passed. PostgreSQL
+verification covered failed attempts, exact replay, conflicting replay,
+duplicate evidence, competing completion, partial payment, reversal,
+authorization and unchanged export bytes. Mocked CLI transport tests
+verified private file mode, stale balance and evidence plan detection,
+and metadata-only confirmation. A disposable downgrade preserved all
+five recorded events. The frontend build, lint, typing and OpenAPI
+contract checks passed.
+
+
+## Slice 17 · offboarding inventory custody
+
+[Revision 028](../backend/alembic/versions/202605310028_hr_offboarding_custody.py)
+adds stock return, flag, waiver and clearance receipts. The inventory owner
+writes the receipts with existing inventory authority. HR reads the case history
+and closure checks the latest inventory-owner sign-off under the case lock.
+Exact replay is actor-bound, each posted movement can appear only once,
+and recording evidence leaves stock balances unchanged. A linked account still
+requires the separate director deactivation. Open cases with legacy free-text
+clearance require inventory sign-off. Closed cases remain historical.
+
+A populated disposable upgrade preserved one existing case, its five clearance
+steps and five settlement receipts. It created zero custody receipts.
+The downgrade guard preserved all three custody receipts on a disposable
+database after verification.
+
+All 77 targeted backend tests and 50 frontend unit tests passed. The
+PostgreSQL-backed API regression exercised actual stock returns, rejected a
+cross-case link, verified exact and conflicting replays, and checked the unchanged
+stock balance. It also verified HR and director permission boundaries, legacy
+clearance, flagged custody and terminal closure. The mocked CLI scenario
+verified preview without writes, stale plan rejection and exact receipt
+readback. Chrome exercised viewing the pending case, receiving an inventory
+owner's sign-off, refreshing the HR workspace, closing the case, and confirming
+closure after reloading. Build, lint, typing and generated contract checks
+passed. IT equipment custody, separation settlement, rehire and production
+activation remain open.
+
+
+## Slice 18 · independently reviewed rehire
+
+[Revision 029](../backend/alembic/versions/202605310029_hr_employment_periods.py)
+stores a closed period at separation and an open period on rehire. The workflow
+reuses the reviewed employment-change API and binds the proposal to the latest
+completed eligible separation and the employee revision. A different HR Manager
+must approve it. Due application preserves the employee code, retains the
+prior dates, and creates fresh onboarding. If a legacy separated employee has
+no prior period record, retain the previously recorded start or leave it unknown.
+Any overlap with the verified prior last day is rejected.
+
+The separation, request and employment history remain intact. The rehire
+updates current workforce assignments for the new onboarding and leaves
+portal users and project memberships untouched. An older reactivation request
+cannot reopen access after rehire, and fresh account reactivation still requires
+director fulfillment. Payroll cannot source a compensation term from an earlier
+period for a rehired employee. An approval or date rule for carrying over prior
+leave, benefits or outstanding obligations remains a business decision.
+
+The disposable revision 028 → 029 upgrade preserved 60 employment history
+records, one completed offboarding case and three custody records. It created
+zero employment periods. On a separate database the downgrade guard preserved
+all six recorded employment periods. Tests covered competing apply requests,
+revision conflicts, exact replay, activation gating, the probation checklist
+and date guard, stale and newly approved reactivation, and selection of a new
+payroll term. All 77 targeted backend tests and 50 frontend unit tests passed.
+Chrome covered rehire proposal, independent approval, apply, reload and real API
+readback through garrisonctl. The existing probation extension and confirmation
+Chrome scenario also passed. Production rollout and business verification
+remain open.
+
+
+## Slice 19 · IT equipment handover
+
+[Revision 030](../backend/alembic/versions/202605310030_hr_it_custody.py)
+adds a custody area and device references.
+[Revision 031](../backend/alembic/versions/202605310031_validate_hr_it_custody.py)
+validates the area-specific constraint. The populated revision 029 rehearsal
+preserved three store custody receipts and two employment periods. It created
+zero IT receipts. A downgrade on the disposable verification database stopped
+and preserved all eight IT receipts.
+
+A director can record outstanding or returned devices and resolve each open
+exception separately. The portal normalizes device references so differences in
+letter case cannot create a second open device. Final sign-off requires zero
+outstanding devices and confirmed deactivation for any linked account.
+Final HR closure rechecks both requirements. Generic clearance updates can no
+longer replace an IT or inventory attestation. Evidence history is visible to HR
+in the portal and through the CLI. Closed legacy cases keep their records.
+No IT receipts are fabricated for them. The portal records the director's
+attestation of physical custody and external credential handling.
+
+The first disposable fresh-upgrade attempt exposed a wrong constraint name
+and a retry issue in the unpublished payroll-index revision 025. The corrected
+chain upgraded a fresh database and a populated revision 029 snapshot. It also
+recovered the original database whose correct index was committed at revision
+024. A separate disposable test kept revision 024 and preserved a conflicting
+index definition. The populated snapshot without IT receipts successfully
+downgraded and re-upgraded while retaining all three store records.
+
+All 78 targeted backend tests and 50 frontend unit tests passed. Chrome
+verified a director flagging a device, clearing it with a return, signing off
+and HR viewing the evidence before closure. The scenario also verified the
+existing rehire path after closure. CLI preview, stale-plan rejection and
+readback passed for store and IT custody. Production activation and business
+acceptance remain open.
+
+
+## Slice 20 · separation settlement review
+
+[Revision 032](../backend/alembic/versions/202605310032_hr_separation_settlements.py)
+adds retained separation settlement outcomes and their reviews. A director with
+Finance access can record external evidence against an open case. A separate
+director reviews the exact proposal. The database enforces one open proposal
+and a distinct reviewer. A newer outcome clears prior Finance approval and
+requires review. A pending, rejected or outstanding outcome blocks HR closure.
+The approved settled or nothing-due outcome is tied to the Finance clearance
+actor and timestamp. Exact retries preserve the receipt and cannot restore a
+superseded clearance. Monetary calculations and execution stay in the Finance
+system, and audit events record outcome and ID without the evidence references.
+
+The revision 031 test copy retained one offboarding case, eleven custody receipts
+and two employment periods on upgrade. The migration created zero settlement
+receipts and preserved closed cases. The downgrade guard retained all six
+receipts on a separate disposable database.
+
+All 79 targeted backend tests and 50 frontend unit tests passed. The
+PostgreSQL-backed scenario exercised competing proposals, stale and exact
+replay, forbidden self-review, rejected and outstanding results, reopening
+Finance clearance, a fresh review, offboarding closure and prior rehire
+behavior. Chrome exercised the director and independent reviewer panels,
+the HR read-only view and completion after review. CLI preview, conflict and
+receipt readback used synthetic HTTP responses. Production activation and
+business acceptance remain open.
+
+
+## Slice 21 · verified training and employee visibility
+
+[Revision 033](../backend/alembic/versions/202605310033_hr_training_completions.py)
+adds one completion receipt per enrollment. Verification requires the
+employee's current approved ordinary training certificate version and valid
+completion and issue dates. The receipt retains its version, certificate
+record and verifier. Exact replay returns the original completion and a
+conflicting replay fails. A renewal uses a new enrollment and independently
+approved evidence. Credential reporting counts the modeled certificate once
+when its underlying document is also retained.
+
+The existing training grant is now assigned to HR Manager. Linked employees
+can see their own course status, verification and certificate expiry in My HR.
+Employee readback excludes administrative scores, evidence references and
+other employees' records. Prior legacy completion rows remain historical.
+
+The revision 032 test copy preserved 49 employees, one legacy certificate
+and five separation settlement receipts. The upgrade created zero completion
+receipts. The rollback guard preserved both verified receipts on a separate
+disposable database. All 80 targeted backend tests and 50 frontend unit tests
+passed. Chrome covered course creation, enrollment, certificate upload,
+verification, reload, CLI readback and employee visibility. A separate HR
+session approved the certificate through the API. Role/site-specific training
+rules, performance reviews and production evidence remain open.
+
+
+## Slice 22 · mandatory training by position and site
+
+[Revision 034](../backend/alembic/versions/202605310034_hr_training_requirements.py)
+adds explicit course requirements by HR position, primary project site, or
+both. A combined rule requires both assignments. Overlapping rules render one
+requirement per course. Existing verified evidence determines whether the
+requirement is met, enrolled, expired or required. Deactivating a rule preserves
+enrollment and receipt history. Portal permissions, membership and the legacy
+course flag have independent meanings.
+
+All 80 targeted backend tests and 50 frontend tests passed. The API scenario
+verified combined-scope mismatch, overlapping rules, concurrent duplicate
+requests, expiry, renewal and safe rule deactivation/reactivation. Chrome
+verified HR configuring a position rule and the linked employee seeing their
+own expired requirement. The revision 033 copy retained one course, two
+enrollments and two verified receipts on upgrade. The downgrade guard
+retained all three configured rules on the disposable verification database.
+
+
+## Slice 23 · participant-scoped performance review
+
+[Revision 035](../backend/alembic/versions/202605310035_hr_performance_events.py)
+adds retained participant decisions. Review setup resolves goals by cycle code
+and locks them when HR opens the draft. Access follows the linked employee,
+their explicitly authorized current direct manager, and HR Manager authority.
+The manager’s written assessment stays private from the employee until HR
+calibration. Once the employee acknowledges the final narrative, HR can append
+corrections while the prior assessment and decision events are preserved.
+
+All 81 targeted backend tests and 50 frontend tests passed. The API scenario
+covered denied unrelated access, revoked reviewer access, stale actions and
+duplicate acknowledgment, progress notes, publication and append-only
+correction. Chrome covered HR setup, both acknowledgments, the assessment
+handoff, calibration and correction. The upgrade from revision 034 retained
+51 employees, three training rules and two training receipts and created zero
+review events. The downgrade guard retained all eight events in the
+disposable verification database.
+
+
+## Slice 24 · performance ratings and reviewer handoff
+
+[Revision 036](../backend/alembic/versions/202605310036_hr_performance_scale_handoff.py)
+adds optional cycle-specific rating labels and retains both reviewer identities
+on each handoff. Narrative-only cycles retain their prior behavior. Rated
+cycles validate employee, manager and HR choices against the configured scale.
+The final rating comes from HR calibration. The code introduces no default
+labels or weighting formula.
+
+Before calibration, HR can hand off to an explicitly authorized current manager.
+The former manager loses participant access when their assignment changes.
+The replacement acknowledges goals before submitting a new assessment. The
+employee’s submission stays in the review and the superseded assessment
+stays in HR history. A published or closed review retains its assignment.
+
+All 82 targeted backend tests and 50 frontend tests passed. The API covered
+rating validation, authorization and publication after handoff. Chrome exercised
+cycle setup, rated assessments, the HR handoff, replacement acknowledgment,
+calibration and the employee’s final acknowledgment. The populated migration
+retained one narrative cycle, one review and eight events. A downgrade attempt
+preserved four rating events and one handoff on a disposable database.
+
+## Slice 25 · workforce roster allocations
+
+[Revision 037](../backend/alembic/versions/202605310037_hr_roster_allocations.py)
+adds the roster ledger. HR can schedule a whole published workday or shift
+against a project and cancel it with a retained reason. UTC interval checks
+detect overnight overlaps under the same employee lock used for shift
+assignment. Exact create and cancellation replays preserve one audit event
+per action. Project membership, attendance, stock, and payroll keep their
+existing writers.
+
+The targeted backend suite passed 83 tests and the frontend suite passed 50.
+The Chrome workflow allocated a published workday, rejected a duplicate,
+cancelled with a reason, and retrieved the cancellation after reload.
+PostgreSQL tests exercised concurrent requests, cross-date overlaps, configured
+daily hours, permission denials, and isolation from access, attendance, and
+stock. The upgrade from revision 036 retained 56 employees, two review cycles,
+and 19 performance events. A downgrade attempt on the test database preserved
+its two roster records, including one cancellation. Production activation and
+HR business verification remain open.
+
+## Slice 26 · payroll time input handoff
+
+The prepare-only API and `garrisonctl hr payroll time-inputs` preview a named
+payroll period and explicit employee roster. A ready preview can be downloaded
+by digest. The extract uses locked timesheets as the single source of counted
+hours, checks approved overtime against each sheet, and flags outstanding
+attendance and corrections, missing attendance schedule links, overlapping
+sheets and out-of-period sheets. HR must decide pending overtime before
+locking a timesheet. The CSV carries time quantities and opaque source
+references. It leaves wage calculation and resulting payouts in the existing
+separate workflows.
+
+The PostgreSQL/API test exercised the pending-overtime lock, independent
+approval, one-row reconciliation, permission denial, and stale-download
+rejection after inconsistent legacy inputs. The CLI contract test verified
+the downloaded bytes, file permissions, digest failure and refusal to
+overwrite. Chrome exercised employee submission, manager recommendation, HR
+approval and the lock error while overtime remained pending. All 85 targeted
+backend and 50 frontend tests passed, along with lint, types, the frontend build
+and regenerated contracts. This slice requires no new database migration.
+Production payroll authorization, approved rate examples and live
+reconciliation remain open.
+
+## Slice 27 · reviewed profile name corrections and revision checks
+
+Current employees' first, last, and full names now use the existing
+effective-dated employment change workflow. The proposal retains the exact
+name fields and reason. A different HR Manager approves the proposal before
+it can be applied. Applying a due proposal keeps one history entry with the
+previous and corrected names. The API rejects stale proposals and direct name
+changes to current employees. Pre-activation editing continues through the
+directory.
+
+The employee's current revision also governs private-vault and My HR updates.
+Both writers serialize on the employee row, so concurrent first writes to an
+empty vault produce one save and one conflict. Unexpected fields are rejected,
+sensitive responses use `Cache-Control: no-store`, and audit events retain
+field names and the revision without contact or identity values. These write
+requests now require `expected_revision`. Older clients must refresh before
+editing after rollout.
+
+All 86 targeted backend tests and 50 frontend tests passed with lint, types,
+API contract checks and the production build. PostgreSQL tests verified
+conflicting writes, role denials, stale proposal handling and one retained
+history entry. The issued-letter regression confirmed that a later name
+correction preserves an already issued letter and prevents issuing a stale
+draft. Chrome verified reviewed employment changes, name correction, stale
+contact and private-vault edits, and successful saves after reloading. This
+slice requires no new database migration. Production verification remains
+open.
+
+## Slice 28 · application withdrawal and retention decision
+
+A withdrawal records the reviewed application stage, reason, and one of two
+retention dispositions. HR can retain under a referenced policy until a
+recorded review date, or mark the application for policy review when those
+values are pending. The date is for review. The workflow retains candidate
+records, CVs, and other applications under their existing authorization.
+It cancels scheduled interviews and withdraws open offers for the affected
+application. Acceptance and withdrawal serialize on the application row.
+Historical offers and completed interviews remain available.
+
+The UI and CLI use the protected recruitment API. The CLI binds apply to
+the preview, reads back the recorded decision and omits the private reason
+from its output. An identical API retry preserves the recorded decision and
+emits no duplicate audit event.
+
+All 88 targeted backend and 50 frontend tests passed with lint, typing,
+API contract checks and the frontend build. Chrome verified retention form
+validation, withdrawal, interview cancellation, persistence after reload,
+and the existing offer reissue and conversion workflow. PostgreSQL tests
+covered competing acceptance and withdrawal, a separate application for
+the same candidate, and authorized and unauthorized CV retrieval.
+[Revision 038](../backend/alembic/versions/202605310038_hr_application_withdrawal.py)
+upgraded a populated revision 037 test database while retaining four
+applications, five candidates and five offers. A downgrade attempt preserved
+two recorded withdrawals. Business retention policy and production
+verification remain open.
+
+## Slice 29 · independently reviewed candidate rejection correspondence
+
+HR prepares candidate rejection templates with only candidate name and
+position title as record-derived placeholders. A rejected application can
+have one pending or approved draft. The retained subject and body are
+encrypted and tied to the reviewed digest. A second HR Manager can approve
+that text or reject it with an encrypted reason. Approval fails if the
+rendered source changed. Approved text is available for manual handoff.
+The workflow records no delivery and sends no messages.
+
+Application rejection now closes scheduled interviews and outstanding
+offers under the same application lock as the withdrawal workflow. A
+previously accepted offer requires separate resolution. Employee letters
+and candidate correspondence keep separate template choices and records.
+
+All 89 targeted backend and 50 frontend tests passed with lint, typing,
+API contract checks, and the frontend build. Chrome exercised template
+creation, internal application rejection, draft review by a second HR
+Manager, and approved text after reload. The withdrawal regression also
+passed. PostgreSQL tests verified encrypted text and review reasons,
+recruitment authorization, changed-source and digest conflicts, and
+idempotent approval. [Revision 039](../backend/alembic/versions/202605310039_hr_candidate_correspondence.py)
+retained seven applications, two withdrawal decisions, two letter
+templates and two issued employee letters in a populated upgrade.
+The downgrade guard preserved one approved and one rejected candidate
+draft. Business wording and production verification remain open.
+
+## Slice 30 · manual shortlist and application stage history
+
+Recruitment now records an explicit shortlist between screening and
+interview. The interview API checks eligibility under the application row
+lock. Existing applications in interview or evaluation retain their stage.
+Evaluation still requires a completed interview. Search and stage filters
+page through applications by candidate name or code. The activity view
+reads stage, actor and time from the audit trail. The CLI offers a
+checksum-bound shortlist command and stage history readback.
+
+All 91 targeted backend and 50 frontend tests passed with lint, types,
+API contract checks and the frontend build. PostgreSQL tests covered
+unauthorized access, early interview rejection, concurrent shortlist
+requests, literal search and stable pagination. Chrome exercised candidate
+search, manual shortlisting, stage history and interview scheduling through
+withdrawal. Offer reissue/conversion and reviewed correspondence passed
+in the same run. [Revision 040](../backend/alembic/versions/202605310040_index_hr_application_activity.py)
+preserved the populated application stages and audit data. Rehearsing a
+retry after index creation reused the same valid index. PostgreSQL
+confirmed the history lookup can use it. Production activation and
+remaining business verification remain open.
+
+## Slice 31 · policy editions and exact acknowledgement
+
+The publication stores the exact approved version of a company policy file
+and can name the preceding edition. A scheduled replacement takes effect on
+its effective date. Prior recipients can reopen editions they acknowledged.
+Each required edition has a separate receipt and repeated submissions return
+the same receipt. Text-only policies use the same edition check. Old file
+links without a verified version remain visible for HR reconciliation and
+cannot collect new acknowledgements until reviewed and republished.
+
+All 92 targeted backend and 50 frontend tests passed with lint, types,
+API contract checks and the frontend build. The API tests covered future
+effective dates, wrong-version attempts, repeat submissions and access by
+linked and unlinked users. Chrome published two editions, downloaded both
+PDFs from the vault and compared their bytes with the original uploads.
+Both acknowledgements persisted after reload. The candidate correspondence
+regression also passed.
+
+[Revisions 041](../backend/alembic/versions/202605310041_hr_policy_edition_binding.py)
+and [042](../backend/alembic/versions/202605310042_validate_hr_policy_edition.py)
+preserved the existing policy and receipt on a populated upgrade. The
+downgrade guard preserved two pinned documents and one replacement link.
+Acknowledgement API clients now send the displayed policy edition and the
+pinned document version when present. Production verification remains open.
+
+## Slice 32 · isolated HR recovery readback
+
+The authenticated format 2 rehearsal restored a populated synthetic database
+at Alembic head `202605310042`. The source object service was stopped and the
+source database closed to new connections before the backup was fetched from
+a separate loopback object service. PostgreSQL and the recovered object store
+were isolated on the same machine.
+
+The running restored API verified three distinct accounts, the decrypted
+synthetic identifier, both versions of a confidential personnel file, both
+policy receipts and their exact PDF bytes, and the digest of decrypted approved
+candidate correspondence. The outsider was denied access to the confidential
+records and the superseded policy edition. A wrong HR key returned HTTP 503
+for the identity readback, and a tampered encrypted artifact failed backup
+verification. The restore receipt recorded four restored objects and
+approximately 0.41 seconds from restore start to object verification for the
+synthetic dataset. Production key custody, off-host recovery and production
+recovery targets remain unverified.
+
+All 49 focused recovery and backup tests passed against disposable PostgreSQL,
+including seven cases for the readback checker. Ruff and mypy passed on the
+checker and its tests.
+
+## Slice 33 · candidate correspondence CLI
+
+`garrisonctl hr correspondence` lists templates and draft status, prepares a
+draft under a stable UUID and reads the exact content into a new private file.
+Independent decisions require the opened content's digest and a plan bound to
+the current actor and target. The CLI checks the persisted final status and
+keeps correspondence content and review reasons out of console output.
+
+The focused run passed seven tests, including the existing PostgreSQL API
+regression and the CLI approval and rejection cases. The CLI regressions also
+verified that template content stays out of listings, preview cannot be applied
+by another actor, private output cannot be overwritten, and stale digests and
+changed review reasons prevent a write. Ruff and mypy passed for the CLI changes.
+
+## Slice 34 · interview scheduling and outcomes in the CLI
+
+Recruitment staff can list an application's interviews, schedule a round and
+record the outcome using a private JSON file and an actor-bound preview. A
+client-generated interview UUID makes identical scheduling retries safe.
+Interview updates check the revision timestamp after locking the application
+and interview. The API fields are additive for existing portal clients.
+
+Eleven focused recruitment and CLI tests passed against disposable PostgreSQL.
+The API regression verified that concurrent retries persist one interview,
+changed details cannot reuse its UUID, a stale application cannot schedule a
+round, unauthorized staff cannot schedule, and competing updates from the
+same snapshot yield one saved outcome. The CLI regression verified stale
+plans, persistence readback and omission of private feedback and names.
+
+## Slice 35 · versioned offers in the CLI
+
+The terminal lists and filters offers, drafts and reissues terms, records
+decisions and inspects terms in a new owner-only file. Mutation previews bind
+the actor, offer or application state and private input checksum. Under the
+existing database locks the API checks the expected timestamp. Reissue verifies
+the old and new version links. The existing approval permission checks still
+apply.
+
+Thirteen focused PostgreSQL-backed recruitment and CLI tests passed. The API
+regression verified stale decisions and reissue, acceptance versus expiry,
+unchanged historical terms and pagination across versions. The CLI regression
+verified private output, permission checks, changed inputs and readback of
+both version links. OpenAPI, generated types, frontend build, Ruff and mypy
+passed.
+
+## Slice 36 · internal interview invitations
+
+Recruitment staff can search active portal accounts by name when scheduling
+an interview. Only the assigned account receives a generic in-app invitation
+or cancellation. Notices contain no candidate details, appointment date,
+feedback or record links. Scheduling retries reuse the interview UUID, and
+the notification commits with the interview.
+
+Six focused tests passed against disposable services. The API regression
+verified recipient lookup permissions, invalid recipient rejection and one
+notice after concurrent scheduling retries. Chrome selected an interviewer,
+scheduled the interview, withdrew the application, then verified both
+notifications and the absence of the candidate name in the notification feed.
+
+## Slice 37 · exact confidential offer PDFs
+
+Offer drafts can reference an approved confidential PDF for the same candidate.
+A different HR Manager reviews the PDF in the vault before it becomes
+selectable. Reissue requires a different approved PDF when the original
+offer had a file. Download uses the pinned version for that offer, including
+after replacement, and requires recruitment and confidential-document access.
+
+Six targeted PostgreSQL-backed tests, one CLI regression and three Chrome
+scenarios passed. Chrome uploaded an offer PDF, selected the reviewed version,
+reissued with a second PDF and checked the exact downloaded bytes for both
+offers. A populated upgrade from 042 through 044 preserved six existing
+offers and validated the foreign key. A downgrade with two pinned references
+was rejected and left them intact.
+
+## Slice 38 · requisition lifecycle in the CLI
+
+Recruitment staff can retrieve a requisition by ID, filter and page the
+register, create a requisition from a private file, and apply a reviewed
+workflow decision. The API compares the decision's expected timestamp under
+the requisition lock. The terminal verifies the persisted headcount and the
+decision without printing private justification, budget notes or rejection
+reasons. An exact code lookup supports lost-response recovery.
+
+The focused PostgreSQL-backed run passed six tests. It covered denied reads,
+stale decisions, exact code and status filters, preserved rejection reasons
+and the CLI's private preview, apply and readback. OpenAPI, generated types,
+Ruff, mypy and the frontend build passed.
+
+## Slice 39 · candidates and applications in the CLI
+
+Recruitment staff can register and find candidates, create an application for
+an open requisition and record screening, interview, evaluation, offer and
+rejection decisions. The CLI supports recovery lookups by exact candidate
+code or candidate and requisition IDs. Candidate contact information, scores
+and private screening notes stay out of previews and receipts. Authorized
+operators can inspect them in a new owner-only file.
+
+The API checks the requisition snapshot on application creation and the
+application snapshot on stage decisions, including CLI shortlist and
+withdrawal. The focused run passed ten tests, including stale updates,
+duplicate application prevention in the CLI, denied candidate reads and
+literal filtering. OpenAPI, generated types, Ruff, mypy and the frontend
+build passed.
+
+## Slice 40 · candidate vault files in the CLI
+
+The CLI lists candidate documents, uploads initial and replacement versions,
+and supports independent approval or rejection of an exact checksum. The API
+checks the expected latest version under the vault document lock. Downloads
+verify the signed storage origin, exact file size and SHA-256 before writing
+a new owner-only file. Requests to storage carry no portal credentials.
+
+Six focused tests and three Chrome recruitment regressions passed. The real
+API verified denied access to confidential metadata and a single replacement
+after two concurrent requests. The CLI exercised a loopback object server and
+rejected redirects, a different origin and changed bytes. The OpenAPI contract,
+generated types, frontend build, Ruff and mypy passed.
+
+## Slice 41 · onboarding and probation in the CLI
+
+The terminal can list cases, start direct-hire onboarding, record checklist
+evidence and extend or confirm probation. The API protects checklist updates
+with the current task timestamp. Probation decisions use the employee's
+existing revision check. Terminal receipts omit evidence notes and probation
+reasons. Authorized operators can save case details to a new owner-only file.
+
+Three focused tests passed. The PostgreSQL checks covered denied case access,
+concurrent checklist updates and competing probation decisions. A Chrome
+scenario completed the first task through the actual CLI against the local
+API, then extended and confirmed probation in the portal. OpenAPI, generated
+types, frontend build, Ruff and mypy passed.
+
+## Slice 42 · opt-in scheduled leave accrual
+
+Celery can post the latest closed month and previous calendar year's
+accruals for explicitly selected policy UUIDs. The job checks policy review,
+type, period coverage and employment history using the same transaction
+as manual posting. Scheduled credits use the existing accrual audit event
+with a scheduled source, and the worker skips periods with an existing receipt. No policy
+is selected by the default configuration.
+
+Three PostgreSQL tests passed, covering monthly and annual credits,
+unapproved policies, an unselected category-specific override, a partial
+period, preservation of a manual receipt and concurrent scheduled runs.
+Separate Celery initialization checks verified schedule registration with a
+configured policy list and omission with an empty list. Ruff and mypy passed.
+
+## Slice 43 · reviewed partial-period accrual
+
+Monthly and annual policies can opt into calendar-day proration through the
+existing independent approval workflow. The credit uses the eligible share
+of the period, with the credited date range retained in the receipt and audit
+event. The default requires the full period. Scheduled runs use the same
+calculation as manual and catch-up posting.
+
+Three focused tests passed, including rounding for leap-year periods,
+a scheduled partial credit, and receipt readback. Chrome independently
+approved a prorating policy and posted 0.50 days for a mid-month hire while
+retaining the full-year credits for the original employee. An isolated
+upgrade from revision 044 preserved 14 historic receipts and five policies.
+The downgrade rehearsal refused to remove a retained prorated receipt.

@@ -1,28 +1,43 @@
 import asyncio
-from datetime import date, datetime, timedelta
+import hashlib
+import json
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from string import Formatter
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import UploadFile
 from minio import Minio
-from sqlalchemy import case, false, func, or_, select, text
+from sqlalchemy import (
+    Date,
+    case,
+    false,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+    text,
+    type_coerce,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.config import get_settings
+from app.models.activity_log import ActivityLog
 from app.models.hr import (
-    HrAccessRequest,
     HrApplication,
     HrAttendanceCorrection,
     HrAttendanceEntry,
     HrBenefitType,
     HrCandidate,
+    HrCandidateCorrespondence,
     HrCase,
     HrCertification,
     HrClearanceStep,
@@ -32,12 +47,16 @@ from app.models.hr import (
     HrEmployee,
     HrEmployeeBenefit,
     HrEmploymentHistory,
+    HrEmploymentPeriod,
     HrGoal,
     HrHoliday,
     HrInterview,
+    HrIssuedLetter,
+    HrLeaveAccrual,
     HrLeaveLedger,
     HrLeavePolicy,
     HrLeaveRequest,
+    HrLeaveRollover,
     HrLeaveType,
     HrLetterTemplate,
     HrOffboardingCase,
@@ -45,7 +64,6 @@ from app.models.hr import (
     HrOnboardingCase,
     HrOnboardingTask,
     HrOvertimeRequest,
-    HrPayrollLine,
     HrPayrollPeriod,
     HrPayrollPolicy,
     HrPayrollRun,
@@ -55,9 +73,11 @@ from app.models.hr import (
     HrRequisition,
     HrReview,
     HrReviewCycle,
+    HrRosterAllocation,
     HrServiceRequest,
     HrShiftAssignment,
     HrTimesheet,
+    HrTrainingCompletion,
     HrTrainingCourse,
     HrTrainingEnrollment,
     HrWorkCalendar,
@@ -65,13 +85,23 @@ from app.models.hr import (
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.hr import (
+    ApplicationActivity,
+    ApplicationActivityList,
     ApplicationCreateRequest,
+    ApplicationListItem,
+    ApplicationListResponse,
+    ApplicationResponse,
+    ApplicationStage,
     ApplicationStageUpdateRequest,
+    ApplicationWithdrawalRequest,
     AttendanceCorrectionCreateRequest,
     AttendanceCorrectionDecisionRequest,
     AttendanceEntryCreateRequest,
     AttendanceReviewRequest,
     BenefitTypeCreateRequest,
+    CandidateCorrespondenceCreateRequest,
+    CandidateCorrespondenceDecisionRequest,
+    CandidateCorrespondenceDetail,
     CandidateCreateRequest,
     CertificationCreateRequest,
     ClearanceStepResponse,
@@ -90,20 +120,35 @@ from app.schemas.hr import (
     HrDocumentDecisionRequest,
     HrDocumentDownloadResponse,
     HrDocumentResponse,
+    HrServiceRequestAssignee,
+    HrServiceRequestAssignmentRequest,
     HrServiceRequestCreateRequest,
     HrServiceRequestResolveRequest,
     InterviewCreateRequest,
+    InterviewerOption,
+    InterviewerOptions,
     InterviewUpdateRequest,
     LeaveBalanceItem,
     LeaveBalanceListResponse,
     LeaveLedgerAdjustRequest,
     LeavePolicyCreateRequest,
+    LeavePolicyDecisionRequest,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
+    LeaveRequestFields,
+    LeaveRequestResubmitRequest,
     LeaveTypeCreateRequest,
+    LeaveUnitsQuery,
+    LetterDecisionRequest,
+    LetterDetail,
+    LetterDraftRequest,
     LetterGenerateRequest,
+    LetterListResponse,
     LetterRenderResponse,
+    LetterSummary,
     LetterTemplateCreateRequest,
+    MyPolicyListResponse,
+    MyPolicyResponse,
     OffboardingCaseResponse,
     OffboardingCompleteRequest,
     OffboardingInitiateRequest,
@@ -121,19 +166,26 @@ from app.schemas.hr import (
     PayrollPeriodCreateRequest,
     PayrollPolicyCreateRequest,
     PayrollRunCreateRequest,
+    PolicyAcknowledgementResponse,
     PolicyAcknowledgeRequest,
     PolicyDocumentCreateRequest,
+    PolicyDocumentResponse,
     ReimbursementCreateRequest,
     ReimbursementDecisionRequest,
     RequisitionCreateRequest,
     RequisitionDecisionRequest,
     ReviewCreateRequest,
     ReviewCycleCreateRequest,
+    RosterAllocationCreateRequest,
+    SelfTrainingItem,
+    SelfTrainingListResponse,
     ShiftAssignmentCreateRequest,
     ShiftAssignmentResponse,
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TimesheetSelfResubmitRequest,
+    TrainingCompletionRequest,
+    TrainingCompletionResponse,
     TrainingCourseCreateRequest,
     TrainingEnrollmentCreateRequest,
     TrainingEnrollmentUpdateRequest,
@@ -151,23 +203,36 @@ from app.services.hr_crypto import (
     mask_identifier,
     validate_hr_document_file,
 )
+from app.services.hr_leave_accrual import ensure_leave_year_open
 from app.services.hr_manager_review import (
     REVIEW_EMPLOYMENT_STATES,
+    eligible_reviewer,
     require_manager_recommendation,
     start_manager_review,
     verify_request_revision,
 )
+from app.services.hr_offboarding_custody import (
+    IT_AREA,
+    STORE_AREA,
+    confirmed_access_revocation,
+    require_custody_clearance,
+)
+from app.services.hr_payroll_snapshot import lock_payroll_periods, validate_payroll_rules
+from app.services.hr_separation_settlement import FINANCE_AREA, require_settlement_clearance
+from app.services.notification_service import NotificationService
 from app.services.storage_service import discard_new_uploads, minio_client, minio_signed_url_client
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
     PERMISSION_HR_CASES_RESTRICTED,
+    PERMISSION_HR_DOCUMENTS_MANAGE,
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
-    PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
     PERMISSION_HR_REQUESTS_PROCESS,
+    ROLE_HR_MANAGER,
     ensure_permission,
     has_permission,
+    roles_with_permission,
 )
 from app.utils.security import utc_now
 from app.utils.time import business_today
@@ -204,14 +269,15 @@ class HrWorkforceService:
     async def require_self_employee(self, user: User) -> HrEmployee:
         return await self._employee_for_user(user)
 
-    async def _employee_for_user(self, user: User) -> HrEmployee:
-        emp = await self.session.scalar(
-            select(HrEmployee).where(
-                HrEmployee.user_id == user.id,
-                HrEmployee.deleted_at.is_(None),
-                HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
-            )
+    async def _employee_for_user(self, user: User, *, for_update: bool = False) -> HrEmployee:
+        query = select(HrEmployee).where(
+            HrEmployee.user_id == user.id,
+            HrEmployee.deleted_at.is_(None),
+            HrEmployee.employment_status.in_(REVIEW_EMPLOYMENT_STATES),
         )
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        emp = await self.session.scalar(query)
         if emp is None:
             raise AppException(
                 "No employee profile is linked to this user account.",
@@ -261,31 +327,53 @@ class HrWorkforceService:
         return req
 
     async def list_requisitions(
-        self, *, status: str | None = None, limit: int = 100, offset: int = 0
+        self,
+        *,
+        status: str | None = None,
+        code: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[HrRequisition], int]:
         stmt = select(HrRequisition).where(HrRequisition.deleted_at.is_(None))
         count_stmt = select(func.count(HrRequisition.id)).where(HrRequisition.deleted_at.is_(None))
         if status:
             stmt = stmt.where(HrRequisition.status == status)
             count_stmt = count_stmt.where(HrRequisition.status == status)
+        if code is not None:
+            stmt = stmt.where(HrRequisition.requisition_code == code)
+            count_stmt = count_stmt.where(HrRequisition.requisition_code == code)
         rows = list(
             await self.session.scalars(
-                stmt.order_by(HrRequisition.created_at.desc()).limit(limit).offset(offset)
+                stmt.order_by(HrRequisition.created_at.desc(), HrRequisition.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
         )
         total = int(await self.session.scalar(count_stmt) or 0)
         return rows, total
 
+    async def get_requisition(self, requisition_id: UUID, *, lock: bool = False) -> HrRequisition:
+        statement = select(HrRequisition).where(
+            HrRequisition.id == requisition_id, HrRequisition.deleted_at.is_(None)
+        )
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        req = await self.session.scalar(statement)
+        if req is None:
+            raise NotFoundException("Requisition")
+        return req
+
     async def decide_requisition(
         self, requisition_id: UUID, payload: RequisitionDecisionRequest, actor: User
     ) -> HrRequisition:
-        req = await self.session.scalar(
-            select(HrRequisition)
-            .where(HrRequisition.id == requisition_id, HrRequisition.deleted_at.is_(None))
-            .with_for_update()
-        )
-        if req is None:
-            raise NotFoundException("Requisition")
+        req = await self.get_requisition(requisition_id, lock=True)
+        if (
+            payload.expected_updated_at is not None
+            and req.updated_at != payload.expected_updated_at
+        ):
+            raise AppException(
+                "Review the current requisition before recording a decision.", status_code=409
+            )
         transitions = {
             "draft": {"submitted", "cancelled"},
             "submitted": {"approved", "rejected", "cancelled"},
@@ -299,6 +387,15 @@ class HrWorkforceService:
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        if (
+            payload.status == "filled"
+            and await self._hired_headcount(req.id) < req.headcount_requested
+        ):
+            raise AppException(
+                "The requisition still has unfilled vacancies.",
+                status_code=409,
+                error_code="REQUISITION_VACANCIES_REMAIN",
+            )
         if payload.status == "rejected":
             reason = (payload.notes or "").strip()
             if not reason:
@@ -350,26 +447,45 @@ class HrWorkforceService:
         return cand
 
     async def list_candidates(
-        self, *, search: str | None = None, limit: int = 100, offset: int = 0
+        self,
+        *,
+        search: str | None = None,
+        code: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[HrCandidate], int]:
         stmt = select(HrCandidate).where(HrCandidate.deleted_at.is_(None))
         count_stmt = select(func.count(HrCandidate.id)).where(HrCandidate.deleted_at.is_(None))
-        if search:
-            like = f"%{search.strip()}%"
+        if code is not None:
+            stmt = stmt.where(HrCandidate.candidate_code == code)
+            count_stmt = count_stmt.where(HrCandidate.candidate_code == code)
+        if search and (term := search.strip()):
             filt = or_(
-                HrCandidate.full_name.ilike(like),
-                HrCandidate.candidate_code.ilike(like),
-                HrCandidate.email.ilike(like),
+                HrCandidate.full_name.icontains(term, autoescape=True),
+                HrCandidate.candidate_code.icontains(term, autoescape=True),
+                HrCandidate.email.icontains(term, autoescape=True),
             )
             stmt = stmt.where(filt)
             count_stmt = count_stmt.where(filt)
         rows = list(
             await self.session.scalars(
-                stmt.order_by(HrCandidate.created_at.desc()).limit(limit).offset(offset)
+                stmt.order_by(HrCandidate.created_at.desc(), HrCandidate.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
         )
         total = int(await self.session.scalar(count_stmt) or 0)
         return rows, total
+
+    async def get_candidate(self, candidate_id: UUID) -> HrCandidate:
+        row = await self.session.scalar(
+            select(HrCandidate).where(
+                HrCandidate.id == candidate_id, HrCandidate.deleted_at.is_(None)
+            )
+        )
+        if row is None:
+            raise NotFoundException("Candidate")
+        return row
 
     async def create_application(
         self, payload: ApplicationCreateRequest, actor: User
@@ -381,6 +497,11 @@ class HrWorkforceService:
         )
         if requisition is None:
             raise NotFoundException("Requisition")
+        if (
+            payload.expected_requisition_updated_at is not None
+            and requisition.updated_at != payload.expected_requisition_updated_at
+        ):
+            raise AppException("Review the current requisition before applying.", status_code=409)
         if requisition.status != "open":
             raise AppException("Requisition must be open to receive applications.", status_code=409)
         if not await self.session.scalar(
@@ -416,34 +537,212 @@ class HrWorkforceService:
         return app_row
 
     async def list_applications(
-        self, *, requisition_id: UUID | None = None, limit: int = 100, offset: int = 0
-    ) -> tuple[list[HrApplication], int]:
-        stmt = select(HrApplication)
-        count_stmt = select(func.count(HrApplication.id))
+        self,
+        *,
+        requisition_id: UUID | None = None,
+        candidate_id: UUID | None = None,
+        search: str | None = None,
+        stage: ApplicationStage | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ApplicationListResponse:
+        catalog = (
+            select(
+                HrApplication,
+                HrCandidate.full_name,
+                HrCandidate.candidate_code,
+                HrRequisition.title,
+            )
+            .join(HrCandidate, HrCandidate.id == HrApplication.candidate_id)
+            .join(HrRequisition, HrRequisition.id == HrApplication.requisition_id)
+            .where(HrCandidate.deleted_at.is_(None), HrRequisition.deleted_at.is_(None))
+        )
         if requisition_id:
-            stmt = stmt.where(HrApplication.requisition_id == requisition_id)
-            count_stmt = count_stmt.where(HrApplication.requisition_id == requisition_id)
-        rows = list(
+            catalog = catalog.where(HrApplication.requisition_id == requisition_id)
+        if candidate_id:
+            catalog = catalog.where(HrApplication.candidate_id == candidate_id)
+        if stage:
+            catalog = catalog.where(HrApplication.stage == stage)
+        if search and (term := search.strip()):
+            catalog = catalog.where(
+                or_(
+                    HrCandidate.full_name.icontains(term, autoescape=True),
+                    HrCandidate.candidate_code.icontains(term, autoescape=True),
+                )
+            )
+        count = await self.session.scalar(select(func.count()).select_from(catalog.subquery()))
+        rows = await self.session.execute(
+            catalog.order_by(HrApplication.created_at.desc(), HrApplication.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return ApplicationListResponse(
+            items=[
+                ApplicationListItem(
+                    **ApplicationResponse.model_validate(row).model_dump(),
+                    candidate_name=name,
+                    candidate_code=code,
+                    position_title=title,
+                )
+                for row, name, code, title in rows
+            ],
+            total=count or 0,
+        )
+
+    async def list_application_activity(
+        self, application_id: UUID, *, limit: int, offset: int
+    ) -> ApplicationActivityList:
+        await self.get_application(application_id)
+        terminal = {
+            "hr.application.created": "applied",
+            "hr.application.withdrawn": "withdrawn",
+            "hr.application.hired": "hired",
+        }
+        filters = (
+            ActivityLog.entity_type == literal_column("'hr_applications'"),
+            ActivityLog.entity_id == application_id,
+            ActivityLog.deleted_at.is_(None),
+            ActivityLog.action.in_([*terminal, "hr.application.stage_changed"]),
+        )
+        stage = case(
+            terminal, value=ActivityLog.action, else_=ActivityLog.new_values["stage"].astext
+        )
+        query = (
+            select(ActivityLog.id, stage, User.full_name, ActivityLog.created_at)
+            .outerjoin(User, User.id == ActivityLog.user_id)
+            .where(*filters)
+            .order_by(ActivityLog.created_at.desc(), ActivityLog.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = await self.session.execute(query)
+        total = await self.session.scalar(
+            select(func.count()).select_from(ActivityLog).where(*filters)
+        )
+        return ApplicationActivityList(
+            items=[
+                ApplicationActivity(
+                    id=log_id, stage=stage_name or "unknown", actor_name=name, created_at=created
+                )
+                for log_id, stage_name, name, created in rows
+            ],
+            total=total or 0,
+        )
+
+    async def get_application(self, application_id: UUID, *, lock: bool = False) -> HrApplication:
+        query = select(HrApplication).where(HrApplication.id == application_id)
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        app_row = await self.session.scalar(query)
+        if app_row is None:
+            raise NotFoundException("Application")
+        return app_row
+
+    @staticmethod
+    def _require_open_recruitment_application(application: HrApplication) -> None:
+        if application.stage == "withdrawn":
+            raise AppException(
+                "This application has been withdrawn.",
+                status_code=409,
+                error_code="APPLICATION_WITHDRAWN",
+            )
+
+        if application.stage == "rejected":
+            raise AppException(
+                "This application has been rejected.",
+                status_code=409,
+                error_code="APPLICATION_REJECTED",
+            )
+
+    async def _close_application_recruitment(self, application: HrApplication) -> dict[str, int]:
+
+        # Related recruitment writers also lock the application before any child.
+        offers = list(
             await self.session.scalars(
-                stmt.order_by(HrApplication.created_at.desc()).limit(limit).offset(offset)
+                select(HrOffer).where(
+                    HrOffer.application_id == application.id,
+                    HrOffer.status.in_(
+                        ("draft", "pending_approval", "approved", "issued", "accepted", "converted")
+                    ),
+                )
             )
         )
-        total = int(await self.session.scalar(count_stmt) or 0)
-        return rows, total
+        if any(offer.status in {"accepted", "converted"} for offer in offers):
+            raise AppException(
+                "An accepted offer requires its own disposition before closing the application.",
+                status_code=409,
+                error_code="OFFER_ALREADY_ACCEPTED",
+            )
+        for offer in offers:
+            offer.status = "withdrawn"
+        scheduled = list(
+            await self.session.scalars(
+                select(HrInterview).where(
+                    HrInterview.application_id == application.id, HrInterview.status == "scheduled"
+                )
+            )
+        )
+        for interview in scheduled:
+            interview.status = "cancelled"
+            await self._notify_interviewer(interview, cancelled=True)
+        return {"cancelled_interviews": len(scheduled), "withdrawn_offers": len(offers)}
+
+    async def _withdraw_application(
+        self, application: HrApplication, payload: ApplicationWithdrawalRequest, actor: User
+    ) -> HrApplication:
+        values = payload.model_dump(exclude={"expected_stage", "reason"})
+        values["withdrawal_reason"] = payload.reason
+        if application.stage == "withdrawn":
+            if all(getattr(application, field) == value for field, value in values.items()):
+                return application
+            self._require_open_recruitment_application(application)
+        if application.stage != payload.expected_stage:
+            raise AppException(
+                "Review the current application stage before withdrawing.", status_code=409
+            )
+        if (
+            payload.retention_review_on is not None
+            and payload.retention_review_on < business_today()
+        ):
+            raise AppException("The retention review date cannot be in the past.", status_code=422)
+        closed = await self._close_application_recruitment(application)
+        application.stage = "withdrawn"
+        application.withdrawn_at = utc_now()
+        for field, value in values.items():
+            setattr(application, field, value)
+        await self.audit.record(
+            action="hr.application.withdrawn",
+            user_id=actor.id,
+            entity_type="hr_applications",
+            entity_id=application.id,
+            new_values={
+                "retention_decision": payload.retention_decision,
+                **closed,
+            },
+        )
+        await self._commit_and_refresh(application)
+        return application
 
     async def update_application_stage(
         self, application_id: UUID, payload: ApplicationStageUpdateRequest, actor: User
     ) -> HrApplication:
-        app_row = await self.session.scalar(
-            select(HrApplication).where(HrApplication.id == application_id).with_for_update()
-        )
-        if app_row is None:
-            raise NotFoundException("Application")
+        app_row = await self.get_application(application_id, lock=True)
+        if (
+            payload.expected_updated_at is not None
+            and app_row.updated_at != payload.expected_updated_at
+        ):
+            raise AppException(
+                "Review the current application before changing stage.", status_code=409
+            )
+        if payload.withdrawal is not None:
+            return await self._withdraw_application(app_row, payload.withdrawal, actor)
         transitions = {
-            "applied": {"screening", "rejected", "withdrawn"},
-            "screening": {"interview", "rejected", "withdrawn"},
-            "interview": {"evaluation", "rejected", "withdrawn"},
-            "evaluation": {"offer", "rejected", "withdrawn"},
+            "applied": {"screening", "rejected"},
+            "screening": {"shortlisted", "rejected"},
+            "shortlisted": {"interview", "rejected"},
+            "interview": {"evaluation", "rejected"},
+            "evaluation": {"offer", "rejected"},
+            "offer": {"rejected"},
         }
         if payload.stage not in transitions.get(app_row.stage, set()):
             raise AppException("This application cannot make that transition.", status_code=409)
@@ -453,36 +752,111 @@ class HrWorkforceService:
             .limit(1)
         ):
             raise AppException("Record a completed interview before evaluation.", status_code=409)
-        if payload.stage == "rejected" and not (payload.rejection_reason or "").strip():
-            raise AppException("Rejection requires a reason.", status_code=422)
+        closed = {}
+        if payload.stage == "rejected":
+            reason = (payload.rejection_reason or "").strip()
+            if not reason:
+                raise AppException("Rejection requires a reason.", status_code=422)
+            closed = await self._close_application_recruitment(app_row)
+            app_row.rejection_reason = reason
         app_row.stage = payload.stage
         if payload.overall_score is not None:
             app_row.overall_score = payload.overall_score
         if payload.screening_notes is not None:
             app_row.screening_notes = payload.screening_notes
-        if payload.rejection_reason is not None:
-            app_row.rejection_reason = payload.rejection_reason
         await self.audit.record(
             action="hr.application.stage_changed",
             user_id=actor.id,
             entity_type="hr_applications",
             entity_id=app_row.id,
-            new_values={"stage": payload.stage},
+            new_values={"stage": payload.stage, **closed},
         )
         await self._commit_and_refresh(app_row)
         return app_row
 
-    async def create_interview(self, payload: InterviewCreateRequest, actor: User) -> HrInterview:
-        interview = HrInterview(
-            application_id=payload.application_id,
-            round_number=payload.round_number,
-            interview_type=payload.interview_type,
-            scheduled_at=payload.scheduled_at,
-            interviewer_user_id=payload.interviewer_user_id,
-            interviewer_name=payload.interviewer_name,
+    async def list_interviewer_options(
+        self, *, search: str, limit: int, offset: int
+    ) -> InterviewerOptions:
+        filters = (
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            User.full_name.icontains(search, autoescape=True),
         )
+        rows = await self.session.execute(
+            select(User.id, User.full_name)
+            .where(*filters)
+            .order_by(func.lower(User.full_name), User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        total = await self.session.scalar(select(func.count()).select_from(User).where(*filters))
+        return InterviewerOptions(
+            items=[InterviewerOption(id=user_id, full_name=name) for user_id, name in rows],
+            total=total or 0,
+        )
+
+    async def _notify_interviewer(
+        self, interview: HrInterview, *, cancelled: bool = False, require_active: bool = False
+    ) -> None:
+        if interview.interviewer_user_id is None:
+            return
+        recipient = await self.session.scalar(
+            select(User.id).where(
+                User.id == interview.interviewer_user_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if recipient is None and require_active:
+            raise AppException("Choose an active portal interviewer.", status_code=422)
+        if recipient is None or interview.scheduled_at is None:
+            return
+        await NotificationService(self.session).create(
+            user_id=recipient,
+            title="Recruitment interview cancelled"
+            if cancelled
+            else "Recruitment interview invitation",
+            body=(
+                "An interview assigned to you was cancelled. Contact HR if you need details."
+                if cancelled
+                else "HR has invited you to an interview. Contact HR for the schedule and details."
+            ),
+            notification_type="hr_interview_cancelled" if cancelled else "hr_interview_invitation",
+            send_email=False,
+        )
+
+    async def create_interview(self, payload: InterviewCreateRequest, actor: User) -> HrInterview:
+        application = await self.get_application(payload.application_id, lock=True)
+        schedule = payload.model_dump(exclude={"interview_id", "expected_application_updated_at"})
+        if payload.interview_id is not None:
+            existing = await self.session.get(HrInterview, payload.interview_id)
+            if existing is not None:
+                if any(getattr(existing, key) != value for key, value in schedule.items()):
+                    raise AppException("This interview reference is already used.", status_code=409)
+                return existing
+        if (
+            payload.expected_application_updated_at is not None
+            and application.updated_at != payload.expected_application_updated_at
+        ):
+            raise AppException("Review the current application before scheduling.", status_code=409)
+        self._require_open_recruitment_application(application)
+        if application.stage not in {"shortlisted", "interview", "evaluation"}:
+            raise AppException(
+                "Shortlist the application before scheduling an interview.",
+                status_code=409,
+                error_code="APPLICATION_NOT_READY_FOR_INTERVIEW",
+            )
+        interview = HrInterview(id=payload.interview_id, **schedule)
+        await self._notify_interviewer(interview, require_active=True)
         self.session.add(interview)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) == "23505":
+                raise AppException(
+                    "This interview reference is already used.", status_code=409
+                ) from error
+            raise
         await self.audit.record(
             action="hr.interview.scheduled",
             user_id=actor.id,
@@ -495,11 +869,24 @@ class HrWorkforceService:
     async def update_interview(
         self, interview_id: UUID, payload: InterviewUpdateRequest, actor: User
     ) -> HrInterview:
+        application_id = await self.session.scalar(
+            select(HrInterview.application_id).where(HrInterview.id == interview_id)
+        )
+        if application_id is None:
+            raise NotFoundException("Interview")
+        self._require_open_recruitment_application(
+            await self.get_application(application_id, lock=True)
+        )
         interview = await self.session.scalar(
-            select(HrInterview).where(HrInterview.id == interview_id)
+            select(HrInterview).where(HrInterview.id == interview_id).with_for_update()
         )
         if interview is None:
             raise NotFoundException("Interview")
+        if (
+            payload.expected_updated_at is not None
+            and interview.updated_at != payload.expected_updated_at
+        ):
+            raise AppException("Review the current interview before updating.", status_code=409)
         if payload.recommendation is not None:
             interview.recommendation = payload.recommendation
         if payload.score is not None:
@@ -507,7 +894,12 @@ class HrWorkforceService:
         if payload.feedback_notes is not None:
             interview.feedback_notes = payload.feedback_notes
         if payload.status is not None:
+            prior_status = interview.status
             interview.status = payload.status
+            if prior_status == "scheduled" and payload.status == "cancelled":
+                await self._notify_interviewer(interview, cancelled=True)
+            if prior_status == "cancelled" and payload.status == "scheduled":
+                await self._notify_interviewer(interview, require_active=True)
         await self.audit.record(
             action="hr.interview.updated",
             user_id=actor.id,
@@ -532,8 +924,18 @@ class HrWorkforceService:
 
     async def create_offer(self, payload: OfferCreateRequest, actor: User) -> HrOffer:
         if payload.supersedes_offer_id is not None:
+            if payload.expected_application_updated_at is not None:
+                raise AppException(
+                    "Use the offer reissue endpoint with an offer precondition.", status_code=422
+                )
             reissue_payload = OfferReissueRequest(
-                **payload.model_dump(exclude={"application_id", "supersedes_offer_id"})
+                **payload.model_dump(
+                    exclude={
+                        "application_id",
+                        "supersedes_offer_id",
+                        "expected_application_updated_at",
+                    }
+                )
             )
             return await self.reissue_offer(
                 payload.supersedes_offer_id,
@@ -545,13 +947,14 @@ class HrWorkforceService:
             raise PermissionDeniedException(PERMISSION_HR_PAYROLL_SENSITIVE)
         if payload.valid_until is not None and payload.valid_until < business_today():
             raise AppException("Offer validity date must not be in the past.", status_code=422)
-        application = await self.session.scalar(
-            select(HrApplication)
-            .where(HrApplication.id == payload.application_id)
-            .with_for_update()
-        )
-        if application is None:
-            raise NotFoundException("Application")
+        application = await self.get_application(payload.application_id, lock=True)
+        if (
+            payload.expected_application_updated_at is not None
+            and application.updated_at != payload.expected_application_updated_at
+        ):
+            raise AppException(
+                "Review the current application before drafting an offer.", status_code=409
+            )
         if application.stage != "evaluation":
             raise AppException("Complete interviews before drafting an offer.", status_code=409)
         if await self.session.scalar(
@@ -564,6 +967,10 @@ class HrWorkforceService:
         ):
             raise AppException(
                 "This application already has an open or accepted offer.", status_code=409
+            )
+        if payload.document_version_id is not None:
+            await self._offer_document_version(
+                payload.document_version_id, application, actor, attaching=True
             )
         next_version = (
             int(
@@ -589,6 +996,7 @@ class HrWorkforceService:
             status="draft",
             valid_until=payload.valid_until,
             version_number=next_version,
+            document_version_id=payload.document_version_id,
             notes=payload.notes,
         )
         self.session.add(offer)
@@ -633,11 +1041,8 @@ class HrWorkforceService:
             raise AppException(
                 "Superseded offer belongs to a different application.", status_code=422
             )
-        application = await self.session.scalar(
-            select(HrApplication).where(HrApplication.id == application_id).with_for_update()
-        )
-        if application is None:
-            raise NotFoundException("Application")
+        application = await self.get_application(application_id, lock=True)
+        self._require_open_recruitment_application(application)
         prior_offer = await self.session.scalar(
             select(HrOffer)
             .where(HrOffer.id == offer_id)
@@ -646,6 +1051,11 @@ class HrWorkforceService:
         )
         if prior_offer is None:
             raise NotFoundException("Offer")
+        if (
+            payload.expected_updated_at is not None
+            and prior_offer.updated_at != payload.expected_updated_at
+        ):
+            raise AppException("Review the current offer before reissuing.", status_code=409)
         if prior_offer.status == "converted" or prior_offer.converted_employee_id is not None:
             raise AppException(
                 "Converted offers cannot be superseded.",
@@ -660,6 +1070,17 @@ class HrWorkforceService:
                 "This offer version cannot be superseded.",
                 status_code=409,
                 error_code="OFFER_SUPERSEDED",
+            )
+        if prior_offer.document_version_id is not None and payload.document_version_id in {
+            None,
+            prior_offer.document_version_id,
+        }:
+            raise AppException(
+                "Select a different approved file for the replacement offer.", status_code=422
+            )
+        if payload.document_version_id is not None:
+            await self._offer_document_version(
+                payload.document_version_id, application, actor, attaching=True
             )
         if await self.session.scalar(
             select(HrOffer.id)
@@ -697,6 +1118,7 @@ class HrWorkforceService:
             status="draft",
             valid_until=payload.valid_until,
             version_number=max(prior_offer.version_number, max_version) + 1,
+            document_version_id=payload.document_version_id,
             supersedes_offer_id=prior_offer.id,
             notes=payload.notes,
         )
@@ -727,24 +1149,96 @@ class HrWorkforceService:
         return new_offer
 
     async def list_offers(
-        self, *, status: str | None = None, limit: int = 100, offset: int = 0
+        self,
+        *,
+        status: str | None = None,
+        application_id: UUID | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[HrOffer], int]:
         stmt = select(HrOffer)
         count_stmt = select(func.count(HrOffer.id))
         if status:
             stmt = stmt.where(HrOffer.status == status)
             count_stmt = count_stmt.where(HrOffer.status == status)
+        if application_id is not None:
+            stmt = stmt.where(HrOffer.application_id == application_id)
+            count_stmt = count_stmt.where(HrOffer.application_id == application_id)
         rows = list(
             await self.session.scalars(
-                stmt.order_by(HrOffer.created_at.desc()).limit(limit).offset(offset)
+                stmt.order_by(HrOffer.created_at.desc(), HrOffer.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
         )
         total = int(await self.session.scalar(count_stmt) or 0)
         return rows, total
 
+    async def get_offer(self, offer_id: UUID) -> HrOffer:
+        offer = await self.session.get(HrOffer, offer_id)
+        if offer is None:
+            raise NotFoundException("Offer")
+        return offer
+
+    async def _offer_document_version(
+        self, version_id: UUID, application: HrApplication, actor: User, *, attaching: bool = False
+    ) -> tuple[HrDocument, HrDocumentVersion]:
+        for permission in (PERMISSION_HR_DOCUMENTS_MANAGE, PERMISSION_HR_EMPLOYEES_SENSITIVE):
+            if not has_permission(actor, permission):
+                raise PermissionDeniedException(permission)
+        statement = (
+            select(HrDocument, HrDocumentVersion)
+            .join(HrDocumentVersion, HrDocumentVersion.document_id == HrDocument.id)
+            .where(
+                HrDocumentVersion.id == version_id,
+                HrDocumentVersion.mime_type == "application/pdf",
+                HrDocument.candidate_id == application.candidate_id,
+                HrDocument.document_type == "candidate_offer",
+                HrDocument.category == "confidential",
+                HrDocument.deleted_at.is_(None),
+            )
+        )
+        if attaching:
+            statement = statement.where(
+                HrDocumentVersion.status == "active",
+                HrDocument.current_version == HrDocumentVersion.version_number,
+            ).with_for_update(of=HrDocument)
+        else:
+            statement = statement.where(HrDocumentVersion.status.in_(["active", "superseded"]))
+        row = (await self.session.execute(statement)).one_or_none()
+        if row is None:
+            raise NotFoundException("Approved candidate offer file")
+        return row[0], row[1]
+
+    async def download_offer_document(
+        self, offer_id: UUID, actor: User
+    ) -> HrDocumentDownloadResponse:
+        offer = await self.get_offer(offer_id)
+        if offer.document_version_id is None:
+            raise NotFoundException("Offer document")
+        application = await self.get_application(offer.application_id)
+        document, version = await self._offer_document_version(
+            offer.document_version_id, application, actor
+        )
+        return await self._presign_document_version(
+            document,
+            actor,
+            action="hr.offer.document_downloaded",
+            include_category=True,
+            version_number=version.version_number,
+        )
+
     async def decide_offer(
         self, offer_id: UUID, payload: OfferDecisionRequest, actor: User
     ) -> HrOffer:
+        application_id = await self.session.scalar(
+            select(HrOffer.application_id).where(HrOffer.id == offer_id)
+        )
+        if application_id is None:
+            raise NotFoundException("Offer")
+        self._require_open_recruitment_application(
+            await self.get_application(application_id, lock=True)
+        )
         offer = await self.session.scalar(
             select(HrOffer)
             .where(HrOffer.id == offer_id)
@@ -757,6 +1251,13 @@ class HrWorkforceService:
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
+        if (
+            payload.expected_updated_at is not None
+            and offer.updated_at != payload.expected_updated_at
+        ):
+            raise AppException(
+                "Review the current offer before recording a decision.", status_code=409
+            )
         if offer.status == "superseded" or offer.superseded_by_id is not None:
             raise AppException(
                 "This offer version has been superseded by newer terms.",
@@ -837,6 +1338,14 @@ class HrWorkforceService:
     async def convert_offer_to_employee(
         self, offer_id: UUID, payload: OfferConvertRequest, actor: User
     ) -> OnboardingCaseResponse:
+        application_id = await self.session.scalar(
+            select(HrOffer.application_id).where(HrOffer.id == offer_id)
+        )
+        if application_id is None:
+            raise NotFoundException("Offer")
+        # Match offer creation and reissue: lock the application before the offer.
+        app_row = await self.get_application(application_id, lock=True)
+        self._require_open_recruitment_application(app_row)
         offer = await self.session.scalar(
             select(HrOffer)
             .where(HrOffer.id == offer_id)
@@ -863,11 +1372,35 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="OFFER_NOT_ACCEPTED",
             )
-        app_row = await self.session.scalar(
-            select(HrApplication).where(HrApplication.id == offer.application_id)
+        if app_row.stage == "hired":
+            raise AppException(
+                "This application already resulted in a hire.",
+                status_code=409,
+                error_code="APPLICATION_ALREADY_HIRED",
+            )
+        # Different applications can compete for the same vacancy.
+        requisition = await self.session.scalar(
+            select(HrRequisition)
+            .where(HrRequisition.id == app_row.requisition_id, HrRequisition.deleted_at.is_(None))
+            .with_for_update()
         )
-        if app_row is None:
-            raise NotFoundException("Application")
+        if requisition is None:
+            raise NotFoundException("Requisition")
+        hired = await self._hired_headcount(requisition.id)
+        if hired >= requisition.headcount_requested:
+            raise AppException(
+                "The requisition has no remaining vacancies.",
+                status_code=409,
+                error_code="REQUISITION_CAPACITY_REACHED",
+            )
+        if requisition.status != "open":
+            raise AppException(
+                "Reopen the requisition before converting this offer."
+                if requisition.status == "on_hold"
+                else "The requisition must be open to convert an offer.",
+                status_code=409,
+                error_code="REQUISITION_NOT_OPEN",
+            )
         cand = await self.session.scalar(
             select(HrCandidate).where(HrCandidate.id == app_row.candidate_id)
         )
@@ -917,6 +1450,20 @@ class HrWorkforceService:
             offer.converted_employee_id = emp.id
             app_row.stage = "hired"
             cand.status = "hired"
+            await self.audit.record(
+                action="hr.application.hired",
+                user_id=actor.id,
+                entity_type="hr_applications",
+                entity_id=app_row.id,
+            )
+            if hired + 1 == requisition.headcount_requested:
+                requisition.status = "filled"
+                await self.audit.record(
+                    action="hr.requisition.filled",
+                    user_id=actor.id,
+                    entity_type="hr_requisitions",
+                    entity_id=requisition.id,
+                )
 
             probation_end = (
                 join_date + timedelta(days=payload.probation_days)
@@ -947,6 +1494,17 @@ class HrWorkforceService:
                 error_code="EMPLOYEE_CONFLICT",
             ) from exc
         return await self._serialize_onboarding_case(case)
+
+    async def _hired_headcount(self, requisition_id: UUID) -> int:
+        return int(
+            await self.session.scalar(
+                select(func.count(HrApplication.id)).where(
+                    HrApplication.requisition_id == requisition_id,
+                    HrApplication.stage == "hired",
+                )
+            )
+            or 0
+        )
 
     async def _create_onboarding_case_internal(
         self,
@@ -1024,16 +1582,36 @@ class HrWorkforceService:
         return await self._serialize_onboarding_case(case)
 
     async def list_onboarding_cases(
-        self, *, employee_id: UUID | None = None
+        self,
+        *,
+        employee_id: UUID | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[list[OnboardingCaseResponse], int]:
         stmt = select(HrOnboardingCase)
         count_stmt = select(func.count(HrOnboardingCase.id))
         if employee_id:
             stmt = stmt.where(HrOnboardingCase.employee_id == employee_id)
             count_stmt = count_stmt.where(HrOnboardingCase.employee_id == employee_id)
-        cases = list(await self.session.scalars(stmt.order_by(HrOnboardingCase.created_at.desc())))
+        if status is not None:
+            stmt = stmt.where(HrOnboardingCase.status == status)
+            count_stmt = count_stmt.where(HrOnboardingCase.status == status)
+        cases = list(
+            await self.session.scalars(
+                stmt.order_by(HrOnboardingCase.created_at.desc(), HrOnboardingCase.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
         total = int(await self.session.scalar(count_stmt) or 0)
         return [await self._serialize_onboarding_case(c) for c in cases], total
+
+    async def get_onboarding_case(self, case_id: UUID) -> OnboardingCaseResponse:
+        case = await self.session.get(HrOnboardingCase, case_id)
+        if case is None:
+            raise NotFoundException("Onboarding case")
+        return await self._serialize_onboarding_case(case)
 
     async def update_onboarding_task(
         self, task_id: UUID, payload: OnboardingTaskUpdateRequest, actor: User
@@ -1053,6 +1631,13 @@ class HrWorkforceService:
         if case.status == "completed":
             raise AppException("This onboarding case is already closed.", status_code=409)
         await self.session.refresh(task)
+        if (
+            payload.expected_updated_at is not None
+            and task.updated_at != payload.expected_updated_at
+        ):
+            raise AppException(
+                "Review the current checklist task before updating.", status_code=409
+            )
         if payload.status in {"completed", "waived"}:
             employee = await self._require_employee(case.employee_id)
             if employee.user_id == actor.id:
@@ -1197,6 +1782,18 @@ class HrWorkforceService:
         if employee_id is not None:
             await self._require_employee(employee_id)
         is_cv = document_type.strip() == "candidate_cv"
+        if document_type.strip() == "candidate_offer" and (
+            candidate_id is None or category != "confidential"
+        ):
+            raise AppException(
+                "An offer file requires a candidate and confidential access.", status_code=422
+            )
+        if document_type.strip() == "policy" and (
+            category != "ordinary" or employee_id is not None or candidate_id is not None
+        ):
+            raise AppException(
+                "Company policies must be ordinary and have no personal owner.", status_code=422
+            )
         if is_cv and (candidate_id is None or category != "confidential"):
             raise AppException(
                 "A candidate CV requires a candidate and confidential access.", status_code=422
@@ -1242,7 +1839,12 @@ class HrWorkforceService:
         return await self._store_hr_document_version(doc, file, actor, version_number=1)
 
     async def upload_hr_document_version(
-        self, document_id: UUID, file: UploadFile, actor: User
+        self,
+        document_id: UUID,
+        file: UploadFile,
+        actor: User,
+        *,
+        expected_latest_version: int | None = None,
     ) -> HrDocumentResponse:
         doc = await self._get_hr_document(document_id, for_update=True)
         self._ensure_hr_doc_access(doc, actor)
@@ -1252,6 +1854,12 @@ class HrWorkforceService:
             .order_by(HrDocumentVersion.version_number.desc())
             .limit(1)
         )
+        if expected_latest_version is not None and expected_latest_version != (
+            latest.version_number if latest else 0
+        ):
+            raise AppException(
+                "Review the newest document version before uploading.", status_code=409
+            )
         if latest and latest.status == "pending":
             raise AppException("Decide the pending version first.", status_code=409)
         return await self._store_hr_document_version(
@@ -1264,6 +1872,8 @@ class HrWorkforceService:
         data = await file.read(MAX_HR_DOCUMENT_SIZE + 1)
         filename = Path(file.filename or "hr-document.pdf").name[:255]
         mime_type, checksum = validate_hr_document_file(filename, data)
+        if doc.document_type == "candidate_offer" and mime_type != "application/pdf":
+            raise AppException("Offer files must be PDFs.", status_code=422)
         object_key = f"hr-documents/{doc.id}/v{version_number}/{uuid4().hex}"
         try:
             await asyncio.to_thread(self._upload_object, object_key, data, mime_type)
@@ -1382,11 +1992,18 @@ class HrWorkforceService:
             count_stmt = count_stmt.where(HrDocument.document_type == document_type)
         docs = list(
             await self.session.scalars(
-                stmt.order_by(HrDocument.created_at.desc()).limit(limit).offset(offset)
+                stmt.order_by(HrDocument.created_at.desc(), HrDocument.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
         )
         total = int(await self.session.scalar(count_stmt) or 0)
         return [await self._serialize_hr_document(d) for d in docs], total
+
+    async def get_hr_document_detail(self, document_id: UUID, actor: User) -> HrDocumentResponse:
+        doc = await self._get_hr_document(document_id)
+        self._ensure_hr_doc_access(doc, actor)
+        return await self._serialize_hr_document(doc)
 
     async def get_hr_document_download_url(
         self, document_id: UUID, actor: User, *, version_number: int | None = None
@@ -1450,14 +2067,15 @@ class HrWorkforceService:
         action: str,
         include_category: bool,
         version_number: int | None = None,
+        allow_superseded: bool = False,
     ) -> HrDocumentDownloadResponse:
         visible_version: ColumnElement[bool] = HrDocumentVersion.status.in_(
-            ["active", "superseded"] if include_category else ["active"]
+            ["active", "superseded"] if include_category or allow_superseded else ["active"]
         )
         if (
             include_category
             and version_number is not None
-            and doc.document_type == "candidate_cv"
+            and doc.document_type in {"candidate_cv", "candidate_offer"}
             and doc.candidate_id is not None
             and doc.category == "confidential"
             and has_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
@@ -1858,6 +2476,182 @@ class HrWorkforceService:
         employee = await self._require_employee(employee_id)
         return await self._resolve_work_schedule(employee, work_date)
 
+    async def list_roster_allocations(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        project_id: UUID | None,
+        employee_id: UUID | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[HrRosterAllocation], int]:
+        if not 0 <= (date_to - date_from).days < 31:
+            raise AppException("Choose an ordered date range of at most 31 days.", status_code=422)
+        filters: list[ColumnElement[bool]] = [
+            HrRosterAllocation.work_date.between(date_from, date_to)
+        ]
+        if project_id is not None:
+            filters.append(HrRosterAllocation.project_id == project_id)
+        if employee_id is not None:
+            filters.append(HrRosterAllocation.employee_id == employee_id)
+        total = await self.session.scalar(
+            select(func.count()).select_from(HrRosterAllocation).where(*filters)
+        )
+        rows = await self.session.scalars(
+            select(HrRosterAllocation)
+            .where(*filters)
+            .order_by(HrRosterAllocation.work_date, HrRosterAllocation.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(rows), total or 0
+
+    @staticmethod
+    def _roster_instant(day: date, local_time: time, zone: ZoneInfo) -> datetime:
+        local = datetime.combine(day, local_time.replace(tzinfo=None))
+        earlier = local.replace(tzinfo=zone, fold=0)
+        later = local.replace(tzinfo=zone, fold=1)
+        if earlier.utcoffset() != later.utcoffset():
+            raise AppException(
+                "A shift endpoint is an ambiguous or missing local time.",
+                status_code=409,
+            )
+        return earlier.astimezone(UTC)
+
+    async def create_roster_allocation(
+        self, payload: RosterAllocationCreateRequest, actor: User
+    ) -> HrRosterAllocation:
+        employee = await self._require_employee(payload.employee_id, for_update=True)
+        existing = await self.session.get(HrRosterAllocation, payload.id)
+        if existing is not None:
+            if (existing.employee_id, existing.project_id, existing.work_date) == (
+                payload.employee_id,
+                payload.project_id,
+                payload.work_date,
+            ):
+                return existing
+            raise AppException("That allocation ID has already been used.", status_code=409)
+        if (
+            employee.employment_status not in {"active", "on_probation", "notice_period"}
+            or (employee.join_date is not None and payload.work_date < employee.join_date)
+            or (
+                employee.termination_date is not None
+                and payload.work_date >= employee.termination_date
+            )
+        ):
+            raise AppException(
+                "The employee is not eligible for this roster date.", status_code=409
+            )
+        project = await self.session.scalar(
+            select(Project).where(Project.id == payload.project_id, Project.deleted_at.is_(None))
+        )
+        if project is None:
+            raise NotFoundException("Project")
+        if project.status in {"completed", "cancelled"}:
+            raise AppException("The project no longer accepts allocations.", status_code=409)
+        schedule = await self._resolve_work_schedule(employee, payload.work_date)
+        calendar, shift = schedule.calendar, schedule.shift
+        if calendar is None or calendar.timezone is None or schedule.is_workday is not True:
+            raise AppException("This roster date requires a published workday.", status_code=409)
+        local_start = shift.start_time if shift else calendar.standard_start_time
+        local_end = shift.end_time if shift else calendar.standard_end_time
+        end_day = payload.work_date
+        if local_end < local_start:
+            if end_day == date.max:
+                raise AppException(
+                    "The overnight schedule exceeds the supported date range.", status_code=422
+                )
+            end_day += timedelta(days=1)
+        zone = ZoneInfo(calendar.timezone)
+        starts_at = self._roster_instant(payload.work_date, local_start, zone)
+        ends_at = self._roster_instant(end_day, local_end, zone)
+        span = ends_at - starts_at
+        planned_hours = (
+            (Decimal(span.days * 86400 + span.seconds) + Decimal(span.microseconds) / 1000000)
+            / 3600
+            if shift
+            else calendar.daily_hours
+        ).quantize(Decimal("0.01"))
+        if ends_at <= starts_at or planned_hours <= 0:
+            raise AppException("The published schedule has no allocatable hours.", status_code=409)
+        overlap = await self.session.scalar(
+            select(HrRosterAllocation.id)
+            .where(
+                HrRosterAllocation.employee_id == employee.id,
+                HrRosterAllocation.cancelled_at.is_(None),
+                or_(
+                    HrRosterAllocation.work_date == payload.work_date,
+                    (HrRosterAllocation.starts_at < ends_at)
+                    & (HrRosterAllocation.ends_at > starts_at),
+                ),
+            )
+            .limit(1)
+        )
+        if overlap is not None:
+            raise AppException(
+                "This employee already has an overlapping allocation.", status_code=409
+            )
+        row = HrRosterAllocation(
+            **payload.model_dump(),
+            calendar_id=calendar.id,
+            shift_id=shift.id if shift else None,
+            employee_name=employee.full_name,
+            project_name=project.name,
+            timezone=calendar.timezone,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            planned_hours=planned_hours,
+            created_by_id=actor.id,
+        )
+        self.session.add(row)
+        try:
+            await self.session.flush()
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) == "23505":
+                raise AppException(
+                    "That allocation ID has already been used.", status_code=409
+                ) from error
+            raise
+        await self.audit.record(
+            action="hr.roster.allocated",
+            user_id=actor.id,
+            entity_type=HrRosterAllocation.__tablename__,
+            entity_id=row.id,
+        )
+        await self._commit_and_refresh(row)
+        return row
+
+    async def cancel_roster_allocation(
+        self, allocation_id: UUID, reason: str, actor: User
+    ) -> HrRosterAllocation:
+        employee_id = await self.session.scalar(
+            select(HrRosterAllocation.employee_id).where(HrRosterAllocation.id == allocation_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Roster allocation")
+        await self.session.scalar(
+            select(HrEmployee.id).where(HrEmployee.id == employee_id).with_for_update()
+        )
+        row = await self.session.get(HrRosterAllocation, allocation_id, populate_existing=True)
+        if row is None:
+            raise NotFoundException("Roster allocation")
+        if row.cancelled_at is not None:
+            if row.cancellation_reason != reason:
+                raise AppException("This allocation has already been cancelled.", status_code=409)
+            return row
+        row.cancelled_at = utc_now()
+        row.cancelled_by_id = actor.id
+        row.cancellation_reason = reason
+        await self.audit.record(
+            action="hr.roster.cancelled",
+            user_id=actor.id,
+            entity_type=HrRosterAllocation.__tablename__,
+            entity_id=row.id,
+        )
+        await self._commit_and_refresh(row)
+        return row
+
     async def _resolve_work_schedule(
         self, employee: HrEmployee, work_date: date
     ) -> WorkScheduleResponse:
@@ -1884,22 +2678,11 @@ class HrWorkforceService:
             shift, calendar = assigned
         else:
             shift = None
-            employee_calendar = (HrWorkCalendar.id == employee.work_calendar_id) & (
-                HrWorkCalendar.project_id.is_(None)
-                | (HrWorkCalendar.project_id == employee.primary_project_id)
-            )
-            company_default = HrWorkCalendar.project_id.is_(None) & HrWorkCalendar.is_default.is_(
-                True
-            )
-            project_calendar = (
-                HrWorkCalendar.project_id == employee.primary_project_id
-                if employee.primary_project_id is not None
-                else false()
-            )
+            scope, priority = self._work_calendar_scope(employee)
             calendar = await self.session.scalar(
                 select(HrWorkCalendar)
-                .where(*applicable, or_(employee_calendar, project_calendar, company_default))
-                .order_by(case((employee_calendar, 0), (project_calendar, 1), else_=2))
+                .where(*applicable, scope)
+                .order_by(priority, HrWorkCalendar.id)
                 .limit(1)
             )
         if calendar is None:
@@ -1915,6 +2698,25 @@ class HrWorkforceService:
             shift=ShiftAssignmentResponse.model_validate(shift) if shift is not None else None,
             holiday=HolidayResponse.model_validate(holiday) if holiday is not None else None,
             is_workday=holiday is None and WORKDAYS[work_date.weekday()] in calendar.work_days_json,
+        )
+
+    @staticmethod
+    def _work_calendar_scope(
+        employee: HrEmployee,
+    ) -> tuple[ColumnElement[bool], ColumnElement[int]]:
+        employee_calendar = (HrWorkCalendar.id == employee.work_calendar_id) & (
+            HrWorkCalendar.project_id.is_(None)
+            | (HrWorkCalendar.project_id == employee.primary_project_id)
+        )
+        company_default = HrWorkCalendar.project_id.is_(None) & HrWorkCalendar.is_default.is_(True)
+        project_calendar = (
+            HrWorkCalendar.project_id == employee.primary_project_id
+            if employee.primary_project_id is not None
+            else false()
+        )
+        return (
+            or_(employee_calendar, project_calendar, company_default),
+            case((employee_calendar, 0), (project_calendar, 1), else_=2),
         )
 
     async def list_shift_assignments(
@@ -2429,9 +3231,18 @@ class HrWorkforceService:
                 )
                 .limit(1)
             )
-            if outstanding or correction:
+            pending_overtime = await self.session.scalar(
+                select(HrOvertimeRequest.id)
+                .where(
+                    HrOvertimeRequest.employee_id == employee.id,
+                    HrOvertimeRequest.work_date.between(ts.period_start, ts.period_end),
+                    HrOvertimeRequest.status == "submitted",
+                )
+                .limit(1)
+            )
+            if outstanding or correction or pending_overtime:
                 raise AppException(
-                    "Review attendance and pending corrections before locking this period.",
+                    "Review attendance, pending corrections and overtime before locking.",
                     status_code=409,
                 )
         ts.status = payload.decision
@@ -2583,27 +3394,21 @@ class HrWorkforceService:
     async def create_leave_policy(
         self, payload: LeavePolicyCreateRequest, actor: User
     ) -> HrLeavePolicy:
-        leave_type = await self.session.scalar(
-            select(HrLeaveType).where(HrLeaveType.id == payload.leave_type_id).with_for_update()
-        )
-        if leave_type is None or not leave_type.is_active:
-            raise NotFoundException("Leave type")
-        if payload.approve_immediately and await self.session.scalar(
-            select(HrLeavePolicy.id)
-            .where(
-                HrLeavePolicy.leave_type_id == leave_type.id,
-                HrLeavePolicy.employment_category == payload.employment_category,
-                HrLeavePolicy.is_active.is_(True),
-                HrLeavePolicy.approved_at.is_not(None),
+        if payload.approve_immediately:
+            raise AppException(
+                "A different HR Manager must review the policy.",
+                status_code=422,
+                error_code="LEAVE_POLICY_REVIEW_REQUIRED",
             )
-            .limit(1)
-        ):
-            raise AppException("An approved policy already covers this group.", status_code=409)
+        if payload.effective_from > payload.effective_to:
+            raise AppException("Enter effective dates in order.", status_code=422)
+        await self._active_leave_type(payload.leave_type_id)
         data = payload.model_dump(exclude={"approve_immediately"})
         pol = HrLeavePolicy(
             **data,
-            approved_by_id=actor.id if payload.approve_immediately else None,
-            approved_at=utc_now() if payload.approve_immediately else None,
+            created_by_id=actor.id,
+            status="draft",
+            is_active=False,
         )
         self.session.add(pol)
         try:
@@ -2623,6 +3428,122 @@ class HrWorkforceService:
                 error_code="LEAVE_POLICY_EXISTS",
             ) from exc
         return pol
+
+    async def get_leave_policy(self, policy_id: UUID) -> HrLeavePolicy:
+        policy = await self.session.get(HrLeavePolicy, policy_id)
+        if policy is None:
+            raise NotFoundException("Leave policy")
+        return policy
+
+    async def decide_leave_policy(
+        self, policy_id: UUID, payload: LeavePolicyDecisionRequest, actor: User
+    ) -> HrLeavePolicy:
+        leave_type_id = await self.session.scalar(
+            select(HrLeavePolicy.leave_type_id).where(HrLeavePolicy.id == policy_id)
+        )
+        if leave_type_id is None:
+            raise NotFoundException("Leave policy")
+        # Serialize decisions for all policy windows of this leave type.
+        leave_type = await self.session.scalar(
+            select(HrLeaveType).where(HrLeaveType.id == leave_type_id).with_for_update()
+        )
+        if leave_type is None:
+            raise NotFoundException("Leave type")
+        policy = await self.get_leave_policy(policy_id)
+        if policy.status != "draft":
+            raise AppException("Only a draft leave policy can be reviewed.", status_code=409)
+        if policy.created_by_id is None or policy.created_by_id == actor.id:
+            raise PermissionDeniedException("review a leave policy without an independent preparer")
+        if payload.decision == "approved":
+            if not leave_type.is_active:
+                raise AppException("This leave type is inactive.", status_code=409)
+            start, end = policy.effective_from, policy.effective_to
+            if start is None or end is None:
+                raise AppException("The draft has no effective window.", status_code=409)
+            overlap = await self.session.scalar(
+                select(HrLeavePolicy.id)
+                .where(
+                    HrLeavePolicy.leave_type_id == leave_type_id,
+                    HrLeavePolicy.employment_category.is_not_distinct_from(
+                        policy.employment_category
+                    ),
+                    HrLeavePolicy.status == "approved",
+                    HrLeavePolicy.effective_from <= end,
+                    HrLeavePolicy.effective_to >= start,
+                )
+                .limit(1)
+            )
+            if overlap is not None:
+                raise AppException(
+                    "An approved leave policy overlaps these dates for this employment category.",
+                    status_code=409,
+                    error_code="LEAVE_POLICY_OVERLAP",
+                )
+            policy.approved_by_id = actor.id
+            policy.approved_at = utc_now()
+            policy.is_active = True
+        else:
+            reason = (payload.reason or "").strip()
+            if not reason:
+                raise AppException("Enter a reason for rejecting the policy.", status_code=422)
+            policy.rejection_reason = reason
+        policy.status = payload.decision
+        await self.audit.record(
+            action=f"hr.leave_policy.{payload.decision}",
+            user_id=actor.id,
+            entity_type="hr_leave_policies",
+            entity_id=policy.id,
+        )
+        await self._commit_and_refresh(policy)
+        return policy
+
+    async def _leave_allows_negative_balance(
+        self, request: HrLeaveRequest, category: str | None
+    ) -> bool:
+        policies = list(
+            await self.session.scalars(
+                select(HrLeavePolicy)
+                .where(
+                    HrLeavePolicy.leave_type_id == request.leave_type_id,
+                    HrLeavePolicy.is_active.is_(True),
+                    HrLeavePolicy.approved_at.is_not(None),
+                    or_(
+                        HrLeavePolicy.employment_category == category,
+                        HrLeavePolicy.employment_category.is_(None),
+                    ),
+                    or_(
+                        HrLeavePolicy.status == "legacy",
+                        (HrLeavePolicy.status == "approved")
+                        & (HrLeavePolicy.effective_from <= request.end_date)
+                        & (HrLeavePolicy.effective_to >= request.start_date),
+                    ),
+                )
+                .order_by(
+                    HrLeavePolicy.employment_category.is_(None),
+                    HrLeavePolicy.status == "legacy",
+                    HrLeavePolicy.approved_at.desc(),
+                    HrLeavePolicy.id,
+                )
+            )
+        )
+        for offset in range((request.end_date - request.start_date).days + 1):
+            day = request.start_date + timedelta(days=offset)
+            policy = next(
+                (
+                    row
+                    for row in policies
+                    if row.status == "legacy"
+                    or (
+                        row.effective_from is not None
+                        and row.effective_to is not None
+                        and row.effective_from <= day <= row.effective_to
+                    )
+                ),
+                None,
+            )
+            if policy is None or not policy.allow_negative_balance:
+                return False
+        return bool(policies)
 
     async def list_leave_policies(self) -> tuple[list[HrLeavePolicy], int]:
         rows = list(await self.session.scalars(select(HrLeavePolicy).order_by(HrLeavePolicy.code)))
@@ -2644,6 +3565,9 @@ class HrWorkforceService:
         self, payload: LeaveLedgerAdjustRequest, actor: User
     ) -> HrLeaveLedger:
         await self._require_employee(payload.employee_id, for_update=True)
+        await ensure_leave_year_open(
+            self.session, payload.employee_id, payload.leave_type_id, payload.leave_year
+        )
         leave_type = await self.session.get(HrLeaveType, payload.leave_type_id)
         if not leave_type or not leave_type.is_active:
             raise NotFoundException("Leave type")
@@ -2652,6 +3576,34 @@ class HrWorkforceService:
             and payload.days_delta < 0
         ):
             raise AppException("The adjustment amount is invalid.", status_code=422)
+        if payload.entry_type in {"opening_balance", "carry_forward"} and await self.session.scalar(
+            select(HrLeaveRollover.id).where(
+                HrLeaveRollover.employee_id == payload.employee_id,
+                HrLeaveRollover.leave_type_id == payload.leave_type_id,
+                HrLeaveRollover.source_year == payload.leave_year - 1,
+            )
+        ):
+            raise AppException(
+                "A reviewed rollover already accounted for carry-forward into this year.",
+                status_code=409,
+                error_code="LEAVE_ROLLOVER_ALREADY_POSTED",
+            )
+        if payload.entry_type in {"opening_balance", "accrual"} and await self.session.scalar(
+            select(HrLeaveAccrual.id)
+            .where(
+                HrLeaveAccrual.employee_id == payload.employee_id,
+                HrLeaveAccrual.leave_type_id == payload.leave_type_id,
+                HrLeaveAccrual.period_start.between(
+                    date(payload.leave_year, 1, 1), date(payload.leave_year, 12, 31)
+                ),
+            )
+            .limit(1)
+        ):
+            raise AppException(
+                "Policy accrual has already posted for this year. Record a reconciled adjustment.",
+                status_code=409,
+                error_code="LEAVE_ACCRUAL_ALREADY_STARTED",
+            )
         if payload.entry_type == "opening_balance" and await self.session.scalar(
             select(HrLeaveLedger.id)
             .where(
@@ -2729,36 +3681,127 @@ class HrWorkforceService:
         ):
             raise NotFoundException("Employee profile")
 
-    async def create_leave_request(
-        self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
-    ) -> HrLeaveRequest:
-        employee_id = payload.employee_id or (await self._employee_for_user(actor)).id
-        target_emp = await self._require_employee(employee_id, for_update=True)
-        if own_request:
-            self._verify_self_request(target_emp, actor)
+    async def quote_employee_leave_units(
+        self, employee_id: UUID, payload: LeaveUnitsQuery
+    ) -> Decimal:
+        return await self.get_leave_units(await self._require_employee(employee_id), payload)
+
+    async def _active_leave_type(self, leave_type_id: UUID) -> HrLeaveType:
+        lt = await self.session.get(HrLeaveType, leave_type_id)
+        if lt is None or not lt.is_active:
+            raise NotFoundException("Leave type")
+        return lt
+
+    async def get_leave_units(self, employee: HrEmployee, payload: LeaveUnitsQuery) -> Decimal:
+        return await self._calculate_leave_units(
+            employee, payload, await self._active_leave_type(payload.leave_type_id)
+        )
+
+    async def _calculate_leave_units(
+        self, employee: HrEmployee, payload: LeaveUnitsQuery, lt: HrLeaveType
+    ) -> Decimal:
         calendar_days = (payload.end_date - payload.start_date).days + 1
-        if (
-            calendar_days <= 0
-            or payload.start_date.year != payload.end_date.year
-            or payload.days_requested > calendar_days
-        ):
+        if calendar_days <= 0 or payload.start_date.year != payload.end_date.year:
             raise AppException(
-                "Invalid leave dates or units. Split requests across calendar years.",
+                "Enter dates in order and split requests across calendar years.",
                 status_code=422,
             )
-        if payload.is_half_day and (
-            calendar_days != 1
-            or payload.days_requested != Decimal("0.5")
-            or not payload.half_day_period
-        ):
+        if payload.is_half_day and (calendar_days != 1 or not payload.half_day_period):
             raise AppException("Specify one date and a period for half-day leave.", status_code=422)
         if not payload.is_half_day and payload.half_day_period is not None:
             raise AppException("A half-day period requires half-day leave.", status_code=422)
-        lt = await self.session.get(HrLeaveType, payload.leave_type_id)
-        if lt is None or not lt.is_active:
-            raise NotFoundException("Leave type")
         if payload.is_half_day and not lt.allow_half_day:
             raise AppException("This leave type does not allow half days.", status_code=422)
+        workdays = await self._count_leave_workdays(employee, payload.start_date, calendar_days)
+        if workdays == 0:
+            raise AppException(
+                "The requested dates have no scheduled workdays.",
+                status_code=422,
+                error_code="NO_LEAVE_WORKDAYS",
+            )
+        return Decimal("0.50") if payload.is_half_day else Decimal(workdays)
+
+    async def _count_leave_workdays(
+        self, employee: HrEmployee, start: date, calendar_days: int
+    ) -> int:
+        # One query for at most one calendar year. Resolve each date independently
+        # so revisions and shift assignments can change within a request.
+        offsets = func.generate_series(0, calendar_days - 1).table_valued("n").render_derived()
+        work_date = type_coerce(literal(start) + offsets.c.n, Date())
+        applicable = (
+            HrWorkCalendar.status == "published",
+            HrWorkCalendar.deleted_at.is_(None),
+            HrWorkCalendar.effective_from <= work_date,
+            HrWorkCalendar.effective_to >= work_date,
+        )
+        scope, priority = self._work_calendar_scope(employee)
+        shift_calendar = (
+            select(HrShiftAssignment.calendar_id)
+            .join(HrWorkCalendar, HrWorkCalendar.id == HrShiftAssignment.calendar_id)
+            .where(
+                *applicable,
+                HrShiftAssignment.employee_id == employee.id,
+                HrShiftAssignment.effective_from <= work_date,
+                HrShiftAssignment.effective_to >= work_date,
+            )
+            .order_by(HrShiftAssignment.id)
+            .limit(1)
+            .correlate(offsets)
+            .scalar_subquery()
+        )
+        fallback_calendar = (
+            select(HrWorkCalendar.id)
+            .where(*applicable, scope)
+            .order_by(priority, HrWorkCalendar.id)
+            .limit(1)
+            .correlate(offsets)
+            .scalar_subquery()
+        )
+        schedule = (
+            select(
+                work_date.label("work_date"),
+                func.coalesce(shift_calendar, fallback_calendar).label("calendar_id"),
+            )
+            .select_from(offsets)
+            .cte("leave_schedule")
+        )
+        rows = await self.session.execute(
+            select(schedule.c.work_date, HrWorkCalendar.work_days_json, HrHoliday.id)
+            .select_from(schedule)
+            .outerjoin(HrWorkCalendar, HrWorkCalendar.id == schedule.c.calendar_id)
+            .outerjoin(
+                HrHoliday,
+                (HrHoliday.calendar_id == schedule.c.calendar_id)
+                & (HrHoliday.holiday_date == schedule.c.work_date),
+            )
+            .order_by(schedule.c.work_date)
+        )
+        workdays = 0
+        for day, work_days, holiday_id in rows:
+            if work_days is None:
+                raise AppException(
+                    f"No published work calendar covers {day.isoformat()}. Contact HR.",
+                    status_code=409,
+                    error_code="LEAVE_SCHEDULE_MISSING",
+                )
+            if holiday_id is None and WORKDAYS[day.weekday()] in work_days:
+                workdays += 1
+        return workdays
+
+    async def _validate_leave_request(
+        self, payload: LeaveRequestFields, target_emp: HrEmployee, actor: User
+    ) -> Decimal:
+        await ensure_leave_year_open(
+            self.session, target_emp.id, payload.leave_type_id, payload.start_date.year
+        )
+        lt = await self._active_leave_type(payload.leave_type_id)
+        units = await self._calculate_leave_units(target_emp, payload, lt)
+        if payload.days_requested is not None and payload.days_requested != units:
+            raise AppException(
+                f"The published schedule counts {units} leave days. Check the dates and try again.",
+                status_code=409,
+                error_code="LEAVE_UNITS_MISMATCH",
+            )
         if lt.requires_attachment and payload.attachment_document_id is None:
             raise AppException(
                 "A supporting document is required.",
@@ -2774,6 +3817,16 @@ class HrWorkforceService:
                     raise NotFoundException("HR Document")
             else:
                 self._ensure_hr_doc_access(doc, actor)
+        return units
+
+    async def create_leave_request(
+        self, payload: LeaveRequestCreateRequest, actor: User, *, own_request: bool = False
+    ) -> HrLeaveRequest:
+        employee_id = payload.employee_id or (await self._employee_for_user(actor)).id
+        target_emp = await self._require_employee(employee_id, for_update=True)
+        if own_request:
+            self._verify_self_request(target_emp, actor)
+        units = await self._validate_leave_request(payload, target_emp, actor)
         if payload.submit_immediately:
             await self._ensure_no_leave_overlap(target_emp.id, payload.start_date, payload.end_date)
         req = HrLeaveRequest(
@@ -2781,7 +3834,7 @@ class HrWorkforceService:
             leave_type_id=payload.leave_type_id,
             start_date=payload.start_date,
             end_date=payload.end_date,
-            days_requested=payload.days_requested,
+            days_requested=units,
             is_half_day=payload.is_half_day,
             half_day_period=payload.half_day_period,
             reason=payload.reason,
@@ -2799,6 +3852,60 @@ class HrWorkforceService:
             entity_type="hr_leave_requests",
             entity_id=req.id,
             new_values={"status": req.status, "days": str(req.days_requested)},
+        )
+        await self._commit_and_refresh(req)
+        return req
+
+    async def resubmit_own_leave_request(
+        self, request_id: UUID, payload: LeaveRequestResubmitRequest, actor: User
+    ) -> HrLeaveRequest:
+        employee = await self._employee_for_user(actor)
+        req = await self.session.scalar(
+            select(HrLeaveRequest)
+            .where(
+                HrLeaveRequest.id == request_id,
+                HrLeaveRequest.employee_id == employee.id,
+                HrLeaveRequest.requested_by_id == actor.id,
+            )
+            .with_for_update()
+        )
+        if req is None:
+            raise NotFoundException("Leave request")
+        employee = await self._require_employee(req.employee_id, for_update=True)
+        self._verify_self_request(employee, actor)
+        verify_request_revision(req, payload.expected_revision)
+        if req.status not in {"draft", "rejected"}:
+            raise AppException(
+                "Only a draft or rejected leave request can be resubmitted.",
+                status_code=409,
+                error_code="INVALID_STATE",
+            )
+        units = await self._validate_leave_request(payload, employee, actor)
+        await self._ensure_no_leave_overlap(
+            employee.id, payload.start_date, payload.end_date, exclude=req.id
+        )
+        previous_status = req.status
+        req.leave_type_id = payload.leave_type_id
+        req.start_date = payload.start_date
+        req.end_date = payload.end_date
+        req.days_requested = units
+        req.is_half_day = payload.is_half_day
+        req.half_day_period = payload.half_day_period
+        req.reason = payload.reason
+        req.attachment_document_id = payload.attachment_document_id
+        req.status = "submitted"
+        req.decided_by_id = None
+        req.decided_at = None
+        req.decision_notes = None
+        req.record_revision += 1
+        await start_manager_review(self.session, req, employee)
+        await self.audit.record(
+            action="hr.leave_request.resubmitted",
+            user_id=actor.id,
+            entity_type="hr_leave_requests",
+            entity_id=req.id,
+            old_values={"status": previous_status},
+            new_values={"status": req.status, "revision": req.record_revision},
         )
         await self._commit_and_refresh(req)
         return req
@@ -2851,7 +3958,34 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="INVALID_STATE",
             )
+        if payload.decision == "approved" or (
+            payload.decision == "cancelled" and prev_status == "approved"
+        ):
+            await ensure_leave_year_open(
+                self.session, req.employee_id, req.leave_type_id, req.start_date.year
+            )
         if payload.decision == "submitted":
+            period: Literal["morning", "afternoon"] | None
+            if req.half_day_period == "morning":
+                period = "morning"
+            elif req.half_day_period == "afternoon":
+                period = "afternoon"
+            elif req.half_day_period is None:
+                period = None
+            else:
+                raise AppException("The draft has an invalid half-day period.", status_code=422)
+            req.days_requested = await self._validate_leave_request(
+                LeaveRequestFields(
+                    leave_type_id=req.leave_type_id,
+                    start_date=req.start_date,
+                    end_date=req.end_date,
+                    is_half_day=req.is_half_day,
+                    half_day_period=period,
+                    attachment_document_id=req.attachment_document_id,
+                ),
+                emp,
+                actor,
+            )
             await self._ensure_no_leave_overlap(
                 emp.id, req.start_date, req.end_date, exclude=req.id
             )
@@ -2874,24 +4008,11 @@ class HrWorkforceService:
             lt = await self.session.scalar(
                 select(HrLeaveType).where(HrLeaveType.id == req.leave_type_id)
             )
-            policy = await self.session.scalar(
-                select(HrLeavePolicy)
-                .where(
-                    HrLeavePolicy.leave_type_id == req.leave_type_id,
-                    HrLeavePolicy.is_active.is_(True),
-                    HrLeavePolicy.approved_at.is_not(None),
-                    or_(
-                        HrLeavePolicy.employment_category == emp.employment_category,
-                        HrLeavePolicy.employment_category.is_(None),
-                    ),
-                )
-                .order_by(
-                    HrLeavePolicy.employment_category.is_(None), HrLeavePolicy.approved_at.desc()
-                )
-                .limit(1)
-            )
-            allow_neg = policy.allow_negative_balance if policy else False
-            if lt and lt.is_paid and not allow_neg:
+            if (
+                lt
+                and lt.is_paid
+                and not await self._leave_allows_negative_balance(req, emp.employment_category)
+            ):
                 yr = req.start_date.year
                 current_bal = await self._leave_balance(req.employee_id, req.leave_type_id, yr)
                 if current_bal < req.days_requested:
@@ -2954,9 +4075,85 @@ class HrWorkforceService:
 
     # --- Policies, Letter Templates, HR Service Requests (HR-016) ---
 
+    async def _company_policy_file(
+        self, document_id: UUID | None, version_number: int | None, *, publishing: bool = False
+    ) -> HrDocument | None:
+        if document_id is None:
+            return None
+        if version_number is None:
+            raise AppException(
+                "HR must republish this policy with the exact file version.", status_code=409
+            )
+        doc = await self._get_hr_document(document_id, for_update=publishing)
+        if (
+            doc.employee_id is not None
+            or doc.candidate_id is not None
+            or doc.document_type != "policy"
+            or doc.category != "ordinary"
+            or doc.status != "active"
+        ):
+            raise AppException("Select an approved company policy file.", status_code=409)
+        version = await self.session.scalar(
+            select(HrDocumentVersion.id).where(
+                HrDocumentVersion.document_id == doc.id,
+                HrDocumentVersion.version_number == version_number,
+                HrDocumentVersion.status.in_(
+                    ("active",) if publishing else ("active", "superseded")
+                ),
+            )
+        )
+        if version is None or (publishing and version_number != doc.current_version):
+            raise AppException(
+                "Select the current approved document version for publication.", status_code=409
+            )
+        return doc
+
+    @staticmethod
+    def _current_policy(today: date) -> ColumnElement[bool]:
+        successor = aliased(HrPolicyDocument)
+        return (
+            HrPolicyDocument.is_active.is_(True)
+            & HrPolicyDocument.published_at.is_not(None)
+            & (HrPolicyDocument.effective_date <= today)
+            & ~select(successor.id)
+            .where(
+                successor.supersedes_policy_id == HrPolicyDocument.id,
+                successor.is_active.is_(True),
+                successor.published_at.is_not(None),
+                successor.effective_date <= today,
+            )
+            .exists()
+        )
+
     async def create_policy_document(
         self, payload: PolicyDocumentCreateRequest, actor: User
     ) -> HrPolicyDocument:
+        if payload.supersedes_policy_id is not None:
+            previous = await self.session.scalar(
+                select(HrPolicyDocument)
+                .where(HrPolicyDocument.id == payload.supersedes_policy_id)
+                .with_for_update()
+            )
+            if previous is None or previous.published_at is None:
+                raise NotFoundException("Previous policy edition")
+            if (
+                payload.effective_date <= previous.effective_date
+                or payload.version == previous.version
+            ):
+                raise AppException(
+                    "Use a new version label and a later effective date.", status_code=422
+                )
+            if await self.session.scalar(
+                select(HrPolicyDocument.id)
+                .where(HrPolicyDocument.supersedes_policy_id == previous.id)
+                .limit(1)
+            ):
+                raise AppException(
+                    "This policy edition already has a replacement.", status_code=409
+                )
+        await self._company_policy_file(
+            payload.document_id, payload.document_version_number, publishing=True
+        )
         pol = HrPolicyDocument(
             **payload.model_dump(), published_by_id=actor.id, published_at=utc_now()
         )
@@ -2968,6 +4165,10 @@ class HrWorkforceService:
                 user_id=actor.id,
                 entity_type="hr_policy_documents",
                 entity_id=pol.id,
+                new_values={
+                    "version": pol.version,
+                    "document_version": pol.document_version_number,
+                },
             )
             await self.session.commit()
         except IntegrityError as exc:
@@ -2985,43 +4186,143 @@ class HrWorkforceService:
         )
         return rows, len(rows)
 
+    async def list_self_policies(self, actor: User) -> MyPolicyListResponse:
+        employee = await self._employee_for_user(actor)
+        current = self._current_policy(business_today())
+        result = await self.session.execute(
+            select(HrPolicyDocument, current, HrPolicyAcknowledgement.acknowledged_at)
+            .outerjoin(
+                HrPolicyAcknowledgement,
+                (HrPolicyAcknowledgement.policy_id == HrPolicyDocument.id)
+                & (HrPolicyAcknowledgement.employee_id == employee.id),
+            )
+            .where(or_(current, HrPolicyAcknowledgement.id.is_not(None)))
+            .order_by(HrPolicyDocument.effective_date.desc(), HrPolicyDocument.id)
+        )
+        items = [
+            MyPolicyResponse(
+                **PolicyDocumentResponse.model_validate(policy).model_dump(),
+                is_current=is_current,
+                acknowledged_at=acknowledged_at,
+            )
+            for policy, is_current, acknowledged_at in result
+        ]
+        return MyPolicyListResponse(items=items, total=len(items))
+
+    async def get_self_policy_download_url(
+        self, policy_id: UUID, actor: User
+    ) -> HrDocumentDownloadResponse:
+        employee = await self._employee_for_user(actor)
+        policy = await self.session.scalar(
+            select(HrPolicyDocument).where(
+                HrPolicyDocument.id == policy_id,
+                or_(
+                    self._current_policy(business_today()),
+                    select(HrPolicyAcknowledgement.id)
+                    .where(
+                        HrPolicyAcknowledgement.policy_id == HrPolicyDocument.id,
+                        HrPolicyAcknowledgement.employee_id == employee.id,
+                    )
+                    .exists(),
+                ),
+            )
+        )
+        if policy is None:
+            raise NotFoundException("Policy edition")
+        doc = await self._company_policy_file(policy.document_id, policy.document_version_number)
+        if doc is None:
+            raise NotFoundException("Policy file")
+        return await self._presign_document_version(
+            doc,
+            actor,
+            action="hr.policy.document_downloaded",
+            include_category=False,
+            version_number=policy.document_version_number,
+            allow_superseded=True,
+        )
+
+    @staticmethod
+    def _policy_receipt(
+        ack: HrPolicyAcknowledgement, policy: HrPolicyDocument
+    ) -> PolicyAcknowledgementResponse:
+        return PolicyAcknowledgementResponse(
+            id=ack.id,
+            policy_id=ack.policy_id,
+            employee_id=ack.employee_id,
+            acknowledged_at=ack.acknowledged_at,
+            acknowledged_by_user_id=ack.acknowledged_by_user_id,
+            notes=ack.notes,
+            policy_version=policy.version,
+            document_version_number=policy.document_version_number,
+        )
+
     async def acknowledge_policy(
         self, policy_id: UUID, payload: PolicyAcknowledgeRequest, actor: User
-    ) -> HrPolicyAcknowledgement:
-        emp = await self._employee_for_user(actor)
+    ) -> PolicyAcknowledgementResponse:
+        emp = await self._employee_for_user(actor, for_update=True)
+        policy = await self.session.scalar(
+            select(HrPolicyDocument).where(HrPolicyDocument.id == policy_id).with_for_update()
+        )
+        if policy is None:
+            raise NotFoundException("Policy edition")
+        ack = await self.session.scalar(
+            select(HrPolicyAcknowledgement).where(
+                HrPolicyAcknowledgement.policy_id == policy.id,
+                HrPolicyAcknowledgement.employee_id == emp.id,
+            )
+        )
+        if ack is None and not await self.session.scalar(
+            select(HrPolicyDocument.id).where(
+                HrPolicyDocument.id == policy.id, self._current_policy(business_today())
+            )
+        ):
+            raise NotFoundException("Policy edition")
+        if (payload.expected_version, payload.expected_document_version) != (
+            policy.version,
+            policy.document_version_number,
+        ):
+            raise AppException(
+                "Review the exact published policy before acknowledging it.", status_code=409
+            )
+        if ack is not None:
+            return self._policy_receipt(ack, policy)
+        if not policy.requires_acknowledgement:
+            raise AppException("This policy does not require acknowledgement.", status_code=409)
+        await self._company_policy_file(policy.document_id, policy.document_version_number)
         ack = HrPolicyAcknowledgement(
-            policy_id=policy_id,
+            policy_id=policy.id,
             employee_id=emp.id,
             acknowledged_at=utc_now(),
             acknowledged_by_user_id=actor.id,
             notes=payload.notes,
         )
         self.session.add(ack)
-        try:
-            await self.session.flush()
-            await self.audit.record(
-                action="hr.policy.acknowledged",
-                user_id=actor.id,
-                entity_type="hr_policy_acknowledgements",
-                entity_id=ack.id,
-            )
-            await self.session.commit()
-        except IntegrityError as exc:
-            await self.session.rollback()
-            raise AppException(
-                "Policy already acknowledged by employee.",
-                status_code=409,
-                error_code="POLICY_ALREADY_ACKNOWLEDGED",
-            ) from exc
-        return ack
+        await self.session.flush()
+        await self.audit.record(
+            action="hr.policy.acknowledged",
+            user_id=actor.id,
+            entity_type="hr_policy_acknowledgements",
+            entity_id=ack.id,
+            new_values={
+                "policy_id": str(policy.id),
+                "version": policy.version,
+                "document_version": policy.document_version_number,
+            },
+        )
+        await self.session.commit()
+        return self._policy_receipt(ack, policy)
 
     @staticmethod
-    def _validate_letter_template(*templates: str) -> None:
+    def _validate_letter_template(*templates: str, allowed_fields: set[str] | None = None) -> None:
         try:
             for template in templates:
                 for _, field, spec, conversion in Formatter().parse(template):
                     if field is not None and (
-                        not field.isascii() or not field.isidentifier() or spec or conversion
+                        not field.isascii()
+                        or not field.isidentifier()
+                        or spec
+                        or conversion
+                        or (allowed_fields is not None and field not in allowed_fields)
                     ):
                         raise ValueError
         except ValueError as exc:
@@ -3034,7 +4335,13 @@ class HrWorkforceService:
     async def create_letter_template(
         self, payload: LetterTemplateCreateRequest, actor: User
     ) -> HrLetterTemplate:
-        self._validate_letter_template(payload.subject_template, payload.body_template)
+        allowed_fields = None
+        if payload.letter_type == "candidate_rejection":
+            self._require_letter_manager(actor)
+            allowed_fields = {"candidate_name", "position_title"}
+        self._validate_letter_template(
+            payload.subject_template, payload.body_template, allowed_fields=allowed_fields
+        )
         tmpl = HrLetterTemplate(**payload.model_dump())
         self.session.add(tmpl)
         try:
@@ -3055,19 +4362,30 @@ class HrWorkforceService:
             ) from exc
         return tmpl
 
-    async def list_letter_templates(self) -> tuple[list[HrLetterTemplate], int]:
+    async def list_letter_templates(
+        self, *, candidate: bool = False
+    ) -> tuple[list[HrLetterTemplate], int]:
         rows = list(
-            await self.session.scalars(select(HrLetterTemplate).order_by(HrLetterTemplate.code))
+            await self.session.scalars(
+                select(HrLetterTemplate)
+                .where(
+                    HrLetterTemplate.letter_type == "candidate_rejection"
+                    if candidate
+                    else HrLetterTemplate.letter_type != "candidate_rejection"
+                )
+                .order_by(HrLetterTemplate.code)
+            )
         )
         return rows, len(rows)
 
-    async def render_letter(
-        self, payload: LetterGenerateRequest, actor: User
-    ) -> LetterRenderResponse:
+    async def _letter_text(
+        self, payload: LetterGenerateRequest, actor: User, emp: HrEmployee
+    ) -> tuple[HrLetterTemplate, str, str]:
         tmpl = await self.session.scalar(
             select(HrLetterTemplate).where(
                 HrLetterTemplate.id == payload.template_id,
                 HrLetterTemplate.is_active.is_(True),
+                HrLetterTemplate.letter_type != "candidate_rejection",
             )
         )
         if tmpl is None:
@@ -3076,8 +4394,13 @@ class HrWorkforceService:
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
-        emp = await self._require_employee(payload.employee_id)
         self._validate_letter_template(tmpl.subject_template, tmpl.body_template)
+        if len(tmpl.body_template) > 12000 or any(
+            len(value) > 2000 for value in payload.extra_vars.values()
+        ):
+            raise AppException(
+                "The letter template or one of its values is too long.", status_code=422
+            )
         context = {
             "employee_code": emp.employee_code,
             "full_name": emp.full_name,
@@ -3091,6 +4414,10 @@ class HrWorkforceService:
                 error_code="LETTER_EMPLOYEE_FIELD_OVERRIDE",
             )
         context.update(payload.extra_vars)
+        return tmpl, *self._format_letter_text(tmpl, context)
+
+    @staticmethod
+    def _format_letter_text(tmpl: HrLetterTemplate, context: dict[str, str]) -> tuple[str, str]:
         try:
             subject = tmpl.subject_template.format(**context)
             body = tmpl.body_template.format(**context)
@@ -3100,6 +4427,36 @@ class HrWorkforceService:
                 status_code=422,
                 error_code="MISSING_TEMPLATE_VAR",
             ) from exc
+        if not subject.strip() or not body.strip() or len(subject) > 500 or len(body) > 24000:
+            raise AppException("The rendered letter is empty or too long.", status_code=422)
+        return subject, body
+
+    @staticmethod
+    def _letter_digest(
+        actor: User, employee_id: UUID, revision: int, template_id: UUID, subject: str, body: str
+    ) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                [str(actor.id), str(employee_id), revision, str(template_id), subject, body]
+            ).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _require_letter_manager(actor: User) -> None:
+        if actor.role != ROLE_HR_MANAGER:
+            raise PermissionDeniedException(PERMISSION_HR_REQUESTS_PROCESS)
+
+    async def render_letter(
+        self, payload: LetterGenerateRequest, actor: User
+    ) -> LetterRenderResponse:
+        emp = await self._require_employee(payload.employee_id)
+        tmpl, subject, body = await self._letter_text(payload, actor, emp)
+        # Salary letters require an authoritative compensation source before issuance.
+        digest = (
+            self._letter_digest(actor, emp.id, emp.record_revision, tmpl.id, subject, body)
+            if actor.role == ROLE_HR_MANAGER and tmpl.letter_type != "salary_confirmation"
+            else None
+        )
         await self.audit.record(
             action="hr.letter.rendered",
             user_id=actor.id,
@@ -3109,8 +4466,440 @@ class HrWorkforceService:
         )
         await self.session.commit()
         return LetterRenderResponse(
-            template_id=tmpl.id, employee_id=emp.id, subject=subject, body=body
+            template_id=tmpl.id, employee_id=emp.id, subject=subject, body=body, digest=digest
         )
+
+    @staticmethod
+    def _letter_summary(
+        row: HrIssuedLetter, template_name: str, reviewer: User | None
+    ) -> LetterSummary:
+        return LetterSummary(
+            id=row.id,
+            template_name=template_name,
+            status=row.status,
+            created_at=row.created_at,
+            decided_at=row.decided_at,
+            can_decide=reviewer is not None
+            and row.status == "draft"
+            and row.prepared_by != reviewer.id,
+        )
+
+    def _letter_detail(
+        self, row: HrIssuedLetter, template_name: str, reviewer: User | None
+    ) -> LetterDetail:
+        subject, body = json.loads(decrypt_hr_value(row.content_encrypted) or "null")
+        return LetterDetail(
+            **self._letter_summary(row, template_name, reviewer).model_dump(),
+            subject=subject,
+            body=body,
+            rejection_reason=decrypt_hr_value(row.reason_encrypted) if reviewer else None,
+        )
+
+    async def draft_letter(self, payload: LetterDraftRequest, actor: User) -> LetterDetail:
+        self._require_letter_manager(actor)
+        emp = await self._require_employee(payload.employee_id, for_update=True)
+        existing = await self.session.get(HrIssuedLetter, payload.draft_id)
+        if existing is not None:
+            if (existing.prepared_by, existing.employee_id, existing.template_id) == (
+                actor.id,
+                emp.id,
+                payload.template_id,
+            ):
+                template = await self.session.get(HrLetterTemplate, existing.template_id)
+                assert template is not None
+                detail = self._letter_detail(existing, template.name, actor)
+                digest = self._letter_digest(
+                    actor,
+                    emp.id,
+                    existing.employee_revision,
+                    template.id,
+                    detail.subject,
+                    detail.body,
+                )
+                if digest == payload.expected_digest:
+                    return detail
+            raise AppException("The letter draft reference is already used.", status_code=409)
+        tmpl, subject, body = await self._letter_text(payload, actor, emp)
+        if tmpl.letter_type == "salary_confirmation":
+            raise AppException(
+                "Salary confirmation requires an approved compensation source.", status_code=409
+            )
+        digest = self._letter_digest(actor, emp.id, emp.record_revision, tmpl.id, subject, body)
+        if digest != payload.expected_digest:
+            raise AppException("The letter preview changed. Review it again.", status_code=409)
+        row = HrIssuedLetter(
+            id=payload.draft_id,
+            employee_id=emp.id,
+            template_id=tmpl.id,
+            employee_revision=emp.record_revision,
+            content_encrypted=encrypt_hr_value(json.dumps([subject, body])),
+            prepared_by=actor.id,
+        )
+        self.session.add(row)
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise AppException(
+                "The letter draft reference is already used.", status_code=409
+            ) from exc
+        await self._audit_letter(row, actor)
+        await self.session.commit()
+        return self._letter_detail(row, tmpl.name, actor)
+
+    async def _audit_letter(self, row: HrIssuedLetter, actor: User) -> None:
+        await self.audit.record(
+            action=f"hr.letter.{row.status}",
+            user_id=actor.id,
+            entity_type="hr_issued_letters",
+            entity_id=row.id,
+            new_values={"template_id": str(row.template_id), "employee_id": str(row.employee_id)},
+        )
+
+    async def _letter_employee(self, employee_id: UUID | None, actor: User) -> HrEmployee:
+        if employee_id is None:
+            return await self._employee_for_user(actor)
+        self._require_letter_manager(actor)
+        return await self._require_employee(employee_id)
+
+    async def list_letters(
+        self,
+        employee_id: UUID | None,
+        actor: User,
+        limit: int,
+        offset: int,
+        *,
+        issued_only: bool = False,
+    ) -> LetterListResponse:
+        emp = await self._letter_employee(employee_id, actor)
+        filters = [HrIssuedLetter.employee_id == emp.id]
+        if employee_id is None or issued_only:
+            filters.append(HrIssuedLetter.status == "issued")
+        rows = await self.session.execute(
+            select(HrIssuedLetter, HrLetterTemplate.name)
+            .join(HrLetterTemplate, HrLetterTemplate.id == HrIssuedLetter.template_id)
+            .where(*filters)
+            .order_by(HrIssuedLetter.created_at.desc(), HrIssuedLetter.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        total = await self.session.scalar(
+            select(func.count()).select_from(HrIssuedLetter).where(*filters)
+        )
+        reviewer = actor if employee_id is not None and emp.user_id != actor.id else None
+        return LetterListResponse(
+            items=[self._letter_summary(row, name, reviewer) for row, name in rows],
+            total=total or 0,
+        )
+
+    async def get_letter(
+        self, letter_id: UUID, employee_id: UUID | None, actor: User
+    ) -> LetterDetail:
+        emp = await self._letter_employee(employee_id, actor)
+        query = (
+            select(HrIssuedLetter, HrLetterTemplate.name)
+            .join(HrLetterTemplate, HrLetterTemplate.id == HrIssuedLetter.template_id)
+            .where(HrIssuedLetter.id == letter_id, HrIssuedLetter.employee_id == emp.id)
+        )
+        if employee_id is None:
+            query = query.where(HrIssuedLetter.status == "issued")
+        result = (await self.session.execute(query)).one_or_none()
+        if result is None:
+            raise NotFoundException("HR letter")
+        row, name = result
+        reviewer = actor if employee_id is not None and emp.user_id != actor.id else None
+        return self._letter_detail(row, name, reviewer)
+
+    async def decide_letter(
+        self, employee_id: UUID, letter_id: UUID, payload: LetterDecisionRequest, actor: User
+    ) -> LetterDetail:
+        self._require_letter_manager(actor)
+        emp = await self._require_employee(employee_id, for_update=True)
+        result = (
+            await self.session.execute(
+                select(HrIssuedLetter, HrLetterTemplate.name)
+                .join(HrLetterTemplate, HrLetterTemplate.id == HrIssuedLetter.template_id)
+                .where(HrIssuedLetter.id == letter_id, HrIssuedLetter.employee_id == emp.id)
+                .with_for_update(of=HrIssuedLetter)
+            )
+        ).one_or_none()
+        if result is None:
+            raise NotFoundException("HR letter")
+        row, name = result
+        if actor.id in (row.prepared_by, emp.user_id):
+            raise PermissionDeniedException("independent HR letter review")
+        reason = (payload.reason or "").strip()
+        if (payload.decision == "rejected") != bool(reason):
+            raise AppException("Provide a reason only when rejecting a letter.", status_code=422)
+        if row.status != "draft":
+            if (row.status, row.decided_by, decrypt_hr_value(row.reason_encrypted) or "") == (
+                payload.decision,
+                actor.id,
+                reason,
+            ):
+                return self._letter_detail(row, name, actor)
+            raise AppException("The letter already has a final decision.", status_code=409)
+        if payload.decision == "issued":
+            if emp.record_revision != row.employee_revision:
+                raise AppException("Employee data changed. Prepare a new draft.", status_code=409)
+            if emp.user_id is None or emp.employment_status not in REVIEW_EMPLOYMENT_STATES:
+                raise AppException(
+                    "The recipient needs an active linked employee profile.", status_code=409
+                )
+            recipient = await self.session.get(User, emp.user_id)
+            if recipient is None or not recipient.is_active or recipient.deleted_at is not None:
+                raise AppException("The recipient needs an active portal account.", status_code=409)
+        # Verify the retained text can be read before finalizing a decision.
+        self._letter_detail(row, name, actor)
+        row.status = payload.decision
+        row.decided_by = actor.id
+        row.decided_at = utc_now()
+        row.reason_encrypted = encrypt_hr_value(reason) if reason else None
+        await self._audit_letter(row, actor)
+        await self.session.commit()
+        return self._letter_detail(row, name, actor)
+
+    async def _candidate_letter_text(
+        self, application: HrApplication, template_id: UUID
+    ) -> tuple[HrLetterTemplate, str, str]:
+        if application.stage != "rejected":
+            raise AppException(
+                "Reject the application before drafting correspondence.", status_code=409
+            )
+        if await self.session.scalar(
+            select(HrOffer.id)
+            .where(
+                HrOffer.application_id == application.id,
+                HrOffer.status.in_(("accepted", "converted")),
+            )
+            .limit(1)
+        ):
+            raise AppException(
+                "Resolve the accepted offer before preparing correspondence.", status_code=409
+            )
+        template = await self.session.scalar(
+            select(HrLetterTemplate).where(
+                HrLetterTemplate.id == template_id,
+                HrLetterTemplate.is_active.is_(True),
+                HrLetterTemplate.letter_type == "candidate_rejection",
+            )
+        )
+        if template is None:
+            raise NotFoundException("Candidate rejection template")
+        profile = (
+            await self.session.execute(
+                select(HrCandidate.full_name, HrRequisition.title)
+                .select_from(HrCandidate)
+                .join(HrRequisition, HrRequisition.id == application.requisition_id)
+                .where(
+                    HrCandidate.id == application.candidate_id,
+                    HrCandidate.deleted_at.is_(None),
+                    HrRequisition.deleted_at.is_(None),
+                )
+            )
+        ).one_or_none()
+        if profile is None:
+            raise NotFoundException("Candidate or requisition")
+        context = {"candidate_name": profile.full_name, "position_title": profile.title}
+        self._validate_letter_template(
+            template.subject_template, template.body_template, allowed_fields=set(context)
+        )
+        subject, body = self._format_letter_text(template, context)
+        if "\r" in subject or "\n" in subject:
+            raise AppException("Correspondence subjects must be on one line.", status_code=422)
+        return template, subject, body
+
+    @staticmethod
+    def _candidate_letter_summary(
+        row: HrCandidateCorrespondence, template_name: str, actor: User
+    ) -> LetterSummary:
+        return LetterSummary(
+            id=row.id,
+            template_name=template_name,
+            status=row.status,
+            can_decide=row.status == "draft" and row.prepared_by != actor.id,
+            created_at=row.created_at,
+            decided_at=row.decided_at,
+        )
+
+    def _candidate_letter_detail(
+        self, row: HrCandidateCorrespondence, template_name: str, actor: User
+    ) -> CandidateCorrespondenceDetail:
+        content = decrypt_hr_value(row.content_encrypted)
+        assert content is not None
+        subject, body = json.loads(content)
+        digest = hashlib.sha256(
+            json.dumps([str(row.application_id), str(row.id), subject, body]).encode()
+        ).hexdigest()
+        return CandidateCorrespondenceDetail(
+            **self._candidate_letter_summary(row, template_name, actor).model_dump(),
+            subject=subject,
+            body=body,
+            digest=digest,
+            rejection_reason=decrypt_hr_value(row.reason_encrypted),
+        )
+
+    async def _audit_candidate_letter(
+        self, row: HrCandidateCorrespondence, actor: User, action: str
+    ) -> None:
+        await self.audit.record(
+            action=f"hr.candidate_correspondence.{action}",
+            user_id=actor.id,
+            entity_type="hr_candidate_correspondence",
+            entity_id=row.id,
+            new_values={
+                "application_id": str(row.application_id),
+                "template_id": str(row.template_id),
+            },
+        )
+
+    async def draft_candidate_correspondence(
+        self, application_id: UUID, payload: CandidateCorrespondenceCreateRequest, actor: User
+    ) -> CandidateCorrespondenceDetail:
+        self._require_letter_manager(actor)
+        application = await self.get_application(application_id, lock=True)
+        existing = await self.session.get(HrCandidateCorrespondence, payload.draft_id)
+        if existing is not None:
+            if (existing.application_id, existing.template_id, existing.prepared_by) == (
+                application.id,
+                payload.template_id,
+                actor.id,
+            ):
+                return await self.get_candidate_correspondence(application_id, existing.id, actor)
+            raise AppException("This correspondence reference is already used.", status_code=409)
+        if await self.session.scalar(
+            select(HrCandidateCorrespondence.id)
+            .where(
+                HrCandidateCorrespondence.application_id == application.id,
+                HrCandidateCorrespondence.status.in_(("draft", "approved")),
+            )
+            .limit(1)
+        ):
+            raise AppException(
+                "Review the existing draft or use the approved correspondence.", status_code=409
+            )
+        template, subject, body = await self._candidate_letter_text(
+            application, payload.template_id
+        )
+        content = encrypt_hr_value(json.dumps([subject, body]))
+        assert content is not None
+        row = HrCandidateCorrespondence(
+            id=payload.draft_id,
+            application_id=application.id,
+            template_id=template.id,
+            prepared_by=actor.id,
+            content_encrypted=content,
+        )
+        self.session.add(row)
+        try:
+            await self.session.flush()
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) == "23505":
+                raise AppException(
+                    "This correspondence reference is already used.", status_code=409
+                ) from error
+            raise
+        await self._audit_candidate_letter(row, actor, "drafted")
+        await self.session.commit()
+        return self._candidate_letter_detail(row, template.name, actor)
+
+    async def list_candidate_correspondence(
+        self, application_id: UUID, actor: User, *, limit: int, offset: int
+    ) -> LetterListResponse:
+        self._require_letter_manager(actor)
+        await self.get_application(application_id)
+        rows = await self.session.execute(
+            select(HrCandidateCorrespondence, HrLetterTemplate.name)
+            .join(HrLetterTemplate, HrLetterTemplate.id == HrCandidateCorrespondence.template_id)
+            .where(HrCandidateCorrespondence.application_id == application_id)
+            .order_by(
+                HrCandidateCorrespondence.created_at.desc(), HrCandidateCorrespondence.id.desc()
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        total = await self.session.scalar(
+            select(func.count())
+            .select_from(HrCandidateCorrespondence)
+            .where(HrCandidateCorrespondence.application_id == application_id)
+        )
+        return LetterListResponse(
+            items=[self._candidate_letter_summary(row, name, actor) for row, name in rows],
+            total=total or 0,
+        )
+
+    async def _candidate_correspondence_row(
+        self, application_id: UUID, draft_id: UUID
+    ) -> tuple[HrCandidateCorrespondence, str]:
+        result = (
+            await self.session.execute(
+                select(HrCandidateCorrespondence, HrLetterTemplate.name)
+                .join(
+                    HrLetterTemplate, HrLetterTemplate.id == HrCandidateCorrespondence.template_id
+                )
+                .where(
+                    HrCandidateCorrespondence.id == draft_id,
+                    HrCandidateCorrespondence.application_id == application_id,
+                )
+            )
+        ).one_or_none()
+        if result is None:
+            raise NotFoundException("Candidate correspondence")
+        return result[0], result[1]
+
+    async def get_candidate_correspondence(
+        self, application_id: UUID, draft_id: UUID, actor: User
+    ) -> CandidateCorrespondenceDetail:
+        self._require_letter_manager(actor)
+        row, name = await self._candidate_correspondence_row(application_id, draft_id)
+        detail = self._candidate_letter_detail(row, name, actor)
+        await self._audit_candidate_letter(row, actor, "viewed")
+        await self.session.commit()
+        return detail
+
+    async def decide_candidate_correspondence(
+        self,
+        application_id: UUID,
+        draft_id: UUID,
+        payload: CandidateCorrespondenceDecisionRequest,
+        actor: User,
+    ) -> CandidateCorrespondenceDetail:
+        self._require_letter_manager(actor)
+        application = await self.get_application(application_id, lock=True)
+        row, name = await self._candidate_correspondence_row(application.id, draft_id)
+        if row.prepared_by == actor.id:
+            raise PermissionDeniedException("independent candidate correspondence review")
+        detail = self._candidate_letter_detail(row, name, actor)
+        if detail.digest != payload.expected_digest:
+            raise AppException(
+                "Open the exact correspondence draft before deciding.", status_code=409
+            )
+        reason = payload.reason or ""
+        if (payload.decision == "rejected") != bool(reason):
+            raise AppException(
+                "Provide a reason only when rejecting correspondence.", status_code=422
+            )
+        if row.status != "draft":
+            if (row.status, row.decided_by, detail.rejection_reason or "") == (
+                payload.decision,
+                actor.id,
+                reason,
+            ):
+                return detail
+            raise AppException("This correspondence already has a final decision.", status_code=409)
+        if payload.decision == "approved":
+            _, subject, body = await self._candidate_letter_text(application, row.template_id)
+            if (subject, body) != (detail.subject, detail.body):
+                raise AppException(
+                    "The source changed. Reject this draft and prepare a new one.", status_code=409
+                )
+        row.status = payload.decision
+        row.decided_by = actor.id
+        row.decided_at = utc_now()
+        row.reason_encrypted = encrypt_hr_value(reason) if reason else None
+        await self._audit_candidate_letter(row, actor, payload.decision)
+        await self.session.commit()
+        return self._candidate_letter_detail(row, name, actor)
 
     async def create_service_request(
         self, payload: HrServiceRequestCreateRequest, actor: User
@@ -3139,18 +4928,78 @@ class HrWorkforceService:
         await self._commit_and_refresh(req)
         return req
 
+    async def get_service_request(
+        self, req_id: UUID, *, for_update: bool = False
+    ) -> HrServiceRequest:
+        query = select(HrServiceRequest).where(HrServiceRequest.id == req_id)
+        if for_update:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        req = await self.session.scalar(query)
+        if req is None:
+            raise NotFoundException("HR service request")
+        return req
+
+    async def list_service_request_assignees(self) -> list[HrServiceRequestAssignee]:
+        rows = await self.session.execute(
+            select(User.id, User.full_name)
+            .where(
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                User.role.in_(roles_with_permission(PERMISSION_HR_REQUESTS_PROCESS)),
+            )
+            .order_by(User.full_name, User.id)
+        )
+        return [HrServiceRequestAssignee(id=row.id, full_name=row.full_name) for row in rows]
+
+    async def assign_service_request(
+        self, req_id: UUID, payload: HrServiceRequestAssignmentRequest, actor: User
+    ) -> HrServiceRequest:
+        ensure_permission(actor, PERMISSION_HR_REQUESTS_PROCESS)
+        req = await self.get_service_request(req_id, for_update=True)
+        if req.updated_at != payload.expected_updated_at:
+            raise AppException(
+                "This request changed. Refresh it before assigning it.",
+                status_code=409,
+                error_code="HR_SERVICE_REQUEST_CONFLICT",
+            )
+        if req.status not in {"open", "in_review", "approved"}:
+            raise AppException("Only an active request can be assigned.", status_code=409)
+        reason = payload.reason.strip()
+        if not reason:
+            raise AppException("Enter a reason for the handoff.", status_code=422)
+        assignee = await self.session.scalar(
+            select(User)
+            .where(
+                User.id == payload.assigned_to_id,
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+                User.role.in_(roles_with_permission(PERMISSION_HR_REQUESTS_PROCESS)),
+            )
+            .with_for_update()
+        )
+        if assignee is None:
+            raise NotFoundException("Eligible HR request assignee")
+        if req.assigned_to_id == assignee.id:
+            return req
+        previous = str(req.assigned_to_id) if req.assigned_to_id else None
+        req.assigned_to_id = assignee.id
+        await self.audit.record(
+            action="hr.service_request.assigned",
+            user_id=actor.id,
+            entity_type="hr_hr_requests",
+            entity_id=req.id,
+            comments=reason,
+            old_values={"assigned_to_id": previous},
+            new_values={"assigned_to_id": str(assignee.id)},
+        )
+        await self._commit_and_refresh(req)
+        return req
+
     async def resolve_service_request(
         self, req_id: UUID, payload: HrServiceRequestResolveRequest, actor: User
     ) -> HrServiceRequest:
         ensure_permission(actor, PERMISSION_HR_REQUESTS_PROCESS)
-        req = await self.session.scalar(
-            select(HrServiceRequest)
-            .where(HrServiceRequest.id == req_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        if req is None:
-            raise NotFoundException("HR service request")
+        req = await self.get_service_request(req_id, for_update=True)
         if (
             payload.expected_updated_at is not None
             and req.updated_at != payload.expected_updated_at
@@ -3167,6 +5016,15 @@ class HrWorkforceService:
         }
         if payload.status not in allowed.get(req.status, set()):
             raise AppException("This service request cannot make that transition.", status_code=409)
+        if payload.status in {"in_review", "completed"} and req.assigned_to_id not in {
+            None,
+            actor.id,
+        }:
+            raise AppException(
+                "The assigned HR user must take this action. Reassign the request first.",
+                status_code=409,
+                error_code="HR_SERVICE_REQUEST_ASSIGNED_ELSEWHERE",
+            )
         if payload.status in {"approved", "rejected"} and not has_permission(
             actor, PERMISSION_HR_EMPLOYEES_SENSITIVE
         ):
@@ -3181,12 +5039,33 @@ class HrWorkforceService:
                 or doc.category != "ordinary"
             ):
                 raise NotFoundException("HR Document")
+        letter_id = payload.generated_letter_id
+        if letter_id is not None:
+            if payload.status != "completed" or payload.expected_updated_at is None:
+                raise AppException(
+                    "Select a letter only when completing the current version of the request.",
+                    status_code=422,
+                )
+            self._require_letter_manager(actor)
+            issued = await self.session.scalar(
+                select(HrIssuedLetter.id).where(
+                    HrIssuedLetter.id == letter_id,
+                    HrIssuedLetter.employee_id == req.employee_id,
+                    HrIssuedLetter.status == "issued",
+                )
+            )
+            if issued is None:
+                raise NotFoundException("Issued HR letter")
         prior_status = req.status
+        previous_letter = req.generated_letter_id
+        prior_assignee = str(req.assigned_to_id) if req.assigned_to_id else None
         req.status = payload.status
         if "resolution_notes" in payload.model_fields_set:
             req.resolution_notes = payload.resolution_notes
         if "generated_document_id" in payload.model_fields_set:
             req.generated_document_id = payload.generated_document_id
+        if letter_id is not None:
+            req.generated_letter_id = letter_id
         if payload.status in {"approved", "completed", "rejected"}:
             req.resolved_by_id = actor.id
             req.resolved_at = utc_now()
@@ -3197,8 +5076,18 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_hr_requests",
             entity_id=req.id,
-            old_values={"status": prior_status},
-            new_values={"status": req.status},
+            old_values={
+                "status": prior_status,
+                "assigned_to_id": prior_assignee,
+                "generated_letter_id": str(previous_letter) if previous_letter else None,
+            },
+            new_values={
+                "status": req.status,
+                "generated_letter_id": str(req.generated_letter_id)
+                if req.generated_letter_id
+                else None,
+                "assigned_to_id": str(req.assigned_to_id) if req.assigned_to_id else None,
+            },
         )
         await self._commit_and_refresh(req)
         return req
@@ -3222,6 +5111,7 @@ class HrWorkforceService:
                 error_code="HR_SERVICE_REQUEST_CONFLICT",
             )
         prior_status = req.status
+        prior_assignee = str(req.assigned_to_id) if req.assigned_to_id else None
         req.status = "open"
         req.assigned_to_id = None
         req.resolved_by_id = None
@@ -3231,8 +5121,11 @@ class HrWorkforceService:
             user_id=actor.id,
             entity_type="hr_hr_requests",
             entity_id=req.id,
-            old_values={"status": prior_status},
-            new_values={"status": req.status},
+            old_values={"status": prior_status, "assigned_to_id": prior_assignee},
+            new_values={
+                "status": req.status,
+                "assigned_to_id": str(req.assigned_to_id) if req.assigned_to_id else None,
+            },
         )
         await self._commit_and_refresh(req)
         return req
@@ -3252,6 +5145,8 @@ class HrWorkforceService:
         self, payload: OffboardingInitiateRequest, actor: User
     ) -> OffboardingCaseResponse:
         emp = await self._require_employee(payload.employee_id, for_update=True)
+        if emp.join_date is not None and payload.last_working_date < emp.join_date:
+            raise AppException("The last working day precedes employment.", status_code=422)
         if payload.notice_date and payload.last_working_date < payload.notice_date:
             raise AppException("Last working day cannot precede notice.", status_code=422)
         if emp.employment_status in {"notice_period", "resigned", "terminated", "archived"}:
@@ -3271,9 +5166,9 @@ class HrWorkforceService:
         await self.session.flush()
         steps = [
             ("hr", "Exit interview & employee file closure"),
-            ("it_admin", "Revoke portal access & IT credentials"),
-            ("store_inventory", "Return site tools, PPE, and store items"),
-            ("finance_accounts", "Clear advances & final settlement check"),
+            (IT_AREA, "Revoke IT access and return assigned devices"),
+            (STORE_AREA, "Return site tools, PPE, and store items"),
+            (FINANCE_AREA, "Review advances and final settlement"),
             ("project_ops", "Handover active project site duties"),
         ]
         for area, title in steps:
@@ -3320,12 +5215,10 @@ class HrWorkforceService:
         if case is None or case.status == "completed":
             raise AppException("The offboarding case is closed.", status_code=409)
         await self.session.refresh(step)
+        if step.department_area in {STORE_AREA, IT_AREA, FINANCE_AREA}:
+            raise PermissionDeniedException("department owner clearance")
         if payload.status in {"cleared", "waived"} and not (payload.notes or "").strip():
             raise AppException("Provide a clearance or exception reference.", status_code=422)
-        if step.department_area == "it_admin" and payload.status in {"cleared", "waived"}:
-            emp = await self._require_employee(case.employee_id, for_update=True)
-            if emp.user_id:
-                case.access_revoked_at = await self._confirmed_access_revocation(emp)
         step.status = payload.status
         step.notes = payload.notes
         if payload.status in {"cleared", "waived"}:
@@ -3344,28 +5237,6 @@ class HrWorkforceService:
         )
         await self._commit_and_refresh(step, case)
         return await self._serialize_offboarding_case(case)
-
-    async def _confirmed_access_revocation(self, employee: HrEmployee) -> datetime:
-        deactivated_at = await self.session.scalar(
-            select(HrAccessRequest.admin_actioned_at)
-            .join(User, User.id == HrAccessRequest.linked_user_id)
-            .where(
-                HrAccessRequest.employee_id == employee.id,
-                HrAccessRequest.request_type == "deactivate",
-                HrAccessRequest.status == "admin_actioned",
-                User.id == employee.user_id,
-                User.is_active.is_(False),
-            )
-            .order_by(HrAccessRequest.admin_actioned_at.desc().nulls_last())
-            .limit(1)
-        )
-        if deactivated_at is None:
-            raise AppException(
-                "A director must fulfill a deactivation request before IT clearance.",
-                status_code=409,
-                error_code="ACCESS_REVOCATION_REQUIRED",
-            )
-        return deactivated_at
 
     async def complete_offboarding(
         self, case_id: UUID, payload: OffboardingCompleteRequest, actor: User
@@ -3388,9 +5259,30 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="CLEARANCE_INCOMPLETE",
             )
+        for area in (STORE_AREA, IT_AREA):
+            custody_step = next((step for step in steps if step.department_area == area), None)
+            if custody_step is None:
+                raise AppException("A custody clearance step is missing.", status_code=409)
+            await require_custody_clearance(self.session, case, custody_step)
+        finance_step = next((step for step in steps if step.department_area == FINANCE_AREA), None)
+        if finance_step is None:
+            raise AppException("The Finance clearance step is missing.", status_code=409)
+        await require_settlement_clearance(self.session, case, finance_step)
         emp = await self._require_employee(case.employee_id, for_update=True)
         if emp.user_id:
-            case.access_revoked_at = await self._confirmed_access_revocation(emp)
+            case.access_revoked_at = await confirmed_access_revocation(self.session, emp)
+        if emp.join_date is not None and case.last_working_date < emp.join_date:
+            raise AppException("The last working day precedes employment.", status_code=409)
+        period = await self.session.scalar(
+            select(HrEmploymentPeriod).where(
+                HrEmploymentPeriod.employee_id == emp.id, HrEmploymentPeriod.ended_on.is_(None)
+            )
+        )
+        if period is None:
+            period = HrEmploymentPeriod(employee_id=emp.id, started_on=emp.join_date)
+            self.session.add(period)
+        period.ended_on = case.last_working_date
+        period.separation_case_id = case.id
         new_emp_status = "resigned" if case.separation_type == "resignation" else "terminated"
         prev_status = emp.employment_status
         emp.employment_status = new_emp_status
@@ -3465,7 +5357,15 @@ class HrWorkforceService:
     # --- P2 Policy-Gated Modules (HR-019 to HR-024) ---
 
     async def create_goal(self, payload: GoalCreateRequest, actor: User) -> HrGoal:
-        await self._require_employee(payload.employee_id)
+        employee = await self._require_employee(payload.employee_id, for_update=True)
+        cycle = await self.session.scalar(
+            select(HrReviewCycle).where(HrReviewCycle.code == payload.cycle_name)
+        )
+        if cycle is None:
+            raise NotFoundException("Review cycle")
+        if payload.target_date and not cycle.start_date <= payload.target_date <= cycle.end_date:
+            raise AppException("The goal target must be inside the review cycle.", status_code=422)
+        await self._ensure_goals_editable(employee.id, cycle.code)
         goal = HrGoal(**payload.model_dump())
         self.session.add(goal)
         await self.session.flush()
@@ -3475,10 +5375,26 @@ class HrWorkforceService:
         await self._commit_and_refresh(goal)
         return goal
 
+    async def _ensure_goals_editable(self, employee_id: UUID, cycle_code: str) -> None:
+        if await self.session.scalar(
+            select(HrReview.id)
+            .join(HrReviewCycle, HrReviewCycle.id == HrReview.cycle_id)
+            .where(HrReview.employee_id == employee_id, HrReviewCycle.code == cycle_code)
+            .limit(1)
+        ):
+            raise AppException("Goals are retained once the review is opened.", status_code=409)
+
     async def update_goal(self, goal_id: UUID, payload: GoalUpdateRequest, actor: User) -> HrGoal:
-        goal = await self.session.scalar(select(HrGoal).where(HrGoal.id == goal_id))
+        employee_id = await self.session.scalar(
+            select(HrGoal.employee_id).where(HrGoal.id == goal_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Goal")
+        await self._require_employee(employee_id, for_update=True)
+        goal = await self.session.get(HrGoal, goal_id)
         if goal is None:
             raise NotFoundException("Goal")
+        await self._ensure_goals_editable(goal.employee_id, goal.cycle_name)
         if payload.progress_percent is not None:
             goal.progress_percent = payload.progress_percent
         if payload.status is not None:
@@ -3526,7 +5442,54 @@ class HrWorkforceService:
         return rows, len(rows)
 
     async def create_review(self, payload: ReviewCreateRequest, actor: User) -> HrReview:
-        rev = HrReview(**payload.model_dump())
+        if payload.status != "draft" or any(
+            value is not None
+            for value in (
+                payload.self_rating,
+                payload.manager_rating,
+                payload.final_rating,
+                payload.summary_notes,
+            )
+        ):
+            raise AppException(
+                "Start a draft and record decisions through its participants.", status_code=422
+            )
+        employee = await self._require_employee(payload.employee_id, for_update=True)
+        manager = await eligible_reviewer(self.session, employee)
+        if actor.id == employee.user_id or actor.id == manager:
+            raise PermissionDeniedException("open one's own participant review")
+        if (
+            employee.user_id is None
+            or manager is None
+            or (
+                payload.reviewer_employee_id is not None
+                and payload.reviewer_employee_id != employee.manager_employee_id
+            )
+        ):
+            raise AppException(
+                "Link the employee and authorize the current direct reviewer before opening.",
+                status_code=409,
+            )
+        cycle = await self.session.get(HrReviewCycle, payload.cycle_id)
+        if cycle is None:
+            raise NotFoundException("Review cycle")
+        await self._ensure_goals_editable(employee.id, cycle.code)
+        if not await self.session.scalar(
+            select(HrGoal.id)
+            .where(
+                HrGoal.employee_id == employee.id,
+                HrGoal.cycle_name == cycle.code,
+                HrGoal.status == "active",
+            )
+            .limit(1)
+        ):
+            raise AppException("Record a goal for this employee and cycle first.", status_code=409)
+        rev = HrReview(
+            employee_id=employee.id,
+            cycle_id=cycle.id,
+            reviewer_employee_id=employee.manager_employee_id,
+            status="draft",
+        )
         self.session.add(rev)
         await self.session.flush()
         await self.audit.record(
@@ -3544,6 +5507,47 @@ class HrWorkforceService:
             stmt = stmt.where(HrReview.employee_id == employee_id)
         rows = list(await self.session.scalars(stmt.order_by(HrReview.created_at.desc())))
         return rows, len(rows)
+
+    async def list_self_training(
+        self, actor: User, *, limit: int, offset: int
+    ) -> SelfTrainingListResponse:
+        employee = await self.require_self_employee(actor)
+        own = HrTrainingEnrollment.employee_id == employee.id
+        rows = await self.session.execute(
+            select(
+                HrTrainingEnrollment,
+                HrTrainingCourse.title,
+                HrTrainingCompletion.certificate_id,
+                HrCertification.expiry_date,
+            )
+            .join(HrTrainingCourse, HrTrainingCourse.id == HrTrainingEnrollment.course_id)
+            .outerjoin(
+                HrTrainingCompletion, HrTrainingCompletion.enrollment_id == HrTrainingEnrollment.id
+            )
+            .outerjoin(HrCertification, HrCertification.id == HrTrainingCompletion.certificate_id)
+            .where(own)
+            .order_by(HrTrainingEnrollment.created_at.desc(), HrTrainingEnrollment.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        total = await self.session.scalar(select(func.count(HrTrainingEnrollment.id)).where(own))
+        today = business_today()
+        return SelfTrainingListResponse(
+            items=[
+                SelfTrainingItem(
+                    enrollment_id=row.id,
+                    course_title=title,
+                    status=row.status,
+                    scheduled_date=row.scheduled_date,
+                    completed_date=row.completed_date,
+                    verified=certificate_id is not None,
+                    certificate_expiry=expiry,
+                    certificate_expired=expiry is not None and expiry < today,
+                )
+                for row, title, certificate_id, expiry in rows
+            ],
+            total=total or 0,
+        )
 
     async def create_training_course(
         self, payload: TrainingCourseCreateRequest, actor: User
@@ -3577,6 +5581,33 @@ class HrWorkforceService:
     async def create_training_enrollment(
         self, payload: TrainingEnrollmentCreateRequest, actor: User
     ) -> HrTrainingEnrollment:
+        employee = await self._require_employee(payload.employee_id, for_update=True)
+        if employee.employment_status not in {
+            "onboarding",
+            "active",
+            "on_probation",
+            "on_leave",
+            "notice_period",
+        }:
+            raise AppException(
+                "Enroll an employee in a current employment period.", status_code=409
+            )
+        if not await self.session.scalar(
+            select(HrTrainingCourse.id).where(
+                HrTrainingCourse.id == payload.course_id, HrTrainingCourse.is_active.is_(True)
+            )
+        ):
+            raise NotFoundException("Active training course")
+        if await self.session.scalar(
+            select(HrTrainingEnrollment.id)
+            .where(
+                HrTrainingEnrollment.employee_id == employee.id,
+                HrTrainingEnrollment.course_id == payload.course_id,
+                HrTrainingEnrollment.status.in_(("enrolled", "in_progress")),
+            )
+            .limit(1)
+        ):
+            raise AppException("This employee already has an open enrollment.", status_code=409)
         enr = HrTrainingEnrollment(**payload.model_dump())
         self.session.add(enr)
         await self.session.flush()
@@ -3593,13 +5624,23 @@ class HrWorkforceService:
         self, enrollment_id: UUID, payload: TrainingEnrollmentUpdateRequest, actor: User
     ) -> HrTrainingEnrollment:
         enr = await self.session.scalar(
-            select(HrTrainingEnrollment).where(HrTrainingEnrollment.id == enrollment_id)
+            select(HrTrainingEnrollment)
+            .where(HrTrainingEnrollment.id == enrollment_id)
+            .with_for_update()
         )
         if enr is None:
             raise NotFoundException("Training enrollment")
+        if payload.status == "completed":
+            raise AppException(
+                "Verify certificate evidence to complete training.",
+                status_code=409,
+                error_code="TRAINING_EVIDENCE_REQUIRED",
+            )
+        if enr.status not in {"enrolled", "in_progress"}:
+            raise AppException("The training enrollment is closed.", status_code=409)
+        if payload.completed_date is not None or payload.score is not None:
+            raise AppException("Date and score belong to verified completion.", status_code=422)
         enr.status = payload.status
-        enr.completed_date = payload.completed_date
-        enr.score = payload.score
         await self.audit.record(
             action="hr.training.updated",
             user_id=actor.id,
@@ -3608,6 +5649,167 @@ class HrWorkforceService:
         )
         await self._commit_and_refresh(enr)
         return enr
+
+    async def get_training_completion(self, enrollment_id: UUID) -> TrainingCompletionResponse:
+        result = (
+            await self.session.execute(
+                select(HrTrainingCompletion, HrTrainingEnrollment, HrDocumentVersion)
+                .join(
+                    HrTrainingEnrollment,
+                    HrTrainingEnrollment.id == HrTrainingCompletion.enrollment_id,
+                )
+                .join(
+                    HrDocumentVersion,
+                    HrDocumentVersion.id == HrTrainingCompletion.document_version_id,
+                )
+                .where(HrTrainingCompletion.enrollment_id == enrollment_id)
+            )
+        ).one_or_none()
+        if result is None:
+            raise NotFoundException("Verified training completion")
+        evidence, enrollment, version = result
+        if enrollment.completed_date is None:
+            raise AppException("The retained training completion is incomplete.", status_code=409)
+        return TrainingCompletionResponse(
+            enrollment_id=enrollment.id,
+            certificate_id=evidence.certificate_id,
+            document_id=version.document_id,
+            version_number=version.version_number,
+            completed_date=enrollment.completed_date,
+            score=enrollment.score,
+            verified_at=evidence.verified_at,
+            verified_by_id=evidence.verified_by_id,
+        )
+
+    async def complete_training_enrollment(
+        self, enrollment_id: UUID, payload: TrainingCompletionRequest, actor: User
+    ) -> TrainingCompletionResponse:
+        employee_id = await self.session.scalar(
+            select(HrTrainingEnrollment.employee_id).where(HrTrainingEnrollment.id == enrollment_id)
+        )
+        if employee_id is None:
+            raise NotFoundException("Training enrollment")
+        employee = await self._require_employee(employee_id, for_update=True)
+        if employee.user_id == actor.id:
+            raise PermissionDeniedException("verify one's own training completion")
+        enrollment = await self.session.scalar(
+            select(HrTrainingEnrollment)
+            .where(HrTrainingEnrollment.id == enrollment_id)
+            .with_for_update()
+        )
+        if enrollment is None:
+            raise NotFoundException("Training enrollment")
+        receipt = await self.session.get(HrTrainingCompletion, enrollment_id)
+        if receipt is not None:
+            verified = await self.get_training_completion(enrollment_id)
+            if receipt.verified_by_id == actor.id and (
+                verified.document_id,
+                verified.version_number,
+                verified.completed_date,
+                verified.score,
+            ) == (
+                payload.document_id,
+                payload.version_number,
+                payload.completed_date,
+                payload.score,
+            ):
+                return verified
+            raise AppException("The training completion is already verified.", status_code=409)
+        if enrollment.status not in {"enrolled", "in_progress"}:
+            raise AppException("The training enrollment is closed.", status_code=409)
+        today = business_today()
+        if (
+            payload.completed_date > today
+            or (employee.join_date is not None and payload.completed_date < employee.join_date)
+            or (
+                employee.termination_date is not None
+                and payload.completed_date > employee.termination_date
+            )
+            or (
+                enrollment.scheduled_date is not None
+                and payload.completed_date < enrollment.scheduled_date
+            )
+        ):
+            raise AppException(
+                "Choose a completed date within the scheduled employment period.", status_code=422
+            )
+
+        document = await self._get_hr_document(payload.document_id, for_update=True)
+        if (
+            document.employee_id != employee.id
+            or document.candidate_id is not None
+            or document.document_type != "training_certificate"
+            or document.category != "ordinary"
+        ):
+            raise NotFoundException("Employee training certificate")
+        version = await self.session.scalar(
+            select(HrDocumentVersion).where(
+                HrDocumentVersion.document_id == document.id,
+                HrDocumentVersion.version_number == payload.version_number,
+            )
+        )
+        if (
+            version is None
+            or version.status != "active"
+            or document.status != "active"
+            or document.current_version != payload.version_number
+        ):
+            raise AppException(
+                "Select the current approved training certificate version.", status_code=409
+            )
+        if (
+            document.issue_date is None
+            or document.issue_date < payload.completed_date
+            or document.issue_date > today
+            or (document.expiry_date is not None and document.expiry_date < document.issue_date)
+        ):
+            raise AppException(
+                "The certificate needs a valid issue date and expiry window.", status_code=422
+            )
+        if await self.session.scalar(
+            select(HrTrainingCompletion.enrollment_id).where(
+                HrTrainingCompletion.document_version_id == version.id
+            )
+        ):
+            raise AppException(
+                "This certificate version is already used for a completion.", status_code=409
+            )
+
+        certificate = HrCertification(
+            employee_id=employee.id,
+            name=document.title,
+            document_id=document.id,
+            issuing_body=document.issuing_authority,
+            certificate_number=document.reference_number,
+            issued_date=document.issue_date,
+            expiry_date=document.expiry_date,
+            status="valid",
+        )
+        self.session.add(certificate)
+        await self.session.flush()
+        enrollment.status = "completed"
+        enrollment.completed_date = payload.completed_date
+        enrollment.score = payload.score
+        self.session.add(
+            HrTrainingCompletion(
+                enrollment_id=enrollment.id,
+                certificate_id=certificate.id,
+                document_version_id=version.id,
+                verified_by_id=actor.id,
+            )
+        )
+        await self.audit.record(
+            action="hr.training.completed",
+            user_id=actor.id,
+            entity_type="hr_training_enrollments",
+            entity_id=enrollment.id,
+            new_values={
+                "certificate_id": str(certificate.id),
+                "evidence_version": version.version_number,
+            },
+        )
+        await self.session.commit()
+        return await self.get_training_completion(enrollment_id)
 
     async def list_training_enrollments(
         self, *, employee_id: UUID | None = None
@@ -3624,6 +5826,15 @@ class HrWorkforceService:
         self, payload: CertificationCreateRequest, actor: User
     ) -> HrCertification:
         await self._require_employee(payload.employee_id)
+        if payload.document_id is not None:
+            document = await self._get_hr_document(payload.document_id)
+            self._ensure_hr_doc_access(document, actor)
+            if document.employee_id != payload.employee_id or document.candidate_id is not None:
+                raise NotFoundException("Employee certificate")
+            if document.document_type == "training_certificate":
+                raise AppException(
+                    "Verify the associated training enrollment first.", status_code=409
+                )
         cert = HrCertification(**payload.model_dump())
         self.session.add(cert)
         await self.session.flush()
@@ -3763,7 +5974,7 @@ class HrWorkforceService:
     async def create_compensation_term(
         self, payload: CompensationTermCreateRequest, actor: User
     ) -> CompensationTermResponse:
-        await self._require_employee(payload.employee_id)
+        await self._require_employee(payload.employee_id, for_update=True)
         # Supersede prior current terms
         prev_rows = list(
             await self.session.scalars(
@@ -3775,7 +5986,6 @@ class HrWorkforceService:
         )
         for prev in prev_rows:
             prev.is_current = False
-        import json
 
         term = HrCompensationTerm(
             employee_id=payload.employee_id,
@@ -3882,7 +6092,7 @@ class HrWorkforceService:
 
     async def approve_payroll_policy(self, policy_id: UUID, actor: User) -> HrPayrollPolicy:
         pol = await self.session.scalar(
-            select(HrPayrollPolicy).where(HrPayrollPolicy.id == policy_id)
+            select(HrPayrollPolicy).where(HrPayrollPolicy.id == policy_id).with_for_update()
         )
         if pol is None:
             raise NotFoundException("Payroll policy")
@@ -3898,6 +6108,11 @@ class HrWorkforceService:
                 status_code=409,
                 error_code="DUAL_APPROVAL_REQUIRED",
             )
+        if pol.is_approved:
+            if pol.second_approved_by_id == actor.id:
+                return pol
+            raise AppException("This payroll policy already has a final approval.", status_code=409)
+        validate_payroll_rules(pol.rules_json)
         pol.second_approved_by_id = actor.id
         pol.is_approved = True
         pol.approved_at = utc_now()
@@ -3921,6 +6136,20 @@ class HrWorkforceService:
     async def create_payroll_period(
         self, payload: PayrollPeriodCreateRequest, actor: User
     ) -> HrPayrollPeriod:
+        if not payload.period_start <= payload.period_end <= payload.pay_date:
+            raise AppException(
+                "Enter the payroll start, end and pay dates in order.", status_code=422
+            )
+        await lock_payroll_periods(self.session)
+        if await self.session.scalar(
+            select(HrPayrollPeriod.id)
+            .where(
+                HrPayrollPeriod.period_start <= payload.period_end,
+                HrPayrollPeriod.period_end >= payload.period_start,
+            )
+            .limit(1)
+        ):
+            raise AppException("This payroll period overlaps an existing period.", status_code=409)
         period = HrPayrollPeriod(**payload.model_dump())
         self.session.add(period)
         try:
@@ -3952,6 +6181,20 @@ class HrWorkforceService:
     async def create_payroll_run(
         self, payload: PayrollRunCreateRequest, actor: User
     ) -> HrPayrollRun:
+        period = await self.session.scalar(
+            select(HrPayrollPeriod)
+            .where(HrPayrollPeriod.id == payload.payroll_period_id)
+            .with_for_update()
+        )
+        if period is None:
+            raise NotFoundException("Payroll period")
+        if period.status != "open":
+            raise AppException("The payroll period is locked.", status_code=409)
+        if (
+            payload.policy_id is not None
+            and await self.session.get(HrPayrollPolicy, payload.policy_id) is None
+        ):
+            raise NotFoundException("Payroll policy")
         run = HrPayrollRun(
             payroll_period_id=payload.payroll_period_id,
             policy_id=payload.policy_id,
@@ -3974,94 +6217,6 @@ class HrWorkforceService:
         stmt = select(HrPayrollRun).order_by(HrPayrollRun.created_at.desc())
         rows = list(await self.session.scalars(stmt))
         return rows, len(rows)
-
-    async def calculate_payroll_run(self, run_id: UUID, actor: User) -> HrPayrollRun:
-        run = await self.session.scalar(select(HrPayrollRun).where(HrPayrollRun.id == run_id))
-        if run is None:
-            raise NotFoundException("Payroll run")
-        policy = (
-            await self.session.scalar(
-                select(HrPayrollPolicy).where(HrPayrollPolicy.id == run.policy_id)
-            )
-            if run.policy_id
-            else None
-        )
-        if (
-            policy is None
-            or not policy.is_approved
-            or policy.approved_by_id is None
-            or policy.second_approved_by_id is None
-            or not policy.rules_json
-        ):
-            raise AppException(
-                "POLICY_NOT_APPROVED: Payroll and statutory calculations require an active, "
-                "dual-approved HR payroll policy with explicit rules.",
-                status_code=409,
-                error_code="POLICY_NOT_APPROVED",
-            )
-
-        # Compute deterministic lines from active compensation terms when explicitly authorized
-        terms = list(
-            await self.session.scalars(
-                select(HrCompensationTerm).where(HrCompensationTerm.is_current.is_(True))
-            )
-        )
-        ded_rate = Decimal(str(policy.rules_json.get("employee_deduction_rate", "0")))
-        for term in terms:
-            raw_salary = decrypt_hr_value(term.base_salary_encrypted) or "0"
-            gross = Decimal(raw_salary)
-            ded = (gross * ded_rate).quantize(Decimal("0.01"))
-            net = gross - ded
-            self.session.add(
-                HrPayrollLine(
-                    payroll_run_id=run.id,
-                    employee_id=term.employee_id,
-                    gross_encrypted=encrypt_hr_value(str(gross)) or "",
-                    deductions_encrypted=encrypt_hr_value(str(ded)) or "",
-                    net_encrypted=encrypt_hr_value(str(net)) or "",
-                    breakdown_json={"policy_code": policy.code, "deduction_rate": str(ded_rate)},
-                )
-            )
-        run.status = "calculated"
-        await self.audit.record(
-            action="hr.payroll_run.calculated",
-            user_id=actor.id,
-            entity_type="hr_payroll_runs",
-            entity_id=run.id,
-        )
-        await self._commit_and_refresh(run)
-        return run
-
-    async def approve_payroll_run(self, run_id: UUID, actor: User) -> HrPayrollRun:
-        if not has_permission(actor, PERMISSION_HR_PAYROLL_APPROVE):
-            raise PermissionDeniedException(PERMISSION_HR_PAYROLL_APPROVE)
-        run = await self.session.scalar(select(HrPayrollRun).where(HrPayrollRun.id == run_id))
-        if run is None:
-            raise NotFoundException("Payroll run")
-        policy = (
-            await self.session.scalar(
-                select(HrPayrollPolicy).where(HrPayrollPolicy.id == run.policy_id)
-            )
-            if run.policy_id
-            else None
-        )
-        if policy is None or not policy.is_approved:
-            raise AppException(
-                "POLICY_NOT_APPROVED: Cannot approve payroll without an approved payroll policy.",
-                status_code=409,
-                error_code="POLICY_NOT_APPROVED",
-            )
-        run.status = "approved"
-        run.approved_by_id = actor.id
-        run.approved_at = utc_now()
-        await self.audit.record(
-            action="hr.payroll_run.approved",
-            user_id=actor.id,
-            entity_type="hr_payroll_runs",
-            entity_id=run.id,
-        )
-        await self._commit_and_refresh(run)
-        return run
 
     # --- Restricted Cases (HR-024) ---
 

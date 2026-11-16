@@ -10,6 +10,8 @@ import {
 } from '../../api/hr';
 import type { components } from '../../api/schema';
 import { hrButtonClass, hrInputClass } from './HRAccessForms';
+import { HROffboardingCustody } from './HROffboardingCustody';
+import { HRSeparationSettlement } from './HRSeparationSettlement';
 
 type Separation = components['schemas']['OffboardingInitiateRequest']['separation_type'];
 
@@ -111,36 +113,65 @@ export function HROffboarding({
               <p>
                 {step.title} · {step.status}
               </p>
-              {record.status !== 'completed' && step.status !== 'cleared' && (
-                <form
-                  className="mt-1 flex items-end gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const notes = String(new FormData(event.currentTarget).get('reference'));
-                    void run(() => updateOffboardingStep(step.id, { status: 'cleared', notes }));
-                  }}
-                >
-                  <label>
-                    Clearance reference <input className={hrInputClass} name="reference" required />
-                  </label>
-                  <button className={hrButtonClass} type="submit" disabled={pending}>
-                    Record clearance
-                  </button>
-                </form>
+              {step.department_area === 'store_inventory' || step.department_area === 'it_admin' ? (
+                <HROffboardingCustody
+                  area={step.department_area}
+                  caseId={record.id}
+                  onRefresh={onChange}
+                />
+              ) : step.department_area === 'finance_accounts' ? (
+                <HRSeparationSettlement caseId={record.id} onRefresh={onChange} />
+              ) : (
+                record.status !== 'completed' &&
+                !['cleared', 'waived'].includes(step.status) && (
+                  <form
+                    className="mt-1 flex items-end gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const notes = String(new FormData(event.currentTarget).get('reference'));
+                      void run(() => updateOffboardingStep(step.id, { status: 'cleared', notes }));
+                    }}
+                  >
+                    <label>
+                      Clearance reference{' '}
+                      <input className={hrInputClass} name="reference" required />
+                    </label>
+                    <button className={hrButtonClass} type="submit" disabled={pending}>
+                      Record clearance
+                    </button>
+                  </form>
+                )
               )}
             </div>
           ))}
           {record.status !== 'completed' &&
             (record.steps?.length ?? 0) > 0 &&
             record.steps?.every((step) => ['cleared', 'waived'].includes(step.status)) && (
-              <button
-                className={hrButtonClass}
-                type="button"
-                disabled={pending}
-                onClick={() => void run(() => completeOffboarding(record.id, {}))}
+              <form
+                className="space-y-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const eligibility = new FormData(event.currentTarget).get('rehire_eligible');
+                  void run(() =>
+                    completeOffboarding(record.id, {
+                      rehire_eligible:
+                        eligibility === 'yes' ? true : eligibility === 'no' ? false : null
+                    })
+                  );
+                }}
               >
-                Complete offboarding
-              </button>
+                <label className="block">
+                  Rehire eligibility
+                  <select name="rehire_eligible" className={hrInputClass} defaultValue="">
+                    <option value="">Undetermined</option>
+                    <option value="yes">Eligible</option>
+                    <option value="no">Ineligible</option>
+                  </select>
+                </label>
+                <button className={hrButtonClass} type="submit" disabled={pending}>
+                  Complete offboarding
+                </button>
+              </form>
             )}
         </article>
       ))}

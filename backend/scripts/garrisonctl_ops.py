@@ -39,6 +39,7 @@ from scripts.garrisonctl_common import (
     checked_plan,
     load_json,
     uuid_arg,
+    write_private_bytes,
 )
 
 HOST_STATE = Path("/opt/garrison-portal/deploy")
@@ -238,16 +239,6 @@ def _render_candidate(
     return (content + "".join(replacements.values())).encode("utf-8")
 
 
-def _private_write(path: Path, data: bytes) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, "wb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
-    if path.read_bytes() != data:
-        raise OSError("Candidate verification failed.")
-
-
 def _fsync_directory(path: Path) -> None:
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -288,8 +279,8 @@ def _write_candidate(
         }
         with tempfile.TemporaryDirectory(prefix=".prepare-", dir=root) as directory:
             temporary = Path(directory)
-            _private_write(temporary / "production.env", candidate)
-            _private_write(
+            write_private_bytes(temporary / "production.env", candidate)
+            write_private_bytes(
                 temporary / "audit.json",
                 (json.dumps(receipt, indent=2, sort_keys=True, allow_nan=False) + "\n").encode(),
             )

@@ -16,6 +16,7 @@ Start with the [project README](../README.md) for implemented features, roles, r
 | Which endpoint, payload, or response does the UI use? | [OpenAPI contract](openapi.json) and [regeneration steps](../README.md#api-contract-changes) | [API routers and schemas](../backend/app/api/v1/) and the [generated frontend types](../frontend/src/api/schema.d.ts) |
 | What stores the data and enforces its constraints? | [Database schema index](schema/README.md) | [SQLAlchemy models](../backend/app/models/) and [Alembic migrations](../backend/alembic/versions/) |
 | How do I manage employee records and workforce operations? | [HR and workforce](HR_WORKFORCE.md) | [HR routes](../backend/app/api/v1/hr.py) and [workspace](../frontend/src/pages/hr/HRWorkspacePage.tsx) |
+| What remains to complete HR? | [HR completion ledger](HR_COMPLETION_LEDGER.md) | Capability reconciliation and executed evidence |
 | How do I import existing records? | [Import templates and validation](import_templates/README.md) | [Import routes](../backend/app/api/v1/imports.py) and [import service](../backend/app/services/import_service.py) |
 | How do I administer the portal from a terminal? | [Garrisons CLI administration](CLI_ADMINISTRATION.md) | [garrisonctl entry point](../backend/scripts/garrisonctl.py) and [API routers](../backend/app/api/v1/) |
 | How do I validate a change locally or in CI? | [Verification commands](../README.md#verification) | [CI workflow](../.github/workflows/ci.yml), [Pytest suite](../backend/tests/), and [Chrome regressions](../frontend/e2e/) |
