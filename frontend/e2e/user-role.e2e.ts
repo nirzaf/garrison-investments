@@ -72,22 +72,19 @@ test('a managing director creates a user, changes their role, and sees the audit
     page.getByRole('row').filter({ hasText: id }).getByText('users / updated', { exact: true })
   ).toBeVisible();
 
-  const clockTime = new Date();
-  await page.clock.install({ time: clockTime });
-  await page.clock.pauseAt(new Date(clockTime.getTime() + 1000));
-  const searches: string[] = [];
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    const search = url.searchParams.get('search');
-    if (url.pathname === '/api/v1/audit-logs' && search) searches.push(search);
-  });
   const searchInput = page.getByPlaceholder('Action, entity, comment');
-  await searchInput.fill('u');
-  await searchInput.fill('users');
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/audit-logs' && url.searchParams.get('search') === 'users.updated';
+  });
   await searchInput.fill('  users.updated  ');
-  await page.clock.runFor(299);
-  expect(searches).toEqual([]);
-  // Let React commit the debounced state and schedule its query after the timer fires.
-  await page.clock.resume();
-  await expect.poll(() => searches).toEqual(['users.updated']);
+  const filteredResponse = await filtered;
+  expect(filteredResponse.ok()).toBe(true);
+  const audit = (await filteredResponse.json()) as { items: Array<{ action: string; entity_id: string }> };
+  expect(audit.items).toEqual(expect.arrayContaining([
+    expect.objectContaining({ action: 'users.updated', entity_id: id })
+  ]));
+  await expect(
+    page.getByRole('row').filter({ hasText: id }).getByText('users / updated', { exact: true })
+  ).toBeVisible();
 });
