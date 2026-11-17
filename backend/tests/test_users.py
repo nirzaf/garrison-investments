@@ -196,8 +196,17 @@ async def test_user_state_preconditions_permissions_and_revocation() -> None:
             "senior_site_supervisor",
             "site_supervisor",
             "hr_manager",
+            "hr_executive_reader",
             "administrative_executive",
         }
+        hr_executive = next(item for item in roles if item["role"] == "hr_executive_reader")
+        assert set(hr_executive["permissions"]) == {
+            "users:read",
+            "dashboard:scoped",
+            "reports:view",
+            "documents:view",
+        }
+        assert hr_executive["assignable"] is False
         update = {
             "role": "administrative_executive",
             "expected_updated_at": engineer["updated_at"],
