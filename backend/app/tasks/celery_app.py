@@ -8,6 +8,7 @@ from celery.signals import setup_logging, task_failure, worker_ready
 from app.config import get_settings
 from app.observability import configure_logging
 from app.services.exception_reporter import report_celery_task_failure
+from app.utils.recovery_destination import is_recovery_issuance_enabled
 
 settings = get_settings()
 
@@ -80,7 +81,7 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=0),
     },
 }
-if settings.app_env.lower() == "test" and settings.support_portal_enabled:
+if is_recovery_issuance_enabled(settings):
     celery_app.conf.beat_schedule["dispatch-support-recovery-deliveries"] = {
         "task": "dispatch_support_recovery_deliveries",
         "schedule": 30,

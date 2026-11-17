@@ -58,6 +58,7 @@ from app.utils.permissions import (
     PROTECTED_USER_ROLES,
 )
 from app.utils.recovery_destination import (
+    is_recovery_issuance_enabled,
     support_recovery_otp,
     support_recovery_otp_digest,
     verified_recovery_destination,
@@ -96,7 +97,7 @@ def _recovery_binding(target: User) -> str:
         settings, target.id, target.email, target.recovery_email_digest,
         target.recovery_email_verified_at,
     )
-    if settings.app_env.lower() != "test" or not settings.support_portal_enabled:
+    if not is_recovery_issuance_enabled(settings, support_host=SUPPORT_HOST):
         raise _denied()
     if not target.is_active or binding is None:
         raise AppException(

@@ -34,7 +34,7 @@ export default defineConfig({
         SUPPORT_RECOVERY_KEY: supportRecoveryFixtureKey
       },
       command:
-        '"${BROWSER_TEST_PYTHON:-python}" -m tests.browser_fixtures serve --enable-fixture-payroll',
+        '"${BROWSER_TEST_PYTHON:-python}" -m tests.browser_fixtures serve --enable-fixture-payroll --enable-fixture-hr-cases',
       url: 'http://127.0.0.1:8425/health/readiness'
     },
     {

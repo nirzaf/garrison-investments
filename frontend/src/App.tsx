@@ -35,6 +35,9 @@ const HRMePage = lazy(() =>
 const HRWorkspacePage = lazy(() =>
   import('./pages/hr/HRWorkspacePage').then(({ HRWorkspacePage }) => ({ default: HRWorkspacePage }))
 );
+const HRCasePage = lazy(() =>
+  import('./pages/hr/HRCasePage').then(({ HRCasePage }) => ({ default: HRCasePage }))
+);
 
 function DailyReportsRoute() {
   const { user } = useAuth();
@@ -77,6 +80,17 @@ function HRRoute({ selfService = false }: { selfService?: boolean }) {
   );
 }
 
+function HRCaseRoute() {
+  const { user } = useAuth();
+  return (
+    <RequirePermission permission="hr:cases:restricted">
+      <Suspense fallback={<p role="status">Loading employee relations…</p>}>
+        <HRCasePage key={user?.id} />
+      </Suspense>
+    </RequirePermission>
+  );
+}
+
 export function App() {
   return (
     <Routes>
@@ -87,6 +101,7 @@ export function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/hr" element={<HRRoute />} />
         <Route path="/hr/employees" element={<HRRoute />} />
+        <Route path="/hr/cases" element={<HRCaseRoute />} />
         <Route path="/me/hr" element={<HRRoute selfService />} />
         <Route path="/roles" element={<RolesPermissionsPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />

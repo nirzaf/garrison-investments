@@ -20,6 +20,8 @@ class Settings(BaseSettings, BusinessPolicy):
     support_portal_enabled: bool = False
     support_ingress_peer: IPvAnyAddress | None = None
     support_recovery_key: SecretStr | None = None
+    support_recovery_delivery_enabled: bool = False
+    support_recovery_allowed_origins: str = ""
     support_email_otp_key: SecretStr | None = None
     support_email_otp_recipients: dict[UUID, EmailStr] = Field(default_factory=dict, repr=False)
 

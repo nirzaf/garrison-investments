@@ -62,7 +62,7 @@ subcommand's `--help`.
 | `hr employees` | `list`, `get`, `create`, `update`, `transition`, `link-account` | HR read, manage or sensitive permissions for employee actions. Linking uses `users:manage`. |
 | `hr departments`, `hr positions` | `list`, `create` | Employee read or manage permission. |
 | `hr access-requests` | `list`, `create`, `decide` | Request stage and actor determine HR versus director access. |
-| `hr attendance` | `list`, `correction` | Attendance recording permission. |
+| `hr attendance` | `list`, `import`, `correction` | Attendance recording permission. |
 | `hr calendars` | `list`, `show`, `create`, `update`, `decide` | Attendance recording permission. Review and publication also require HR policy management permission. |
 | `hr roster` | `list`, `show`, `allocate`, `cancel` | Attendance recording permission. Uses the published work schedule and preserves cancellation history. |
 | `hr documents` | `list`, `status`, `upload`, `upload-version`, `decide`, `download` | Manage HR vault files, including independently reviewed candidate CVs and offer PDFs. |
@@ -304,6 +304,17 @@ Previews bind the signed-in actor and request hash. Review plans also bind
 the read record. Write receipts omit private notes and include the saved
 status read back from the server.
 
+For CSV imports, use `hr attendance import --file INPUT --dry-run
+--output REVIEW` with an owner-only CSV. Use the portal's attendance CSV
+template. The optional review path must be new. It records row errors and
+the reviewed clock timestamps. Invalid rows block the batch and produce
+no apply plan. Use the same CSV with `hr attendance import --file INPUT
+--apply --expect PLAN_SHA256`. The CLI rechecks the signed-in actor,
+the exact CSV bytes and the server preview. Its receipt contains row
+numbers and the IDs of the submitted entries, which you can inspect
+with `hr attendance show --record-id ID`. Clock times and employee
+codes stay out of the import command's terminal output.
+
 Use `hr calendars list` or `hr calendars show --calendar-id ID` to
 read the schedule, effective dates, status and revision. To prepare a
 calendar, use `hr calendars create --file FILE --dry-run`. To replace the
@@ -408,6 +419,75 @@ issues before reviewing the digest again.
 Use `--sha256 CSV_SHA256 --output FILE` to save the reviewed export. The
 download contains record IDs, dates and leave units. Private reasons, names
 and attachments stay in the leave workflow.
+
+Use `hr compensation list --employee-id ID` for effective dates, current
+status and approvals. `hr compensation show --employee-id ID --term-id ID`
+shows the same metadata for one term. Add `--output FILE` to save an exact
+review copy as a new owner-only file. That read is audited by the HR API.
+CLI output omits salary, allowances and rejection reasons.
+
+To propose terms, save owner-only JSON containing `employee_id`,
+`effective_from`, `base_salary` as decimal text, `currency`, and
+`pay_frequency`. Include `allowances_json` only when required. Run
+`hr compensation propose --file FILE --dry-run`, then apply the same
+input with `--apply --expect PLAN_SHA256`. The proposal stays pending.
+A different eligible reviewer saves and inspects the exact term, then
+previews `hr compensation decide --review-file SNAPSHOT --file DECISION --dry-run`.
+The private decision JSON takes `"decision": "approve"` or
+`"decision": "reject"` with a reason. Apply the matching review plan.
+The CLI rejects stale or different terms and reads back the recorded
+outcome. The HR API still enforces independent review and the locked
+payroll boundary.
+
+Use `hr benefits types list` to inspect the catalogue without printing
+reimbursement ceilings. `hr benefits types show --benefit-type-id ID
+--output FILE` saves the exact policy as a new owner-only review file.
+Propose a type with `hr benefits types propose --file FILE --dry-run`.
+Use decimal text for a reimbursement ceiling and supply its currency.
+An independent reviewer previews `hr benefits types approve --review-file
+FILE --dry-run` and applies the matching plan.
+
+Assign coverage with `hr benefits assignments create --file FILE --dry-run`.
+Provide the employee ID, benefit type ID and effective dates in owner-only
+JSON. Assignments for capped policies require approval and an end date.
+Apply the reviewed plan with `--apply --expect PLAN_SHA256`. The CLI
+checks the resulting assignment and refuses overlapping coverage.
+`hr benefits assignments list --employee-id ID` omits coverage notes.
+
+Use `hr cases list` to see cases you opened and `hr cases show --case-id
+ID --output FILE` to save the audited detail in a new owner-only file.
+Terminal output omits the case title, case code, employee ID, narrative
+and resolution. These commands require the separate restricted case
+permission. No production role currently carries it.
+
+Use `hr cases open --file FILE --dry-run` with owner-only JSON containing
+`case_code`, `case_type`, `title`, `details` and optional
+`employee_id` and `severity`. Use `hr cases update --review-file REVIEW
+--file UPDATE --dry-run` with a private update file containing
+`status` (`investigating`, `action_taken` or `closed`) and optional
+`resolution_notes`. Omit the notes to preserve the existing text.
+Apply either command with `--apply --expect PLAN_SHA256`. If someone
+changes the case while you review it, save a fresh copy and review again.
+
+Use `hr reimbursement list --employee-id ID` to locate claims and
+`hr reimbursement show --claim-id ID --output FILE` to save a new
+owner-only review copy. The terminal omits amounts, descriptions,
+decision notes and external settlement references. To inspect the
+pinned receipt, match its version ID to the document record and use
+`hr documents download --document-id ID --version NUMBER --output FILE`
+with the required document permission.
+
+Submit with `hr reimbursement submit --file FILE --dry-run`. The
+owner-only JSON supplies `employee_id`, `benefit_assignment_id`,
+`claim_type` (the approved benefit type code), `claim_date`,
+decimal-text `amount`, `description`,
+`receipt_document_id`, `receipt_version_number`, a UUID
+`idempotency_key` and the currency if different from the API default
+of LKR. Use the same file and key when retrying the same submission.
+An independent reviewer uses `hr reimbursement decide --review-file
+REVIEW --file DECISION --dry-run`. The decision file supplies
+`decision` (`approved`, `rejected` or `cancelled`) and `notes`
+as required. Apply either command with `--apply --expect PLAN_SHA256`.
 
 Use `hr reimbursement payable --claim-id ID --output FILE` to save the
 reviewed unpaid obligation as owner-only JSON. The file contains the claim
@@ -833,22 +913,6 @@ Backup status checks the independent backup receipts using the approved monitor 
 
 Reports, document uploads and approvals, and stock fulfillment remain portal workflows. The active role policy blocks invoice writes and payment entry. The CLI exposes authorized finance reads, project access and approved imports.
 
-## Output and agent use
-
-JSON writes one envelope to stdout with `format_version`, `command`, `environment`, `outcome`, `changed`, `data`, `errors` and `request_id` where available. A preview has `changed: false`. A null change value indicates that the CLI cannot prove whether a mutation committed or was replayed. Read back the resource, batch or audit record before retrying. Check the exit code even when the envelope contains data.
-
-| Exit | Meaning |
-| --- | --- |
-| 0 | Successful read, preview, verified operation, or unchanged result |
-| 2 | Invalid command, configuration, input or API validation failure |
-| 3 | Authentication or authorization failure |
-| 4 | Missing record, stale plan or other conflict |
-| 5 | Connection, readiness or server failure |
-| 6 | Failed or partial operation, interrupted command, or failed verification |
-| 7 | Reconciliation found differences |
-
-Agents start with `capabilities --json`, confirm the target and caller with `auth whoami`, then inspect the needed records and prepare a dry run. Production writes require the user's explicit authorization. Keep the returned request ID for audit follow-up. If an access change needs reversing, plan a new authorized change against the current state. For binary rollback after changing access, retain the additive access revision migration and coordinate session invalidation because older binaries did not enforce the access revision claim.
-
 ## Super Admin command parity
 
 The technical portal uses its own operator identity and session. The business
@@ -875,6 +939,12 @@ technical origin, passkey user presence and approval challenge.
 | Read service health | `support health show` | Implemented locally. Uses the technical health API and capability. |
 | Follow approved request evidence | `support cases follow-logs` | Reads the same redacted stream as the portal. The bounded sample is written to a private file. |
 | Independently reviewed evidence export | `support cases export propose`, `review`, `download` | Requires `logs.runtime` and `logs.export` in the assigned case. The reviewer and requester use fresh passkeys. The original requester session can save the approved CSV once. |
+| Read fixed domain overviews (`company`, `projects`, `workforce`, `inventory`, `suppliers`, `documents`, `finance`, `approvals`) | `support overview show` (`--domain`, optional `--case` / `--project`, `--output`) | Implemented locally. Enforces per-domain oversight grant, small-cell suppression (threshold 5 with complementary total suppression) on workforce counts, case+project scope where required, and no monetary amounts or PII. |
+| Explain a role permission against policy | `support policy explain` (`--role`, `--permission`, optional `--case`, `--output`) | Implemented locally. Requires `simulation.start` and evaluates canonical role permissions without inspecting user accounts. |
+| Read background outbox, Celery execution summaries and Beat schedule | `support monitor jobs` (`--hours`, `--limit`, `--queue`, `--output`) | Implemented locally under `jobs.read`. Excludes task payloads, emails, tokens and stack traces. |
+| Read attested backup and restore-drill receipts | `support monitor backups` (`--output`) | Implemented locally under `backups.read`. Reads append-only receipts without host paths or object-store keys. |
+| Read non-secret runtime configuration posture | `support config show` (`--output`) | Implemented locally under `config.read`. Reports boolean posture, normalized origins, leaf certificate expiry window and build SHA without secrets. |
+| Read incident failure and unknown-delivery summary | `support incidents show` (`--hours`, optional `--case`, `--output`) | Implemented locally under `incidents.read`. Summarizes failed jobs, unknown/failed recovery outcomes and denied support requests without PII or request bodies. |
 
 The [production activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
 owns the host-only bootstrap. Routine CLI operations must go through the

@@ -175,6 +175,74 @@ def test_production_support_ingress_configuration(
         validate(tmp_path, nginx, backend, env, files)
 
 
+@pytest.mark.parametrize(
+    ("extra_env", "expected_error"),
+    [
+        ({}, None),
+        ({"SUPPORT_RECOVERY_DELIVERY_ENABLED": "false"}, None),
+        (
+            {
+                "SUPPORT_RECOVERY_DELIVERY_ENABLED": "true",
+                "SUPPORT_PORTAL_ENABLED": "false",
+            },
+            "support portal to be enabled",
+        ),
+        (
+            {
+                "SUPPORT_RECOVERY_DELIVERY_ENABLED": "true",
+                "SUPPORT_PORTAL_ENABLED": "true",
+                "SUPPORT_RECOVERY_KEY": "short-key",
+            },
+            "independent recovery key",
+        ),
+        (
+            {
+                "SUPPORT_RECOVERY_DELIVERY_ENABLED": "true",
+                "SUPPORT_PORTAL_ENABLED": "true",
+                "SUPPORT_RECOVERY_KEY": "distinct-recovery-secret-of-sufficient-length",
+                "SUPPORT_EMAIL_OTP_KEY": "distinct-otp-secret-of-sufficient-length-32",
+                "SUPPORT_RECOVERY_ALLOWED_ORIGINS": "https://superadmin.garrisons.lk",
+                "FRONTEND_BASE_URL": "https://portal.garrisons.lk",
+            },
+            "valid explicit HTTPS origins",
+        ),
+        (
+            {
+                "SUPPORT_RECOVERY_DELIVERY_ENABLED": "true",
+                "SUPPORT_PORTAL_ENABLED": "true",
+                "SUPPORT_RECOVERY_KEY": "distinct-recovery-secret-of-sufficient-length",
+                "SUPPORT_EMAIL_OTP_KEY": "distinct-otp-secret-of-sufficient-length-32",
+                "SUPPORT_RECOVERY_ALLOWED_ORIGINS": "https://portal.garrisons.lk",
+                "FRONTEND_BASE_URL": "https://other.example.com",
+            },
+            "must match an approved",
+        ),
+        (
+            {
+                "SUPPORT_RECOVERY_DELIVERY_ENABLED": "true",
+                "SUPPORT_PORTAL_ENABLED": "true",
+                "SUPPORT_RECOVERY_KEY": "distinct-recovery-secret-of-sufficient-length",
+                "SUPPORT_EMAIL_OTP_KEY": "distinct-otp-secret-of-sufficient-length-32",
+                "SUPPORT_RECOVERY_ALLOWED_ORIGINS": "https://portal.garrisons.lk",
+                "FRONTEND_BASE_URL": "https://portal.garrisons.lk/",
+            },
+            None,
+        ),
+    ],
+)
+def test_support_recovery_delivery_preflight_gate(
+    extra_env: dict[str, str], expected_error: str | None
+) -> None:
+    validate = runpy.run_path(str(SCRIPT.parent / "release_config_contract.py"))[
+        "validate_support_recovery_delivery_config"
+    ]
+    if expected_error:
+        with pytest.raises(ValueError, match=expected_error):
+            validate(extra_env)
+    else:
+        validate(extra_env)
+
+
 @pytest.mark.parametrize("job_attempt", [2, 3])
 def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
     tmp_path: Path, job_attempt: int

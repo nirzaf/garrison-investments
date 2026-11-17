@@ -1,8 +1,19 @@
+import asyncio
+import io
+import json
+import stat
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
+import httpx
 import pytest
 
-from app.database import engine
+from app.database import AsyncSessionLocal, engine
+from app.models.hr import HrEmployee, HrWorkCalendar
+from scripts import garrisonctl
+from scripts.garrisonctl_common import AUTH, CONFLICT, VALIDATION
 from tests.test_hr import _auth, _client, _create_portal_user, _login, skip_if_database_unavailable
 
 
@@ -126,3 +137,175 @@ async def test_attendance_csv_review_revision_and_period_lock() -> None:
         assert (
             await client.post(correction_path, headers=recorder, json=correction_body)
         ).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_attendance_csv_previews_overnight_clocks_and_blocks_missing_punches() -> None:
+    await skip_if_database_unavailable()
+    _, email, password = await _create_portal_user("hr_manager")
+    async with AsyncSessionLocal() as session:
+        calendar = HrWorkCalendar(
+            code=f"NIGHT-{uuid4().hex[:8]}",
+            name="Synthetic overnight attendance",
+            effective_from=date(2027, 2, 3),
+            effective_to=date(2027, 2, 4),
+            timezone="Asia/Colombo",
+            work_days_json=["WED", "THU"],
+            daily_hours=Decimal("8"),
+            status="published",
+        )
+        session.add(calendar)
+        await session.flush()
+        employee = HrEmployee(
+            employee_code=f"NIGHT-{uuid4().hex[:8]}",
+            first_name="Synthetic",
+            last_name="Overnight",
+            full_name="Synthetic Overnight",
+            employment_status="active",
+            work_calendar_id=calendar.id,
+        )
+        session.add(employee)
+        await session.flush()
+        code, employee_id, calendar_id = employee.employee_code, employee.id, calendar.id
+        await session.commit()
+
+    header = "employee_code,work_date,attendance_status,worked_hours,check_in_at,check_out_at\n"
+    start, end = "2027-02-03T22:00:00+05:30", "2027-02-04T06:00:00+05:30"
+    valid = f"{code},2027-02-03,present,8.00,{start},{end}\n"
+    partial = f"{code},2027-02-04,present,4.00,2027-02-04T22:00:00+05:30,\n"
+    wrong_local_date = valid.replace(start, "2027-02-03T19:00:00Z")
+    root = "/api/v1/hr/attendance"
+    async with _client() as client:
+        auth = _auth(await _login(client, email, password))
+
+        async def upload(rows: str, digest: str | None = None):
+            suffix = "apply" if digest else "preview"
+            return await client.post(
+                f"{root}/imports/{suffix}",
+                headers=auth,
+                files={"file": ("attendance.csv", (header + rows).encode(), "text/csv")},
+                data={"expected_digest": digest} if digest else None,
+            )
+
+        async def entries():
+            response = await client.get(
+                root, headers=auth, params={"employee_id": str(employee_id)}
+            )
+            assert response.status_code == 200
+            return response.json()
+
+        mixed = await upload(valid + partial)
+        assert mixed.status_code == 200
+        assert mixed.headers["cache-control"] == "no-store"
+        assert mixed.json()["digest"] is None
+        overnight, incomplete = mixed.json()["items"]
+        assert overnight["check_in_at"] == start and overnight["check_out_at"] == end
+        assert "both clock times" in incomplete["error"]
+        assert (await upload(valid + partial, "0" * 64)).status_code == 409
+        # The source timestamp is February 3 UTC, but February 4 in the employee's calendar.
+        wrong_local_date = wrong_local_date.replace(end, "2027-02-04T04:00:00+05:30")
+        rejected = (await upload(wrong_local_date.replace("8.00", "3.00"))).json()
+        assert rejected["digest"] is None and "calendar timezone" in rejected["items"][0]["error"]
+        assert (await entries())["total"] == 0
+
+        preview = await upload(valid)
+        digest = preview.json()["digest"]
+        assert digest
+        applied = await upload(valid, digest)
+        assert applied.status_code == 201 and applied.json()["digest"] == digest
+        assert preview.json()["items"][0]["entry_id"] is None
+        assert applied.headers["cache-control"] == "no-store"
+        record = (await entries())["items"][0]
+        assert applied.json()["items"] == [{**preview.json()["items"][0], "entry_id": record["id"]}]
+        assert record["work_date"] == "2027-02-03"
+        assert record["calendar_id"] == str(calendar_id) and record["status"] == "submitted"
+        assert datetime.fromisoformat(record["check_in_at"]) == datetime.fromisoformat(start)
+        assert datetime.fromisoformat(record["check_out_at"]) == datetime.fromisoformat(end)
+
+
+@pytest.mark.asyncio
+async def test_attendance_cli_reviews_private_csv_and_verifies_committed_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await skip_if_database_unavailable()
+    monkeypatch.setenv("GARRISON_API_BASE_URL", "http://127.0.0.1:8425")
+    monkeypatch.delenv("GARRISON_ENVIRONMENT", raising=False)
+    _, maker_email, password = await _create_portal_user("hr_manager")
+    _, other_email, _ = await _create_portal_user("hr_manager", password)
+    _, staff_email, _ = await _create_portal_user("quantity_surveyor", password)
+    code = f"CLI-TIME-{uuid4().hex[:8]}"
+    start = "2027-10-04T22:30:00+05:30"
+    end = "2027-10-05T06:00:00+05:30"
+    header = "employee_code,work_date,attendance_status,worked_hours,check_in_at,check_out_at\n"
+    good_file = header + f"{code},2027-10-04,present,7.50,{start},{end}\n"
+    source = tmp_path / "private-attendance.csv"
+    source.touch(mode=0o600)
+    source.write_text(good_file.removesuffix(end + "\n") + "\n")
+    async with _client() as client:
+        maker = await _login(client, maker_email, password)
+        other = await _login(client, other_email, password)
+        staff = await _login(client, staff_email, password)
+        employee = await client.post(
+            "/api/v1/hr/employees",
+            headers=_auth(maker),
+            json={"employee_code": code, "first_name": "Synthetic", "last_name": "Attendance"},
+        )
+        assert employee.status_code == 201
+        loop = asyncio.get_running_loop()
+
+        def transport(request: httpx.Request) -> httpx.Response:
+            response = asyncio.run_coroutine_threadsafe(
+                client.request(
+                    request.method,
+                    request.url.raw_path.decode("ascii"),
+                    headers=request.headers,
+                    content=request.content,
+                ),
+                loop,
+            ).result(timeout=10)
+            return httpx.Response(
+                response.status_code, headers=response.headers, content=response.content
+            )
+
+        async def invoke(token: str, *args: str, expected: int = 0) -> dict:
+            monkeypatch.setenv("GARRISON_ACCESS_TOKEN", token)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            exit_code = await asyncio.to_thread(
+                garrisonctl.run,
+                ["hr", "attendance", "import", "--file", str(source), "--json", *args],
+                transport=httpx.MockTransport(transport),
+                stdout=stdout,
+                stderr=stderr,
+            )
+            output = stdout.getvalue() + stderr.getvalue()
+            assert all(value not in output for value in (code, start, end, source.name))
+            assert exit_code == expected, output
+            return json.loads(stdout.getvalue())
+
+        await invoke(staff, "--dry-run", expected=AUTH)
+        invalid_review = tmp_path / "invalid-review.json"
+        blocked = await invoke(
+            maker, "--dry-run", "--output", str(invalid_review), expected=VALIDATION
+        )
+        assert blocked["data"]["invalid_rows"] == [2]
+        assert "both clock times" in json.loads(invalid_review.read_text())["items"][0]["error"]
+        source.write_text(good_file)
+        review = tmp_path / "approved-review.json"
+        plan = (await invoke(maker, "--dry-run", "--output", str(review)))["data"]
+        assert stat.S_IMODE(review.stat().st_mode) == 0o600
+        item = json.loads(review.read_text())["items"][0]
+        assert item["check_out_at"] == end and item["entry_id"] is None
+        apply = ("--apply", "--expect", plan["plan_sha256"])
+        await invoke(other, *apply, expected=CONFLICT)
+        source.write_text(good_file.replace("7.50", "7.00"))
+        await invoke(maker, *apply, expected=CONFLICT)
+        source.write_text(good_file)
+        receipt = (await invoke(maker, *apply))["data"]
+        assert receipt["row_count"] == 1 and receipt["entries"][0]["row"] == 2
+        entry_id = receipt["entries"][0]["entry_id"]
+        persisted = await client.get(f"/api/v1/hr/attendance/{entry_id}", headers=_auth(maker))
+        record = persisted.json()
+        assert record["employee_id"] == employee.json()["id"] and record["status"] == "submitted"
+        assert record["source"] == "import" and record["work_date"] == "2027-10-04"
+        assert datetime.fromisoformat(record["check_out_at"]) == datetime.fromisoformat(end)
+        await invoke(maker, *apply, expected=CONFLICT)

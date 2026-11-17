@@ -73,6 +73,7 @@ const navItems: NavItem[] = [
   { id: 'analytics', label: 'Analytics', to: '/analytics', icon: LineChart },
   { id: 'documents', label: 'Documents', to: '/documents', icon: FileText },
   { id: 'hr-workforce', label: 'HR & Workforce', to: '/hr', icon: BriefcaseBusiness },
+  { id: 'employee-relations', label: 'Employee relations', to: '/hr/cases', icon: BriefcaseBusiness },
   { id: 'my-hr', label: 'My HR', to: '/me/hr', icon: UserRound },
   { id: 'photos', label: 'Photos', to: '/photos', icon: Camera },
   { id: 'approvals', label: 'Approvals', to: '/approvals', icon: ShieldCheck },

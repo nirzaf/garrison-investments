@@ -73,6 +73,7 @@ from app.models.support_identity import (
     SupportOperator,
     SupportSession,
 )
+from app.models.support_oversight import SupportBackupReceipt, SupportOversightEvent
 from app.models.support_permission_view import SupportPermissionView, SupportPermissionViewEvent
 from app.models.support_registration import (
     SupportBootstrap,
@@ -118,6 +119,7 @@ __all__ = [
     "SupervisorUpdate",
     "Supplier",
     "SupportAuthEvent",
+    "SupportBackupReceipt",
     "SupportBusinessAction",
     "SupportBusinessApproval",
     "SupportBusinessContact",
@@ -144,6 +146,7 @@ __all__ = [
     "SupportHealthEvent",
     "SupportOperator",
     "SupportOperatorGrant",
+    "SupportOversightEvent",
     "SupportPermissionView",
     "SupportPermissionViewEvent",
     "SupportBootstrap",

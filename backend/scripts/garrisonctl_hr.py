@@ -21,15 +21,30 @@ from app.schemas.hr import (
     AttendanceCorrectionCreateRequest,
     AttendanceCorrectionDecisionRequest,
     AttendanceEntryCreateRequest,
+    AttendanceImportPreviewResponse,
     AttendanceReviewRequest,
+    BenefitTypeCreateRequest,
+    BenefitTypeListResponse,
+    BenefitTypeResponse,
     CandidateCorrespondenceDecisionRequest,
     CandidateCreateRequest,
+    CompensationTermCreateRequest,
+    CompensationTermDecisionRequest,
+    CompensationTermListResponse,
+    CompensationTermResponse,
     EmployeeAdvanceDecision,
     EmployeeAdvanceDisbursement,
     EmployeeAdvanceListResponse,
     EmployeeAdvancePayment,
     EmployeeAdvanceRequest,
     EmployeeAdvanceResponse,
+    EmployeeBenefitCreateRequest,
+    EmployeeBenefitListResponse,
+    EmployeeBenefitResponse,
+    HrCaseCloseRequest,
+    HrCaseCreateRequest,
+    HrCaseListResponse,
+    HrCaseResponse,
     HrServiceRequestAssignmentRequest,
     HrServiceRequestResolveRequest,
     InterviewCreateRequest,
@@ -55,7 +70,10 @@ from app.schemas.hr import (
     PolicyAcknowledgeRequest,
     PolicyDocumentCreateRequest,
     ProbationReviewRequest,
+    ReimbursementCreateRequest,
     ReimbursementDecisionRequest,
+    ReimbursementOperatorListResponse,
+    ReimbursementOperatorResponse,
     ReimbursementPayableResponse,
     RequisitionCreateRequest,
     RequisitionDecisionRequest,
@@ -77,6 +95,8 @@ from scripts.garrisonctl_auth import prompt_secret
 from scripts.garrisonctl_common import (
     AUTH,
     CONFLICT,
+    FAILED,
+    VALIDATION,
     CLIError,
     Context,
     Registry,
@@ -109,6 +129,7 @@ PERM_COMPLIANCE = "hr:compliance:manage"
 PERM_OFFBOARDING = "hr:offboarding:manage"
 PERM_INVENTORY = "inventory:manage"
 PERM_REPORTS = "hr:reports:view"
+PERM_CASES = "hr:cases:restricted"
 PERM_REQUESTS_PROCESS = "hr:requests:process"
 PERM_PAYROLL_PREPARE = "hr:payroll:prepare"
 PERM_PAYROLL_APPROVE = "hr:payroll:approve"
@@ -2353,6 +2374,392 @@ def _payroll_inputs(args: argparse.Namespace, ctx: Context) -> Result:
     )
 
 
+def _benefit_type_metadata(row: BenefitTypeResponse) -> dict[str, Any]:
+    summary = row.model_dump(mode="json", exclude={"reimbursement_ceiling"})
+    return {**summary, "has_ceiling": row.reimbursement_ceiling is not None}
+
+
+def _benefit_types(ctx: Context) -> BenefitTypeListResponse:
+    try:
+        return BenefitTypeListResponse.model_validate(ctx.request("GET", f"{HR}/benefits/types"))
+    except ValidationError:
+        raise CLIError("The API returned an invalid benefit catalogue.", CONFLICT) from None
+
+
+def _benefit_type(ctx: Context, benefit_type_id: str) -> BenefitTypeResponse:
+    row = next((row for row in _benefit_types(ctx).items if str(row.id) == benefit_type_id), None)
+    if row is None:
+        raise CLIError("The benefit type was not found.", CONFLICT)
+    return row
+
+
+def _list_benefit_types(_: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    page_data = _benefit_types(ctx)
+    return Result({
+        "items": [_benefit_type_metadata(row) for row in page_data.items],
+        "total": page_data.total,
+    })
+
+
+def _show_benefit_type(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    row = _benefit_type(ctx, args.benefit_type_id)
+    if args.output is not None:
+        try:
+            write_private_bytes(args.output, (row.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not create a new private benefit review file.") from None
+    return Result(_benefit_type_metadata(row))
+
+
+def _propose_benefit_type(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        raw = json.loads(read_private_bytes(args.file, max_bytes=16 * 1024))
+        if not isinstance(raw, dict):
+            raise ValueError
+        ceiling = raw.get("reimbursement_ceiling")
+        if ceiling is not None and not isinstance(ceiling, str):
+            raise ValueError
+        if isinstance(raw.get("code"), str):
+            raw["code"] = raw["code"].strip().upper()
+        model = BenefitTypeCreateRequest.model_validate(raw, extra="forbid")
+        capped = model.reimbursement_ceiling is not None
+        if (
+            capped != (model.reimbursement_currency is not None)
+            or (capped and not model.requires_policy_approval)
+            or (model.allows_advances and not capped)
+        ):
+            raise ValueError
+    except ValueError:
+        raise CLIError(
+            "Supply owner-only benefit JSON with any reimbursement ceiling as decimal text."
+        ) from None
+    if any(row.code == model.code for row in _benefit_types(ctx).items):
+        raise CLIError("This benefit code already exists.", CONFLICT)
+    payload = model.model_dump(mode="json")
+    plan = checked_plan(
+        args, ctx,
+        {"operation": args.command_name, "code": model.code,
+         "request_sha256": sha256_json(payload)},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    row = ctx.request("POST", f"{HR}/benefits/types", json=payload, write=True)
+    try:
+        saved_id = uuid_arg(row["id"])
+    except (argparse.ArgumentTypeError, KeyError, TypeError, AttributeError):
+        raise CLIError("The API did not identify the saved benefit type.", CONFLICT) from None
+    observed = verified(
+        ctx,
+        lambda: _benefit_type(ctx, saved_id),
+        lambda saved: (
+            all(getattr(saved, field) == value for field, value in model.model_dump().items())
+            and saved.approved_at is None and saved.approved_by_id is None
+            and (not capped or str(saved.proposed_by_id) == ctx.identity()["id"])
+        ),
+    )
+    return Result(_benefit_type_metadata(observed.data), changed=observed.changed)
+
+
+def _approve_benefit_type(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    try:
+        reviewed = BenefitTypeResponse.model_validate(
+            json.loads(read_private_bytes(args.review_file, max_bytes=16 * 1024)), extra="forbid"
+        )
+    except ValueError:
+        raise CLIError("Supply an exact private benefit review file.") from None
+    actor_id = ctx.identity()["id"]
+    current = _benefit_type(ctx, str(reviewed.id))
+    if current != reviewed or not current.is_active or current.approved_at is not None:
+        raise CLIError("The benefit changed or is no longer pending. Review it again.", CONFLICT)
+    if (
+        current.reimbursement_ceiling is None
+        or current.reimbursement_currency is None
+        or current.proposed_by_id is None
+        or str(current.proposed_by_id) == actor_id
+    ):
+        raise CLIError("A different eligible reviewer must approve a configured ceiling.", CONFLICT)
+    plan = checked_plan(
+        args, ctx,
+        {"operation": args.command_name, "benefit_type": _benefit_type_metadata(current),
+         "review_sha256": sha256_json(current.model_dump(mode="json"))},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/benefits/types/{current.id}/approve", write=True)
+    observed = verified(
+        ctx,
+        lambda: _benefit_type(ctx, str(current.id)),
+        lambda row: (
+            str(row.approved_by_id) == actor_id and row.approved_at is not None
+            and row.model_dump(exclude={"approved_by_id", "approved_at"})
+            == reviewed.model_dump(exclude={"approved_by_id", "approved_at"})
+        ),
+    )
+    return Result(_benefit_type_metadata(observed.data), changed=observed.changed)
+
+
+def _benefit_assignments(ctx: Context, employee_id: str) -> EmployeeBenefitListResponse:
+    try:
+        result = EmployeeBenefitListResponse.model_validate(ctx.request(
+            "GET", f"{HR}/benefits/assignments", params={"employee_id": employee_id}
+        ))
+        if any(str(item.employee_id) != employee_id for item in result.items):
+            raise ValueError
+        return result
+    except ValueError:
+        raise CLIError("The API returned invalid employee benefit assignments.", CONFLICT) from None
+
+
+def _benefit_assignment_metadata(row: EmployeeBenefitResponse) -> dict[str, Any]:
+    return row.model_dump(mode="json", exclude={"coverage_notes"})
+
+
+def _list_benefit_assignments(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    page_data = _benefit_assignments(ctx, args.employee_id)
+    return Result({
+        "items": [_benefit_assignment_metadata(row) for row in page_data.items],
+        "total": page_data.total,
+    })
+
+
+def _assign_benefit(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        model = EmployeeBenefitCreateRequest.model_validate(
+            json.loads(read_private_bytes(args.file, max_bytes=16 * 1024)), extra="forbid"
+        )
+        if model.effective_to is not None and model.effective_to < model.effective_from:
+            raise ValueError
+    except ValueError:
+        raise CLIError("Supply valid dates in an owner-only coverage JSON file.") from None
+    benefit = _benefit_type(ctx, str(model.benefit_type_id))
+    if not benefit.is_active:
+        raise CLIError("This benefit type is inactive.", CONFLICT)
+    if benefit.reimbursement_ceiling is not None:
+        if (
+            benefit.approved_at is None
+            or benefit.reimbursement_currency is None
+            or benefit.proposed_by_id is None
+            or benefit.approved_by_id is None
+            or benefit.proposed_by_id == benefit.approved_by_id
+        ):
+            raise CLIError("The capped benefit needs an independently approved policy.", CONFLICT)
+        if model.effective_to is None:
+            raise CLIError("A capped benefit needs a coverage end date.")
+    employee_id = str(model.employee_id)
+    current = _benefit_assignments(ctx, employee_id)
+    same_benefit = [row for row in current.items if row.benefit_type_id == model.benefit_type_id]
+    if any(
+        row.status == "active"
+        and (row.effective_to is None or row.effective_to >= model.effective_from)
+        and (model.effective_to is None or row.effective_from <= model.effective_to)
+        for row in same_benefit
+    ):
+        raise CLIError("This benefit overlaps existing coverage.", CONFLICT)
+    payload = model.model_dump(mode="json")
+    plan = checked_plan(
+        args, ctx,
+        {"operation": args.command_name, "employee_id": employee_id,
+         "benefit_type": _benefit_type_metadata(benefit),
+         "benefit_sha256": sha256_json(benefit.model_dump(mode="json")),
+         "observed_assignments": [_benefit_assignment_metadata(row) for row in same_benefit],
+         "request_sha256": sha256_json(payload)},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request("POST", f"{HR}/benefits/assignments", json=payload, write=True)
+    try:
+        assignment_id = uuid_arg(saved["id"])
+    except (argparse.ArgumentTypeError, KeyError, TypeError, AttributeError):
+        raise CLIError("The API did not identify the saved assignment.", CONFLICT) from None
+
+    def readback() -> EmployeeBenefitResponse:
+        row = next((
+            row for row in _benefit_assignments(ctx, employee_id).items
+            if str(row.id) == assignment_id
+        ), None)
+        if row is None:
+            raise CLIError("The saved assignment was not found.", CONFLICT)
+        return row
+
+    observed = verified(
+        ctx, readback,
+        lambda row: row.status == "active" and all(
+            getattr(row, field) == value for field, value in model.model_dump().items()
+        ),
+    )
+    return Result(_benefit_assignment_metadata(observed.data), changed=observed.changed)
+
+
+def _compensation_summary(row: CompensationTermResponse) -> dict[str, Any]:
+    return row.model_dump(
+        mode="json",
+        exclude={"base_salary_plain", "base_salary_masked", "allowances_json", "rejection_reason"},
+    )
+
+
+def _compensation_rows(
+    ctx: Context, employee_id: str, *, term_id: str | None = None, reveal: bool = False
+) -> CompensationTermListResponse:
+    try:
+        rows = CompensationTermListResponse.model_validate(ctx.request(
+            "GET",
+            f"{HR}/compensation/{employee_id}",
+            params={
+                **({"term_id": term_id} if term_id else {}),
+                **({"reveal_sensitive": "true"} if reveal else {}),
+            },
+        ))
+        if any(
+            str(row.employee_id) != employee_id or (term_id and str(row.id) != term_id)
+            for row in rows.items
+        ):
+            raise ValueError
+        return rows
+    except ValueError:
+        raise CLIError("The API returned an invalid compensation record.", CONFLICT) from None
+
+
+def _compensation_exact(
+    ctx: Context, employee_id: str, term_id: str, *, reveal: bool = False
+) -> CompensationTermResponse:
+    result = _compensation_rows(ctx, employee_id, term_id=term_id, reveal=reveal)
+    if len(result.items) != 1 or (reveal and result.items[0].base_salary_plain is None):
+        raise CLIError("The API did not return the exact compensation term.", CONFLICT)
+    return result.items[0]
+
+
+def _list_compensation(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    rows = _compensation_rows(ctx, args.employee_id)
+    items = [_compensation_summary(row) for row in rows.items]
+    return Result({"items": items, "total": rows.total})
+
+
+def _show_compensation(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    row = _compensation_exact(ctx, args.employee_id, args.term_id, reveal=args.output is not None)
+    if args.output is not None:
+        try:
+            write_private_bytes(args.output, (row.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not create a new private compensation file.") from None
+    return Result(_compensation_summary(row))
+
+
+def _propose_compensation(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        model = CompensationTermCreateRequest.model_validate(
+            json.loads(read_private_bytes(args.file, max_bytes=16 * 1024)), extra="forbid"
+        )
+    except ValueError:
+        raise CLIError("Supply valid compensation terms in an owner-only JSON file.") from None
+    payload = model.model_dump(mode="json")
+    payload["allowances_json"] = model.allowances_json or None
+    employee_id = str(model.employee_id)
+    current = _compensation_rows(ctx, employee_id)
+    if any(
+        row.approval_status == "proposed"
+        or (row.approval_status == "approved" and row.effective_from == model.effective_from)
+        for row in current.items
+    ):
+        raise CLIError("A conflicting compensation term already exists.", CONFLICT)
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "employee_id": employee_id,
+            "effective_from": payload["effective_from"],
+            "observed_terms": [_compensation_summary(row) for row in current.items],
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    saved = ctx.request("POST", f"{HR}/compensation", json=payload, write=True)
+    try:
+        term_id = uuid_arg(saved["id"])
+    except (argparse.ArgumentTypeError, KeyError, TypeError, AttributeError):
+        raise CLIError("The API did not identify the proposed term.", CONFLICT) from None
+    observed = verified(
+        ctx,
+        lambda: _compensation_exact(ctx, employee_id, term_id, reveal=True),
+        lambda row: (
+            row.approval_status == "proposed"
+            and str(row.proposed_by_id) == ctx.identity()["id"]
+            and row.effective_from == model.effective_from
+            and row.currency == model.currency
+            and row.pay_frequency == model.pay_frequency
+            and row.base_salary_plain == model.base_salary
+            and row.allowances_json == payload["allowances_json"]
+        ),
+    )
+    return Result(_compensation_summary(observed.data), changed=observed.changed)
+
+
+def _decide_compensation(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    try:
+        reviewed = CompensationTermResponse.model_validate(
+            json.loads(read_private_bytes(args.review_file, max_bytes=32 * 1024)), extra="forbid"
+        )
+        decision = CompensationTermDecisionRequest.model_validate(
+            json.loads(read_private_bytes(args.file, max_bytes=4096)), extra="forbid"
+        )
+        if decision.decision == "reject" and not (decision.reason or "").strip():
+            raise ValueError
+    except ValueError:
+        raise CLIError("Supply an exact private review file and valid decision JSON.") from None
+    current = _compensation_exact(ctx, str(reviewed.employee_id), str(reviewed.id), reveal=True)
+    if current != reviewed or current.approval_status != "proposed":
+        raise CLIError("The compensation term changed. Review a fresh copy.", CONFLICT)
+    actor_id = ctx.identity()["id"]
+    if current.proposed_by_id is None or str(current.proposed_by_id) == actor_id:
+        raise CLIError("Another authorized reviewer must decide the proposal.", CONFLICT)
+    payload = decision.model_dump(mode="json")
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "term": _compensation_summary(current),
+            "review_sha256": sha256_json(current.model_dump(mode="json")),
+            "decision": decision.decision,
+            "decision_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/compensation/{reviewed.id}/decision", json=payload, write=True)
+    observed = verified(
+        ctx,
+        lambda: _compensation_exact(ctx, str(reviewed.employee_id), str(reviewed.id), reveal=True),
+        lambda row: (
+            row.approval_status == ("approved" if decision.decision == "approve" else "rejected")
+            and row.effective_from == reviewed.effective_from
+            and row.currency == reviewed.currency
+            and row.pay_frequency == reviewed.pay_frequency
+            and row.base_salary_plain == reviewed.base_salary_plain
+            and row.allowances_json == reviewed.allowances_json
+            and (
+                str(row.approved_by_id) == actor_id if decision.decision == "approve"
+                else row.rejection_reason == (decision.reason or "").strip()
+            )
+        ),
+    )
+    return Result(_compensation_summary(observed.data), changed=observed.changed)
+
+
 def _advance_metadata(row: EmployeeAdvanceResponse) -> dict[str, Any]:
     return {
         "advance_id": str(row.id),
@@ -2560,6 +2967,156 @@ def _read_reimbursement_payable(ctx: Context, claim_id: str) -> ReimbursementPay
     ):
         raise CLIError("The payable reference failed integrity verification.", CONFLICT)
     return result
+
+
+def _reimbursement_metadata(row: ReimbursementOperatorResponse) -> dict[str, Any]:
+    return row.model_dump(
+        mode="json", exclude={"amount", "description", "settlement_reference", "decision_notes"}
+    )
+
+
+def _reimbursement_claim(ctx: Context, claim_id: str) -> ReimbursementOperatorResponse:
+    try:
+        row = ReimbursementOperatorResponse.model_validate(
+            ctx.request("GET", f"{HR}/reimbursements/{claim_id}")
+        )
+    except ValidationError:
+        raise CLIError("The API returned an invalid reimbursement.", CONFLICT) from None
+    if str(row.id) != claim_id:
+        raise CLIError("The API did not return the requested reimbursement.", CONFLICT)
+    return row
+
+
+def _list_reimbursements(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        page_data = ReimbursementOperatorListResponse.model_validate(
+            ctx.request(
+                "GET", f"{HR}/reimbursements",
+                params=query(args, "employee_id", "limit", "offset"),
+            )
+        )
+        if args.employee_id and any(
+            str(item.employee_id) != args.employee_id for item in page_data.items
+        ):
+            raise ValueError
+    except ValueError:
+        raise CLIError("The API returned an invalid reimbursement list.", CONFLICT) from None
+    return Result({
+        "items": [_reimbursement_metadata(row) for row in page_data.items],
+        "total": page_data.total,
+    })
+
+
+def _show_reimbursement(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    row = _reimbursement_claim(ctx, args.claim_id)
+    if args.output is not None:
+        try:
+            write_private_bytes(args.output, (row.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not create a new private reimbursement file.") from None
+    return Result(_reimbursement_metadata(row))
+
+
+def _submit_reimbursement(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    try:
+        data = json.loads(read_private_bytes(args.file, max_bytes=16 * 1024))
+        if not isinstance(data, dict) or not isinstance(data.get("amount"), str):
+            raise ValueError
+        key = uuid_arg(data.pop("idempotency_key"))
+        model = ReimbursementCreateRequest.model_validate(data, extra="forbid")
+        if model.employee_id is None or len(model.claim_type.strip()) < 2:
+            raise ValueError
+    except (ValueError, KeyError, AttributeError, TypeError, argparse.ArgumentTypeError):
+        raise CLIError(
+            "Supply owner-only claim JSON with an employee ID, decimal-text amount, and retry key."
+        ) from None
+    payload = model.model_dump(mode="json")
+    payload["claim_type"] = model.claim_type.strip().upper()
+    plan = checked_plan(
+        args, ctx,
+        {"operation": args.command_name, "employee_id": payload["employee_id"],
+         "benefit_assignment_id": payload["benefit_assignment_id"],
+         "receipt_document_id": payload["receipt_document_id"],
+         "receipt_version_number": payload["receipt_version_number"],
+         "request_sha256": sha256_json([key, payload])},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    try:
+        saved = ReimbursementOperatorResponse.model_validate(
+            ctx.request(
+                "POST", f"{HR}/reimbursements", json=payload,
+                headers={"Idempotency-Key": key}, write=True,
+            )
+        )
+    except ValidationError:
+        raise CLIError("The API did not identify the saved claim.", changed=None) from None
+    matches = model.model_dump(exclude={"receipt_version_number"})
+    matches["claim_type"] = payload["claim_type"]
+    observed = verified(
+        ctx,
+        lambda: _reimbursement_claim(ctx, str(saved.id)),
+        lambda row: (
+            row.receipt_version_id is not None
+            and row.receipt_version_id == saved.receipt_version_id
+            and str(row.submitted_by_id) == ctx.identity()["id"]
+            and all(getattr(row, field) == value for field, value in matches.items())
+        ),
+    )
+    return Result(_reimbursement_metadata(observed.data), changed=observed.changed)
+
+
+def _decide_reimbursement(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_PAYROLL_SENSITIVE)
+    require_preview_permission(ctx, PERM_PAYROLL_APPROVE)
+    try:
+        reviewed = ReimbursementOperatorResponse.model_validate(
+            json.loads(read_private_bytes(args.review_file, max_bytes=16 * 1024)), extra="forbid"
+        )
+        data = json.loads(read_private_bytes(args.file, max_bytes=4096))
+        if not isinstance(data, dict) or not data.keys() <= {"decision", "notes"}:
+            raise ValueError
+        decision = ReimbursementDecisionRequest.model_validate(data, extra="forbid")
+        if decision.decision == "paid" or (
+            decision.decision in {"rejected", "cancelled"} and not (decision.notes or "").strip()
+        ):
+            raise ValueError
+    except ValueError:
+        raise CLIError("Supply the private reviewed claim and a valid review decision.") from None
+    actor_id = ctx.identity()["id"]
+    current = _reimbursement_claim(ctx, str(reviewed.id))
+    if (
+        current != reviewed or current.status != "submitted" or current.receipt_version_id is None
+        or current.submitted_by_id is None or str(current.submitted_by_id) == actor_id
+    ):
+        raise CLIError("An independent reviewer needs the current submitted claim.", CONFLICT)
+    payload = decision.model_dump(mode="json", exclude_unset=True)
+    plan = checked_plan(
+        args, ctx,
+        {"operation": args.command_name, "claim": _reimbursement_metadata(current),
+         "review_sha256": sha256_json(current.model_dump(mode="json")),
+         "decision": decision.decision, "decision_sha256": sha256_json(payload)},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/reimbursements/{current.id}/decision", json=payload, write=True)
+    decision_fields = {"decided_by_id", "decided_at", "decision_notes", "status"}
+    observed = verified(
+        ctx,
+        lambda: _reimbursement_claim(ctx, str(current.id)),
+        lambda row: (
+            row.status == decision.decision and str(row.decided_by_id) == actor_id
+            and row.decided_at is not None and row.decision_notes == decision.notes
+            and row.model_dump(exclude=decision_fields)
+            == reviewed.model_dump(exclude=decision_fields)
+        ),
+    )
+    return Result(_reimbursement_metadata(observed.data), changed=observed.changed)
 
 
 def _reimbursement_payable(args: argparse.Namespace, ctx: Context) -> Result:
@@ -3448,6 +4005,81 @@ TIME_REVIEW_SCHEMAS: dict[str, type[BaseModel]] = {
 }
 
 
+def _import_attendance(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_ATTENDANCE)
+    if args.apply and args.output:
+        raise CLIError("Save a private review file with --dry-run.")
+    content = read_private_bytes(args.file, max_bytes=256 * 1024)
+    path = f"{HR}/attendance/imports"
+    files = {"file": ("attendance.csv", content, "text/csv")}
+    try:
+        preview = AttendanceImportPreviewResponse.model_validate(
+            ctx.request("POST", f"{path}/preview", files=files)
+        )
+    except ValidationError:
+        raise CLIError("The API returned an invalid attendance preview.", CONFLICT) from None
+    if (
+        not 1 <= len(preview.items) <= 250
+        or any(item.entry_id is not None for item in preview.items)
+        or [item.row for item in preview.items] != list(range(2, len(preview.items) + 2))
+    ):
+        raise CLIError("The API returned an invalid attendance preview.", CONFLICT)
+    if args.output:
+        try:
+            write_private_bytes(
+                args.output, (preview.model_dump_json() + "\n").encode("utf-8")
+            )
+        except OSError:
+            raise CLIError("Could not write a new private attendance review file.") from None
+    invalid_rows = [item.row for item in preview.items if item.error]
+    if invalid_rows or not preview.digest or not re.fullmatch(r"[a-f0-9]{64}", preview.digest):
+        raise CLIError(
+            "The attendance file did not pass review.",
+            CONFLICT if args.apply else VALIDATION,
+            data={"invalid_rows": invalid_rows},
+        )
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "csv_sha256": hashlib.sha256(content).hexdigest(),
+            "preview_sha256": preview.digest,
+            "row_count": len(preview.items),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    response = ctx.request(
+        "POST", f"{path}/apply", files=files,
+        data={"expected_digest": preview.digest}, write=True,
+    )
+    try:
+        applied = AttendanceImportPreviewResponse.model_validate(response)
+        entry_ids = {item.entry_id for item in applied.items}
+        if (
+            applied.digest != preview.digest
+            or None in entry_ids
+            or len(entry_ids) != len(preview.items)
+            or [item.model_copy(update={"entry_id": None}) for item in applied.items]
+            != preview.items
+        ):
+            raise ValueError
+    except ValueError:
+        raise CLIError(
+            "The API accepted the import, but the receipt could not be verified.",
+            FAILED, changed=None,
+        ) from None
+    return Result(
+        {
+            "row_count": len(applied.items),
+            "entries": [
+                {"row": item.row, "entry_id": str(item.entry_id)} for item in applied.items
+            ],
+        },
+        changed=True,
+    )
+
+
 def _time_record_summary(row: dict[str, Any]) -> dict[str, Any]:
     return {
         key: row[key]
@@ -4209,7 +4841,144 @@ def _process_service_request(args: argparse.Namespace, ctx: Context) -> Result:
     )
 
 
+def _case_metadata(case: HrCaseResponse) -> dict[str, Any]:
+    return case.model_dump(
+        mode="json",
+        exclude={"title", "case_code", "employee_id", "details_plain", "resolution_notes"},
+    )
+
+
+def _case_record(ctx: Context, case_id: str) -> HrCaseResponse:
+    try:
+        row = HrCaseResponse.model_validate(ctx.request("GET", f"{HR}/cases/{case_id}"))
+    except ValidationError:
+        raise CLIError("The API returned an invalid case record.", CONFLICT) from None
+    if str(row.id) != case_id or str(row.opened_by_id) != ctx.identity()["id"]:
+        raise CLIError("The API did not return the requested case in your scope.", CONFLICT)
+    return row
+
+
+def _list_cases(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_CASES)
+    try:
+        listing = HrCaseListResponse.model_validate(
+            ctx.request("GET", f"{HR}/cases", params=query(args, "limit", "offset"))
+        )
+    except ValidationError:
+        raise CLIError("The API returned an invalid case list.", CONFLICT) from None
+    if any(str(row.opened_by_id) != ctx.identity()["id"] for row in listing.items):
+        raise CLIError("The API returned a case outside your scope.", CONFLICT)
+    return Result({"items": [_case_metadata(row) for row in listing.items], "total": listing.total})
+
+
+def _show_case(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_CASES)
+    row = _case_record(ctx, args.case_id)
+    if args.output is not None:
+        try:
+            write_private_bytes(args.output, (row.model_dump_json() + "\n").encode("utf-8"))
+        except OSError:
+            raise CLIError("Could not write a new private case file.") from None
+    return Result(_case_metadata(row))
+
+
+def _open_case(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_CASES)
+    try:
+        request = HrCaseCreateRequest.model_validate_json(
+            read_private_bytes(args.file, max_bytes=64 * 1024)
+        )
+    except ValidationError:
+        raise CLIError("Supply a valid private case file.") from None
+    payload = request.model_dump(mode="json")
+    plan = checked_plan(
+        args, ctx, {"operation": args.command_name, "request_sha256": sha256_json(payload)},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    try:
+        saved = HrCaseResponse.model_validate(
+            ctx.request("POST", f"{HR}/cases", json=payload, write=True)
+        )
+    except ValidationError:
+        raise CLIError("The API did not identify the saved case.", changed=None) from None
+    fields = request.model_dump(exclude={"details"})
+    observed = verified(
+        ctx,
+        lambda: _case_record(ctx, str(saved.id)),
+        lambda row: (
+            row == saved
+            and row.status == "open"
+            and row.details_plain == request.details
+            and all(getattr(row, key) == value for key, value in fields.items())
+        ),
+    )
+    return Result(_case_metadata(observed.data), changed=observed.changed)
+
+
+def _update_case(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_CASES)
+    try:
+        reviewed = HrCaseResponse.model_validate_json(
+            read_private_bytes(args.review_file, max_bytes=96 * 1024), extra="forbid"
+        )
+        data = json.loads(read_private_bytes(args.file, max_bytes=64 * 1024))
+        if not isinstance(data, dict) or not data.keys() <= {"status", "resolution_notes"}:
+            raise ValueError
+        request = HrCaseCloseRequest.model_validate(data)
+    except ValueError:
+        raise CLIError("Supply a private reviewed case and a valid status update.") from None
+    case_id = str(reviewed.id)
+    current = _case_record(ctx, case_id)
+    if current != reviewed or current.status == "closed":
+        raise CLIError("Review the current case before changing its status.", CONFLICT)
+    payload = request.model_dump(mode="json", exclude_unset=True)
+    if "resolution_notes" in payload:
+        payload["resolution_notes"] = (request.resolution_notes or "").strip() or None
+    payload["expected_state_sha256"] = reviewed.reviewed_state_sha256()
+    plan = checked_plan(
+        args, ctx, {"operation": args.command_name, "case_id": case_id, "status": request.status,
+                    "request_sha256": sha256_json(payload)}, bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{HR}/cases/{case_id}/close", json=payload, write=True)
+    expected_note = payload.get("resolution_notes", reviewed.resolution_notes)
+    changed_fields = {"status", "closed_by_id", "closed_at", "resolution_notes"}
+    actor_id = ctx.identity()["id"]
+    observed = verified(
+        ctx,
+        lambda: _case_record(ctx, case_id),
+        lambda row: (
+            row.status == request.status
+            and row.resolution_notes == expected_note
+            and (request.status != "closed" or (
+                str(row.closed_by_id) == actor_id and row.closed_at is not None
+            ))
+            and row.model_dump(exclude=changed_fields)
+            == reviewed.model_dump(exclude=changed_fields)
+        ),
+    )
+    return Result(_case_metadata(observed.data), changed=observed.changed)
+
+
 def register(registry: Registry) -> None:
+    p = registry.add("hr cases list", _list_cases, permission=PERM_CASES)
+    p.add_argument("--limit", type=int, choices=range(1, 101), default=50)
+    p.add_argument("--offset", type=int, default=0)
+    p = registry.add("hr cases show", _show_case, permission=PERM_CASES)
+    p.add_argument("--case-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+    p = registry.add("hr cases open", _open_case, permission=PERM_CASES, mutates=True, preview=True)
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
+    p = registry.add(
+        "hr cases update", _update_case, permission=PERM_CASES, mutates=True, preview=True
+    )
+    p.add_argument("--review-file", required=True, type=Path)
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
     parser = registry.add("hr requests list", _list_service_requests, permission=PERM_REQUESTS)
     parser.add_argument("--employee-id", type=uuid_arg)
     parser.add_argument(
@@ -4465,6 +5234,14 @@ def register(registry: Registry) -> None:
     p.add_argument("--date-to")
 
     p = registry.add(
+        "hr attendance import", _import_attendance,
+        permission=PERM_ATTENDANCE, mutates=True, preview=True,
+    )
+    p.add_argument("--file", required=True, type=Path)
+    p.add_argument("--output", type=Path)
+    mode(p)
+
+    p = registry.add(
         "hr attendance correction",
         _attendance_correction,
         permission=PERM_ATTENDANCE,
@@ -4626,6 +5403,56 @@ def register(registry: Registry) -> None:
     )
     p.add_argument("--run-id", type=uuid_arg, required=True)
 
+    registry.add(
+        "hr benefits types list", _list_benefit_types, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p = registry.add(
+        "hr benefits types show", _show_benefit_type, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--benefit-type-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+    p = registry.add(
+        "hr benefits types propose", _propose_benefit_type, permission=PERM_PAYROLL_SENSITIVE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
+    p = registry.add(
+        "hr benefits types approve", _approve_benefit_type, permission=PERM_PAYROLL_APPROVE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--review-file", required=True, type=Path)
+    mode(p)
+    p = registry.add(
+        "hr benefits assignments list", _list_benefit_assignments, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--employee-id", required=True, type=uuid_arg)
+    p = registry.add(
+        "hr benefits assignments create", _assign_benefit, permission=PERM_PAYROLL_SENSITIVE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
+    p = registry.add(
+        "hr compensation list", _list_compensation, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--employee-id", required=True, type=uuid_arg)
+    p = registry.add(
+        "hr compensation show", _show_compensation, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--employee-id", required=True, type=uuid_arg)
+    p.add_argument("--term-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+    for name, handler in (("propose", _propose_compensation), ("decide", _decide_compensation)):
+        p = registry.add(
+            f"hr compensation {name}", handler,
+            permission=PERM_PAYROLL_SENSITIVE if name == "propose" else PERM_PAYROLL_APPROVE,
+            mutates=True, preview=True,
+        )
+        p.add_argument("--file", required=True, type=Path)
+        if name == "decide":
+            p.add_argument("--review-file", required=True, type=Path)
+        mode(p)
     p = registry.add("hr advance list", _list_advances, permission=PERM_PAYROLL_SENSITIVE)
     p.add_argument("--employee-id", required=True, type=uuid_arg)
     p.add_argument("--limit", type=int, default=20)
@@ -4667,6 +5494,30 @@ def register(registry: Registry) -> None:
             p.add_argument("--file", required=True, type=Path)
         mode(p)
 
+    p = registry.add(
+        "hr reimbursement list", _list_reimbursements, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--employee-id", required=True, type=uuid_arg)
+    p.add_argument("--limit", type=int, choices=range(1, 51), default=20)
+    p.add_argument("--offset", type=int, default=0)
+    p = registry.add(
+        "hr reimbursement show", _show_reimbursement, permission=PERM_PAYROLL_SENSITIVE
+    )
+    p.add_argument("--claim-id", required=True, type=uuid_arg)
+    p.add_argument("--output", type=Path)
+    p = registry.add(
+        "hr reimbursement submit", _submit_reimbursement, permission=PERM_PAYROLL_SENSITIVE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
+    p = registry.add(
+        "hr reimbursement decide", _decide_reimbursement, permission=PERM_PAYROLL_APPROVE,
+        mutates=True, preview=True,
+    )
+    p.add_argument("--review-file", required=True, type=Path)
+    p.add_argument("--file", required=True, type=Path)
+    mode(p)
     p = registry.add(
         "hr reimbursement payable", _reimbursement_payable, permission=PERM_PAYROLL_SENSITIVE
     )

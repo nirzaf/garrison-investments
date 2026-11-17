@@ -2005,8 +2005,9 @@ async def decide_attendance_entry(
 
 @router.post("/attendance/imports/preview", response_model=AttendanceImportPreviewResponse)
 async def preview_attendance_import(
-    actor: CanRecordAttendance, session: DbSession, file: UploadFile
+    actor: CanRecordAttendance, session: DbSession, file: UploadFile, response: Response
 ) -> AttendanceImportPreviewResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await review_attendance_csv(
         HrService(session), await file.read(MAX_ATTENDANCE_CSV_BYTES + 1), actor
     )
@@ -2019,8 +2020,10 @@ async def apply_attendance_import(
     actor: CanRecordAttendance,
     session: DbSession,
     file: UploadFile,
+    response: Response,
     expected_digest: Annotated[str, Form(pattern=r"^[0-9a-f]{64}$")],
 ) -> AttendanceImportPreviewResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await review_attendance_csv(
         HrService(session),
         await file.read(MAX_ATTENDANCE_CSV_BYTES + 1),
@@ -3116,6 +3119,18 @@ async def create_reimbursement(
     return ReimbursementOperatorResponse.model_validate(row)
 
 
+@router.get("/reimbursements/{claim_id}", response_model=ReimbursementOperatorResponse)
+async def get_reimbursement(
+    claim_id: UUID,
+    actor: CanReadPayrollSensitive,
+    session: DbSession,
+    response: Response,
+) -> ReimbursementOperatorResponse:
+    response.headers["Cache-Control"] = "no-store"
+    row = await HrService(session).get_reimbursement_for_review(claim_id, actor)
+    return ReimbursementOperatorResponse.model_validate(row)
+
+
 @router.post("/reimbursements/{claim_id}/decision", response_model=ReimbursementOperatorResponse)
 async def decide_reimbursement(
     claim_id: UUID,
@@ -3597,22 +3612,46 @@ async def add_payroll_settlement_event(
 
 
 @router.get("/cases", response_model=HrCaseListResponse)
-async def list_hr_cases(_: CanManageCases, session: DbSession) -> HrCaseListResponse:
-    items, total = await HrService(session).list_hr_cases()
+async def list_hr_cases(
+    actor: CanManageCases,
+    session: DbSession,
+    response: Response,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HrCaseListResponse:
+    response.headers["Cache-Control"] = "no-store"
+    items, total = await HrService(session).list_hr_cases(actor, limit=limit, offset=offset)
     return HrCaseListResponse(items=items, total=total)
 
 
 @router.post("/cases", response_model=HrCaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_hr_case(
-    payload: HrCaseCreateRequest, actor: CanManageCases, session: DbSession
+    payload: HrCaseCreateRequest, actor: CanManageCases, session: DbSession, response: Response
 ) -> HrCaseResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).create_hr_case(payload, actor)
+
+
+@router.get(
+    "/cases/{case_id}",
+    response_model=HrCaseResponse,
+    responses={200: {"headers": {"X-HR-Case-Review": {"schema": {"type": "string"}}}}},
+)
+async def get_hr_case(
+    case_id: UUID, actor: CanManageCases, session: DbSession, response: Response
+) -> HrCaseResponse:
+    response.headers["Cache-Control"] = "no-store"
+    case = await HrService(session).get_hr_case(case_id, actor)
+    response.headers["X-HR-Case-Review"] = case.reviewed_state_sha256()
+    return case
 
 
 @router.post("/cases/{case_id}/close", response_model=HrCaseResponse)
 async def close_hr_case(
-    case_id: UUID, payload: HrCaseCloseRequest, actor: CanManageCases, session: DbSession
+    case_id: UUID, payload: HrCaseCloseRequest, actor: CanManageCases,
+    session: DbSession, response: Response,
 ) -> HrCaseResponse:
+    response.headers["Cache-Control"] = "no-store"
     return await HrService(session).close_hr_case(case_id, payload, actor)
 
 

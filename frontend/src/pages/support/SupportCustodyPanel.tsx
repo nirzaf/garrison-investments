@@ -19,7 +19,19 @@ const labels: Record<Grant['capability'], string> = {
   'directory.read': 'Read approved case account',
   'account.request': 'Request and review business account actions',
   'logs.audit': 'Read redacted assigned-case audit',
-  'simulation.start': 'Open reviewed permission explanations'
+  'simulation.start': 'Open reviewed permission explanations',
+  'overview.company.read': 'Read company oversight summary',
+  'overview.projects.read': 'Read construction projects oversight',
+  'overview.workforce.read': 'Read suppressed workforce overview',
+  'overview.inventory.read': 'Read inventory and material oversight',
+  'overview.suppliers.read': 'Read supplier compliance oversight',
+  'overview.documents.read': 'Read document governance overview',
+  'overview.finance.read': 'Read finance counts overview (no amounts)',
+  'overview.approvals.read': 'Read approval queue overview',
+  'jobs.read': 'Read job and scheduler monitor',
+  'backups.read': 'Read backup and restore provenance',
+  'config.read': 'Read allowlisted configuration status',
+  'incidents.read': 'Read sanitized security incident summary'
 };
 const descriptions = {
   suspensions: 'Suspend operator',

@@ -506,6 +506,26 @@ The allowlist check rejects IPv4 or IPv6 rules that collectively cover
 every address. Verify the served certificate chain from an authorized
 browser or operator network during activation.
 
+#### Certificate renewal monitoring
+
+Monitor the staged certificate on the host and, after activation, the served
+certificate from an approved network. Use a daily check with an initial
+30-day warning and a 7-day urgent alert. Record the owner, contact point and
+test receipt in the restricted activation record. Failure to read the file,
+validate the served hostname or query from the approved network is also an
+alert condition.
+
+On the host, run `openssl x509 -in <mounted-support-fullchain.pem> -noout -checkend 2592000`
+for the warning. After activation, check the certificate
+served with SNI `superadmin.garrisons.lk`, verify its trust chain and hostname,
+then apply the same expiry check to the leaf. Test alert delivery with a
+synthetic expiry before signing off monitoring. Manual DNS-01 renewal requires
+a new challenge. Verify the new certificate and matching private key, replace
+the mounted pair under the approved change procedure and confirm the served
+expiry after Nginx reload.
+
+#### Dedicated ingress
+
 Set `SUPPORT_PORTAL_ENABLED=true` and `SUPPORT_INGRESS_PEER` to the exact
 Nginx address on the private `backend_proxy` network when activating that
 overlay. The release preflight checks that the flag and virtual host match,
@@ -656,6 +676,9 @@ sessions and advances the authorization epoch.
 | `account.request` | Request reviewed recovery, unlock, session revocation, disable or reactivation through existing business safeguards. Protected subjects require two independent reviews and a verified offline owner-contact receipt. | Reviewed recovery issuance, queued delivery, status, reset confirmation, session revocation, unlock, disable and reactivation are implemented locally. The separately approved owner-notification channel and production delivery evidence remain open. |
 | `simulation.start` | Start a short-lived, read-only, consented or independently approved support projection with explicit case, subject, adapter and project limits. | The five independently reviewed adapters are implemented locally: role permission, navigation, request summary, project list and project detail. |
 | `logs.audit`, `logs.stream`, `logs.export` | Inspect approved audit evidence, follow bounded redacted streams, or export a reviewed immutable result. Export requires independent approval. | Assigned-case audit reads, request streaming and reviewed export are implemented locally. Streaming and export each require `logs.runtime` and their own grant. |
+| `overview.company.read`, `overview.workforce.read`, `overview.suppliers.read`, `overview.documents.read`, `overview.finance.read`, `overview.approvals.read` | Inspect company-wide bounded operational status without PII, individual salaries/cases, invoice IDs/amounts, or write access. | Implemented locally as fixed read-only projections. `overview.workforce.read` enforces small-cell suppression (threshold 5 with single-complement total suppression) and omits compensation, medical, disciplinary and payroll tables; `overview.finance.read` returns workflow state counts and `finance_writes_policy` (`blocked`) only. |
+| `overview.projects.read`, `overview.inventory.read` | Inspect bounded project and inventory health, constrained to explicitly reviewed case project scope when scoped by case or project. | Implemented locally. Intersects requested case/project boundaries with `support_case_projects`, returning progress bands, item/request counts and zero supplier/invoice figures. |
+| `jobs.read`, `backups.read`, `config.read`, `incidents.read` | Inspect queued/Celery job status, attested backup receipts, non-secret runtime configuration posture, and redacted failure summaries. | Implemented locally with `GET /api/v1/support/monitor/jobs`, `/monitor/backups`, `/config/status`, and `/incidents/summary`. Excludes task payloads, storage paths, secret values, PII and request bodies. Oversight and monitor reads share a 30/min per-operator rate limit, 5-second query timeout degradation, live session/revocation re-checks, and append-only `support_oversight_events` disclosure audit. |
 
 The portal's Follow live evidence control and `garrisonctl support cases
 follow-logs` share the same redacted request projection. A session can
@@ -716,8 +739,14 @@ Developer-echoed OTPs and the staging bypass do not establish eligibility.
 There is no backfill from login history. The case directory adds only
 the verification status for operators with `account.request`.
 
-The reviewed recovery action is restricted to the isolated support
-environment. Applies recheck the verified mailbox, increment the
+The reviewed recovery action requires explicit opt-in outside test runs:
+`SUPPORT_RECOVERY_DELIVERY_ENABLED` defaults to `false`. Enabling production or
+staging assisted recovery also requires a matching normalized HTTPS origin in
+`SUPPORT_RECOVERY_ALLOWED_ORIGINS` (validated against `FRONTEND_BASE_URL` by
+[release config contract](../deploy/release_config_contract.py)), an independent
+32+ byte `SUPPORT_RECOVERY_KEY`, and no overlap between the target's mailbox
+binding and configured custodian OTP mailboxes (`SUPPORT_EMAIL_OTP_RECIPIENTS`).
+Applies recheck the verified mailbox, increment the
 business access revision, revoke old authentication, and commit the
 new single-use challenge and delivery row together. Protected accounts
 still require two independent reviews and an exact owner-contact
@@ -725,16 +754,23 @@ attestation. The reset code and mailbox are absent from the action
 receipt. The reset endpoint requires an accepted delivery, an active
 account, and the same mailbox and access revision.
 
-In the isolated support environment, the recovery worker claims one
+When `SUPPORT_RECOVERY_DELIVERY_ENABLED=true`, the recovery worker claims one
 delivery at a time. Before sending it rechecks the case, requester and
 reviewer grants, the protected contact receipt when applicable, the
-account revision, and the current verified destination and challenge.
-The message carries a portal reset link and code. The link fragment
-contains only the opaque challenge reference. A transport timeout,
-exception, or interrupted claim records an unknown outcome for review.
-Recovery codes use one transport attempt per reviewed action. Ordinary
-mail keeps its existing fallback behavior. Separate owner acceptance
-and completion notifications still require an approved channel.
+account revision, custodian OTP mailbox separation, and the current verified
+destination and challenge. The message carries a portal reset link on the
+allowlisted HTTPS origin and a code. The link fragment contains only the
+opaque challenge reference. A transport timeout, exception, or interrupted claim
+records an unknown outcome for review, writes non-secret in-app notifications,
+and (for an `"unknown"` outcome) notifies `EXCEPTION_EMAIL_RECIPIENTS` without
+codes, links, or email addresses. Recovery codes use one transport attempt per
+reviewed action. Ordinary mail keeps its existing fallback behavior. Separate
+out-of-band owner verification remains controlled offline.
+
+Grafana provisioning under [alerts configuration](../observability/grafana/provisioning/alerting/alerts.yml)
+includes the `Support security alerts` group (`garrison-support-auth-burst` for
+repeated 401/403 responses on `/api/v1/support/*` and `garrison-support-recovery-unknown`
+for failed `dispatch_support_recovery_deliveries` worker executions).
 
 Use **Recovery status** with the case ID and the reviewed action
 reference. The requester or another current case member needs
@@ -745,6 +781,16 @@ shows timestamps and opaque references and audits each disclosure.
 If delivery is unknown, inspect the provider evidence before a fresh
 independently reviewed recovery. A new recovery invalidates the prior
 challenge.
+
+Revision `202605310093` and the oversight, monitor, policy-explain, config, and
+incident surfaces passed 256 focused backend tests, 132 release/launch contract
+checks, Chrome Playwright virtual-WebAuthn scenarios (`e2e/user-role.e2e.ts` and
+`e2e/support-identity.e2e.ts`) against disposable PostgreSQL, Redis, and Moto
+object storage, plus Alembic `upgrade head` and blocked `downgrade 202605310092`.
+Live Hostinger maintenance upgrades (`202605310062` through `202605310093`),
+production TLS/DNS/CIDR proxy checks, physical two-custodian passkey ceremony,
+live email OTP/recovery delivery, off-host restore/alert drills, and formal
+owner governance sign-offs (`D-27` through `D-33`) remain external to this repository.
 
 The revision 081 suite passed 125 backend checks, six Chrome scenarios
 and a disposable restore that retained the status-read audit events.
@@ -868,13 +914,54 @@ certificate, then tests both an approved and a denied source before
 distributing invitations. If either source check fails, disable the host
 and retain the pending operator records while correcting ingress.
 
-For the first pair, a host operator verifies the signed approval through
-the restricted records system and records its exact SHA-256. Use an
-owner-only JSON file with `version: 1`, `purpose: "initial_support_custody"`,
-distinct UUIDs in `preparer_reference` and `reviewer_reference`, and two
-ordered `custodians` entries with `person_reference` and `mailbox`.
-The command checks the file and binds it to the roster. The human reviewer
-verifies the signed approval and the two people and mailboxes independently.
+#### Minimal owner-approved activation record
+
+Use one private operational JSON record for activation; a separate signed
+Google Drive document is not required. Keep the record and its SHA-256 sidecar
+in an owner-controlled directory with mode `0700` and files with mode `0600`.
+The digest identifies the exact bytes and detects later edits; it is not a
+digital signature. Leave unknown fields empty and keep the record in `pending`
+status until the evidence is verified.
+
+The record must capture the owner approval reference and timestamp; exact
+production candidate SHA and successful self-hosted CI run/attempt; current
+deployed SHA and database revision; target Alembic head; verified encrypted
+backup and isolated restore/migration rehearsal references; recovery-forward
+and application rollback plan; and the approved maintenance start and end in
+`Asia/Qatar`, including operator, writer-drain, reviewer and abort criteria.
+It must also identify two separately verified custodians with dedicated,
+distinct mailboxes and two distinct registered passkeys each, the distinct
+preparer and independent reviewer, actual Nginx-observed office/VPN source
+CIDRs with explicit owner approval, the certificate fingerprint/SAN/expiry
+and chain/key checks, tested virtual-host and allowlist hashes, DNS-only A
+target, and allowed/denied access plus business-portal health results. Mark a
+check successful only after observing its result. Never put the confirmation
+codeword, OTPs, passkey material, invitations or private keys in this record;
+the owner still supplies the codeword immediately before irreversible
+production actions.
+
+Keep the existing bootstrap input strict and separate from the broader
+activation record. Store its exact `version: 1`,
+`purpose: "initial_support_custody"`, distinct UUIDs in `preparer_reference`
+and `reviewer_reference`, and two ordered `custodians` entries with
+`person_reference` and `mailbox` under the activation record's
+`bootstrap_custody` object. A reviewer independently verifies the outer
+owner-approved record, both identities and mailbox ownership, and that the
+nested bootstrap roster matches. Project only that nested object into a new
+private file before using the existing `bootstrap_support.py` command:
+
+```bash
+umask 077
+jq -cS '.bootstrap_custody' "$ACTIVATION_RECORD" > "$BOOTSTRAP_APPROVAL"
+chmod 0600 "$BOOTSTRAP_APPROVAL"
+sha256sum "$ACTIVATION_RECORD" "$BOOTSTRAP_APPROVAL"
+```
+
+The bootstrap command continues to verify its own exact SHA-256, reject extra
+fields, require two different custodians and distinct mailboxes, and require a
+reviewer distinct from the preparer and both custodians. Do not broaden that
+schema to accept the operational fields. Record the outer activation-record
+digest separately from the projected bootstrap digest.
 
 From the tested backend on the approved host, run
 `python -m scripts.bootstrap_support --approval <private-file> --approval-sha256 <approved-sha256>`

@@ -29,16 +29,16 @@ two-role proposal is superseded by the single HR Manager decision.
 | P03 · HR-008–011 · recruitment and onboarding | **Portal and CLI workflows verified locally.** Requisitions, CVs, applications, interviews, offers and onboarding are available in both interfaces. Offer versions can pin reviewed confidential PDFs. Internal interview invitations and cancellations use generic in-app notices. The terminal also records onboarding checklist and probation decisions. See Slices 28–30 and 33–41. | Verify with approved release test records. Confirm operational retention and correspondence wording. |
 | P04 · HR-002/011 · employment changes | **Partial.** Reviewed transfers, promotions, category amendments and version-bound contract renewals apply on or after their effective date with one history entry. The portal and CLI list due changes and flag mismatched employee revisions. Manager transfer clears the former review authority. `HRProbationReview` handles confirmation and extensions. | Reviewed rehiring now records a new period and onboarding checklist. An approved automatic activation schedule and production business acceptance remain open. |
 | P05 · HR-007/013 · workforce planning | **Implemented and locally verified for whole-shift allocations.** `HRWorkCalendar` resolves published calendars and shifts. The portal and CLI allocate the resolved shift to a project and keep cancellation history. `hr_project_assignment.py` handles project access separately. See Slices 25 and 71. | Verify representative rosters with the business before production activation. The local workflow assigns a single published workday or shift per employee and date. |
-| P06 · HR-014/015 · attendance and time | **Implemented and locally verified for time capture, review and locked time export.** The payroll preparer can preview and export reconciled time for an explicit roster. Pending overtime prevents timesheet lock. See Slice 26. | Verify overnight and partial punch behavior against approved rules. Employee submissions and manager recommendations need approved opt-in settings and verified links. Production payroll authorization and roster coverage review remain open. |
+| P06 · HR-014/015 · attendance and time | **Implemented and locally verified for time capture, review and locked time export.** The payroll preparer can preview and export reconciled time for an explicit roster. Pending overtime prevents timesheet lock. The CSV preview shows overnight clock offsets and blocks incomplete clock pairs. See Slices 26 and 100. | Confirm the company's attendance feed and approved missing-punch handling before rollout. Employee submissions and manager recommendations need approved opt-in settings and verified links. Production payroll authorization and roster coverage review remain open. |
 | P07 · HR-016/017 · leave | **Partial.** Published schedules determine units. Dated policies require independent HR review. HR can post reviewed accrual, catch up across closed months, and roll over the year from the ledger, including explicit policy-authorized expiry of excess days. The scheduled worker can post designated policies, including independently approved calendar-day proration. Payroll exports reconciled paid and unpaid units, splitting new approvals on retained work dates. HR can reconcile missing cross-month dates using independently reviewed evidence. Reversal verifies the original debit and preserves approved payroll. See Slices 42–45, 66, 69 and 73. | Specify how leave debits consume carry-in, destination-year carry expiry rules and audited corrections to closed years. Reconcile affected live records from their historical evidence. Confirm policy selection and publish missing work calendar periods before activation. |
 | P08 · HR-012/018 · documents, policies and letters | **Versioned files and policy editions implemented and locally verified.** Policies link to the exact approved files and maintain separate acknowledgement receipts after replacement. `HRLettersPanel` keeps encrypted drafts for independent issuance. Salary confirmations bind the current independently approved compensation term. See Slices 31 and 72. | Reconcile any legacy policy file links. Confirm the production templates, compensation records and authorized reviewers, retention and any delivery to former employees. |
 | P09 · HR-018 · service requests | **Implemented and locally verified for handoffs and response letters.** HR can assign active requests, the assignee can complete one with a same-employee issued letter, and overdue reminders follow the eligible assignee. My HR keeps the exact letter visible on reopening. | Confirm the live SLA threshold and routing. Verify representative sensitive responses and templates with business UAT. |
 | P10 · HR-021/022 · compensation and obligations | **Implemented for restricted operator workflows.** The directory supports capped policies, dated coverage, private receipt review, reimbursement approval and external settlement. Advances track external disbursements and repayments through the API, CLI and directory. Compensation has independent review and effective-date history. See Slices 46–55. | Verify business policy and duties, reconcile legacy claims, and confirm payout mapping and recovery policy before activation. |
 | P11 · HR-023 · payroll and settlement | **Partial and role gated.** The payroll portal proposes and independently approves monthly policies tied to a controlled record with validated worked examples, captures reviewed earnings and deductions, prepares an explicit-roster run, and rechecks compensation and attached time and leave evidence when approving the frozen snapshot. The portal, API and CLI publish or expose payslips, register an internal Finance export and reconcile external outcomes. A separate reviewer closes the locked period after payslips and reconciliation. See Slices 56–64 and 74–77. | Supply the actual approved policy and worked examples. Agree and implement Finance execution, recovery and replacement statement handling for reviewed corrections. Verify payout mapping, currency, authorized operators and production reconciliation. |
 | P12 · HR-019/020 · development and learning | **Implemented and locally verified.** HR configures mandatory training, verifies exact certificate versions and opens participant-scoped reviews with optional cycle ratings. Employees and authorized managers acknowledge goals and submit assessments. HR records handoffs, calibrates and appends corrections. See Slices 21–24. | Supply the company’s approved cycle labels where ratings are required. Verify production reminder routing and business acceptance. |
-| P13 · HR-024 · employee relations | **Partial and role gated.** `create_hr_case`, `list_hr_cases` and `close_hr_case` cover basic restricted case operations. | Design participant and conflict checks before assigning case authority, then add evidence, investigation, decision and appeal paths. Verify denied discovery and downloads across case participants. Confirm engagement scope separately. |
+| P13 · HR-024 · employee relations | **Partial and role gated.** Case reads and updates are opener-scoped, linked subjects cannot handle their own case, and new resolution notes use the HR vault. | Confirm investigator, reviewer and appeal authority before adding those workflows. Case-linked evidence and business acceptance remain open. No production role is granted the case permission. |
 | P14 · HR-025 · separation and custody | **Implemented and locally verified.** Offboarding requires director access cutoff, IT handover, inventory custody and independent Finance settlement review. Explicit rehire preserves prior periods and uses independent approval. See Slices 17–20. | Verify physical handover, settlement evidence policy, director assignments and authorization in business UAT. Production activation remains open. |
-| P15 · HR-026–028 · reporting and CLI | **Partial.** `hr_reporting.py`, `HRSummaryPanel` and `garrisonctl_hr.py` cover aggregate exports and multiple HR administrative workflows, including recruitment, time records, document decisions, work calendar review and roster allocation. See Slices 65 and 68–71 for recent coverage. | Compare the remaining terminal coverage with the accepted lifecycle workflows. Verify read/preview/apply/readback, actor-bound plans, export totals and field scope. |
+| P15 · HR-026–028 · reporting and CLI | **Partial.** `hr_reporting.py`, `HRSummaryPanel` and `garrisonctl_hr.py` cover aggregate exports and multiple HR administrative workflows, including recruitment, time records, document decisions, work calendar review, roster allocation and reviewed compensation. See Slices 65 and 68–71 for recent coverage. | Compare the remaining terminal coverage with the accepted lifecycle workflows. Verify read/preview/apply/readback, actor-bound plans, export totals and field scope. |
 | P16 · HR-029/030 · reliability and handover | **Synthetic recovery verified; operational acceptance pending.** HR reminders use existing tasks. Isolated restores at revision 042 and 057 recovered encrypted HR records, exact file versions and payroll evidence. See Slices 32 and 64. | Run the recovery and migration procedure with the approved off-host destination, key custody, retained data and measured recovery targets. Record retention policy and business acceptance separately. Preserve retain-only audit mode and technical CI/CD. |
 
 Paths in the [workforce guide](HR_WORKFORCE.md#core-workflows) lead to the router,
@@ -1876,3 +1876,170 @@ passed, covering role navigation, catalogue parity and retained HR Manager
 offboarding and training. Ruff, mypy, ESLint and the OpenAPI and generated
 TypeScript checks passed. No migration, account assignment or production
 activation was performed.
+
+## Slice 92 · exact HR candidate on self-hosted CI
+
+Verification of `b8a34ba` found an integration assertion that still expected
+the previous user-directory role catalogue. Commit `21750a2` adds the new
+role to that independent expectation and verifies its exact grants and
+non-assignability to the scoped reader of the catalogue. Thirty focused
+tests passed locally. The superseded verification run had one failing
+backend shard and its browser jobs were cancelled after the replacement
+was queued.
+[First verification run](https://github.com/nirzaf/garrison-investments/actions/runs/44026035722)
+
+All seven self-hosted jobs passed on exact commit
+`21750a2a425f91b4d5811e8ac77f0e3ddec9deb8`. The two backend shards passed
+314 and 637 tests and the two Chrome shards passed 34 and 36 scenarios.
+The workflow took 17m 15s including 3m 25s before the first job started.
+The later Chrome shard started 2m 09s after the first and finished last.
+The workflow ran on the verification branch. Remote main and production
+remained on `fa73693`.
+[Exact candidate CI](https://github.com/nirzaf/garrison-investments/actions/runs/44026987785)
+
+## Slice 93 · production release of the scoped HR candidate
+
+The exact `21750a2` push to main passed all seven self-hosted CI jobs on
+attempt 1, including 951 backend, 50 Vitest and 70 Chrome cases with no
+failures or skips. CI took 13m 02s. The Chrome jobs began five seconds apart,
+compared with 2m 09s apart for the same candidate's verification run.
+Combined Chrome case time was 803.8 seconds. Runner scheduling changed
+between the runs. The release did not change CI configuration.
+[Main CI](https://github.com/nirzaf/garrison-investments/actions/runs/44029735679)
+
+Hostinger activated the same SHA on deployment attempt 1. The standard
+pre-activation backup completed in three seconds. Before and after
+activation, the host receipt and PostgreSQL query agreed on
+`202605310061`. No migration ran. Public readiness returned `ready` and
+`connected`, and the anonymous HR request queue returned HTTP 401.
+The running backend exposed the HR request CLI and the four approved HR
+Executive grants. PostgreSQL showed zero HR Executive assignments and
+zero active HR Managers. The application granted payroll to zero roles.
+The receipt records formal acceptance pending.
+[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44031348063)
+
+## Slice 94 · isolate restricted employee-relations records
+
+The case API bounds and scopes lists to the opener, withholds narratives
+and resolution notes from list responses, and audits detail disclosure.
+A linked employee cannot open or act on their own case. Closed records
+reject subsequent mutations. New resolution notes use the existing HR
+encryption key and storage column. Scoped detail can read legacy notes,
+and an omitted note preserves the prior note. General vault routes keep
+disciplinary material unavailable pending explicit case-linked authorization.
+See [restricted employee-relations cases](HR_WORKFORCE.md#restricted-employee-relations-cases).
+
+An HR-only overlay on `21750a2` passed 82 focused backend and CLI tests
+on disposable PostgreSQL at revision `202605310061`. The case scenario
+covered cross-account and subject denial, encrypted persistence, legacy
+readback, document denial, and concurrent closure with one recorded
+decision. Ruff, mypy and generated contract checks passed.
+
+## Slice 95 · compensation review in garrisonctl
+
+The CLI lists compensation metadata, saves an exact private review copy,
+and uses actor-bound plans for proposal and independent decision against
+the existing HR API. Salary, allowances and decision reasons stay out of
+terminal output. Apply rechecks the reviewed term and verifies the saved
+outcome. Existing payroll permissions and locked-period rules remain in
+force. See [CLI workforce administration](CLI_ADMINISTRATION.md#workforce-administration).
+
+An HR-only overlay on `21750a2` passed 116 backend and CLI tests
+on disposable PostgreSQL at revision `202605310061`. The compensation
+test used the real HR API and two synthetic operators. The HTTP mock
+covered private output, distinct approval, stale and actor-mismatched
+plans, replay denial, and masked terminal output. Ruff and mypy passed.
+
+## Slice 96 · benefit policy and coverage in garrisonctl
+
+The CLI now proposes benefit types, exports an owner-only policy review
+copy, records independent approval and assigns dated employee coverage
+through the existing HR API. It excludes ceilings and private coverage
+notes from terminal output. An HR-only candidate passed 117 backend and
+CLI tests on disposable PostgreSQL. The real-API scenario verified
+self-approval and tampered-copy denial, an actor-bound plan, and refusal
+of pending and overlapping coverage. The change was neither pushed nor
+deployed.
+
+## Slice 97 · reimbursement submission and independent review in garrisonctl
+
+The CLI lists masked claim metadata and writes a private review copy.
+Submission pins an approved receipt and an actor-bound plan. A retry
+with the same key returns the same claim. An independent reviewer applies
+a plan bound to the exact claim and decision. The CLI verifies persisted
+readback after submission and decision. The new claim detail route requires
+the existing payroll-sensitive permission, audits each successful read
+and disables caching. See [CLI workforce administration](CLI_ADMINISTRATION.md#workforce-administration).
+
+An HR-only overlay on `21750a2` passed 118 tests on disposable PostgreSQL
+and S3-compatible storage. The CLI integration exercised real API
+submission, same-key replay and changed-body conflict, independent
+review, external settlement recording, unauthorized detail denial and
+private output. Ruff, mypy, OpenAPI export and generated TypeScript
+checks passed. No schema migration, permission grant, push or production
+deployment was required for this verification.
+
+## Slice 98 · restricted employee-relations case CLI
+
+The CLI opens, lists, inspects and updates cases under the existing
+restricted permission and opener-only scope. Terminal receipts omit the
+title, case code, employee ID, narrative and resolution. A reviewed
+update compares the exact reviewed state under the case lock and
+returns a conflict if another writer changed it before the decision.
+Omitting resolution notes preserves the previous text.
+
+The HR-only overlay on `21750a2` passed 119 tests on disposable
+PostgreSQL and S3-compatible storage. The real-API CLI test verified
+private output, opener isolation, duplicate prevention, a stale
+update injected between preview and write, and persisted closure
+with the newer note intact. Ruff, mypy, OpenAPI and TypeScript contract
+checks passed. The case permission remains unassigned in production.
+
+## Slice 99 · restricted employee-relations browser workspace
+
+The Employee relations navigation and route require the existing
+restricted case permission. The page opens cases, lists the opener's
+records, and loads the full review only when selected. Review responses
+carry a digest. Browser updates send that digest and preserve draft notes
+when the API rejects a stale review.
+
+The isolated HR overlay on `21750a2` passed four backend checks and
+four Chrome scenarios. Chrome verified case creation, newer-note
+conflict and deliberate retry, persisted closure after reload, and access
+denial to another HR operator and to a director without the case grant.
+The other scenarios covered offboarding and rehire, training, and HR
+Executive navigation. The isolated production build, Ruff, mypy, and
+OpenAPI and TypeScript contract checks passed. The full dirty worktree
+still has two type errors in the in-progress Super Admin panels.
+No production permission was granted and no deployment was performed.
+
+## Slice 100 · overnight attendance and incomplete punch validation
+
+The attendance CSV preview shows the validated check-in and check-out
+timestamps with their original offsets. The import rejects a single
+punch and applies the batch only when all rows pass. The preview and
+apply responses disable caching.
+
+An HR-only overlay on `21750a2` passed six backend checks and two
+Chrome scenarios. PostgreSQL readback retained the check-in work date
+and both instants across midnight. The API rejected a UTC date that
+did not match the employee calendar date. Chrome verified that a
+missing punch disabled Apply and that the corrected overnight row
+was submitted and independently approved. Ruff, mypy, ESLint, the
+isolated production build and both API contract checks passed.
+No attendance or payroll policy changed. No production deployment ran.
+
+## Slice 101 · attendance CSV import in garrisonctl
+
+The CLI uses the same preview and apply endpoints as the browser. It
+binds apply to the signed-in actor, exact CSV bytes and API preview.
+Successful receipts identify the committed attendance entries. Clock
+times and employee codes are available in an optional owner-only review
+file and are omitted from terminal receipts.
+
+The HR-only overlay on `21750a2` passed seven backend checks and two
+Chrome scenarios. The real-API CLI test refused an invalid file, wrong
+actor, changed file and duplicate attempt. It verified the committed
+entry's identity, submitted state and overnight timestamp through a
+separate API read. The local production build passed. The work remains
+in the main worktree and has not been pushed or deployed.

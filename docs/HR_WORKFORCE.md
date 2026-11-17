@@ -104,12 +104,14 @@ Readiness returned `ready` with PostgreSQL connected; sign-in and the service
 worker returned HTTP 200. Anonymous HR directory and assignment requests
 returned HTTP 401, confirming the authentication boundary only.
 
-The latest verified HR deployment is `fa73693c955241c116f3ab542ee1b54cbff9d474`.
+The latest verified HR deployment is `21750a2a425f91b4d5811e8ac77f0e3ddec9deb8`.
 On 2026-11-17, the live release receipt and a read-only PostgreSQL query both
 reported Alembic `202605310061`. Public readiness returned `ready` with the
 database `connected` and the unauthenticated HR request queue returned 401.
-The running application granted payroll access to zero roles.
-[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44021927486)
+The running application exposed the four approved HR Executive grants and
+granted payroll access to zero roles. No account held the new role and the
+live backend registered the HR request CLI commands. No migration ran.
+[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44031348063)
 
 The read-only count taken with the first HR deployment showed zero active HR
 Manager accounts and zero `hr_employees` rows. Authenticated production
@@ -272,10 +274,17 @@ roster and evidence.
   explicit company default. New attendance records retain the schedule used and
   validate clock-in dates in its timezone. Manual entries can be recorded when
   there is no schedule, with workday and shift information left unknown.
-  Attendance CSV import validates the file before applying all rows. An
+  Attendance CSV import validates the file before applying all rows. The
+  preview shows both validated timestamps with their supplied UTC offsets.
+  For overnight work, use the check-in date in the applicable calendar's
+  timezone as the work date, and the actual next-day date in the check-out
+  timestamp. A row with only one clock time blocks the batch. Leave both
+  fields blank only for an entry without clock times. An
   authorized supervisor can recommend entries when the policy applies. An
   independent HR Manager approves or returns entries. Review attendance,
   pending corrections and overtime before locking a timesheet period.
+  The same import is available through
+  [garrisonctl](CLI_ADMINISTRATION.md#workforce-administration).
   Staff can submit their own
   leave. Paid balances use an auditable ledger and the approval transaction.
   A cancellation after approval reverses the debit. An employee can cancel their
@@ -462,6 +471,34 @@ roster and evidence.
 Run `python -m scripts.garrisonctl hr --help` for available commands. See the
 [CLI guide](CLI_ADMINISTRATION.md) for authentication and mutation previews.
 
+## Restricted employee-relations cases
+
+The case permission remains unassigned in the production role catalogue.
+The API lists only cases opened by the requesting actor and omits the
+case narrative and resolution from list responses. The opener can use
+the audited case detail endpoint unless the case concerns their own
+linked employee record. Case responses use `Cache-Control: no-store`.
+
+New resolution notes are encrypted with the HR vault key. Scoped detail
+still reads historical plaintext notes, and changing case status without
+submitting a new note preserves the stored note. Closed cases reject later
+mutations. The general document vault does not expose disciplinary files
+through the case permission. Evidence upload and access need an explicit
+case relationship and confirmed participant authority.
+
+**Employee relations** in the navigation opens a dedicated workspace for
+operators with the restricted case permission. It lists cases they opened,
+loads the narrative only when they review a case, and retains typed notes
+when a newer case update needs review. Close a case only after verifying
+the latest resolution. Case details stay in the page's current session.
+
+The CLI can open, list, inspect and update cases under the same
+opener-only rule. It keeps the narrative and resolution in private
+files. A reviewed CLI update includes a state digest. The service
+checks it while holding the case lock, so updates made after the
+review cannot be silently overwritten.
+[CLI commands](CLI_ADMINISTRATION.md#workforce-administration).
+
 ## Payroll verification
 
 Open **Payroll** in the HR workspace. In **Payroll policies**, enter a
@@ -607,6 +644,12 @@ receipt to submit the claim. The claim reviewer opens the pinned receipt
 version before recording a decision. After approval, the panel provides a
 payable download for the restricted Finance location. A separate authorized
 operator verifies the external settlement reference, amount and currency.
+
+The CLI supports the same claim submission and independent decision
+workflow. It saves the reviewed claim in an owner-only file and verifies
+the saved claim after each write. The review endpoint records an audit
+event and sets `Cache-Control: no-store`. Use the pinned version to
+inspect the receipt through the existing restricted document workflow.
 
 An approved reimbursement is available as a protected Finance payable
 reference. The reference binds the original claim, opaque employee ID,
@@ -873,13 +916,8 @@ The calculation assumes no statutory rates or entitlement schedule.
 
 ## Remaining acceptance work
 
-Self-hosted CI and the production deployment completed for `06c0f9d`.
-The deployment run verified the live image and readiness. A subsequent
-read-only check of the [production readiness endpoint](https://portal.garrisons.lk/health/readiness)
-returned `ready`. Authenticated HR acceptance, operator enrollment and live
-payroll approval remain open.
-[CI run](https://github.com/nirzaf/garrison-investments/actions/runs/43956212246) ·
-[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/43959017531)
+Authenticated HR acceptance, operator enrollment and live payroll approval
+remain open after the [latest production deployment](#production-deployment-and-available-access).
 
 The last pre-cutover configuration inspection was against production SHA
 `1399710589f8f2d82bac2e79326bc9b88bbb888d` on 2026-11-15. It showed
@@ -906,7 +944,7 @@ Key custody and recovery remain separate evidence requirements.
   retention and clearance owners, and the relevant letter templates.
 - Approve key custody and an off-host database/object recovery exercise; retain
   the existing isolated synthetic rehearsal as rehearsal evidence only.
-- Run focused authenticated HR acceptance checks against `fa73693` when
+- Run focused authenticated HR acceptance checks against `21750a2` when
   authorized HR and employee accounts are available. The exact main commit
   passed self-hosted CI and deployed without a migration.
-  [Main CI run](https://github.com/nirzaf/garrison-investments/actions/runs/44020386126)
+  [Main CI run](https://github.com/nirzaf/garrison-investments/actions/runs/44029735679)

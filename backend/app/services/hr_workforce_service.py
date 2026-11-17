@@ -1793,8 +1793,7 @@ class HrWorkforceService:
             categories.extend(["confidential", "medical", "identity"])
         if has_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE):
             categories.append("compensation")
-        if has_permission(actor, PERMISSION_HR_CASES_RESTRICTED):
-            categories.append("disciplinary")
+        # Disciplinary evidence needs an explicit case relationship and participant check.
         return categories
 
     def _ensure_hr_doc_access(self, doc: HrDocument, actor: User) -> None:
@@ -6793,6 +6792,22 @@ class HrWorkforceService:
         await self._commit_and_refresh(claim)
         return claim
 
+    async def get_reimbursement_for_review(
+        self, claim_id: UUID, actor: User
+    ) -> HrReimbursementClaim:
+        ensure_permission(actor, PERMISSION_HR_PAYROLL_SENSITIVE)
+        claim = await self.session.get(HrReimbursementClaim, claim_id)
+        if claim is None:
+            raise NotFoundException("Reimbursement claim")
+        await self.audit.record(
+            action="hr.reimbursement.read",
+            user_id=actor.id,
+            entity_type="hr_reimbursement_claims",
+            entity_id=claim.id,
+        )
+        await self.session.commit()
+        return claim
+
     async def list_reimbursements(
         self, *, employee_id: UUID | None = None, limit: int | None = None, offset: int = 0
     ) -> tuple[list[HrReimbursementClaim], int]:
@@ -7221,7 +7236,69 @@ class HrWorkforceService:
 
     # --- Restricted Cases (HR-024) ---
 
+    _CASE_NOTE_ENVELOPE = "hr-case-fernet-v1:"
+
+    @staticmethod
+    def _check_hr_case_permission(actor: User) -> None:
+        ensure_permission(actor, PERMISSION_HR_CASES_RESTRICTED)
+        if not actor.is_active or actor.deleted_at is not None:
+            raise PermissionDeniedException(PERMISSION_HR_CASES_RESTRICTED)
+
+    @staticmethod
+    def _hr_case_scope(actor: User) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+        subject_is_actor = (
+            select(HrEmployee.id)
+            .where(HrEmployee.id == HrCase.employee_id, HrEmployee.user_id == actor.id)
+            .exists()
+        )
+        return HrCase.opened_by_id == actor.id, ~subject_is_actor
+
+    def _hr_case_response(self, case: HrCase, *, include_content: bool) -> HrCaseResponse:
+        resolution = case.resolution_notes if include_content else None
+        if resolution and resolution.startswith(self._CASE_NOTE_ENVELOPE):
+            resolution = decrypt_hr_value(resolution.removeprefix(self._CASE_NOTE_ENVELOPE))
+        return HrCaseResponse(
+            id=case.id,
+            case_code=case.case_code,
+            employee_id=case.employee_id,
+            case_type=case.case_type,
+            severity=case.severity,
+            title=case.title,
+            details_plain=decrypt_hr_value(case.details_encrypted) if include_content else None,
+            status=case.status,
+            opened_by_id=case.opened_by_id,
+            closed_by_id=case.closed_by_id,
+            closed_at=case.closed_at,
+            resolution_notes=resolution,
+            created_at=case.created_at,
+        )
+
+    async def _find_hr_case(self, case_id: UUID, actor: User) -> HrCase:
+        self._check_hr_case_permission(actor)
+        case = await self.session.scalar(
+            select(HrCase)
+            .where(HrCase.id == case_id, *self._hr_case_scope(actor))
+            .with_for_update()
+        )
+        if case is None:
+            raise NotFoundException("HR Case")
+        # Recheck the linked subject under the employee lock if it can still change.
+        if case.employee_id is not None:
+            subject = await self.session.scalar(
+                select(HrEmployee).where(HrEmployee.id == case.employee_id).with_for_update()
+            )
+            if subject is not None and subject.user_id == actor.id:
+                raise NotFoundException("HR Case")
+        return case
+
     async def create_hr_case(self, payload: HrCaseCreateRequest, actor: User) -> HrCaseResponse:
+        self._check_hr_case_permission(actor)
+        if payload.employee_id is not None:
+            employee = await self._require_employee(payload.employee_id, for_update=True)
+            if employee.user_id == actor.id:
+                raise PermissionDeniedException(
+                    "open a restricted case on your own employee record"
+                )
         case = HrCase(
             case_code=payload.case_code.strip(),
             employee_id=payload.employee_id,
@@ -7235,12 +7312,12 @@ class HrWorkforceService:
         self.session.add(case)
         try:
             await self.session.flush()
+            result = self._hr_case_response(case, include_content=True)
             await self.audit.record(
                 action="hr.case.opened",
                 user_id=actor.id,
                 entity_type="hr_cases",
                 entity_id=case.id,
-                new_values={"case_code": case.case_code, "case_type": case.case_type},
             )
             await self.session.commit()
         except IntegrityError as exc:
@@ -7248,73 +7325,62 @@ class HrWorkforceService:
             raise AppException(
                 "Case code already exists.", status_code=409, error_code="CASE_EXISTS"
             ) from exc
-        return HrCaseResponse(
-            id=case.id,
-            case_code=case.case_code,
-            employee_id=case.employee_id,
-            case_type=case.case_type,
-            severity=case.severity,
-            title=case.title,
-            details_plain=decrypt_hr_value(case.details_encrypted),
-            status=case.status,
-            opened_by_id=case.opened_by_id,
-            closed_by_id=case.closed_by_id,
-            closed_at=case.closed_at,
-            resolution_notes=case.resolution_notes,
-            created_at=case.created_at,
-        )
+        return result
 
-    async def list_hr_cases(self) -> tuple[list[HrCaseResponse], int]:
-        rows = list(await self.session.scalars(select(HrCase).order_by(HrCase.created_at.desc())))
-        return [
-            HrCaseResponse(
-                id=c.id,
-                case_code=c.case_code,
-                employee_id=c.employee_id,
-                case_type=c.case_type,
-                severity=c.severity,
-                title=c.title,
-                details_plain=decrypt_hr_value(c.details_encrypted),
-                status=c.status,
-                opened_by_id=c.opened_by_id,
-                closed_by_id=c.closed_by_id,
-                closed_at=c.closed_at,
-                resolution_notes=c.resolution_notes,
-                created_at=c.created_at,
+    async def list_hr_cases(
+        self, actor: User, *, limit: int, offset: int
+    ) -> tuple[list[HrCaseResponse], int]:
+        self._check_hr_case_permission(actor)
+        query = select(HrCase).where(*self._hr_case_scope(actor))
+        total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
+        rows = list(
+            await self.session.scalars(
+                query.order_by(HrCase.created_at.desc(), HrCase.id.desc())
+                .limit(limit)
+                .offset(offset)
             )
-            for c in rows
-        ], len(rows)
+        )
+        return [self._hr_case_response(row, include_content=False) for row in rows], total or 0
+
+    async def get_hr_case(self, case_id: UUID, actor: User) -> HrCaseResponse:
+        case = await self._find_hr_case(case_id, actor)
+        result = self._hr_case_response(case, include_content=True)
+        await self.audit.record(
+            action="hr.case.read", user_id=actor.id, entity_type="hr_cases", entity_id=case.id
+        )
+        await self.session.commit()
+        return result
 
     async def close_hr_case(
         self, case_id: UUID, payload: HrCaseCloseRequest, actor: User
     ) -> HrCaseResponse:
-        case = await self.session.scalar(select(HrCase).where(HrCase.id == case_id))
-        if case is None:
-            raise NotFoundException("HR Case")
+        case = await self._find_hr_case(case_id, actor)
+        if case.status == "closed":
+            raise AppException(
+                "The case is already closed.", status_code=409, error_code="HR_CASE_CLOSED"
+            )
+        if payload.expected_state_sha256 is not None and (
+            self._hr_case_response(case, include_content=True).reviewed_state_sha256()
+            != payload.expected_state_sha256
+        ):
+            raise AppException(
+                "The case changed since review. Review it again.",
+                status_code=409,
+                error_code="HR_CASE_REVIEW_STALE",
+            )
         case.status = payload.status
-        case.resolution_notes = payload.resolution_notes
+        if "resolution_notes" in payload.model_fields_set:
+            encrypted = encrypt_hr_value(payload.resolution_notes)
+            case.resolution_notes = self._CASE_NOTE_ENVELOPE + encrypted if encrypted else None
         if payload.status == "closed":
             case.closed_by_id = actor.id
             case.closed_at = utc_now()
+        result = self._hr_case_response(case, include_content=True)
         await self.audit.record(
             action=f"hr.case.{payload.status}",
             user_id=actor.id,
             entity_type="hr_cases",
             entity_id=case.id,
         )
-        await self._commit_and_refresh(case)
-        return HrCaseResponse(
-            id=case.id,
-            case_code=case.case_code,
-            employee_id=case.employee_id,
-            case_type=case.case_type,
-            severity=case.severity,
-            title=case.title,
-            details_plain=decrypt_hr_value(case.details_encrypted),
-            status=case.status,
-            opened_by_id=case.opened_by_id,
-            closed_by_id=case.closed_by_id,
-            closed_at=case.closed_at,
-            resolution_notes=case.resolution_notes,
-            created_at=case.created_at,
-        )
+        await self.session.commit()
+        return result

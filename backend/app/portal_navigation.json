@@ -62,6 +62,12 @@
     ],
     "excluded_roles": []
   },
+  "employee-relations": {
+    "any_permissions": [
+      "hr:cases:restricted"
+    ],
+    "excluded_roles": []
+  },
   "my-hr": {
     "any_permissions": [],
     "excluded_roles": []

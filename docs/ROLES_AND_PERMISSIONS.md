@@ -32,9 +32,13 @@ The synthetic legacy test route reserves `super_admin` with `platform:access`
 and `platform:overview:read`. Business assignments, HR account links, workbook
 imports and role cutover use the business catalogue above. The technical portal
 defaults to disabled. Its separate operator registry uses an enrolled passkey
-followed by a single-use email code. Browser sessions use a host-only cookie
-and a separate server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
-describes operator enrollment, ingress and production verification.
+followed by a single-use email code and grantable technical capabilities
+(`operator.manage`, nine bounded case/custody/view/log grants, and twelve
+read-only oversight/monitor grants in [support oversight models](../backend/app/models/support_oversight.py)).
+None of those technical capabilities grant any business role or financial or HR
+write authority. Browser sessions use a host-only cookie and a separate
+server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
+describes operator enrollment, ingress, oversight bounds, and production verification.
 
 ## Permission matrix
 

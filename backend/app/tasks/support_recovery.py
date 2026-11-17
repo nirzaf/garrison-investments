@@ -3,13 +3,13 @@
 import asyncio
 from datetime import timedelta
 from hmac import compare_digest
-from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.database import AsyncSessionLocal
+from app.models.notification import Notification
 from app.models.support_business_actions import SupportBusinessAction, SupportRecoveryDelivery
 from app.repositories.auth_repository import AuthRepository
 from app.services.email_service import EmailService
@@ -18,25 +18,16 @@ from app.services.support_identity import SUPPORT_HOST
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.exceptions import AppException
-from app.utils.recovery_destination import support_recovery_otp, support_recovery_otp_digest
+from app.utils.recovery_destination import (
+    recovery_portal_origin,
+    support_recovery_otp,
+    support_recovery_otp_digest,
+)
 from app.utils.security import utc_now
 
 
 def _portal_origin(settings: Settings) -> str | None:
-    if settings.app_env.lower() != "test" or not settings.support_portal_enabled:
-        return None
-    try:
-        url = urlsplit(settings.frontend_base_url or "")
-        if (
-            url.scheme == "https"
-            and url.hostname is not None and url.hostname != SUPPORT_HOST
-            and not url.username and not url.password
-            and not url.query and not url.fragment and url.path in {"", "/"}
-        ):
-            return f"https://{url.netloc}"
-    except ValueError:
-        return None
-    return None
+    return recovery_portal_origin(settings, support_host=SUPPORT_HOST)
 
 
 async def _claim() -> UUID | None:
@@ -81,17 +72,24 @@ async def _deliver(action_id: UUID, origin: str, settings: Settings) -> None:
         challenge_id = queued.challenge_id
         address = None
         code = None
+        target_id: UUID | None = None
         try:
             # Use the same lock order as account actions and authentication.
             target = await SupportBusinessActions(db).lock_recovery_delivery_target(action)
+            target_id = target.id
             challenge = await AuthRepository(db).get_otp_challenge(challenge_id, for_update=True)
             code = support_recovery_otp(settings, challenge_id)
             digest = support_recovery_otp_digest(settings, challenge_id, code) if code else None
+            operator_mailboxes = {
+                mailbox.strip().casefold()
+                for mailbox in settings.support_email_otp_recipients.values()
+            }
             if (
                 challenge is not None and challenge.purpose == "support_password_reset"
                 and challenge.user_id == target.id and challenge.consumed_at is None
                 and challenge.expires_at > utc_now() and digest is not None
                 and compare_digest(challenge.otp_hash, digest)
+                and target.email.strip().casefold() not in operator_mailboxes
             ):
                 address = target.email
         except AppException:
@@ -121,7 +119,43 @@ async def _deliver(action_id: UUID, origin: str, settings: Settings) -> None:
                 # A transport exception cannot prove that the message was not accepted.
                 delivery.status = "unknown"
         delivery.dispatch_finished_at = utc_now()
+        if target_id is not None and delivery.status in {"accepted", "unknown"}:
+            # Record a non-secret notification without OTP, challenge reference, or destination.
+            notice = (
+                "An approved account recovery code was accepted by the mail provider."
+                if delivery.status == "accepted"
+                else "An approved account recovery dispatch ended with an unknown transport state."
+            )
+            db.add(
+                Notification(
+                    user_id=target_id,
+                    title="Account recovery update",
+                    body=notice,
+                    notification_type="security_alert",
+                    reference_type="support_recovery",
+                    reference_id=action.id,
+                    email_status=delivery.status,
+                )
+            )
         await db.commit()
+        if (
+            delivery.status == "unknown"
+            and settings.should_send_exception_emails
+            and settings.exception_email_recipients_list
+        ):
+            try:
+                await asyncio.to_thread(
+                    EmailService().send,
+                    recipients=settings.exception_email_recipients_list,
+                    subject="Support recovery delivery outcome unknown",
+                    body=(
+                        f"Support recovery action {action.id} ended in an unknown delivery state. "
+                        "Review delivery status before manual intervention; do not resend codes."
+                    ),
+                    allow_fallback=False,
+                )
+            except Exception:
+                pass
 
 
 async def dispatch_recovery_deliveries() -> int:

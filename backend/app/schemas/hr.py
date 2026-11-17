@@ -1,3 +1,4 @@
+import hashlib
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Literal, Self
@@ -1428,7 +1429,10 @@ class AttendanceImportRowResponse(BaseModel):
     work_date: date | None = None
     attendance_status: str | None = None
     worked_hours: Decimal | None = None
+    check_in_at: datetime | None = None
+    check_out_at: datetime | None = None
     error: str | None = None
+    entry_id: UUID | None = None
 
 
 class AttendanceImportPreviewResponse(BaseModel):
@@ -3391,6 +3395,8 @@ class PayrollRunListResponse(BaseModel):
 
 
 class HrCaseCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     case_code: str = Field(min_length=1, max_length=40)
     employee_id: UUID | None = None
     case_type: Literal["grievance", "disciplinary", "whistleblower", "safety", "other"]
@@ -3400,8 +3406,11 @@ class HrCaseCreateRequest(BaseModel):
 
 
 class HrCaseCloseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: Literal["investigating", "action_taken", "closed"]
     resolution_notes: str | None = None
+    expected_state_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class HrCaseResponse(BaseModel):
@@ -3418,6 +3427,9 @@ class HrCaseResponse(BaseModel):
     closed_at: datetime | None
     resolution_notes: str | None
     created_at: datetime
+
+    def reviewed_state_sha256(self) -> str:
+        return hashlib.sha256(self.model_dump_json().encode("utf-8")).hexdigest()
 
 
 class HrCaseListResponse(BaseModel):

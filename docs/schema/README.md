@@ -13,7 +13,7 @@ A dash in the default column means the database has no server default. Applicati
 | [`users`](users.md) | Portal accounts, roles, profile fields, password hashes, and sign-in lockout state. |
 | [`auth_otp_challenges`](auth_otp_challenges.md) | Hashed one-time codes for login and password reset, with expiry, attempts, and consumption state. |
 | [`auth_refresh_tokens`](auth_refresh_tokens.md) | Hashed refresh tokens with expiry and revocation timestamps. |
-| [Support operators and sessions](support_identity.md) | Draft separate technical identity, passkey credentials, and case evidence access. |
+| [Support operators and sessions](support_identity.md) | Separate technical identity, passkey credentials, case evidence access, oversight disclosure audit, and attested backup receipts. |
 
 ## Projects and planning
 

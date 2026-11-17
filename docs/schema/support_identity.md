@@ -1,9 +1,9 @@
 # Support identity and case evidence
 
-The support schema is additive and has no production operator grants. Models
-live in [support identity](../../backend/app/models/support_identity.py) and
-[case access](../../backend/app/models/support_cases.py) and
-[custody](../../backend/app/models/support_custody.py).
+The support schema is additive and has no production operator grants. Models live in [support identity](../../backend/app/models/support_identity.py),
+[case access](../../backend/app/models/support_cases.py),
+[custody](../../backend/app/models/support_custody.py), and
+[oversight and backup receipts](../../backend/app/models/support_oversight.py).
 
 | Tables | Purpose |
 | --- | --- |
@@ -28,6 +28,8 @@ live in [support identity](../../backend/app/models/support_identity.py) and
 | `support_auth_events`, `support_log_reads` | Append-only sign-in decisions and evidence reads. PostgreSQL blocks row changes, deletion and truncate. |
 | `support_log_streams` | Technical session, case and request scope for each live evidence connection. Stores open, expiry and close timestamps. |
 | `support_evidence_exports`, `support_evidence_proofs` | Immutable case, linked request, filters and SHA-256 with independent approval and one-use download. Only proof and receipt metadata are retained. |
+| `support_oversight_events` | Append-only disclosure and per-operator read rate-limit events (`surface`, `action`, optional `case_id`, `request_id`, `occurred_at`). Triggers block updates, deletes and truncate. |
+| `support_backup_receipts` | Append-only attested backup and restore-drill receipts (`receipt_kind`, `backup_set_id`, `manifest_sha256`, `target_domain`, `outcome`, `rpo_minutes`, `rto_minutes`, `captured_at`, `verified_at`, `signer_key_id`, `recorded_by`) without host paths or object keys. |
 
 [Revision 063](../../backend/alembic/versions/202605310063_support_identity.py)
 adds the operator realm and [revision 064](../../backend/alembic/versions/202605310064_support_case_logs.py)
@@ -105,6 +107,12 @@ adds the second sign-in step for the dedicated technical portal and CLI.
 adds the stored live-stream admission limit and connection history.
 [Revision 091](../../backend/alembic/versions/202605310091_support_evidence_export.py)
 adds reviewed export receipts, session-bound passkey proofs and the separate export grant.
+[Revision 092](../../backend/alembic/versions/202605310092_business_log_streams.py)
+adds `business_log_streams` to track and limit active business audit streams across workers.
+[Revision 093](../../backend/alembic/versions/202605310093_support_oversight_and_receipts.py)
+expands the capability check constraints for the 12 oversight/monitor grants,
+creates append-only `support_oversight_events` and `support_backup_receipts`
+tables with `prevent_support_audit_change()` triggers, and blocks `downgrade()`.
 These revisions follow
 the business session revision 062 and create no operator accounts or grants. Keep the schema and retained evidence
 during application rollback. See the [operations runbook](../OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation).

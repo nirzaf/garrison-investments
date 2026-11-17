@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { components } from '../../api/schema';
 import { supportCsrf, supportPasskey, supportPost, supportRequest } from '../../api/support';
 import { SupportAccountPanel } from '../support/SupportAccountPanel';
+import { SupportBackupsPanel } from '../support/SupportBackupsPanel';
 import { SupportBusinessActionReview } from '../support/SupportBusinessActionsPanel';
+import { SupportConfigPanel } from '../support/SupportConfigPanel';
+import { SupportIncidentsPanel } from '../support/SupportIncidentsPanel';
+import { SupportJobsPanel } from '../support/SupportJobsPanel';
+import { SupportOverviewPanel } from '../support/SupportOverviewPanel';
+import { SupportPolicyExplainPanel } from '../support/SupportPolicyExplainPanel';
 import { SupportRecoveryStatusPanel } from '../support/SupportRecoveryStatusPanel';
 import { SupportPermissionViewPanel } from '../support/SupportPermissionViewPanel';
 import { SupportCliProofPanel } from '../support/SupportCliProofPanel';
@@ -22,6 +28,7 @@ type LoginOptions = components['schemas']['SupportLoginOptions'];
 type Session = components['schemas']['SupportProfile'];
 
 function readCliReference() {
+  if (typeof window === 'undefined') return null;
   if (window.location.hash === '#register') return ['', 'register', ''];
   return /^#(cli|proof)=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/
     .exec(window.location.hash);
@@ -121,8 +128,14 @@ export function SupportLoginPage() {
   }, []);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-theme-main px-4">
-      <section className="w-full max-w-md space-y-4 rounded-lg border border-theme-border bg-theme-card p-6">
+    <main className="flex min-h-screen items-center justify-center bg-theme-main px-4 py-6">
+      <section
+        className={
+          session
+            ? 'w-full max-w-5xl space-y-4 rounded-lg border border-theme-border bg-theme-card p-6'
+            : 'w-full max-w-md space-y-4 rounded-lg border border-theme-border bg-theme-card p-6'
+        }
+      >
         <h1 className="text-2xl font-semibold">Garrisons Super Admin</h1>
         {message && <p role="alert">{message}</p>}
         {cliReference ? (
@@ -132,8 +145,21 @@ export function SupportLoginPage() {
             ? <SupportCliProofPanel key={cliReference[2]} reference={cliReference[2]} />
             : <SupportCliLoginPanel key={cliReference[2]} reference={cliReference[2]} />
         ) : session ? (
-          <>
+          <div key={session.operator_id} className="space-y-4">
             <p>Technical session active</p>
+            <SupportOverviewPanel capabilities={session.capabilities} onExpired={handleExpiry} />
+            {session.capabilities.includes('jobs.read') && (
+              <SupportJobsPanel onExpired={handleExpiry} />
+            )}
+            {session.capabilities.includes('backups.read') && (
+              <SupportBackupsPanel onExpired={handleExpiry} />
+            )}
+            {session.capabilities.includes('config.read') && (
+              <SupportConfigPanel onExpired={handleExpiry} />
+            )}
+            {session.capabilities.includes('incidents.read') && (
+              <SupportIncidentsPanel onExpired={handleExpiry} />
+            )}
             {session.capabilities.includes('cases.manage') && (
               <SupportCasesPanel onExpired={handleExpiry} operatorId={session.operator_id}
                 canReadDirectory={session.capabilities.includes('directory.read')}
@@ -159,7 +185,10 @@ export function SupportLoginPage() {
               } />
             )}
             {session.capabilities.includes('simulation.start') && (
-              <SupportPermissionViewPanel key={session.operator_id} onExpired={handleExpiry} />
+              <>
+                <SupportPermissionViewPanel key={session.operator_id} onExpired={handleExpiry} />
+                <SupportPolicyExplainPanel onExpired={handleExpiry} />
+              </>
             )}
             {session.capabilities.includes('account.request') && (
               <SupportRecoveryStatusPanel key={'recovery-status:' + session.operator_id} onExpired={handleExpiry} />
@@ -178,7 +207,7 @@ export function SupportLoginPage() {
               <SupportEvidenceExportPanel onExpired={handleExpiry} />
             )}
             <button disabled={pending} onClick={() => void signOut()} type="button">Sign out</button>
-          </>
+          </div>
         ) : otpReference ? (
           <SupportOtpForm reference={otpReference} onVerified={loadProfile}
             onRestart={() => setOtpReference(null)} />

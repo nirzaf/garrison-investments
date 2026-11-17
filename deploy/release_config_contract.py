@@ -8,6 +8,7 @@ import time
 from collections.abc import Mapping
 from ipaddress import IPv4Network, IPv6Network, collapse_addresses, ip_address, ip_network
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import UUID
 
 _MAILBOX = re.compile(r"[^@\s<>\x00-\x1f\x7f]+@[^@\s<>\x00-\x1f\x7f]+\.[^@\s<>\x00-\x1f\x7f]+")
@@ -223,4 +224,61 @@ def validate_support_ingress(
     ):
         raise ValueError("The support allowlist must not collectively allow every address.")
     validate_support_email_otp_config(environment)
+    validate_support_recovery_delivery_config(environment)
     _validate_support_tls(certificate, private_key)
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "t", "on", "yes", "y"}
+
+
+def _normalized_https_origin(raw: str | None) -> str | None:
+    try:
+        url = urlsplit((raw or "").strip().rstrip("/"))
+    except ValueError:
+        return None
+    if (
+        url.scheme != "https"
+        or url.hostname is None
+        or url.hostname == _SUPPORT_NAME
+        or "*" in url.netloc
+        or url.username
+        or url.password
+        or url.query
+        or url.fragment
+        or url.path != ""
+    ):
+        return None
+    return f"https://{url.netloc}"
+
+
+def validate_support_recovery_delivery_config(environment: Mapping[str, str]) -> None:
+    if not _truthy(environment.get("SUPPORT_RECOVERY_DELIVERY_ENABLED")):
+        return
+    if not _truthy(environment.get("SUPPORT_PORTAL_ENABLED")):
+        raise ValueError("Support recovery delivery requires the support portal to be enabled.")
+    key = environment.get("SUPPORT_RECOVERY_KEY", "").strip()
+    if len(key.encode("utf-8")) < 32 or key in {
+        environment.get("SUPPORT_EMAIL_OTP_KEY", "").strip(),
+        environment.get("SUPER_ADMIN_OTP_KEY", "").strip(),
+    }:
+        raise ValueError(
+            "Support recovery delivery requires an independent recovery key of at least 32 bytes."
+        )
+    allowed = {
+        parsed
+        for item in environment.get("SUPPORT_RECOVERY_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+        if (parsed := _normalized_https_origin(item)) is not None
+    }
+    raw_items = [
+        item for item in environment.get("SUPPORT_RECOVERY_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+    ]
+    if not raw_items or len(allowed) != len(raw_items):
+        raise ValueError("Support recovery delivery requires valid explicit HTTPS origins.")
+    frontend_origin = _normalized_https_origin(environment.get("FRONTEND_BASE_URL"))
+    if frontend_origin is None or frontend_origin not in allowed:
+        raise ValueError(
+            "FRONTEND_BASE_URL must match an approved SUPPORT_RECOVERY_ALLOWED_ORIGINS entry."
+        )

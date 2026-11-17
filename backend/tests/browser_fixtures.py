@@ -56,68 +56,79 @@ def configure() -> None:
     )
 
 
-async def seed(role: str, existing_project_id: UUID | None) -> None:
+async def seed_accounts(
+    roles: list[str],
+    existing_project_id: UUID | None = None,
+    *,
+    shared_project: bool = False,
+) -> list[dict[str, str]]:
     from app.database import AsyncSessionLocal, engine
     from app.models.project import Project
     from app.models.project_member import ProjectMember
     from app.models.user import User
     from app.utils.time import business_today
 
-    identifier = uuid4().hex[:12]
-    email = f"browser-{identifier}@example.com"
-    password = secrets.token_urlsafe(24)
+    accounts: list[dict[str, str]] = []
     try:
         async with AsyncSessionLocal() as session:
-            user = User(
-                email=email,
-                full_name=f"Browser Test {role.replace('_', ' ').title()} {identifier}",
-                role=role,
-                employee_code=f"E2E-{identifier}",
-                password_hash=hash_fixture_password(password),
-                must_change_password=False,
-            )
-            session.add(user)
-            await session.flush()
-            if existing_project_id is not None:
-                project = await session.get(Project, existing_project_id)
-                if project is None:
-                    raise ValueError("The browser-test project does not exist.")
-            else:
-                project = Project(
-                    name=f"Browser Test {identifier}",
-                    code=f"E2E-{identifier}",
-                    status="active",
-                    scope_of_work="Browser regression tests",
-                    target_end_date=business_today() + timedelta(days=60),
-                    created_by=user.id,
+            project_id = existing_project_id
+            for role in roles:
+                identifier = uuid4().hex[:12]
+                email = f"browser-{identifier}@example.com"
+                password = secrets.token_urlsafe(24)
+                user = User(
+                    email=email,
+                    full_name=f"Browser Test {role.replace('_', ' ').title()} {identifier}",
+                    role=role,
+                    employee_code=f"E2E-{identifier}",
+                    password_hash=hash_fixture_password(password),
+                    must_change_password=False,
                 )
-                session.add(project)
+                session.add(user)
                 await session.flush()
-            if role == "site_supervisor":
-                session.add(ProjectMember(project_id=project.id, user_id=user.id))
-            if role == "group_project_manager" and existing_project_id is not None:
-                session.add(
-                    ProjectMember(
-                        project_id=project.id,
-                        user_id=user.id,
-                        role_in_project="group_project_manager",
+                joining = project_id is not None
+                if project_id is not None:
+                    project = await session.get(Project, project_id)
+                    if project is None:
+                        raise ValueError("The browser-test project does not exist.")
+                else:
+                    project = Project(
+                        name=f"Browser Test {identifier}",
+                        code=f"E2E-{identifier}",
+                        status="active",
+                        scope_of_work="Browser regression tests",
+                        target_end_date=business_today() + timedelta(days=60),
+                        created_by=user.id,
                     )
-                )
-            project_id = str(project.id)
-            project_code = project.code
+                    session.add(project)
+                    await session.flush()
+                if role == "site_supervisor":
+                    session.add(ProjectMember(project_id=project.id, user_id=user.id))
+                if role == "group_project_manager" and joining:
+                    session.add(
+                        ProjectMember(
+                            project_id=project.id,
+                            user_id=user.id,
+                            role_in_project="group_project_manager",
+                        )
+                    )
+                accounts.append({
+                    "email": email,
+                    "password": password,
+                    "projectId": str(project.id),
+                    "projectCode": project.code,
+                })
+                if shared_project:
+                    project_id = project.id
             await session.commit()
     finally:
         await engine.dispose()
-    print(
-        json.dumps(
-            {
-                "email": email,
-                "password": password,
-                "projectId": project_id,
-                "projectCode": project_code,
-            }
-        )
-    )
+    return accounts
+
+
+async def seed(role: str, existing_project_id: UUID | None) -> None:
+    (account,) = await seed_accounts([role], existing_project_id)
+    print(json.dumps(account))
 
 
 async def seed_delegation() -> None:
@@ -473,6 +484,7 @@ if __name__ == "__main__":
         "command",
         choices=[
             "seed",
+            "seed-group",
             "seed-supervisor",
             "seed-delegation",
             "seed-analytics-finance",
@@ -482,20 +494,33 @@ if __name__ == "__main__":
             "expire-login",
         ],
     )
-    parser.add_argument("--role", choices=sorted(BUSINESS_ROLES), default="managing_director")
+    parser.add_argument("--role", choices=sorted(BUSINESS_ROLES), action="append")
     parser.add_argument("--project-id", type=UUID)
     parser.add_argument("--challenge-id", type=UUID)
     parser.add_argument("--employee-id", type=UUID)
     parser.add_argument("--maker-id", type=UUID)
     parser.add_argument("--reviewer-id", type=UUID)
     parser.add_argument("--enable-fixture-payroll", action="store_true")
+    parser.add_argument("--enable-fixture-hr-cases", action="store_true")
     args = parser.parse_args()
     if args.command == "expire-login" and args.challenge_id is None:
         parser.error("expire-login requires --challenge-id")
     if args.command == "seed-analytics-finance" and args.project_id is None:
         parser.error("seed-analytics-finance requires --project-id")
+    roles = args.role or ["managing_director"]
+    if args.command == "seed-group":
+        if len(roles) < 2:
+            parser.error("seed-group requires at least two --role options")
+    elif len(roles) > 1:
+        parser.error("Only seed-group accepts multiple --role options")
     configure()
-    if args.command == "serve":
+    if args.command == "seed-group":
+        print(json.dumps(asyncio.run(seed_accounts(roles, args.project_id, shared_project=True))))
+    elif args.command == "serve":
+        if args.enable_fixture_hr_cases:
+            from app.utils.permissions import PERMISSION_HR_CASES_RESTRICTED, ROLE_PERMISSIONS
+
+            ROLE_PERMISSIONS["hr_manager"] |= {PERMISSION_HR_CASES_RESTRICTED}
         if args.enable_fixture_payroll:
             from app.utils.permissions import (
                 PERMISSION_HR_PAYROLL_APPROVE,
@@ -528,7 +553,7 @@ if __name__ == "__main__":
     else:
         asyncio.run(
             seed(
-                "site_supervisor" if args.command == "seed-supervisor" else args.role,
+                "site_supervisor" if args.command == "seed-supervisor" else roles[0],
                 args.project_id,
             )
         )

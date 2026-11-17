@@ -675,3 +675,91 @@ print(asyncio.run(seed()))
       firstDevice.close(), secondDevice.close()]);
   }
 });
+
+test('technical oversight dashboard, monitors, policy explainer, and sign-out cleanup', async ({
+  page
+}) => {
+  const fixture = JSON.parse(execFileSync(
+    env.BROWSER_TEST_PYTHON ?? 'python',
+    ['-c', `
+from tests.browser_fixtures import configure
+configure()
+import asyncio
+import json
+from base64 import b64encode
+from cryptography.hazmat.primitives import serialization
+from tests.test_support_identity import seed_operator
+from app.database import AsyncSessionLocal
+from app.models.support_cases import SupportOperatorGrant
+
+async def seed():
+    operator, credential, key = await seed_operator()
+    async with AsyncSessionLocal() as session:
+        for cap in (
+            "overview.company.read",
+            "overview.workforce.read",
+            "overview.finance.read",
+            "jobs.read",
+            "backups.read",
+            "config.read",
+            "incidents.read",
+            "simulation.start",
+        ):
+            session.add(SupportOperatorGrant(operator_id=operator, capability=cap))
+        await session.commit()
+    return operator, credential, key
+
+operator, credential, key = asyncio.run(seed())
+print(json.dumps({
+    "operator": str(operator),
+    "credential": b64encode(credential).decode(),
+    "handle": b64encode(operator.bytes).decode(),
+    "key": b64encode(key.private_bytes(
+        serialization.Encoding.DER,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )).decode(),
+}))
+`],
+    { cwd: backend, encoding: 'utf8' }
+  )) as OperatorFixture;
+
+  await setupOperator(page, fixture);
+  await signIn(page, fixture.operator);
+
+  const overview = page.getByRole('region', { name: 'Enterprise oversight' });
+  await overview.getByRole('button', { name: 'Load company overview' }).click();
+  await expect(overview).toContainText('Source status: operational');
+  await overview.getByRole('tab', { name: 'Workforce' }).click();
+  await overview.getByRole('button', { name: 'Load workforce overview' }).click();
+  await expect(overview).toContainText('Small-cell privacy threshold: counts below 5 are suppressed.');
+  await overview.getByRole('tab', { name: 'Finance' }).click();
+  await overview.getByRole('button', { name: 'Load finance overview' }).click();
+  await expect(overview).toContainText('Finance writes policy: blocked');
+
+  const jobs = page.getByRole('region', { name: 'Jobs and scheduler monitor' });
+  await jobs.getByRole('button', { name: 'Check job status' }).click();
+  await expect(jobs).toContainText('dispatch_task_outbox');
+
+  const backups = page.getByRole('region', { name: 'Backup and recovery provenance' });
+  await backups.getByRole('button', { name: 'Check recovery posture' }).click();
+  await expect(backups).toContainText('Overall recovery posture');
+
+  const config = page.getByRole('region', { name: 'Safe runtime configuration status' });
+  await config.getByRole('button', { name: 'Check configuration posture' }).click();
+  await expect(config).toContainText('Audit purge disabled');
+
+  const incidents = page.getByRole('region', { name: 'Security incidents summary' });
+  await incidents.getByRole('button', { name: 'Load incident summary' }).click();
+  await expect(incidents).toContainText('Support authentication failures');
+
+  const policy = page.getByRole('region', { name: 'Role policy explainer' });
+  await policy.getByLabel('Role').selectOption('hr_executive_reader');
+  await policy.getByLabel('Permission key').fill('reports:view');
+  await policy.getByRole('button', { name: 'Explain policy rule' }).click();
+  await expect(policy).toContainText('HR Executive (reports:view): Allowed');
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Enterprise oversight' })).toHaveCount(0);
+});

@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, LargeBina
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UUIDPrimaryKeyMixin
+from app.models.support_oversight import ALL_GRANTABLE_CAPABILITIES, sql_quoted_list
 
 
 class SupportCustodyAction(UUIDPrimaryKeyMixin, Base):
@@ -14,8 +15,7 @@ class SupportCustodyAction(UUIDPrimaryKeyMixin, Base):
             "(kind IN ('suspend', 'enroll', 'recover') AND capability IS NULL"
             " AND enable IS NULL) OR "
             "(kind = 'grant_change' AND capability IS NOT NULL AND "
-            "capability IN ('cases.manage', 'logs.runtime', 'health.read', 'directory.read', "
-            "'account.request', 'logs.audit', 'simulation.start', 'logs.stream', 'logs.export')"
+            f"capability IN ({sql_quoted_list(ALL_GRANTABLE_CAPABILITIES)})"
             " AND enable IS NOT NULL)",
             name="bounded_action",
         ),

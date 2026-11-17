@@ -1346,9 +1346,27 @@ export async function recordPayrollSettlement(runId: string, payload: PayrollSet
   await apiClient.post(`/hr/payroll/runs/${runId}/settlements/events`, payload);
 }
 
-export async function listHrCases() {
-  const { data } = await apiClient.get<HrSchemas['HrCaseListResponse']>('/hr/cases');
+export async function listHrCases(offset: number, limit: number, signal: AbortSignal) {
+  const { data } = await apiClient.get<HrSchemas['HrCaseListResponse']>('/hr/cases', {
+    params: { offset, limit },
+    signal
+  });
   return data;
+}
+
+export async function getHrCase(id: string, signal: AbortSignal) {
+  const { data, headers } = await apiClient.get<HrSchemas['HrCaseResponse']>(`/hr/cases/${id}`, {
+    signal
+  });
+  const digest: unknown = headers['x-hr-case-review'];
+  if (data.id !== id || typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error('The case review could not be verified.');
+  }
+  return { data, digest };
+}
+
+export async function updateHrCase(id: string, payload: HrSchemas['HrCaseCloseRequest']) {
+  await apiClient.post(`/hr/cases/${id}/close`, payload);
 }
 
 export async function createHrCase(payload: HrSchemas['HrCaseCreateRequest']) {

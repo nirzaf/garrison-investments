@@ -75,6 +75,14 @@ function seedAccount(role?: string, projectId?: string): SeededAccount {
   ) as SeededAccount;
 }
 
+function seedProjectAccounts(...roles: string[]): SeededAccount[] {
+  const args = ['-m', 'tests.browser_fixtures', 'seed-group'];
+  for (const role of roles) args.push('--role', role);
+  return JSON.parse(
+    execFileSync(PYTHON_BIN, args, { cwd: BACKEND_DIR, encoding: 'utf8' })
+  ) as SeededAccount[];
+}
+
 async function signIn(
   page: Page,
   account: Pick<SeededAccount, 'email' | 'password'>
@@ -100,6 +108,30 @@ async function signIn(
   await expect(page).not.toHaveURL(/\/login$/);
   return { accessToken: body.access_token, userId: body.user.id };
 }
+
+test('changing a password ends the current browser session and requires a fresh sign-in', async ({ page }) => {
+  const account = seedAccount();
+  await signIn(page, account);
+  await page.goto('/change-password');
+  const updatedPassword = 'Synthetic-Password-98#';
+  await page.getByLabel('Current password', { exact: true }).fill(account.password);
+  await page.getByLabel('New password', { exact: true }).fill(updatedPassword);
+  await page.getByLabel('Confirm new password', { exact: true }).fill(updatedPassword);
+  await page.getByRole('button', { name: 'Update password' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signIn(page, { email: account.email, password: updatedPassword });
+});
+
+test('directors cannot open the Super Admin portal', async ({ page, request }) => {
+  const director = await signIn(page, seedAccount());
+  await page.goto('/super-admin');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('heading', { name: 'Super Admin', exact: true })).toHaveCount(0);
+  const response = await request.get('/api/v1/super-admin/overview', {
+    headers: { Authorization: `Bearer ${director.accessToken}` }
+  });
+  expect(response.status()).toBe(404);
+});
 
 async function assignUserToProject(
   request: APIRequestContext,
@@ -193,9 +225,9 @@ test('roles page and users roles endpoint expose the ten canonical roles and the
 test('HR Manager cannot administer accounts while Managing Director sends expected_updated_at on role change', async ({
   browser
 }) => {
-  const director = seedAccount();
-  const hrManager = seedAccount('hr_manager', director.projectId);
-  const siteSupervisor = seedAccount('site_supervisor', director.projectId);
+  const [director, hrManager, siteSupervisor] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'site_supervisor'
+  );
 
   const hrContext = await browser.newContext();
   try {
@@ -318,8 +350,7 @@ test('HR Manager cannot administer accounts while Managing Director sends expect
 test('quantity_surveyor submits daily reports via report-options without reports:view or projects list', async ({
   browser
 }) => {
-  const director = seedAccount();
-  const qs = seedAccount('quantity_surveyor', director.projectId);
+  const [director, qs] = seedProjectAccounts('managing_director', 'quantity_surveyor');
 
   const setupContext = await browser.newContext();
   try {
@@ -381,9 +412,9 @@ test('quantity_surveyor submits daily reports via report-options without reports
 test('supervisors navigate to supervisor updates via report-options including mobile navigation', async ({
   browser
 }) => {
-  const director = seedAccount();
-  const seniorSupervisor = seedAccount('senior_site_supervisor', director.projectId);
-  const siteSupervisor = seedAccount('site_supervisor', director.projectId);
+  const [director, seniorSupervisor, siteSupervisor] = seedProjectAccounts(
+    'managing_director', 'senior_site_supervisor', 'site_supervisor'
+  );
 
   const setupContext = await browser.newContext();
   try {
@@ -1653,8 +1684,7 @@ test('revoking the HR role clears the open HR workspace and prevents access afte
   browser,
   request
 }) => {
-  const director = seedAccount();
-  const manager = seedAccount('hr_manager', director.projectId);
+  const [director, manager] = seedProjectAccounts('managing_director', 'hr_manager');
   const session = await signIn(page, manager);
   const hrHeaders = { Authorization: `Bearer ${session.accessToken}` };
   const marker = `Revocation-${Date.now()}`;
@@ -1716,8 +1746,7 @@ test('HR staff draft, approve and publish a calendar and download the aggregate 
   browser,
   request
 }) => {
-  const preparer = seedAccount('hr_manager');
-  const reviewer = seedAccount('hr_manager', preparer.projectId);
+  const [preparer, reviewer] = seedProjectAccounts('hr_manager', 'hr_manager');
   const preparerSession = await signIn(page, preparer);
   const employeeCode = `CSV-${Date.now().toString(36)}`;
   const employee = await request.post('/api/v1/hr/employees', {
@@ -1836,19 +1865,32 @@ test('HR staff draft, approve and publish a calendar and download the aggregate 
     );
 
     await page.getByText('Import attendance CSV', { exact: true }).click();
+    const importHeader = 'employee_code,work_date,attendance_status,worked_hours,check_in_at,check_out_at\n';
+    const start = '2027-01-04T22:30:00+05:30';
+    const end = '2027-01-05T06:00:00+05:30';
+    const importPreview = page.getByRole('list', { name: 'Attendance import preview' });
+    const applyImport = page.getByRole('button', { name: 'Apply attendance import', exact: true });
+    await page.getByLabel('Attendance CSV', { exact: true }).setInputFiles({
+      name: 'incomplete-attendance.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(importHeader + `${employeeCode},2027-01-04,present,7.50,${start},\n`)
+    });
+    await page.getByRole('button', { name: 'Preview attendance', exact: true }).click();
+    await expect(importPreview).toContainText('Enter both clock times or neither.');
+    await expect(applyImport).toBeDisabled();
+
     await page.getByLabel('Attendance CSV', { exact: true }).setInputFiles({
       name: 'attendance.csv',
       mimeType: 'text/csv',
       buffer: Buffer.from(
-        'employee_code,work_date,attendance_status,worked_hours,check_in_at,check_out_at\n' +
-          `${employeeCode},2027-01-04,present,7.50,2027-01-04T08:30:00+05:30,2027-01-04T16:00:00+05:30\n`
+        importHeader + `${employeeCode},2027-01-04,present,7.50,${start},${end}\n`
       )
     });
     await page.getByRole('button', { name: 'Preview attendance', exact: true }).click();
-    await expect(page.getByRole('list', { name: 'Attendance import preview' })).toContainText(
-      employeeCode
-    );
-    await page.getByRole('button', { name: 'Apply attendance import', exact: true }).click();
+    await expect(importPreview).toContainText(employeeCode);
+    await expect(importPreview).toContainText(start);
+    await expect(importPreview).toContainText(end);
+    await applyImport.click();
     await expect(page.getByText('1 attendance entries submitted for review.')).toBeVisible();
 
     await approvalPage.reload();
@@ -1949,10 +1991,9 @@ test('a direct manager recommends self-submitted time and HR makes the final dec
   browser,
   request
 }) => {
-  const director = seedAccount();
-  const hr = seedAccount('hr_manager', director.projectId);
-  const lineManager = seedAccount('group_project_manager', director.projectId);
-  const worker = seedAccount('quantity_surveyor', director.projectId);
+  const [director, hr, lineManager, worker] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'group_project_manager', 'quantity_surveyor'
+  );
   const directorSession = await signIn(page, director);
   const directorHeaders = { Authorization: `Bearer ${directorSession.accessToken}` };
   const hrContext = await browser.newContext();
@@ -2079,10 +2120,9 @@ test('a linked employee manages their own leave and reopens a completed HR reque
   browser,
   request
 }) => {
-  const director = seedAccount();
-  const manager = seedAccount('hr_manager', director.projectId);
-  const reviewer = seedAccount('hr_manager', director.projectId);
-  const worker = seedAccount('quantity_surveyor', director.projectId);
+  const [director, manager, reviewer, worker] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'hr_manager', 'quantity_surveyor'
+  );
   const directorContext = await browser.newContext();
   const managerContext = await browser.newContext();
   const reviewerContext = await browser.newContext();
@@ -2518,8 +2558,7 @@ test('HR closes offboarding and independently reviews rehire', async ({
   browser,
   request
 }) => {
-  const director = seedAccount();
-  const manager = seedAccount('hr_manager', director.projectId);
+  const [director, manager] = seedProjectAccounts('managing_director', 'hr_manager');
   const session = await signIn(page, manager);
   const headers = { Authorization: `Bearer ${session.accessToken}` };
   const marker = `Custody-${Date.now()}`;
@@ -2734,8 +2773,7 @@ test('HR verifies training against an independently approved certificate', async
   browser,
   request
 }) => {
-  const account = seedAccount('hr_manager');
-  const worker = seedAccount('quantity_surveyor', account.projectId);
+  const [account, worker] = seedProjectAccounts('hr_manager', 'quantity_surveyor');
   const session = await signIn(page, account);
   const marker = `Training-${Date.now()}`;
   const trainingDate = '2026-06-01';
@@ -3684,9 +3722,7 @@ test('authorized HR operators propose and independently review a private compens
   browser,
   request
 }) => {
-  const director = seedAccount();
-  const maker = seedAccount('hr_manager', director.projectId);
-  const reviewer = seedAccount('hr_manager', director.projectId);
+  const [, maker, reviewer] = seedProjectAccounts('managing_director', 'hr_manager', 'hr_manager');
   const makerSession = await signIn(page, maker);
   const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
   const employeeCode = `COMP-${Date.now().toString(36)}`;
@@ -3775,10 +3811,9 @@ test('authorized HR operators propose and independently review a private compens
 });
 
 test('HR operators submit, review and reconcile an employee advance', async ({ page, browser, request }) => {
-  const director = seedAccount();
-  const maker = seedAccount('hr_manager', director.projectId);
-  const reviewer = seedAccount('hr_manager', director.projectId);
-  const recorder = seedAccount('hr_manager', director.projectId);
+  const [, maker, reviewer, recorder] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'hr_manager', 'hr_manager'
+  );
   const makerSession = await signIn(page, maker);
   const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
@@ -3919,10 +3954,9 @@ test('HR operators submit, review and reconcile an employee advance', async ({ p
 });
 
 test('HR operators review a private reimbursement receipt and reconcile the payable', async ({ page, browser, request }) => {
-  const director = seedAccount();
-  const maker = seedAccount('hr_manager', director.projectId);
-  const reviewer = seedAccount('hr_manager', director.projectId);
-  const recorder = seedAccount('hr_manager', director.projectId);
+  const [, maker, reviewer, recorder] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'hr_manager', 'hr_manager'
+  );
   const { accessToken } = await signIn(page, maker);
   const makerHeaders = { Authorization: `Bearer ${accessToken}` };
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Qatar' }).format(new Date());
@@ -4046,10 +4080,9 @@ test('HR operators review a private reimbursement receipt and reconcile the paya
 test('payroll operators lock a reviewed snapshot and publish its employee payslip', async ({ page, browser, request }) => {
   // The full policy-to-payslip workflow uses four signed-in browser contexts.
   test.setTimeout(90_000);
-  const director = seedAccount();
-  const maker = seedAccount('hr_manager', director.projectId);
-  const checker = seedAccount('hr_manager', director.projectId);
-  const employeeAccount = seedAccount('quantity_surveyor', director.projectId);
+  const [director, maker, checker, employeeAccount] = seedProjectAccounts(
+    'managing_director', 'hr_manager', 'hr_manager', 'quantity_surveyor'
+  );
   const makerSession = await signIn(page, maker);
   const makerHeaders = { Authorization: `Bearer ${makerSession.accessToken}` };
   const unique = Date.now().toString(36);
@@ -4508,8 +4541,7 @@ test('payroll operators lock a reviewed snapshot and publish its employee paysli
 });
 
 test('HR independently reviews legacy leave work dates', async ({ page, browser, request }) => {
-  const maker = seedAccount('hr_manager');
-  const reviewer = seedAccount('hr_manager', maker.projectId);
+  const [maker, reviewer] = seedProjectAccounts('hr_manager', 'hr_manager');
   const makerSession = await signIn(page, maker);
   const reviewerContext = await browser.newContext();
   const evidenceDir = mkdtempSync(join(tmpdir(), 'garrison-leave-evidence-'));
@@ -4607,28 +4639,74 @@ test('HR independently reviews legacy leave work dates', async ({ page, browser,
   }
 });
 
-test('changing a password ends the current browser session and requires a fresh sign-in', async ({ page }) => {
-  const account = seedAccount();
-  await signIn(page, account);
-  await page.goto('/change-password');
-  const updatedPassword = 'Synthetic-Password-98#';
-  await page.getByLabel('Current password', { exact: true }).fill(account.password);
-  await page.getByLabel('New password', { exact: true }).fill(updatedPassword);
-  await page.getByLabel('Confirm new password', { exact: true }).fill(updatedPassword);
-  await page.getByRole('button', { name: 'Update password' }).click();
-  await expect(page).toHaveURL(/\/login$/);
-  await signIn(page, { email: account.email, password: updatedPassword });
-});
+test('HR opens and closes a restricted case without overwriting a newer review', async ({ page, browser }) => {
+  const account = seedAccount('hr_manager');
+  const owner = await signIn(page, account);
+  await page.getByRole('link', { name: 'Employee relations' }).click();
+  await expect(page.getByRole('heading', { name: 'Employee relations' })).toBeVisible();
+  await expect(page.getByText('You have no cases.')).toBeVisible();
 
-test('directors cannot open the Super Admin portal', async ({ page, request }) => {
-  const director = await signIn(page, seedAccount());
-  await page.goto('/super-admin');
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { name: 'Super Admin', exact: true })).toHaveCount(0);
-  const response = await request.get('/api/v1/super-admin/overview', {
-    headers: { Authorization: `Bearer ${director.accessToken}` }
+  await page.getByLabel('Case code').fill(account.projectCode);
+  await page.getByLabel('Case title').fill('Synthetic employee-relations case');
+  await page.getByLabel('Case details').fill('Restricted synthetic case narrative.');
+  const created = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/v1/hr/cases' && response.request().method() === 'POST'
+  );
+  await page.getByRole('button', { name: 'Open case' }).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  const { id } = await response.json() as { id: string };
+  await expect(page.getByText('Restricted synthetic case narrative.')).toBeVisible();
+
+  const headers = { Authorization: `Bearer ${owner.accessToken}` };
+  const concurrent = await page.request.post(`/api/v1/hr/cases/${id}/close`, {
+    headers,
+    data: { status: 'investigating', resolution_notes: 'Concurrent synthetic note.' }
   });
-  expect(response.status()).toBe(404);
+  expect(concurrent.ok()).toBeTruthy();
+  await page.getByLabel('New status').selectOption('closed');
+  await page.getByLabel('New resolution notes').fill('Reviewed synthetic resolution.');
+  const conflict = page.waitForResponse((result) =>
+    new URL(result.url()).pathname.endsWith(`/cases/${id}/close`) && result.status() === 409
+  );
+  await page.getByRole('button', { name: 'Save case update' }).click();
+  await conflict;
+  await expect(page.getByRole('alert')).toContainText(/review/i);
+  await page.getByRole('button', { name: 'Reload case' }).click();
+  await expect(page.getByText('Concurrent synthetic note.')).toBeVisible();
+  await expect(page.getByLabel('New resolution notes')).toHaveValue('Reviewed synthetic resolution.');
+  await page.getByRole('button', { name: 'Save case update' }).click();
+  await expect(page.getByText('Case status closed')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: `Review ${account.projectCode}` }).click();
+  await expect(page.getByText('Reviewed synthetic resolution.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save case update' })).toHaveCount(0);
+
+  const otherContext = await browser.newContext();
+  try {
+    const other = await otherContext.newPage();
+    const outsider = await signIn(other, seedAccount('hr_manager'));
+    await other.goto('/hr/cases');
+    await expect(other.getByText('You have no cases.')).toBeVisible();
+    const forbidden = await other.request.get(`/api/v1/hr/cases/${id}`, {
+      headers: { Authorization: `Bearer ${outsider.accessToken}` }
+    });
+    expect(forbidden.status()).toBe(404);
+  } finally {
+    await otherContext.close();
+  }
+
+  const directorContext = await browser.newContext();
+  try {
+    const director = await directorContext.newPage();
+    await signIn(director, seedAccount('managing_director'));
+    await expect(director.getByRole('link', { name: 'Employee relations' })).toHaveCount(0);
+    await director.goto('/hr/cases');
+    await expect(director.getByRole('heading', { name: 'Employee relations' })).toHaveCount(0);
+  } finally {
+    await directorContext.close();
+  }
 });
 
 test('reviewed recovery opens the reset confirmation without requesting another code', async ({ page }) => {

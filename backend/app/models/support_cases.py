@@ -5,15 +5,14 @@ from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, St
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.support_oversight import ALL_SUPPORT_CAPABILITIES, sql_quoted_list
 
 
 class SupportOperatorGrant(Base):
     __tablename__ = "support_operator_grants"
     __table_args__ = (
         CheckConstraint(
-            "capability IN ('logs.runtime', 'operator.manage', 'cases.manage', 'health.read', "
-            "'directory.read', 'account.request', 'logs.audit', 'simulation.start', "
-            "'logs.stream', 'logs.export')",
+            f"capability IN ({sql_quoted_list(ALL_SUPPORT_CAPABILITIES)})",
             name="capability",
         ),
     )

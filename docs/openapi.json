@@ -1504,6 +1504,40 @@
         "title": "ApprovalResponse",
         "type": "object"
       },
+      "ApprovalWorkflowBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "escalated": {
+            "title": "Escalated",
+            "type": "integer"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_type",
+          "pending",
+          "overdue",
+          "escalated",
+          "rejected"
+        ],
+        "title": "ApprovalWorkflowBucket",
+        "type": "object"
+      },
       "AssetCreateRequest": {
         "properties": {
           "asset_tag": {
@@ -2377,6 +2411,30 @@
             ],
             "title": "Attendance Status"
           },
+          "check_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check In At"
+          },
+          "check_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check Out At"
+          },
           "employee_code": {
             "anyOf": [
               {
@@ -2387,6 +2445,18 @@
               }
             ],
             "title": "Employee Code"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
           },
           "error": {
             "anyOf": [
@@ -4656,6 +4726,30 @@
           "applied_at"
         ],
         "title": "CaseActionRead",
+        "type": "object"
+      },
+      "CaseMaskedProjectSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "progress_band": {
+            "title": "Progress Band",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "status",
+          "progress_band"
+        ],
+        "title": "CaseMaskedProjectSummary",
         "type": "object"
       },
       "CertificationCreateRequest": {
@@ -9840,7 +9934,19 @@
               "directory.read",
               "account.request",
               "logs.audit",
-              "simulation.start"
+              "simulation.start",
+              "overview.company.read",
+              "overview.projects.read",
+              "overview.workforce.read",
+              "overview.inventory.read",
+              "overview.suppliers.read",
+              "overview.documents.read",
+              "overview.finance.read",
+              "overview.approvals.read",
+              "jobs.read",
+              "backups.read",
+              "config.read",
+              "incidents.read"
             ],
             "title": "Capability",
             "type": "string"
@@ -9885,7 +9991,19 @@
               "directory.read",
               "account.request",
               "logs.audit",
-              "simulation.start"
+              "simulation.start",
+              "overview.company.read",
+              "overview.projects.read",
+              "overview.workforce.read",
+              "overview.inventory.read",
+              "overview.suppliers.read",
+              "overview.documents.read",
+              "overview.finance.read",
+              "overview.approvals.read",
+              "jobs.read",
+              "backups.read",
+              "config.read",
+              "incidents.read"
             ],
             "title": "Capability",
             "type": "string"
@@ -9933,7 +10051,19 @@
               "directory.read",
               "account.request",
               "logs.audit",
-              "simulation.start"
+              "simulation.start",
+              "overview.company.read",
+              "overview.projects.read",
+              "overview.workforce.read",
+              "overview.inventory.read",
+              "overview.suppliers.read",
+              "overview.documents.read",
+              "overview.finance.read",
+              "overview.approvals.read",
+              "jobs.read",
+              "backups.read",
+              "config.read",
+              "incidents.read"
             ],
             "title": "Capability",
             "type": "string"
@@ -10068,7 +10198,20 @@
         "type": "object"
       },
       "HrCaseCloseRequest": {
+        "additionalProperties": false,
         "properties": {
+          "expected_state_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected State Sha256"
+          },
           "resolution_notes": {
             "anyOf": [
               {
@@ -10097,6 +10240,7 @@
         "type": "object"
       },
       "HrCaseCreateRequest": {
+        "additionalProperties": false,
         "properties": {
           "case_code": {
             "maxLength": 40,
@@ -17965,6 +18109,111 @@
         "title": "OrgChartResponse",
         "type": "object"
       },
+      "OversightMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "observed",
+              "suppressed",
+              "unknown",
+              "not_configured",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value",
+          "state",
+          "source"
+        ],
+        "title": "OversightMetric",
+        "type": "object"
+      },
+      "OversightScope": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "kind": {
+            "enum": [
+              "approved_company_aggregate",
+              "case_project_scope",
+              "case_scope"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "OversightScope",
+        "type": "object"
+      },
       "OvertimeDecisionRequest": {
         "properties": {
           "approved_hours": {
@@ -22844,6 +23093,25 @@
         "title": "ProjectResponse",
         "type": "object"
       },
+      "ProjectStatusBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "count"
+        ],
+        "title": "ProjectStatusBucket",
+        "type": "object"
+      },
       "ProjectTaskCreateRequest": {
         "properties": {
           "actual_end_date": {
@@ -27282,6 +27550,80 @@
         "title": "SupportAccountSelector",
         "type": "object"
       },
+      "SupportApprovalsOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "by_workflow": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalWorkflowBucket"
+            },
+            "title": "By Workflow",
+            "type": "array"
+          },
+          "domain": {
+            "const": "approvals",
+            "default": "approvals",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportApprovalsOverviewRead",
+        "type": "object"
+      },
       "SupportAssertion": {
         "additionalProperties": false,
         "properties": {
@@ -27420,6 +27762,244 @@
           "truncated"
         ],
         "title": "SupportAuditPage",
+        "type": "object"
+      },
+      "SupportBackupReceiptSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Set Id"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "covers_database": {
+            "title": "Covers Database",
+            "type": "boolean"
+          },
+          "covers_objects": {
+            "title": "Covers Objects",
+            "type": "boolean"
+          },
+          "manifest_digest_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Digest Prefix"
+          },
+          "outcome": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "receipt_kind": {
+            "enum": [
+              "scheduled_db_attempt",
+              "authenticated_backup_set",
+              "restore_drill"
+            ],
+            "title": "Receipt Kind",
+            "type": "string"
+          },
+          "rpo_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpo Minutes"
+          },
+          "rto_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rto Minutes"
+          },
+          "signer_key_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signer Key Id"
+          },
+          "target_domain": {
+            "enum": [
+              "local_host",
+              "independent_offhost",
+              "isolated_restore"
+            ],
+            "title": "Target Domain",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "receipt_kind",
+          "target_domain",
+          "backup_set_id",
+          "manifest_digest_prefix",
+          "covers_database",
+          "covers_objects",
+          "outcome",
+          "rpo_minutes",
+          "rto_minutes",
+          "captured_at",
+          "verified_at",
+          "signer_key_id"
+        ],
+        "title": "SupportBackupReceiptSummary",
+        "type": "object"
+      },
+      "SupportBackupsMonitorRead": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticated_backup_set_status": {
+            "enum": [
+              "verified",
+              "stale",
+              "failed",
+              "unverified"
+            ],
+            "title": "Authenticated Backup Set Status",
+            "type": "string"
+          },
+          "database_backup_status": {
+            "enum": [
+              "current",
+              "stale",
+              "failed",
+              "unverified"
+            ],
+            "title": "Database Backup Status",
+            "type": "string"
+          },
+          "escalation_reference": {
+            "title": "Escalation Reference",
+            "type": "string"
+          },
+          "isolated_restore_status": {
+            "enum": [
+              "verified",
+              "stale",
+              "failed",
+              "unverified"
+            ],
+            "title": "Isolated Restore Status",
+            "type": "string"
+          },
+          "latest_scheduled_db_task_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Scheduled Db Task At"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "overall_recovery_posture": {
+            "enum": [
+              "complete_verified",
+              "partial_db_only",
+              "stale",
+              "unverified"
+            ],
+            "title": "Overall Recovery Posture",
+            "type": "string"
+          },
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/SupportBackupReceiptSummary"
+            },
+            "title": "Receipts",
+            "type": "array"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_at",
+          "source_status",
+          "overall_recovery_posture",
+          "database_backup_status",
+          "authenticated_backup_set_status",
+          "isolated_restore_status",
+          "escalation_reference",
+          "latest_scheduled_db_task_at",
+          "receipts"
+        ],
+        "title": "SupportBackupsMonitorRead",
         "type": "object"
       },
       "SupportCaseCreate": {
@@ -27833,6 +28413,268 @@
         "title": "SupportCliVerifyRequest",
         "type": "object"
       },
+      "SupportCompanyOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "const": "company",
+            "default": "company",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportCompanyOverviewRead",
+        "type": "object"
+      },
+      "SupportConfigStatusRead": {
+        "additionalProperties": false,
+        "properties": {
+          "app_env": {
+            "title": "App Env",
+            "type": "string"
+          },
+          "audit_purge_disabled": {
+            "title": "Audit Purge Disabled",
+            "type": "boolean"
+          },
+          "backup_encryption_configured": {
+            "title": "Backup Encryption Configured",
+            "type": "boolean"
+          },
+          "business_currency": {
+            "title": "Business Currency",
+            "type": "string"
+          },
+          "business_timezone": {
+            "title": "Business Timezone",
+            "type": "string"
+          },
+          "change_control_reference": {
+            "title": "Change Control Reference",
+            "type": "string"
+          },
+          "hr_encryption_configured": {
+            "title": "Hr Encryption Configured",
+            "type": "boolean"
+          },
+          "mail_configured": {
+            "title": "Mail Configured",
+            "type": "boolean"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scheduler_jobs_configured": {
+            "title": "Scheduler Jobs Configured",
+            "type": "integer"
+          },
+          "source_sha": {
+            "title": "Source Sha",
+            "type": "string"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "support_email_otp_configured": {
+            "title": "Support Email Otp Configured",
+            "type": "boolean"
+          },
+          "support_otp_recipient_count": {
+            "title": "Support Otp Recipient Count",
+            "type": "integer"
+          },
+          "support_portal_enabled": {
+            "title": "Support Portal Enabled",
+            "type": "boolean"
+          },
+          "support_recovery_delivery_enabled": {
+            "title": "Support Recovery Delivery Enabled",
+            "type": "boolean"
+          },
+          "tls_not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tls Not After"
+          },
+          "tls_status": {
+            "enum": [
+              "valid",
+              "expiring_soon",
+              "expired",
+              "unknown"
+            ],
+            "title": "Tls Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_at",
+          "source_status",
+          "app_env",
+          "source_sha",
+          "business_currency",
+          "business_timezone",
+          "audit_purge_disabled",
+          "mail_configured",
+          "support_portal_enabled",
+          "support_recovery_delivery_enabled",
+          "support_email_otp_configured",
+          "support_otp_recipient_count",
+          "hr_encryption_configured",
+          "backup_encryption_configured",
+          "scheduler_jobs_configured",
+          "tls_status",
+          "tls_not_after",
+          "change_control_reference"
+        ],
+        "title": "SupportConfigStatusRead",
+        "type": "object"
+      },
+      "SupportDocumentsOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "const": "documents",
+            "default": "documents",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportDocumentsOverviewRead",
+        "type": "object"
+      },
       "SupportEvidenceDecision": {
         "additionalProperties": false,
         "properties": {
@@ -28030,6 +28872,84 @@
         "title": "SupportEvidenceProofOptions",
         "type": "object"
       },
+      "SupportFinanceOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "const": "finance",
+            "default": "finance",
+            "title": "Domain",
+            "type": "string"
+          },
+          "finance_writes_policy": {
+            "const": "blocked",
+            "default": "blocked",
+            "title": "Finance Writes Policy",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "operating_currency": {
+            "title": "Operating Currency",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics",
+          "operating_currency"
+        ],
+        "title": "SupportFinanceOverviewRead",
+        "type": "object"
+      },
       "SupportHealthRead": {
         "properties": {
           "database": {
@@ -28072,6 +28992,351 @@
           "observed_at"
         ],
         "title": "SupportHealthRead",
+        "type": "object"
+      },
+      "SupportIncidentsSummaryRead": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "window_hours": {
+            "title": "Window Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "observed_at",
+          "window_hours",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportIncidentsSummaryRead",
+        "type": "object"
+      },
+      "SupportInventoryOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "const": "inventory",
+            "default": "inventory",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportInventoryOverviewRead",
+        "type": "object"
+      },
+      "SupportJobEventSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "enum": [
+              "started",
+              "succeeded",
+              "failed",
+              "retried"
+            ],
+            "title": "Event",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "task_name",
+          "event",
+          "occurred_at"
+        ],
+        "title": "SupportJobEventSummary",
+        "type": "object"
+      },
+      "SupportJobScheduleItem": {
+        "additionalProperties": false,
+        "properties": {
+          "job_name": {
+            "title": "Job Name",
+            "type": "string"
+          },
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "schedule_summary": {
+            "title": "Schedule Summary",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "scheduled",
+              "disabled_by_policy"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_name",
+          "task_name",
+          "queue",
+          "state",
+          "schedule_summary"
+        ],
+        "title": "SupportJobScheduleItem",
+        "type": "object"
+      },
+      "SupportJobsMonitorRead": {
+        "additionalProperties": false,
+        "properties": {
+          "broker_status": {
+            "enum": [
+              "operational",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Broker Status",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "outbox_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Failed"
+          },
+          "outbox_oldest_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Oldest Age Seconds"
+          },
+          "outbox_pending": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Pending"
+          },
+          "recent_events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportJobEventSummary"
+            },
+            "title": "Recent Events",
+            "type": "array"
+          },
+          "recovery_dispatching": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Dispatching"
+          },
+          "recovery_pending": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Pending"
+          },
+          "recovery_unknown": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Unknown"
+          },
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/SupportJobScheduleItem"
+            },
+            "title": "Schedules",
+            "type": "array"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "window_hours": {
+            "title": "Window Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "observed_at",
+          "window_hours",
+          "broker_status",
+          "source_status",
+          "outbox_pending",
+          "outbox_failed",
+          "outbox_oldest_age_seconds",
+          "recovery_pending",
+          "recovery_dispatching",
+          "recovery_unknown",
+          "schedules",
+          "recent_events",
+          "truncated"
+        ],
+        "title": "SupportJobsMonitorRead",
         "type": "object"
       },
       "SupportLoginOptions": {
@@ -28284,6 +29549,57 @@
         "title": "SupportPermissionExplanation",
         "type": "object"
       },
+      "SupportPolicyExplainRead": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "is_business_role": {
+            "title": "Is Business Role",
+            "type": "boolean"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "permission_key": {
+            "title": "Permission Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "role_key": {
+            "title": "Role Key",
+            "type": "string"
+          },
+          "role_label": {
+            "title": "Role Label",
+            "type": "string"
+          },
+          "source": {
+            "const": "permission_matrix",
+            "default": "permission_matrix",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_at",
+          "role_key",
+          "role_label",
+          "permission_key",
+          "allowed",
+          "reason",
+          "is_business_role"
+        ],
+        "title": "SupportPolicyExplainRead",
+        "type": "object"
+      },
       "SupportProfile": {
         "properties": {
           "capabilities": {
@@ -28410,6 +29726,87 @@
           "projects"
         ],
         "title": "SupportProjectList",
+        "type": "object"
+      },
+      "SupportProjectsOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "by_status": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectStatusBucket"
+            },
+            "title": "By Status",
+            "type": "array"
+          },
+          "case_projects": {
+            "items": {
+              "$ref": "#/components/schemas/CaseMaskedProjectSummary"
+            },
+            "title": "Case Projects",
+            "type": "array"
+          },
+          "domain": {
+            "const": "projects",
+            "default": "projects",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportProjectsOverviewRead",
         "type": "object"
       },
       "SupportPublicKeyOptions": {
@@ -28710,6 +30107,73 @@
         "title": "SupportSessionRead",
         "type": "object"
       },
+      "SupportSuppliersOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "const": "suppliers",
+            "default": "suppliers",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportSuppliersOverviewRead",
+        "type": "object"
+      },
       "SupportTimelineEvent": {
         "properties": {
           "id": {
@@ -28812,6 +30276,92 @@
           "credential"
         ],
         "title": "SupportVerifyRequest",
+        "type": "object"
+      },
+      "SupportWorkforceOverviewRead": {
+        "additionalProperties": false,
+        "properties": {
+          "by_project": {
+            "items": {
+              "$ref": "#/components/schemas/WorkforceProjectCount"
+            },
+            "title": "By Project",
+            "type": "array"
+          },
+          "by_status": {
+            "items": {
+              "$ref": "#/components/schemas/WorkforceBucket"
+            },
+            "title": "By Status",
+            "type": "array"
+          },
+          "domain": {
+            "const": "workforce",
+            "default": "workforce",
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "metric_version": {
+            "const": "v1",
+            "default": "v1",
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/OversightMetric"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OversightScope"
+          },
+          "source_status": {
+            "enum": [
+              "operational",
+              "degraded",
+              "partial",
+              "unverified",
+              "unknown",
+              "unavailable"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "suppression_threshold": {
+            "default": 5,
+            "title": "Suppression Threshold",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "observed_at",
+          "scope",
+          "source_status",
+          "freshness",
+          "metrics"
+        ],
+        "title": "SupportWorkforceOverviewRead",
         "type": "object"
       },
       "SuspensionOptions": {
@@ -31304,6 +32854,82 @@
           "can_provision_user"
         ],
         "title": "WorkbookRowPreview",
+        "type": "object"
+      },
+      "WorkforceBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "state": {
+            "enum": [
+              "observed",
+              "suppressed",
+              "unknown",
+              "not_configured",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "count",
+          "state"
+        ],
+        "title": "WorkforceBucket",
+        "type": "object"
+      },
+      "WorkforceProjectCount": {
+        "additionalProperties": false,
+        "properties": {
+          "headcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headcount"
+          },
+          "project_label": {
+            "title": "Project Label",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "observed",
+              "suppressed",
+              "unknown",
+              "not_configured",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_label",
+          "headcount",
+          "state"
+        ],
+        "title": "WorkforceProjectCount",
         "type": "object"
       }
     },
@@ -36975,6 +38601,31 @@
     "/api/v1/hr/cases": {
       "get": {
         "operationId": "list_hr_cases_api_v1_hr_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -37063,6 +38714,69 @@
           }
         ],
         "summary": "Create Hr Case",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
+    "/api/v1/hr/cases/{case_id}": {
+      "get": {
+        "operationId": "get_hr_case_api_v1_hr_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HrCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-HR-Case-Review": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Hr Case Api V1 Hr Cases  Case Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Hr Case",
         "tags": [
           "HR & Workforce"
         ]
@@ -48800,6 +50514,62 @@
         ]
       }
     },
+    "/api/v1/hr/reimbursements/{claim_id}": {
+      "get": {
+        "operationId": "get_reimbursement_api_v1_hr_reimbursements__claim_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReimbursementOperatorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Reimbursement Api V1 Hr Reimbursements  Claim Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Reimbursement",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/reimbursements/{claim_id}/decision": {
       "post": {
         "operationId": "decide_reimbursement_api_v1_hr_reimbursements__claim_id__decision_post",
@@ -59022,6 +60792,45 @@
         ]
       }
     },
+    "/api/v1/support/config/status": {
+      "get": {
+        "operationId": "support_config_status_api_v1_support_config_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportConfigStatusRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Config Status Api V1 Support Config Status Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Config Status",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
     "/api/v1/support/custody/grant-changes": {
       "post": {
         "operationId": "propose_grant_change_api_v1_support_custody_grant_changes_post",
@@ -59634,6 +61443,76 @@
         ]
       }
     },
+    "/api/v1/support/incidents/summary": {
+      "get": {
+        "operationId": "support_incidents_summary_api_v1_support_incidents_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "case_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportIncidentsSummaryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Incidents Summary Api V1 Support Incidents Summary Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Incidents Summary",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
     "/api/v1/support/me": {
       "get": {
         "operationId": "read_me_api_v1_support_me_get",
@@ -59668,6 +61547,599 @@
           }
         },
         "summary": "Read Me",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/monitor/backups": {
+      "get": {
+        "operationId": "support_backups_monitor_api_v1_support_monitor_backups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportBackupsMonitorRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Backups Monitor Api V1 Support Monitor Backups Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Backups Monitor",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/monitor/jobs": {
+      "get": {
+        "operationId": "support_jobs_monitor_api_v1_support_monitor_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 168,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "queue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "maintenance",
+                    "backup",
+                    "email",
+                    "reports",
+                    "images"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportJobsMonitorRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Jobs Monitor Api V1 Support Monitor Jobs Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Jobs Monitor",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview": {
+      "get": {
+        "operationId": "support_company_overview_api_v1_support_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCompanyOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Overview Api V1 Support Overview Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/approvals": {
+      "get": {
+        "operationId": "support_approvals_overview_api_v1_support_overview_approvals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportApprovalsOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Approvals Overview Api V1 Support Overview Approvals Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Approvals Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/documents": {
+      "get": {
+        "operationId": "support_documents_overview_api_v1_support_overview_documents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportDocumentsOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Documents Overview Api V1 Support Overview Documents Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Documents Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/finance": {
+      "get": {
+        "operationId": "support_finance_overview_api_v1_support_overview_finance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportFinanceOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Finance Overview Api V1 Support Overview Finance Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Finance Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/inventory": {
+      "get": {
+        "operationId": "support_inventory_overview_api_v1_support_overview_inventory_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "case_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportInventoryOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Inventory Overview Api V1 Support Overview Inventory Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Inventory Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/projects": {
+      "get": {
+        "operationId": "support_projects_overview_api_v1_support_overview_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "case_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportProjectsOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Projects Overview Api V1 Support Overview Projects Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Projects Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/suppliers": {
+      "get": {
+        "operationId": "support_suppliers_overview_api_v1_support_overview_suppliers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportSuppliersOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Suppliers Overview Api V1 Support Overview Suppliers Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Suppliers Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/overview/workforce": {
+      "get": {
+        "operationId": "support_workforce_overview_api_v1_support_overview_workforce_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportWorkforceOverviewRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Workforce Overview Api V1 Support Overview Workforce Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Workforce Overview",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/policy/explain": {
+      "get": {
+        "operationId": "support_policy_explain_api_v1_support_policy_explain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "role_key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_]+$",
+              "title": "Role Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "permission_key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9_:]+$",
+              "title": "Permission Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "case_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportPolicyExplainRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Policy Explain Api V1 Support Policy Explain Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Policy Explain",
         "tags": [
           "Support"
         ]

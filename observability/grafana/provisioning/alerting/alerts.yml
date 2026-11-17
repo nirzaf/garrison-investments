@@ -184,3 +184,74 @@ groups:
         annotations:
           summary: Loki or Alloy is reporting ingestion or storage errors.
         labels: {service: observability, severity: critical}
+
+  - orgId: 1
+    name: Support security alerts
+    folder: Garrison Alerts
+    interval: 1m
+    rules:
+      - uid: garrison-support-auth-burst
+        title: Support portal unauthorized burst
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment=~"production|staging", service="backend"} | json | message="http_request_completed" | endpoint=~"/api/v1/support/.*" | status_code >= 401 | status_code <= 403 [5m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [4], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: Repeated denied requests targeted the dedicated support portal API.
+        labels: {service: support, severity: critical}
+
+      - uid: garrison-support-recovery-unknown
+        title: Support recovery delivery unknown outcome
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: loki
+            model:
+              datasource: {type: loki, uid: loki}
+              editorMode: code
+              expr: 'sum(count_over_time({environment=~"production|staging", service="celery_worker"} | json | message="task_failed" | task_name="dispatch_support_recovery_deliveries" [10m]))'
+              queryType: instant
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator: {params: [0], type: gt}
+                  operator: {type: and}
+                  query: {params: [A]}
+                  reducer: {params: [], type: last}
+                  type: query
+              datasource: {type: __expr__, uid: __expr__}
+              expression: A
+              refId: B
+              type: classic_conditions
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        annotations:
+          summary: Support recovery delivery dispatcher emitted a task failure requiring review.
+        labels: {service: support, severity: critical}

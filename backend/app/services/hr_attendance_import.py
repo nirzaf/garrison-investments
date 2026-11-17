@@ -98,6 +98,8 @@ async def review_attendance_csv(
             seen.add(identity)
             entry = await service.prepare_attendance(payload, actor, employee)
             entries.append(entry)
+            item.check_in_at = payload.check_in_at
+            item.check_out_at = payload.check_out_at
             bindings.append(
                 (
                     employee.id,
@@ -129,4 +131,6 @@ async def review_attendance_csv(
                 "The file or its attendance scope changed. Preview it again.", status_code=409
             )
         await service.persist_attendance(entries, actor)
+        for item, entry in zip(items, entries, strict=True):
+            item.entry_id = entry.id
     return AttendanceImportPreviewResponse(items=items, digest=digest)

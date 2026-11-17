@@ -1,16 +1,16 @@
-# Graph Report - garrison-investments  (2026-11-16)
+# Graph Report - garrison-investments  (2026-11-17)
 
 ## Corpus Check
-- 598 files · ~738,330 words
+- 731 files · ~868,128 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7483 nodes · 105132 edges · 344 communities (324 shown, 20 thin omitted)
-- Extraction: 17% EXTRACTED · 83% INFERRED · 0% AMBIGUOUS · INFERRED: 87092 edges (avg confidence: 0.51)
+- 8871 nodes · 116170 edges · 357 communities (339 shown, 18 thin omitted)
+- Extraction: 19% EXTRACTED · 81% INFERRED · 0% AMBIGUOUS · INFERRED: 94255 edges (avg confidence: 0.51)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7df303de`
+- Built from commit: `bf75ac5d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -68,7 +68,6 @@
 - [[_COMMUNITY_Community 51|Community 51]]
 - [[_COMMUNITY_docker-compose.prod.yml cluster|docker-compose.prod.yml cluster]]
 - [[_COMMUNITY_security.py cluster|security.py cluster]]
-- [[_COMMUNITY_test_structured_logging.py cluster|test_structured_logging.py cluster]]
 - [[_COMMUNITY_inventory.py cluster|inventory.py cluster]]
 - [[_COMMUNITY_test_scope_authorization.py cluster|test_scope_authorization.py cluster]]
 - [[_COMMUNITY_package.json cluster|package.json cluster]]
@@ -80,12 +79,12 @@
 - [[_COMMUNITY_Community 64|Community 64]]
 - [[_COMMUNITY_Community 65|Community 65]]
 - [[_COMMUNITY_Community 66|Community 66]]
-- [[_COMMUNITY_photo_repository.py cluster|photo_repository.py cluster]]
+- [[_COMMUNITY_Community 68|Community 68]]
 - [[_COMMUNITY_Community 69|Community 69]]
 - [[_COMMUNITY_Community 70|Community 70]]
-- [[_COMMUNITY_test_authorization_matrix.py cluster|test_authorization_matrix.py cluster]]
+- [[_COMMUNITY_Community 71|Community 71]]
 - [[_COMMUNITY_package.json cluster|package.json cluster]]
-- [[_COMMUNITY_imports.ts cluster|imports.ts cluster]]
+- [[_COMMUNITY_Community 73|Community 73]]
 - [[_COMMUNITY_test_capture_recovery_wrapper.py cluster|test_capture_recovery_wrapper.py cluster]]
 - [[_COMMUNITY_Community 75|Community 75]]
 - [[_COMMUNITY_Community 76|Community 76]]
@@ -94,7 +93,7 @@
 - [[_COMMUNITY_Community 79|Community 79]]
 - [[_COMMUNITY_Community 80|Community 80]]
 - [[_COMMUNITY_Community 81|Community 81]]
-- [[_COMMUNITY_storage_service.py cluster|storage_service.py cluster]]
+- [[_COMMUNITY_Community 82|Community 82]]
 - [[_COMMUNITY_Community 83|Community 83]]
 - [[_COMMUNITY_Community 84|Community 84]]
 - [[_COMMUNITY_approval-delegation.e2e.ts cluster|approval-delegation.e2e.ts cluster]]
@@ -125,7 +124,6 @@
 - [[_COMMUNITY_tsconfig.browser.json cluster|tsconfig.browser.json cluster]]
 - [[_COMMUNITY_Community 111|Community 111]]
 - [[_COMMUNITY_Community 112|Community 112]]
-- [[_COMMUNITY_users.py cluster|users.py cluster]]
 - [[_COMMUNITY_202605160004_projects_boq.py cluster|202605160004_projects_boq.py cluster]]
 - [[_COMMUNITY_202605160005_supervisor_updates.py cluster|202605160005_supervisor_updates.py cluster]]
 - [[_COMMUNITY_202605160006_daily_reports.py cluster|202605160006_daily_reports.py cluster]]
@@ -138,7 +136,7 @@
 - [[_COMMUNITY_materials-analytics.e2e.ts cluster|materials-analytics.e2e.ts cluster]]
 - [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_generate_assets.py cluster|generate_assets.py cluster]]
-- [[_COMMUNITY_kilo.json cluster|kilo.json cluster]]
+- [[_COMMUNITY_Community 128|Community 128]]
 - [[_COMMUNITY_report-file-sync.d.ts cluster|report-file-sync.d.ts cluster]]
 - [[_COMMUNITY_Community 130|Community 130]]
 - [[_COMMUNITY_Community 131|Community 131]]
@@ -165,6 +163,8 @@
 - [[_COMMUNITY_Community 198|Community 198]]
 - [[_COMMUNITY_Community 199|Community 199]]
 - [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
 - [[_COMMUNITY_Community 207|Community 207]]
 - [[_COMMUNITY_Community 208|Community 208]]
 - [[_COMMUNITY_Community 210|Community 210]]
@@ -182,8 +182,6 @@
 - [[_COMMUNITY_Community 233|Community 233]]
 - [[_COMMUNITY_Community 234|Community 234]]
 - [[_COMMUNITY_Community 236|Community 236]]
-- [[_COMMUNITY_Community 240|Community 240]]
-- [[_COMMUNITY_Community 246|Community 246]]
 - [[_COMMUNITY_Community 248|Community 248]]
 - [[_COMMUNITY_Community 249|Community 249]]
 - [[_COMMUNITY_Community 250|Community 250]]
@@ -193,15 +191,12 @@
 - [[_COMMUNITY_Community 256|Community 256]]
 - [[_COMMUNITY_Community 257|Community 257]]
 - [[_COMMUNITY_Community 258|Community 258]]
-- [[_COMMUNITY_Community 259|Community 259]]
 - [[_COMMUNITY_Community 262|Community 262]]
-- [[_COMMUNITY_Community 263|Community 263]]
 - [[_COMMUNITY_Community 264|Community 264]]
 - [[_COMMUNITY_Community 265|Community 265]]
 - [[_COMMUNITY_Community 266|Community 266]]
 - [[_COMMUNITY_Community 269|Community 269]]
 - [[_COMMUNITY_Community 271|Community 271]]
-- [[_COMMUNITY_Community 274|Community 274]]
 - [[_COMMUNITY_Community 276|Community 276]]
 - [[_COMMUNITY_Community 277|Community 277]]
 - [[_COMMUNITY_Community 278|Community 278]]
@@ -211,10 +206,8 @@
 - [[_COMMUNITY_Community 283|Community 283]]
 - [[_COMMUNITY_Community 284|Community 284]]
 - [[_COMMUNITY_Community 286|Community 286]]
-- [[_COMMUNITY_Community 287|Community 287]]
 - [[_COMMUNITY_Community 288|Community 288]]
 - [[_COMMUNITY_Community 289|Community 289]]
-- [[_COMMUNITY_Community 290|Community 290]]
 - [[_COMMUNITY_Community 291|Community 291]]
 - [[_COMMUNITY_Community 292|Community 292]]
 - [[_COMMUNITY_Community 295|Community 295]]
@@ -222,52 +215,49 @@
 - [[_COMMUNITY_Community 298|Community 298]]
 - [[_COMMUNITY_Community 304|Community 304]]
 - [[_COMMUNITY_Community 306|Community 306]]
-- [[_COMMUNITY_Community 307|Community 307]]
-- [[_COMMUNITY_Community 308|Community 308]]
 - [[_COMMUNITY_Community 309|Community 309]]
 - [[_COMMUNITY_Community 310|Community 310]]
 - [[_COMMUNITY_Community 311|Community 311]]
 - [[_COMMUNITY_Community 312|Community 312]]
-- [[_COMMUNITY_Community 313|Community 313]]
-- [[_COMMUNITY_Community 314|Community 314]]
-- [[_COMMUNITY_Community 315|Community 315]]
 - [[_COMMUNITY_Community 316|Community 316]]
 - [[_COMMUNITY_Community 318|Community 318]]
 - [[_COMMUNITY_Community 320|Community 320]]
 - [[_COMMUNITY_Community 321|Community 321]]
 - [[_COMMUNITY_Community 322|Community 322]]
-- [[_COMMUNITY_Community 323|Community 323]]
-- [[_COMMUNITY_Community 324|Community 324]]
 - [[_COMMUNITY_Community 325|Community 325]]
-- [[_COMMUNITY_Community 326|Community 326]]
 - [[_COMMUNITY_Community 327|Community 327]]
-- [[_COMMUNITY_Community 328|Community 328]]
 - [[_COMMUNITY_Community 329|Community 329]]
-- [[_COMMUNITY_Community 330|Community 330]]
-- [[_COMMUNITY_Community 331|Community 331]]
 - [[_COMMUNITY_Community 332|Community 332]]
 - [[_COMMUNITY_Community 333|Community 333]]
-- [[_COMMUNITY_Community 334|Community 334]]
 - [[_COMMUNITY_Community 335|Community 335]]
-- [[_COMMUNITY_Community 336|Community 336]]
 - [[_COMMUNITY_Community 337|Community 337]]
 - [[_COMMUNITY_Community 338|Community 338]]
-- [[_COMMUNITY_Community 339|Community 339]]
 - [[_COMMUNITY_Community 340|Community 340]]
 - [[_COMMUNITY_Community 342|Community 342]]
 - [[_COMMUNITY_Community 343|Community 343]]
+- [[_COMMUNITY_Community 344|Community 344]]
+- [[_COMMUNITY_Community 345|Community 345]]
+- [[_COMMUNITY_Community 346|Community 346]]
+- [[_COMMUNITY_Community 347|Community 347]]
+- [[_COMMUNITY_Community 350|Community 350]]
+- [[_COMMUNITY_Community 354|Community 354]]
+- [[_COMMUNITY_Community 355|Community 355]]
+- [[_COMMUNITY_Community 356|Community 356]]
+- [[_COMMUNITY_Community 357|Community 357]]
+- [[_COMMUNITY_Community 358|Community 358]]
+- [[_COMMUNITY_Community 360|Community 360]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `User` - 1232 edges
-2. `NotFoundException` - 1010 edges
-3. `AppException` - 1006 edges
-4. `AuditService` - 869 edges
-5. `PermissionDeniedException` - 735 edges
-6. `HrService` - 602 edges
-7. `DbSession` - 593 edges
-8. `date` - 560 edges
-9. `DbSession` - 556 edges
-10. `OnboardingCaseResponse` - 537 edges
+1. `User` - 1308 edges
+2. `AppException` - 1307 edges
+3. `NotFoundException` - 1292 edges
+4. `AuditService` - 886 edges
+5. `PermissionDeniedException` - 810 edges
+6. `DbSession` - 718 edges
+7. `HrService` - 609 edges
+8. `date` - 565 edges
+9. `DbSession` - 562 edges
+10. `OnboardingCaseResponse` - 543 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Backend architecture` --references--> `docs/openapi.json`  [INFERRED]
@@ -298,10 +288,10 @@
 - 1-file cycle: `backend/app/api/v1/reports.py -> backend/app/api/v1/reports.py`
 - 1-file cycle: `backend/app/api/v1/supervisor_updates.py -> backend/app/api/v1/supervisor_updates.py`
 - 1-file cycle: `backend/app/api/v1/suppliers.py -> backend/app/api/v1/suppliers.py`
+- 1-file cycle: `backend/app/api/v1/support.py -> backend/app/api/v1/support.py`
 - 1-file cycle: `backend/app/api/v1/users.py -> backend/app/api/v1/users.py`
 - 1-file cycle: `backend/app/services/hr_workforce_service.py -> backend/app/services/hr_workforce_service.py`
 - 1-file cycle: `backend/app/schemas/finance.py -> backend/app/schemas/finance.py`
-- 1-file cycle: `backend/app/services/finance_service.py -> backend/app/services/finance_service.py`
 
 ## Hyperedges (group relationships)
 - **Production log pipeline: Alloy collects, Loki stores, Silo backs, Grafana views** — svc_prod_alloy, svc_prod_loki, svc_prod_minio, svc_prod_grafana [EXTRACTED 1.00]
@@ -310,231 +300,227 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (344 total, 20 thin omitted)
+## Communities (357 total, 18 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
-Cohesion: 0.12
-Nodes (40): Path, Any, Namespace, Path, async_database_url(), capture(), capture_configuration(), capture_object() (+32 more)
+Cohesion: 0.05
+Nodes (147): AuthRefreshToken, AsyncSession, AsyncSession, AuthSession, datetime, SupportRecoveryDelivery, User, AppException (+139 more)
 
 ### Community 1 - "Auth Dependencies and User API"
-Cohesion: 0.59
-Nodes (483): AccessRequestListResponse, AccessRequestResponse, ApplicationResponse, ApplicationWithdrawalRequest, AttendanceCorrectionListResponse, AttendanceCorrectionResponse, AttendanceCorrectionSelfRequest, AttendanceEntryListResponse (+475 more)
+Cohesion: 0.58
+Nodes (495): AccessRequestListResponse, AccessRequestResponse, ApplicationResponse, ApplicationWithdrawalRequest, AttendanceCorrectionListResponse, AttendanceCorrectionResponse, AttendanceCorrectionSelfRequest, AttendanceEntryListResponse (+487 more)
 
 ### Community 2 - "Projects Service and Membership"
 Cohesion: 0.03
-Nodes (11): date, User, UUID, decrypt_hr_value(), _derive_fernet_key(), encrypt_hr_value(), mask_identifier(), validate_hr_document_file() (+3 more)
+Nodes (124): AuthUser, changePassword(), confirmPasswordReset(), getMe(), login(), LoginChallenge, logout(), PasswordResetChallenge (+116 more)
 
 ### Community 3 - "Release Contract Evidence CLI"
-Cohesion: 0.19
-Nodes (57): Any, datetime, alert_delivery(), approval_time(), Approvals, assertions(), check_execution(), checked_run() (+49 more)
+Cohesion: 0.08
+Nodes (113): Request, Any, Namespace, Path, Any, datetime, Path, MonkeyPatch (+105 more)
 
 ### Community 4 - "Approvals Inbox Workflow"
 Cohesion: 0.01
-Nodes (295): AccessRequestRecord, adjustLeaveLedger(), ApplicationRecord, applyHrWorkbook(), applyLeaveAccrual(), applyLeaveAccrualCatchUp(), applyLeaveRollover(), approveBenefitType() (+287 more)
+Nodes (312): AccessRequestRecord, acknowledgeMyPolicy(), adjustLeaveLedger(), applyHrWorkbook(), applyLeaveAccrual(), applyLeaveAccrualCatchUp(), applyLeaveRollover(), approveBenefitType() (+304 more)
 
 ### Community 5 - "Seed Data and Release Contract Tests"
 Cohesion: 0.09
-Nodes (89): DbSession, ge, HrProjectAssignmentDecision, HrProjectAssignmentListResponse, HrProjectAssignmentResponse, le, max_length, ProjectCreateRequest (+81 more)
+Nodes (80): DbSession, ge, HrProjectAssignmentDecision, HrProjectAssignmentListResponse, HrProjectAssignmentResponse, le, max_length, ProjectCreateRequest (+72 more)
 
 ### Community 6 - "Frontend Projects API Client"
-Cohesion: 0.06
-Nodes (52): assignProjectMember(), createProject(), createProjectTask(), decideProjectHrAssignment(), getProject(), getProjectTimeline(), listProjectHrAssignments(), listProjectMembers() (+44 more)
+Cohesion: 0.04
+Nodes (81): formatApiError(), createLetterTemplate(), decideHrLetter(), draftHrLetter(), getHrLetter(), hrLettersPath(), listApplicationActivity(), listHrLetters() (+73 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.03
-Nodes (87): formatApiError(), acknowledgeMyPolicy(), AttendanceEntryRecord, cancelMyLeaveRequest(), createLetterTemplate(), decideHrLetter(), downloadMyHrDocument(), downloadMyPolicy() (+79 more)
+Cohesion: 0.10
+Nodes (79): get_bearer_token(), get_current_user(), require_permission(), AuthUserResponse, bearer_scheme, Depends, HTTPAuthorizationCredentials, Request (+71 more)
 
 ### Community 8 - "Offline Queue and IndexedDB Sync"
-Cohesion: 0.07
-Nodes (62): ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, alias, ApprovalCreateRequest, ApprovalResponse (+54 more)
+Cohesion: 0.06
+Nodes (69): ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, alias, ApprovalCreateRequest, ApprovalResponse (+61 more)
 
 ### Community 9 - "Inventory API Client"
 Cohesion: 0.05
 Nodes (51): AssetCreatePayload, AssetRecord, cancelMaterialRequest(), createAsset(), createInventoryItem(), createLocation(), createMaterialRequest(), createMovement() (+43 more)
 
 ### Community 10 - "Inventory Accounting Tests and Errors"
-Cohesion: 0.02
-Nodes (313): date, datetime, BaseModel, AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow, AuthUserResponse, LoginChallengeResponse (+305 more)
+Cohesion: 0.03
+Nodes (307): date, datetime, BaseModel, BaseModel, DailyReportApprovalHistoryResponse, ReportFileRef, AccessRequestCreateRequest, AccessRequestDecisionRequest (+299 more)
 
 ### Community 11 - "Bulk CSV Import Pipeline"
-Cohesion: 0.08
-Nodes (56): alias, DbSession, File, Header, ImportPreviewResponse, ImportRunResponse, Response, UploadFile (+48 more)
+Cohesion: 0.04
+Nodes (7): date, User, UUID, HrWorkforceService, Domain operations for recruitment, documents, attendance, leave, offboarding, an, _stored_leave_fields(), ensure_permission()
 
 ### Community 12 - "Inventory Endpoints and Schemas"
-Cohesion: 0.08
-Nodes (29): ApprovalDelegate, ApprovalDelegateListResponse, ApprovalListResponse, ApprovalRecord, approveGenericApproval(), delegateGenericApproval(), getGenericApproval(), listApprovals() (+21 more)
+Cohesion: 0.29
+Nodes (40): AsyncConnection, AsyncSession, datetime, Minio, Namespace, PublicationReceipt, Self, BinaryIO (+32 more)
 
 ### Community 13 - "Analytics Export Service"
-Cohesion: 0.14
-Nodes (20): AsyncSession, Any, BaseException, Exception, Request, Any, EmailService, _authenticated_subject() (+12 more)
+Cohesion: 0.52
+Nodes (6): UUID, consolidate_pair(), main(), Report possible offline draft duplicates and consolidate a reviewed pair., report_candidates(), run()
 
 ### Community 14 - "Document Control API and Service"
-Cohesion: 0.04
-Nodes (48): Query, download_hr_document(), get_employee_leave_balances(), get_employee_private(), get_employee_training_requirements(), get_employment_periods(), get_hr_summary_report(), get_my_leave_balances() (+40 more)
+Cohesion: 0.09
+Nodes (69): AwareDatetime, AdminPasswordResetRequest, CanManageUsers, DbSession, ge, le, max_length, Query (+61 more)
 
 ### Community 15 - "Audit Retention Enforcement"
-Cohesion: 0.16
-Nodes (39): Decimal, assert_cancelled_without_stock_effect(), create_project(), create_test_client(), create_user(), login_for_token(), Regression tests for inventory reservation accounting (C4), the adjustment floor, Build an item, a stock row and a material request in a known state.      ``statu (+31 more)
+Cohesion: 0.08
+Nodes (67): AsyncSession, SupportBootstrap, UUID, AppException, AsyncSession, RegistrationKind, Select, Stage (+59 more)
 
 ### Community 16 - "Photo Service and Protected Delivery"
-Cohesion: 0.06
-Nodes (95): alias, CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, description, ge, Header (+87 more)
+Cohesion: 0.05
+Nodes (58): DashboardSummary, getDashboardSummary(), approveDocumentVersion(), DocumentDownloadUrl, DocumentListResponse, DocumentRecord, DocumentVersionRecord, getDocument() (+50 more)
 
 ### Community 17 - "Supplier Management"
-Cohesion: 0.19
-Nodes (23): Exception, MonkeyPatch, Path, backup_probe(), profile(), test_acknowledgement_is_tied_to_a_delivered_incident(), test_authenticated_backup_snapshot_and_failure_preserve_prior_verified_state(), test_backup_attempt_overdue_uses_approved_cadence_from_completion() (+15 more)
+Cohesion: 0.07
+Nodes (36): ApprovalDelegate, ApprovalDelegateListResponse, ApprovalListResponse, ApprovalRecord, approveGenericApproval(), delegateGenericApproval(), getGenericApproval(), listApprovals() (+28 more)
 
 ### Community 18 - "Schema Docs and Model Index"
-Cohesion: 0.19
-Nodes (34): BusinessPolicy, Shared validation for application settings and proposed CLI configuration., Any, BusinessPolicy, Context, Namespace, Path, Never (+26 more)
+Cohesion: 0.25
+Nodes (39): Any, Context, Namespace, Result, UUID, read_private(), _case_revision(), _change_case() (+31 more)
 
 ### Community 19 - "Frontend Auth Session"
-Cohesion: 0.20
-Nodes (23): create_user(), login_for_token(), pdf_bytes(), test_document_replacements_serialize_and_keep_active_version(), test_document_upload_approval_versioning_and_superseded_download(), test_replacement_failure_discards_only_the_new_object(), auth(), Cross-project access regressions: C3 (photo IDOR), H14 (documents/updates), H15. (+15 more)
+Cohesion: 0.16
+Nodes (43): Any, AsyncSession, HrPayrollLine, HrPayrollPeriod, HrPayrollPolicy, HrPayrollRun, PayrollAdjustmentResponse, User (+35 more)
 
 ### Community 20 - "File Magic Validation"
-Cohesion: 0.08
-Nodes (35): approveDocumentVersion(), DocumentDownloadUrl, DocumentListResponse, DocumentRecord, DocumentVersionRecord, getDocument(), getDocumentDownloadUrl(), listDocuments() (+27 more)
+Cohesion: 0.03
+Nodes (66): ApplicationRecord, applyEmploymentChange(), CandidateRecord, convertOffer(), createApplication(), createCandidate(), createInterview(), createOffer() (+58 more)
 
 ### Community 21 - "Inventory Service and Idempotency"
-Cohesion: 0.36
-Nodes (22): UUID, candidates(), create_approval(), create_project(), create_test_client(), create_user(), delegate(), login() (+14 more)
+Cohesion: 0.16
+Nodes (37): Any, datetime, Path, User, apply_manifest(), _as_utc(), _check_private_file(), export_template() (+29 more)
 
 ### Community 22 - "Document and Finance API Client"
-Cohesion: 0.24
-Nodes (21): Decimal, ensure_seed_storage_objects(), main(), seed_activity_logs(), seed_approvals(), seed_daily_reports(), seed_documents(), seed_finance() (+13 more)
+Cohesion: 0.08
+Nodes (23): 10. Data model and migration, 11. API contract, 12. Frontend and navigation, 13. Log integration and query budgets, 14. Incident investigation and health, 15. Atomic implementation stories, 16. Implementation order, 17. Negative authorization and concurrency matrix (+15 more)
 
 ### Community 23 - "Daily Report Endpoints"
-Cohesion: 0.13
-Nodes (57): get_current_user(), require_permission(), AuthUserResponse, Depends, User, alias, CurrentUser, DbSession (+49 more)
+Cohesion: 0.49
+Nodes (15): create_test_client(), create_user(), login_for_token(), project_payload(), skip_if_database_unavailable(), test_assigned_engineer_can_read_assigned_project_only(), test_closed_project_is_read_only(), test_concurrent_reverse_dependencies_cannot_create_cycle() (+7 more)
 
 ### Community 24 - "Browser Fixtures and Test Time Utils"
-Cohesion: 0.04
-Nodes (55): UUID, add_payroll_settlement_event(), approve_payroll_policy(), approve_payroll_run(), assign_service_request(), cancel_my_leave_request(), close_hr_case(), complete_offboarding() (+47 more)
-
-### Community 25 - "Analytics and Audit UI Shell"
-Cohesion: 0.17
-Nodes (23): Request, Any, Namespace, Path, MonkeyPatch, Path, atomic_write(), build_run_url() (+15 more)
-
-### Community 26 - "Invoices and Payments API"
-Cohesion: 0.07
-Nodes (104): BusinessPolicyResponse, alias, BusinessPolicyResponse, CurrencyReconciliationResponse, CurrentUser, DbSession, File, ge (+96 more)
-
-### Community 27 - "Docs Map and Generated Types"
-Cohesion: 0.04
-Nodes (98): DbSession, HrWorkforceService, HrService, Facade for HR organization, master directory, private vault, access requests, an, adjust_leave_ledger(), apply_attendance_import(), apply_employment_change(), apply_hr_workbook() (+90 more)
-
-### Community 28 - "Notification Delivery"
-Cohesion: 0.15
-Nodes (39): AsyncClient, Skip the calling test when PostgreSQL is unreachable., require_database(), Only MD and OD have company-wide resource scope., test_directors_see_both_projects_in_reports_list(), create_test_client(), project_payload(), report_payload() (+31 more)
-
-### Community 29 - "Analytics and Import Test Suites"
-Cohesion: 0.15
-Nodes (49): MonkeyPatch, Event, test_attendance_csv_review_revision_and_period_lock(), _auth(), _client(), _create_portal_user(), test_paid_accrual_is_reviewed_idempotent_and_reconciled(), test_scheduled_leave_accrual_uses_only_selected_reviewed_policies() (+41 more)
-
-### Community 30 - "Daily Report Repository"
-Cohesion: 0.15
-Nodes (36): DbSession, File, ge, le, max_length, Query, SupplierCreateRequest, SupplierUpdateRequest (+28 more)
-
-### Community 31 - "Health Monitor Daemon"
-Cohesion: 0.15
-Nodes (12): AsyncSession, datetime, Notification, UUID, AsyncSession, UUID, NotificationRepository, _discard_pending_notification_emails() (+4 more)
-
-### Community 32 - "Service Worker Sync Scripts"
 Cohesion: 0.13
 Nodes (31): persistOwnedDraft(), reportDraftErrors(), reportPayload(), classifyQueuedReportFile(), commitUploadReceipt(), uploadFailure(), uploadRetry(), APP_SHELL (+23 more)
 
+### Community 25 - "Analytics and Audit UI Shell"
+Cohesion: 0.06
+Nodes (66): ActivityLog, AuditService, ColumnElement, datetime, AsyncSession, ColumnElement, datetime, Select (+58 more)
+
+### Community 26 - "Invoices and Payments API"
+Cohesion: 0.10
+Nodes (73): BusinessPolicyResponse, alias, BusinessPolicyResponse, CurrencyReconciliationResponse, CurrentUser, DbSession, File, ge (+65 more)
+
+### Community 27 - "Docs Map and Generated Types"
+Cohesion: 0.14
+Nodes (44): Decimal, UUID, race_sessions(), Run one operation per fresh session, released simultaneously.      A barrier hol, assert_cancelled_without_stock_effect(), create_project(), create_test_client(), create_user() (+36 more)
+
+### Community 28 - "Notification Delivery"
+Cohesion: 0.60
+Nodes (3): Column, _ref(), upgrade()
+
+### Community 29 - "Analytics and Import Test Suites"
+Cohesion: 0.12
+Nodes (60): MonkeyPatch, Path, MonkeyPatch, Path, MonkeyPatch, Path, MonkeyPatch, test_cli_reimbursement_from_approved_receipt_to_settlement() (+52 more)
+
+### Community 30 - "Daily Report Repository"
+Cohesion: 0.13
+Nodes (41): DbSession, File, ge, le, max_length, Query, SupplierCreateRequest, SupplierUpdateRequest (+33 more)
+
+### Community 31 - "Health Monitor Daemon"
+Cohesion: 0.33
+Nodes (4): Self, BusinessActionCreate, BusinessActionRead, SupportRecoveryStatus
+
+### Community 32 - "Service Worker Sync Scripts"
+Cohesion: 0.43
+Nodes (13): AsyncSession, HrPayrollPeriod, PayrollLeaveInputPreview, PayrollTimeInputPreview, User, UUID, lock_payroll_input_roster(), payroll_leave_inputs() (+5 more)
+
 ### Community 33 - "App Bootstrap and Architecture Docs"
-Cohesion: 0.17
-Nodes (21): Path, approved_external_configuration_path(), canonical_digest(), configuration_files_from_runtime(), ContractError, deployment_operator(), digest(), _effective_environment() (+13 more)
+Cohesion: 0.10
+Nodes (31): check_database(), AsyncClient, AsyncClient, User, create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable() (+23 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.19
-Nodes (32): AsyncSession, PayrollExportPreview, User, UUID, AsyncSession, Decimal, HrPayrollRun, PayrollSettlementEventResponse (+24 more)
+Cohesion: 0.07
+Nodes (66): get_settings(), lifespan(), Any, BaseException, Exception, Request, Any, Any (+58 more)
 
 ### Community 35 - "Daily Report Endpoint Tests"
-Cohesion: 0.20
-Nodes (23): get_request_meta(), MonkeyPatch, Request, _client_ip(), build_request(), test_all_trusted_forwarded_hops_fall_back_to_the_peer(), test_empty_forwarded_header_falls_back_to_the_peer(), test_forwarded_addresses_must_be_valid_ips() (+15 more)
+Cohesion: 0.12
+Nodes (10): FixtureStore, remote(), scheduled_attempt(), test_cli_publishes_authenticated_status_without_changing_last_good(), test_corrupt_publication_cannot_refresh_success(), test_independent_reader_rejects_invalid_scheduled_attempt(), test_independent_round_trip_and_retries(), test_restore_checks_working_space_after_decrypting_all_artifacts() (+2 more)
 
 ### Community 36 - "Finance Service Logic"
-Cohesion: 0.06
-Nodes (30): For --cluster-only, For git commit hook, For /graphify add, For /graphify explain, For /graphify path, For /graphify query, For native AGENTS.md integration (Trae), For --update (incremental re-extraction) (+22 more)
+Cohesion: 0.05
+Nodes (103): alias, CurrentUser, DailyReportCreateRequest, DailyReportUpdateRequest, DbSession, description, ge, Header (+95 more)
 
 ### Community 37 - "Report Service Workflow"
 Cohesion: 0.03
-Nodes (81): actionOptions, AuditLogPage(), entityOptions, initialForm, UserManagementPage(), AnalyticsPage(), exportOptions, filterFields (+73 more)
+Nodes (76): actionOptions, AuditLogPage(), entityOptions, authenticate(), Challenge, Overview, portalRequest(), Session (+68 more)
 
 ### Community 38 - "Role Manual Pages"
 Cohesion: 0.14
 Nodes (11): ALL_PERMISSION_KEYS, manualFor(), ManualPage(), PERMISSION_LABELS, ROLE_LABELS, Tab, COMMON_SECTIONS, Manual (+3 more)
 
 ### Community 39 - "Supervisor Updates"
-Cohesion: 0.06
-Nodes (69): Response, acknowledge_hr_policy(), act_on_performance_review(), approve_benefit_policy(), close_run_period(), create_application(), create_benefit_type(), create_compensation() (+61 more)
+Cohesion: 0.04
+Nodes (35): ApprovalCreateRequest, ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegateResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, ApprovalResponse (+27 more)
 
 ### Community 40 - "test_finance.py cluster"
 Cohesion: 0.14
-Nodes (38): Client, datetime, Path, RuntimeError, acknowledge(), Acknowledgement, advance(), BackupCheck (+30 more)
+Nodes (39): Client, datetime, Path, Event, RuntimeError, acknowledge(), Acknowledgement, advance() (+31 more)
 
 ### Community 41 - "test_inventory_accounting.py cluster"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_exports
+Cohesion: 0.26
+Nodes (11): datetime, SupportCase, SupportCaseRead, SupportOperator, SupportSession, UUID, _cursor(), _read_cursor() (+3 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.27
-Nodes (11): ImportPage(), AsyncImportResult, downloadTemplate(), getImportBatchStatus(), ImportPreview, ImportRunResult, importTemplates, listImportBatches() (+3 more)
+Cohesion: 0.10
+Nodes (199): ManagedEventStream, DbSession, AuthenticatedSupport, BusinessActionCreate, BusinessActionRead, BusinessActionStage, CaseActionCreate, CaseActionRead (+191 more)
 
 ### Community 43 - "test_report_payment_concurrency.py cluster"
-Cohesion: 0.21
-Nodes (23): RecoveryPolicy, BinaryIO, Path, assert_complete_matches(), authentication_key(), BackupSetError, decode_manifest(), encrypted_artifacts() (+15 more)
+Cohesion: 0.03
+Nodes (266): DbSession, Query, Response, UUID, HrWorkforceService, HrService, Facade for HR organization, master directory, private vault, access requests, an, acknowledge_hr_policy() (+258 more)
 
 ### Community 44 - "backup.py cluster"
 Cohesion: 0.15
 Nodes (22): Minio, Namespace, Path, backup_database(), cleanup_retention(), create_dump(), database_targets(), encrypt_file() (+14 more)
 
 ### Community 45 - "test_delegation_guards.py cluster"
-Cohesion: 0.22
-Nodes (26): AsyncClient, Decimal, Invoice, Project, User, generate_excel_export(), add_invoice(), add_payment() (+18 more)
+Cohesion: 0.03
+Nodes (149): BearerToken, AuditLogListResponse, DbSession, ge, le, max_length, Query, UUID (+141 more)
 
 ### Community 46 - "docker-compose.staging.yml cluster"
-Cohesion: 0.10
-Nodes (23): datetime, PublicationReceipt, RecoveryPolicy, MonkeyPatch, Path, DestinationIdentity, DestinationIdentity, FailureDomains (+15 more)
+Cohesion: 0.32
+Nodes (11): Any, ArgumentParser, build_parser(), _clean_params(), _cli_headers(), _login(), _make_client(), _resolve_token() (+3 more)
 
 ### Community 47 - "report_export_service.py cluster"
-Cohesion: 0.04
-Nodes (61): Engineering and safety guardrails, graphify, Key entry points, Repository documentation, Verification commands, Backend architecture, Cross-cutting entry points, Trace an API request (+53 more)
+Cohesion: 0.18
+Nodes (11): AuthUserResponse, LoginChallengeResponse, LoginRequest, MessageResponse, PasswordChangeRequest, PasswordResetChallengeResponse, PasswordResetConfirmRequest, PasswordResetRequest (+3 more)
 
 ### Community 48 - "audit_retention_policy.py cluster"
-Cohesion: 0.08
-Nodes (49): alias, CurrentUser, DbSession, description, File, Form, ge, Header (+41 more)
+Cohesion: 0.10
+Nodes (47): alias, CurrentUser, DbSession, description, File, Form, ge, Header (+39 more)
 
 ### Community 49 - "test_request_ip_resolution.py cluster"
-Cohesion: 0.10
-Nodes (57): DbSession, alias, CanManageDocuments, CurrentUser, date, DbSession, File, Form (+49 more)
+Cohesion: 0.15
+Nodes (11): Account, SupportAccountPanel(), Account, actions, Proof, Receipt, Request, Stage (+3 more)
 
 ### Community 51 - "Community 51"
-Cohesion: 0.11
-Nodes (40): AnalyticsSummaryResponse, CurrentUser, date, DbSession, max_length, Query, Response, UUID (+32 more)
+Cohesion: 0.16
+Nodes (26): AnalyticsSummaryResponse, CurrentUser, date, DbSession, max_length, Query, Response, UUID (+18 more)
 
 ### Community 52 - "docker-compose.prod.yml cluster"
-Cohesion: 0.04
-Nodes (94): getMe(), getBrowserSession(), isActiveOfflineScope(), sessionRequestConfig(), OfflineScope, OfflineSession, openDb(), ownerKey() (+86 more)
+Cohesion: 0.32
+Nodes (13): AsyncSession, HrEmployee, User, UUID, ReviewRequest, can_review_direct_reports(), eligible_reviewer(), list_manager_reviews() (+5 more)
 
 ### Community 53 - "security.py cluster"
-Cohesion: 0.33
-Nodes (16): AsyncClient, create_test_client(), create_test_user(), skip_if_database_unavailable(), test_auth_rate_limit_blocks_repeated_login_attempts(), test_auth_returns_service_unavailable_when_otp_delivery_fails(), test_change_password_clears_forced_change_flag(), test_dev_otp_is_never_exposed_in_staging() (+8 more)
-
-### Community 54 - "test_structured_logging.py cluster"
-Cohesion: 0.14
-Nodes (20): labelledAmount(), BudgetSummary, createInvoice(), createPayment(), getBudgetSummary(), getInvoice(), InvoiceAttachmentUrl, InvoiceCreatePayload (+12 more)
+Cohesion: 0.10
+Nodes (43): Exception, MonkeyPatch, Path, main(), ensure_seed_storage_objects(), main(), seed_activity_logs(), seed_approvals() (+35 more)
 
 ### Community 55 - "inventory.py cluster"
-Cohesion: 0.05
-Nodes (51): AuditLogFilters, AuditLogListResponse, AuditLogRecord, getAuditLogs(), AuthUser, changePassword(), confirmPasswordReset(), login() (+43 more)
+Cohesion: 0.20
+Nodes (9): descriptions, Grant, GrantOptions, labels, ProposalKind, RegistrationOptions, Stage, SupportCustodyPanel() (+1 more)
 
 ### Community 56 - "test_scope_authorization.py cluster"
-Cohesion: 0.14
-Nodes (38): AsyncSession, HrEmployee, ManagerReviewDecisionRequest, ManagerReviewItemResponse, ManagerReviewKind, ManagerReviewListResponse, User, UUID (+30 more)
+Cohesion: 0.18
+Nodes (35): BusinessPolicy, Shared validation for application settings and proposed CLI configuration., BusinessPolicyResponse, Any, BusinessPolicy, Context, Namespace, Path (+27 more)
 
 ### Community 57 - "package.json cluster"
 Cohesion: 0.10
@@ -545,100 +531,100 @@ Cohesion: 0.10
 Nodes (19): compilerOptions, allowJs, allowSyntheticDefaultImports, esModuleInterop, forceConsistentCasingInFileNames, isolatedModules, jsx, lib (+11 more)
 
 ### Community 59 - "test_session_revocation.py cluster"
-Cohesion: 0.14
-Nodes (48): Any, datetime, MonkeyPatch, Path, Bundle, ci_archive_fixture(), ci_receipt(), decision_values() (+40 more)
+Cohesion: 0.13
+Nodes (11): date, EmployeeDetailResponse, EmployeeUpdateRequest, HrEmployee, User, UUID, User, EmploymentChangeFields (+3 more)
 
 ### Community 60 - "inventory.py cluster"
-Cohesion: 0.26
-Nodes (14): apply_runtime(), check_readiness(), compose(), die(), github(), publish_frontend(), read_frontend_identity(), report_duration() (+6 more)
+Cohesion: 0.10
+Nodes (17): Case, Kind, labels, Proposal, SupportCaseProposal(), SupportCaseReview(), Case, CaseCreate (+9 more)
 
 ### Community 61 - "projects.py cluster"
 Cohesion: 0.10
 Nodes (3): error_messages(), test_import_validation_rejects_malformed_numbers_dates_and_quantities(), test_import_validation_reports_missing_columns_and_required_values()
 
 ### Community 62 - "test_audit_retention_policy.py cluster"
-Cohesion: 0.08
-Nodes (18): date, EmployeeDetailResponse, EmployeeUpdateRequest, HrEmployee, User, UUID, Notification, User (+10 more)
+Cohesion: 0.13
+Nodes (28): ActionProof, AsyncSession, SupportSession, UUID, AppException, AsyncSession, SupportEvidenceExportCreate, SupportEvidenceExportRead (+20 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.06
-Nodes (91): Request, AnalyticsSummaryResponse, AsyncSession, Minio, ApprovalResponse, AsyncSession, Notification, ColumnElement (+83 more)
+Cohesion: 0.13
+Nodes (16): LoginOptions, Session, SupportLoginPage(), supportRequest(), Audit, SupportCaseAuditPanel(), componentsToShow, Health (+8 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.07
-Nodes (58): ArgumentParser, Registry, Any, Context, Namespace, Registry, Result, Any (+50 more)
+Cohesion: 0.06
+Nodes (75): Any, ArgumentParser, Context, Namespace, Registry, Result, Any, Context (+67 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.13
-Nodes (13): Decimal, ApprovalCurrencyCount, BudgetSummaryResponse, CurrencyReconciliationResponse, InvoiceAttachmentUrlResponse, InvoiceCreateRequest, InvoiceListResponse, InvoiceResponse (+5 more)
+Cohesion: 0.28
+Nodes (22): AppException, AsyncSession, date, Decimal, LeaveAccrualRequest, LeaveAccrualResponse, User, UUID (+14 more)
 
-### Community 68 - "photo_repository.py cluster"
-Cohesion: 0.33
-Nodes (5): DocumentDecisionRequest, DocumentDownloadResponse, DocumentListResponse, DocumentResponse, DocumentVersionResponse
+### Community 68 - "Community 68"
+Cohesion: 0.14
+Nodes (48): Any, datetime, MonkeyPatch, Path, Bundle, ci_archive_fixture(), ci_receipt(), decision_values() (+40 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.11
-Nodes (6): Environments where OTPs must never be echoed back to the caller., Settings, BusinessPolicyResponse, MonkeyPatch, BaseSettings, BusinessPolicy
+Cohesion: 0.15
+Nodes (51): Path, RecoveryPolicy, assert_complete_matches(), async_database_url(), capture(), capture_configuration(), capture_object(), check_empty_database() (+43 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.10
-Nodes (32): Any, _advance_input(), _application_summary(), _candidate_summary(), _correspondence_status(), _correspondence_summary(), _document_version(), _download_document() (+24 more)
+Cohesion: 0.24
+Nodes (18): Path, Path, load_json(), uuid_arg(), _calculate_payroll(), _calendar_list(), _calendar_read(), _complete_service_request() (+10 more)
 
-### Community 71 - "test_authorization_matrix.py cluster"
-Cohesion: 0.11
-Nodes (20): applyEmploymentChange(), decideEmploymentChange(), dueEmploymentChangesKey, EmployeeDetailRecord, employmentChangesPath(), getEmployee(), listDueEmploymentChanges(), listEmploymentChanges() (+12 more)
+### Community 71 - "Community 71"
+Cohesion: 0.30
+Nodes (22): AsyncSession, HrLeaveRequest, LeaveDateEvidenceResponse, User, UUID, HrLeaveDateEvidence, _audit(), decide_leave_date_evidence() (+14 more)
 
 ### Community 72 - "package.json cluster"
 Cohesion: 0.14
 Nodes (14): dependencies, axios, axios-retry, @hookform/resolvers, i18next, lucide-react, react, react-dom (+6 more)
 
-### Community 73 - "imports.ts cluster"
-Cohesion: 0.36
-Nodes (18): AsyncSession, Decimal, PayrollCorrectionResponse, User, UUID, HrPayrollCorrection, PayrollCorrectionAmounts, _audit() (+10 more)
+### Community 73 - "Community 73"
+Cohesion: 0.08
+Nodes (37): create_app(), Any, Any, Settings, Any, BaseException, bind_log_context(), clear_log_context() (+29 more)
 
 ### Community 74 - "test_capture_recovery_wrapper.py cluster"
 Cohesion: 0.32
 Nodes (15): Path, CompletedProcess, executable(), scheduled_capture(), ScheduledCapture, test_capture_wrapper_preserves_writer_state_and_failure_receipts(), test_failed_publication_retries_the_same_capture_without_pausing_writers_again(), test_lock_failure_leaves_previous_attempt_and_backup_unchanged() (+7 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.38
-Nodes (16): AsyncSession, HrClearanceStep, HrOffboardingCase, User, UUID, HrSeparationSettlement, _audit(), _case_and_step() (+8 more)
+Cohesion: 0.12
+Nodes (26): Any, Namespace, Path, Namespace, Path, MonkeyPatch, Path, inspect_backup() (+18 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.17
-Nodes (25): AuditLogListResponse, DbSession, ge, le, max_length, Query, UUID, AuditLogListResponse (+17 more)
+Cohesion: 0.09
+Nodes (5): decrypt_hr_value(), _derive_fernet_key(), encrypt_hr_value(), mask_identifier(), validate_hr_document_file()
 
 ### Community 77 - "Community 77"
-Cohesion: 0.05
-Nodes (46): Security and scoping, Alert delivery, Grafana, Loki, and Alloy, Incident fallback, nginx/grafana.prod.conf.template, nginx/nginx.conf, nginx/nginx.prod.conf, observability/alloy-config.alloy (+38 more)
+Cohesion: 0.10
+Nodes (16): CurrentUser, DashboardSummaryResponse, DbSession, User, Garrisons portal release scope, Approvals, inventory, and finance, Field reporting and offline recovery, Files, documents, and imports (+8 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.35
-Nodes (35): AsyncConnection, datetime, Minio, Namespace, PublicationReceipt, Self, BinaryIO, MonkeyPatch (+27 more)
+Cohesion: 0.18
+Nodes (29): AsyncClient, DailyReport, date, Decimal, Invoice, Payment, Project, User (+21 more)
 
 ### Community 79 - "Community 79"
-Cohesion: 0.32
-Nodes (10): Namespace, Path, default_template_sources(), main(), parse_args(), parse_source(), render_markdown(), validate_source() (+2 more)
+Cohesion: 0.08
+Nodes (59): alias, DbSession, File, Header, ImportPreviewResponse, ImportRunResponse, Response, UploadFile (+51 more)
 
 ### Community 80 - "Community 80"
 Cohesion: 0.08
-Nodes (86): DeclarativeBase, AuthOtpChallenge, AuthRefreshToken, Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin, Invoice (+78 more)
+Nodes (86): DeclarativeBase, AuthOtpChallenge, AuthRefreshToken, AuthSession, Base, SoftDeleteMixin, TimestampMixin, Invoice (+78 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.21
-Nodes (11): check_database(), load_migration(), Batch 7 §7.1.2 — the reservation repair migration must restore derived balances., Leave the schema exactly as 202605300002 does: guards present, unvalidated., The repair floors issued/cancelled lines and preserves non-request reserves., §7.1.2 requires enforced checks, not guards that only cover new writes., Alembic version files are loaded by path, not imported as a package., restore_not_valid_checks() (+3 more)
+Cohesion: 0.24
+Nodes (3): Self, PurePosixPath, require_relative_path()
 
-### Community 82 - "storage_service.py cluster"
-Cohesion: 0.40
-Nodes (11): AsyncClient, create_test_client(), create_user(), login_for_token(), project_payload(), setup_assigned_supervisor_project(), skip_if_database_unavailable(), test_previous_date_update_is_blocked_for_supervisor() (+3 more)
+### Community 82 - "Community 82"
+Cohesion: 0.22
+Nodes (8): Adapter, Explanation, Navigation, ProjectDetail, Projection, ProjectList, Summary, SupportPermissionViewPanel()
 
 ### Community 83 - "Community 83"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, idempotency_records, Indexes, Keys and constraints
+Cohesion: 0.15
+Nodes (19): die(), finish(), PATH, private_file(), protected_directory(), publish_capture(), remove_run(), resume_writers() (+11 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.09
-Nodes (33): Any, T, UUID, error_codes(), isolated_engine_pool(), outcome_key(), race(), race_sessions() (+25 more)
+Cohesion: 0.40
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_material_consumption
 
 ### Community 85 - "approval-delegation.e2e.ts cluster"
 Cohesion: 0.25
@@ -653,12 +639,12 @@ Cohesion: 0.23
 Nodes (5): _compose(), test_alloy_checks_socket_access_as_the_collector_user(), test_grafana_contact_point_transports_preserve_the_operations_route(), test_grafana_security_database_and_public_urls_are_provisioned(), test_observability_images_are_digest_pinned_and_ports_are_private()
 
 ### Community 88 - "Community 88"
-Cohesion: 0.11
-Nodes (107): Context, Namespace, Context, Namespace, Result, require_preview_permission(), checked_plan(), read_private_bytes() (+99 more)
+Cohesion: 0.06
+Nodes (181): Context, Namespace, Any, Context, Namespace, Result, require_preview_permission(), checked_plan() (+173 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.22
-Nodes (18): Client, Response, Exception, _denied(), DocumentVersionCheck, _file_check(), _get(), _json() (+10 more)
+Cohesion: 0.25
+Nodes (17): Client, Response, Exception, _denied(), DocumentVersionCheck, _file_check(), _get(), _json() (+9 more)
 
 ### Community 90 - "capture-recovery-set.sh cluster"
 Cohesion: 0.10
@@ -677,12 +663,12 @@ Cohesion: 0.20
 Nodes (9): background_color, display, icons, name, orientation, scope, short_name, start_url (+1 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.31
-Nodes (19): Any, MonkeyPatch, Path, Settings, TempPathFactory, key_pair(), C2 — a hardened deployment must never fall back to the published development key, test_dev_env_with_unreadable_key_path_still_falls_back() (+11 more)
+Cohesion: 0.10
+Nodes (31): Any, T, UUID, error_codes(), isolated_engine_pool(), outcome_key(), race(), Shared helpers for concurrency regression tests.  Every race in this suite must (+23 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.40
-Nodes (4): date, LeaveDateEvidenceCreate, LeaveDateEvidenceDetail, LeaveDateEvidenceResponse
+Cohesion: 0.14
+Nodes (10): test_every_feature_permission_denial_is_explicit_for_each_role(), test_every_target_role_validates_and_has_exact_permissions(), test_navigation_preserves_report_and_supervisor_links(), test_permission_helpers_fail_closed_for_unknown_role_and_future_permission(), test_retired_roles_are_rejected_and_have_no_permissions(), test_super_admin_has_only_registered_technical_permissions(), TypedDict, permissions_for_role() (+2 more)
 
 ### Community 96 - "finance-workflows.e2e.ts cluster"
 Cohesion: 0.29
@@ -694,39 +680,43 @@ Nodes (8): compilerOptions, allowSyntheticDefaultImports, composite, module, mod
 
 ### Community 98 - "Community 98"
 Cohesion: 0.12
-Nodes (12): components, $defs, operations, paths, webhooks, API contract, docs/openapi.json, API contract changes (+4 more)
+Nodes (50): alias, CanManageDocuments, CurrentUser, date, DbSession, File, Form, ge (+42 more)
 
 ### Community 99 - "Community 99"
-Cohesion: 0.19
-Nodes (12): Call, Comprehensive HR & Workforce Management test suite (HR-A through HR-J + CLI)., test_company_policy_cli_binds_attachment_and_refuses_unverified_download(), test_hr_offboarding_custody_cli_previews_and_verifies_exact_event(), test_hr_payroll_cli_confirms_snapshot_digest_and_reads_back(), test_hr_payroll_close_cli_verifies_reviewed_settlement(), test_hr_payroll_correction_cli_binds_private_proposal_and_independent_review(), test_hr_payroll_export_cli_checks_exact_private_download() (+4 more)
+Cohesion: 0.09
+Nodes (67): Any, MonkeyPatch, UploadFile, Response, User, UUID, AsyncClient, Decimal (+59 more)
 
 ### Community 100 - "daily-report.e2e.ts cluster"
 Cohesion: 0.22
 Nodes (5): backendDirectory, photo, Photos, Reports, TestAccount
 
 ### Community 101 - "Community 101"
-Cohesion: 0.49
-Nodes (15): create_test_client(), create_user(), login_for_token(), project_payload(), skip_if_database_unavailable(), test_assigned_engineer_can_read_assigned_project_only(), test_closed_project_is_read_only(), test_concurrent_reverse_dependencies_cannot_create_cycle() (+7 more)
+Cohesion: 0.15
+Nodes (37): AsyncSession, PayrollExportPreview, User, UUID, AsyncSession, Decimal, HrPayrollRun, PayrollSettlementEventResponse (+29 more)
+
+### Community 102 - "Community 102"
+Cohesion: 0.18
+Nodes (20): AsyncSession, UUID, SupportRequestLogStreamQuery, UUID, AsyncSession, datetime, UUID, SupportLogStream (+12 more)
 
 ### Community 103 - "celery_app.py cluster"
-Cohesion: 0.25
-Nodes (5): SupplierCreateRequest, SupplierDocumentUrlResponse, SupplierListResponse, SupplierResponse, SupplierUpdateRequest
+Cohesion: 0.40
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_members
 
 ### Community 104 - "package.json cluster"
 Cohesion: 0.29
 Nodes (6): name, overrides, minimatch@10, private, type, version
 
 ### Community 105 - "Community 105"
-Cohesion: 0.20
-Nodes (18): Path, canonical_bytes(), Trusted inputs and authenticated receipts for complete recovery sets., read_policy(), receipt_signature(), sign_publication_receipt(), sign_scheduled_attempt(), SignedPublicationReceipt (+10 more)
+Cohesion: 0.21
+Nodes (24): create_user(), login_for_token(), pdf_bytes(), test_document_replacements_serialize_and_keep_active_version(), test_document_upload_approval_versioning_and_superseded_download(), test_replacement_failure_discards_only_the_new_object(), auth(), Cross-project access regressions: C3 (photo IDOR), H14 (documents/updates), H15. (+16 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.11
-Nodes (101): AssetResponse, alias, AssetCreateRequest, DbSession, ge, Header, InventoryItem, InventoryItemCreateRequest (+93 more)
+Cohesion: 0.07
+Nodes (172): AssetResponse, alias, AssetCreateRequest, DbSession, ge, Header, InventoryItem, InventoryItemCreateRequest (+164 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.28
-Nodes (22): AppException, AsyncSession, date, Decimal, LeaveAccrualRequest, LeaveAccrualResponse, User, UUID (+14 more)
+Cohesion: 0.04
+Nodes (39): Columns, Foreign keys, Indexes, inventory_assets, Keys and constraints, Columns, Foreign keys, Indexes (+31 more)
 
 ### Community 108 - "media-documents.e2e.ts cluster"
 Cohesion: 0.25
@@ -737,16 +727,12 @@ Cohesion: 0.33
 Nodes (5): compilerOptions, allowImportingTsExtensions, types, extends, include
 
 ### Community 111 - "Community 111"
-Cohesion: 0.38
-Nodes (10): AsyncClient, create_async_client(), create_user(), login_for_token(), serve_test_api(), skip_if_database_unavailable(), test_admin_can_search_log_events_and_non_admin_cannot(), test_log_cli_login_and_search() (+2 more)
+Cohesion: 0.41
+Nodes (15): UUID, create_test_client(), create_user(), live_token_count(), open_session(), H6 — every credential change must revoke all live refresh sessions, atomically., Log in on a fresh client and return (access_token, refresh_token)., refresh() (+7 more)
 
 ### Community 112 - "Community 112"
-Cohesion: 0.29
-Nodes (8): UUID, expire_login_challenge(), Start the isolated browser-test API or seed an account and project for one test., Create read-only finance facts for analytics browser coverage., seed(), seed_analytics_finance(), seed_delegation(), seed_legacy_leave()
-
-### Community 113 - "users.py cluster"
-Cohesion: 0.09
-Nodes (32): Any, Any, Settings, Any, BaseException, bind_log_context(), clear_log_context(), get_log_context() (+24 more)
+Cohesion: 0.40
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, photos
 
 ### Community 114 - "202605160004_projects_boq.py cluster"
 Cohesion: 0.60
@@ -777,68 +763,68 @@ Cohesion: 0.60
 Nodes (3): Column, timestamp_columns(), upgrade()
 
 ### Community 121 - "Community 121"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, inventory_assets, Keys and constraints
+Cohesion: 0.15
+Nodes (37): AsyncClient, MonkeyPatch, create_test_client(), project_payload(), report_payload(), setup_project_team(), setup_report_consumption_stock(), skip_if_database_unavailable() (+29 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.29
-Nodes (17): Any, MonkeyPatch, Path, cli(), host_state(), private_proposal(), test_backup_status_uses_independent_monitor_without_writing(), test_backup_verify_missing_manifest_has_json_only_stdout() (+9 more)
+Cohesion: 0.27
+Nodes (18): Any, MonkeyPatch, Path, cli(), host_state(), private_proposal(), test_backup_status_uses_independent_monitor_without_writing(), test_backup_verify_missing_manifest_has_json_only_stdout() (+10 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.09
-Nodes (23): get_db(), AsyncSession, UUID, main(), _random_equipment(), _random_manpower(), _random_materials(), Generate demo daily reports for all active projects in a development database. (+15 more)
+Cohesion: 0.60
+Nodes (4): Column, _ref(), _time(), upgrade()
 
 ### Community 127 - "generate_assets.py cluster"
 Cohesion: 0.67
 Nodes (3): Image, create_variants(), main()
 
-### Community 128 - "kilo.json cluster"
-Cohesion: 0.50
-Nodes (3): indexing, enabled, $schema
+### Community 128 - "Community 128"
+Cohesion: 0.14
+Nodes (28): ApprovalWorkflowBucket, CaseMaskedProjectSummary, OversightEnvelope, OversightMetric, OversightScope, ProjectStatusBucket, _StrictModel, SupportApprovalsOverviewRead (+20 more)
 
 ### Community 129 - "report-file-sync.d.ts cluster"
 Cohesion: 0.50
 Nodes (3): QueuedFileKind, UploadFailure, UploadIntent
 
 ### Community 130 - "Community 130"
-Cohesion: 0.06
-Nodes (68): ActivityLog, AuditService, ColumnElement, datetime, AsyncSession, ColumnElement, datetime, Select (+60 more)
+Cohesion: 0.27
+Nodes (20): AsyncSession, datetime, HrClearanceStep, HrOffboardingCase, OffboardingCustodyRequest, Select, User, UUID (+12 more)
 
 ### Community 131 - "Community 131"
-Cohesion: 0.39
-Nodes (8): AsyncSession, UUID, bind(), _lookup(), Idempotency keys for retried writes.  The offline photo queue replays requests a, Bind ``resource_id`` to the reserved key; return the winner's id.      Runs in t, Return the resource already bound to ``key``, or reserve the key and return None, resolve_or_reserve()
+Cohesion: 0.05
+Nodes (46): Security and scoping, Alert delivery, Grafana, Loki, and Alloy, Incident fallback, nginx/grafana.prod.conf.template, nginx/nginx.conf, nginx/nginx.prod.conf, observability/alloy-config.alloy (+38 more)
 
 ### Community 132 - "Community 132"
-Cohesion: 0.10
-Nodes (44): AuthRefreshToken, AsyncSession, AuthOtpChallenge, UUID, Any, AsyncSession, datetime, Path (+36 more)
+Cohesion: 0.36
+Nodes (18): AsyncSession, Decimal, PayrollCorrectionResponse, User, UUID, HrPayrollCorrection, PayrollCorrectionAmounts, _audit() (+10 more)
 
 ### Community 133 - "Community 133"
-Cohesion: 0.13
-Nodes (25): UUID, T, check_low_stock(), _low_stock_recipients(), process_approval_reminders(), _recent_notification_exists(), run_async_task(), _run_with_fresh_pool() (+17 more)
+Cohesion: 0.60
+Nodes (4): Column, _operator_fk(), _timestamps(), upgrade()
 
 ### Community 135 - "Community 135"
-Cohesion: 0.40
-Nodes (5): auth_otp_challenges, Columns, Foreign keys, Indexes, Keys and constraints
+Cohesion: 0.04
+Nodes (41): auth_otp_challenges, Columns, Foreign keys, Indexes, Keys and constraints, auth_refresh_tokens, boq_items, Columns (+33 more)
 
 ### Community 160 - "Community 160"
-Cohesion: 0.06
-Nodes (16): auth_refresh_tokens, Columns, Foreign keys, Indexes, inventory_items, Keys and constraints, Database schema, Documents and media (+8 more)
+Cohesion: 0.40
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_milestones
 
 ### Community 187 - "Community 187"
-Cohesion: 0.36
-Nodes (18): AsyncSession, HrEmployee, HrReview, PerformanceReviewDetail, User, UUID, HrPerformanceEvent, PerformanceParticipant (+10 more)
+Cohesion: 0.60
+Nodes (3): Column, _ref(), upgrade()
 
 ### Community 188 - "Community 188"
-Cohesion: 0.18
-Nodes (12): ReportExport, UUID, AsyncSession, DailyReport, Minio, ReportExport, User, UUID (+4 more)
+Cohesion: 0.24
+Nodes (17): AsyncSession, WorkbookPreviewResponse, ZipFile, apply_workbook(), _draft_employee_code(), _normalize_header(), _parse_bool_flag(), _parse_xlsx_table() (+9 more)
 
 ### Community 189 - "Community 189"
 Cohesion: 0.06
 Nodes (12): applyPolicy(), BACKEND_DIR, Calendar, CANONICAL_PERMISSIONS, CANONICAL_ROLES, inspectEmployee(), LoginResult, openAdvance() (+4 more)
 
 ### Community 190 - "Community 190"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, supervisor_updates
+Cohesion: 0.26
+Nodes (14): apply_runtime(), check_readiness(), compose(), die(), github(), publish_frontend(), read_frontend_identity(), report_duration() (+6 more)
 
 ### Community 191 - "Community 191"
 Cohesion: 0.29
@@ -849,24 +835,32 @@ Cohesion: 0.54
 Nodes (6): Any, Column, _deleted_at(), _timestamps(), upgrade(), _uuid_pk()
 
 ### Community 194 - "Community 194"
-Cohesion: 0.26
-Nodes (13): UUID, build_matrix(), _invoice(), _project(), Report and finance access for all ten roles across project scopes., Two projects, one report and invoice each, with a token for all ten roles., _report(), test_finance_get_matrix() (+5 more)
+Cohesion: 0.36
+Nodes (18): AsyncSession, HrEmployee, HrReview, PerformanceReviewDetail, User, UUID, HrPerformanceEvent, PerformanceParticipant (+10 more)
 
 ### Community 196 - "Community 196"
-Cohesion: 0.18
-Nodes (19): AsyncSession, Element, User, WorkbookApplyRequest, WorkbookApplyResponse, WorkbookPreviewResponse, ZipFile, apply_workbook() (+11 more)
+Cohesion: 0.50
+Nodes (4): PayrollClosureRequest, PayrollCorrectionCreate, PayrollExportConfirmRequest, PayrollRunApproveRequest
 
 ### Community 197 - "Community 197"
-Cohesion: 0.13
-Nodes (14): Parser, Config, CI runner capacity, Host bootstrap and runner maintenance, Local production Compose rehearsal, Post-Deploy Verification, Production deployments from GitHub Actions, Production maintenance (+6 more)
+Cohesion: 0.25
+Nodes (8): AdminPasswordResetRequest, UserCreateRequest, UserDetailResponse, UserListResponse, UserResponse, UserRoleListResponse, UserRoleResponse, UserUpdateRequest
 
 ### Community 198 - "Community 198"
-Cohesion: 0.24
-Nodes (11): create_app(), lifespan(), FastAPI, FakeExceptionSettings, test_celery_task_failure_sends_configured_email(), test_unhandled_exception_email_respects_disabled_config(), test_unhandled_exception_sends_configured_email_with_debug_context(), test_api_root() (+3 more)
+Cohesion: 0.03
+Nodes (157): Environments where OTPs must never be echoed back to the caller., Settings, get_db(), AsyncSession, Notification, AsyncSession, Settings, SupportOperator (+149 more)
 
 ### Community 199 - "Community 199"
-Cohesion: 0.17
-Nodes (11): Account and project changes, Commands, Diagnose the portal, Garrisons administration CLI, Imports and reconciliation, Inspect identities, roles and projects, Inspect or propose finance policy, Install and connect (+3 more)
+Cohesion: 0.15
+Nodes (12): Account and project changes, Commands, Diagnose the portal, Garrisons administration CLI, Imports and reconciliation, Inspect identities, roles and projects, Inspect or propose finance policy, Install and connect (+4 more)
+
+### Community 205 - "Community 205"
+Cohesion: 0.15
+Nodes (28): get_request_meta(), Request, Response, UUID, MonkeyPatch, Request, audit_authenticated_request(), _authenticated_user_id() (+20 more)
+
+### Community 206 - "Community 206"
+Cohesion: 0.18
+Nodes (13): supportCsrf(), SupportLogFrame, supportPasskey(), supportPost(), Prepare, SupportCliLoginPanel(), fromBase64Url(), Proof (+5 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 0.14
@@ -877,44 +871,52 @@ Cohesion: 0.09
 Nodes (12): Self, ApplicationStageUpdateRequest, ApplicationWithdrawalRequest, EmploymentChangeProposal, LeavePolicyCreateRequest, OffboardingCustodyRequest, PayrollSettlementRequest, PerformanceReviewActionRequest (+4 more)
 
 ### Community 210 - "Community 210"
-Cohesion: 0.14
-Nodes (13): Bounded implementation follow-ups, Core workflows, HR and workforce, Line-manager review and employee time submission, Migration and key custody, Operational workflow guidance, Payroll decisions for live operation, Payroll verification (+5 more)
+Cohesion: 0.12
+Nodes (15): Bounded implementation follow-ups, Core workflows, HR and workforce, HR Executive scope and proposed HR tasks, Line-manager review and employee time submission, Migration and key custody, Operational workflow guidance, Payroll decisions for live operation (+7 more)
 
 ### Community 215 - "Community 215"
 Cohesion: 0.25
 Nodes (7): Core organization & employee master, HR documents vault & compliance, HR table constraints, P2 governance & policy-gated modules, Policies, letters, requests & offboarding, Recruitment & onboarding, Time, attendance & leave
 
 ### Community 216 - "Community 216"
-Cohesion: 0.24
-Nodes (9): get_settings(), datetime, UUID, create_access_token(), _jwt_private_key(), _jwt_public_key(), _load_jwt_key(), _read_key_file() (+1 more)
+Cohesion: 0.25
+Nodes (16): Namespace, Path, TextIO, UUID, apply(), approved_otp_bindings(), CustodyApproval, issue() (+8 more)
+
+### Community 218 - "Community 218"
+Cohesion: 0.38
+Nodes (16): AsyncSession, HrClearanceStep, HrOffboardingCase, User, UUID, HrSeparationSettlement, _audit(), _case_and_step() (+8 more)
+
+### Community 219 - "Community 219"
+Cohesion: 0.21
+Nodes (16): BackupsMonitor, SupportBackupsPanel(), ConfigStatus, SupportConfigPanel(), IncidentsSummary, SupportIncidentsPanel(), JobsMonitor, SupportJobsPanel() (+8 more)
 
 ### Community 221 - "Community 221"
-Cohesion: 0.22
-Nodes (8): CurrentUser, DashboardSummaryResponse, DbSession, AsyncSession, DashboardSummaryResponse, User, DashboardService, dashboard_summary()
+Cohesion: 0.13
+Nodes (14): Parser, Config, CI runner capacity, Host bootstrap and runner maintenance, Local production Compose rehearsal, Post-Deploy Verification, Production deployments from GitHub Actions, Production maintenance (+6 more)
 
 ### Community 225 - "Community 225"
-Cohesion: 0.22
-Nodes (13): AsyncSession, HrEmployee, TrainingRequirementCreateRequest, TrainingRequirementListResponse, TrainingRequirementStatusListResponse, User, UUID, deactivate_rule() (+5 more)
+Cohesion: 0.20
+Nodes (10): 5. Formal Acceptance Evidence, Business account interventions, Certificate renewal monitoring, Dedicated ingress, Draft verification, Minimal owner-approved activation record, Production operator record, Super Admin activation (+2 more)
 
 ### Community 227 - "Community 227"
-Cohesion: 0.36
-Nodes (6): Require the normalized Compose service environment to retain pinned values., validate_pinned_service_environment(), test_error_does_not_reveal_environment_value(), test_list_environment_format_is_supported(), test_missing_or_overridden_pinned_value_fails(), test_pinned_values_must_be_present_in_effective_compose_environment()
+Cohesion: 0.18
+Nodes (14): _normalized_https_origin(), Path, Require the normalized Compose service environment to retain pinned values., Require the flag, private peer, and checked-in virtual host to agree., _truthy(), validate_pinned_service_environment(), validate_support_email_otp_config(), validate_support_ingress() (+6 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.18
-Nodes (25): Any, Context, Namespace, Result, create_user(), get_user(), has_cli_permission(), page() (+17 more)
+Cohesion: 0.23
+Nodes (9): HrEmployee, HrProjectAssignmentCreateRequest, HrProjectAssignmentDecision, HrProjectAssignmentListResponse, HrProjectAssignmentResponse, Project, User, UUID (+1 more)
 
 ### Community 229 - "Community 229"
-Cohesion: 0.15
-Nodes (8): HrEmployee, HrProjectAssignmentResponse, ProjectOptionListResponse, User, UUID, User, HrProjectAssignmentRequest, ensure_permission()
+Cohesion: 0.60
+Nodes (4): MonkeyPatch, Path, test_compensation_cli_steps_and_protects_private_terms(), test_compensation_cli_with_real_hr_api()
 
 ### Community 231 - "Community 231"
 Cohesion: 0.11
 Nodes (17): Current release and operational unknowns, Database schema references, `docs/BUSINESS-ROLE-DECISIONS.md`, `docs/DOCUMENTATION_AUDIT.md` (new), `docs/OPERATIONS_AND_DEPLOYMENT.md`, `docs/POST_RELEASE_ACTIONS.md`, Documentation inventory and evidence audit, Findings and evidence (+9 more)
 
 ### Community 233 - "Community 233"
-Cohesion: 0.33
-Nodes (5): AttachmentRef, SupervisorUpdateCreateRequest, SupervisorUpdateListResponse, SupervisorUpdateResponse, SupervisorUpdateSubmitRequest
+Cohesion: 0.29
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, notifications
 
 ### Community 234 - "Community 234"
 Cohesion: 0.17
@@ -922,171 +924,131 @@ Nodes (11): Current boundary, Dry run and apply, Generate and review the account
 
 ### Community 236 - "Community 236"
 Cohesion: 0.40
-Nodes (5): Columns, daily_reports, Foreign keys, Indexes, Keys and constraints
-
-### Community 240 - "Community 240"
-Cohesion: 0.22
-Nodes (4): Self, PurePosixPath, configuration_filename(), require_relative_path()
-
-### Community 246 - "Community 246"
-Cohesion: 0.18
-Nodes (9): Garrisons portal release scope, Approvals, inventory, and finance, Field reporting and offline recovery, Files, documents, and imports, Implementation map, Project setup and scheduling, Workflow invariants, Environment and configuration (+1 more)
+Nodes (5): Columns, Foreign keys, idempotency_records, Indexes, Keys and constraints
 
 ### Community 248 - "Community 248"
-Cohesion: 0.40
-Nodes (5): Columns, documents, Foreign keys, Indexes, Keys and constraints
+Cohesion: 0.11
+Nodes (22): ImportPage(), AuditLogFilters, AuditLogListResponse, AuditLogRecord, apiClient, listPositions(), uploadHrDocument(), AsyncImportResult (+14 more)
 
 ### Community 249 - "Community 249"
-Cohesion: 0.22
-Nodes (10): MonkeyPatch, Path, test_audit_purge_defaults_disabled_and_env_example_documents_it(), test_deployment_receipt_records_only_the_ci_attempt_that_passed(), test_failed_activation_only_restores_compatible_release(), test_frontend_identity_reads_one_container_and_validates_its_response(), test_host_configuration_permissions_are_enforced_before_lock(), test_host_release_does_not_depend_on_formal_approval_validator() (+2 more)
+Cohesion: 0.40
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_exports
 
 ### Community 250 - "Community 250"
 Cohesion: 0.40
 Nodes (4): Business role policy decisions, Decision register, HR workforce scope, Provenance and limits
 
 ### Community 251 - "Community 251"
-Cohesion: 0.10
-Nodes (18): BoqItemCreateRequest, BoqItemResponse, MilestoneCreateRequest, MilestoneResponse, ProjectCreateRequest, ProjectDetailResponse, ProjectListResponse, ProjectMemberCreateRequest (+10 more)
+Cohesion: 0.13
+Nodes (13): Decimal, ApprovalCurrencyCount, BudgetSummaryResponse, CurrencyReconciliationResponse, InvoiceAttachmentUrlResponse, InvoiceCreateRequest, InvoiceListResponse, InvoiceResponse (+5 more)
 
 ### Community 252 - "Community 252"
-Cohesion: 0.06
-Nodes (33): MonkeyPatch, Path, MonkeyPatch, Path, MonkeyPatch, Path, MonkeyPatch, Path (+25 more)
+Cohesion: 0.13
+Nodes (33): MonkeyPatch, MonkeyPatch, Path, MonkeyPatch, Path, MonkeyPatch, Path, test_leave_cli_uses_single_request_and_verifies_persisted_reversal() (+25 more)
 
 ### Community 255 - "Community 255"
-Cohesion: 0.12
-Nodes (59): AwareDatetime, AdminPasswordResetRequest, CanManageUsers, DbSession, ge, le, max_length, Query (+51 more)
+Cohesion: 0.24
+Nodes (11): initialForm, adminResetPassword(), createUser(), CreateUserPayload, deactivateUser(), listUserRoles(), listUsers(), updateUserRole() (+3 more)
 
 ### Community 256 - "Community 256"
 Cohesion: 0.02
-Nodes (88): Authority to preserve, Baseline, HR completion ledger, Requirement register, Slice 10 · issued letter delivery from a service request, Slice 11 · effective-dated employment changes, Slice 12 · reviewed contract renewals, Slice 13 · frozen payroll review (+80 more)
+Nodes (105): Authority to preserve, Baseline, HR completion ledger, Requirement register, Slice 100 · overnight attendance and incomplete punch validation, Slice 101 · attendance CSV import in garrisonctl, Slice 10 · issued letter delivery from a service request, Slice 11 · effective-dated employment changes (+97 more)
 
 ### Community 257 - "Community 257"
 Cohesion: 0.50
 Nodes (3): MonkeyPatch, Path, test_recruitment_cli_binds_application_and_stage_without_printing_private_details()
 
 ### Community 258 - "Community 258"
-Cohesion: 0.22
-Nodes (24): AsyncSession, HrLeaveRequest, LeaveDateEvidenceResponse, User, UUID, HrLeaveDateEvidence, _audit(), decide_leave_date_evidence() (+16 more)
-
-### Community 259 - "Community 259"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, inventory_location_stock, Keys and constraints
+Cohesion: 0.07
+Nodes (53): CurrentUser, DbSession, UUID, AsyncSession, datetime, Notification, UUID, AsyncSession (+45 more)
 
 ### Community 262 - "Community 262"
-Cohesion: 0.41
-Nodes (15): UUID, create_test_client(), create_user(), live_token_count(), open_session(), H6 — every credential change must revoke all live refresh sessions, atomically., Log in on a fresh client and return (access_token, refresh_token)., refresh() (+7 more)
-
-### Community 263 - "Community 263"
-Cohesion: 0.19
-Nodes (37): Any, AsyncSession, HrPayrollLine, HrPayrollPeriod, HrPayrollPolicy, HrPayrollRun, PayrollAdjustmentResponse, User (+29 more)
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_correspondence_cli_workflow()
 
 ### Community 264 - "Community 264"
-Cohesion: 0.28
-Nodes (6): control_registry(), controls_for(), exact(), required_platforms(), required_receipt_kinds(), Validation
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_offer_cli_binds_private_terms_and_reads_back_both_versions()
 
 ### Community 265 - "Community 265"
-Cohesion: 0.43
-Nodes (13): AsyncSession, HrPayrollPeriod, PayrollLeaveInputPreview, PayrollTimeInputPreview, User, UUID, lock_payroll_input_roster(), payroll_leave_inputs() (+5 more)
+Cohesion: 0.14
+Nodes (16): BinaryIO, datetime, Path, PublicationReceipt, RecoveryPolicy, DestinationIdentity, ScheduledAttemptReceipt, DestinationIdentity (+8 more)
 
 ### Community 266 - "Community 266"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, projects
+Cohesion: 0.33
+Nodes (6): activity_log, Business audit streams, Columns, Foreign keys, Indexes, Keys and constraints
 
 ### Community 269 - "Community 269"
-Cohesion: 0.44
-Nodes (10): AsyncClient, User, create_project(), create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_inventory_stock_request_reserve_issue_and_negative_stock_block() (+2 more)
+Cohesion: 0.50
+Nodes (4): Columns, Indexes, Keys and constraints, suppliers
 
 ### Community 271 - "Community 271"
 Cohesion: 0.40
-Nodes (4): BaseOrmModel, ErrorItem, ErrorResponse, PaginatedResponse
-
-### Community 274 - "Community 274"
-Cohesion: 0.40
-Nodes (4): PhotoDecisionRequest, PhotoListResponse, PhotoResponse, ProtectedFileUrlResponse
+Nodes (4): SupportEvidenceExportCreate, SupportEvidenceExportRead, SupportEvidenceFilters, SupportRequestLogQuery
 
 ### Community 276 - "Community 276"
-Cohesion: 0.32
-Nodes (11): Any, ArgumentParser, build_parser(), _clean_params(), _cli_headers(), _login(), _make_client(), _resolve_token() (+3 more)
+Cohesion: 0.19
+Nodes (5): AuthOtpChallenge, AuthSession, datetime, UUID, Revoke every live session for a user; returns the number of rows affected.
 
 ### Community 277 - "Community 277"
 Cohesion: 0.67
 Nodes (3): MonkeyPatch, test_demo_seed_refuses_production_before_opening_a_database(), test_seed_activity_logs_use_the_policy_aware_audit_writer()
 
 ### Community 278 - "Community 278"
-Cohesion: 0.33
-Nodes (8): Minio, Settings, main(), _client(), discard_new_uploads(), minio_client(), minio_signed_url_client(), test_presigned_url_uses_public_minio_endpoint()
-
-### Community 280 - "Community 280"
 Cohesion: 0.50
-Nodes (3): NotificationListResponse, NotificationResponse, UnreadCountResponse
+Nodes (3): MonkeyPatch, Path, test_onboarding_cli_checks_task_snapshot_and_probation_revision()
 
 ### Community 282 - "Community 282"
-Cohesion: 0.19
-Nodes (14): AsyncSession, HrReportFilters, HrReportSiteListResponse, HrSummaryReportResponse, Select, User, UUID, AsyncClient (+6 more)
+Cohesion: 0.04
+Nodes (61): Engineering and safety guardrails, graphify, Key entry points, Repository documentation, Verification commands, components, $defs, operations (+53 more)
 
 ### Community 283 - "Community 283"
-Cohesion: 0.49
-Nodes (9): die(), finish(), PATH, private_file(), protected_directory(), publish_capture(), remove_run(), resume_writers() (+1 more)
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_performance_action_confirms_current_actor_intent_and_event()
 
 ### Community 284 - "Community 284"
-Cohesion: 0.35
-Nodes (13): Path, Path, load_json(), write_private_bytes(), _calculate_payroll(), _complete_service_request(), _decide_letter(), _document_bytes() (+5 more)
+Cohesion: 0.17
+Nodes (9): createHrCase(), getHrCase(), listHrCases(), updateHrCase(), CaseList, CaseStatus, NewCase, severities (+1 more)
 
 ### Community 286 - "Community 286"
-Cohesion: 0.29
-Nodes (9): Any, AsyncSession, BaseException, UUID, ImportTask, _mark_batch_failed(), _mark_import_batch_failed(), Mark a batch failed only after Celery exhausts its retry policy. (+1 more)
-
-### Community 287 - "Community 287"
-Cohesion: 0.36
-Nodes (9): CaptureFixture, UUID, main(), Report inventory balances that need reconciliation against reservation records., report_drift(), inventory_ids(), reserve(), test_reservation_report_checks_active_stock() (+1 more)
+Cohesion: 0.44
+Nodes (9): AsyncClient, create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_concurrent_director_demotions_leave_one_active_director(), test_group_project_manager_can_read_users_but_cannot_manage_users(), test_managing_director_can_create_filter_and_deactivate_users() (+1 more)
 
 ### Community 288 - "Community 288"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, import_batches, Indexes, Keys and constraints
+Cohesion: 0.12
+Nodes (18): Call, Comprehensive HR & Workforce Management test suite (HR-A through HR-J + CLI)., test_company_policy_cli_binds_attachment_and_refuses_unverified_download(), test_garrisonctl_advance_operations_bind_private_input_and_verify_readback(), test_garrisonctl_payroll_inputs_writes_only_verified_private_bytes(), test_garrisonctl_reimbursement_exports_and_binds_the_reviewed_payable(), test_garrisonctl_shortlist_rechecks_application_and_verifies_stage(), test_garrisonctl_withdrawal_requires_matching_preview_without_printing_reason() (+10 more)
 
 ### Community 289 - "Community 289"
-Cohesion: 0.49
-Nodes (8): create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_concurrent_director_demotions_leave_one_active_director(), test_group_project_manager_can_read_users_but_cannot_manage_users(), test_managing_director_can_create_filter_and_deactivate_users(), test_user_state_preconditions_permissions_and_revocation()
-
-### Community 290 - "Community 290"
-Cohesion: 0.47
-Nodes (7): AsyncClient, create_test_client(), create_user(), login_for_token(), skip_if_database_unavailable(), test_admin_can_filter_audit_logs_and_non_admin_is_blocked(), test_authenticated_request_is_recorded_in_audit_log()
+Cohesion: 0.33
+Nodes (8): UUID, expire_login_challenge(), Start the isolated browser-test API or seed an account and project for one test., Create read-only finance facts for analytics browser coverage., seed(), seed_accounts(), seed_analytics_finance(), seed_legacy_leave()
 
 ### Community 291 - "Community 291"
+Cohesion: 0.06
+Nodes (29): approvals, Columns, Foreign keys, Indexes, Keys and constraints, Columns, document_versions, Foreign keys (+21 more)
+
+### Community 292 - "Community 292"
+Cohesion: 0.25
+Nodes (5): Prepared, ProofOptions, Receipt, Stage, SupportEvidenceExportPanel()
+
+### Community 295 - "Community 295"
+Cohesion: 0.22
+Nodes (15): UUID, build_matrix(), _invoice(), _project(), Report and finance access for all ten roles across project scopes., Two projects, one report and invoice each, with a token for all ten roles., Only MD and OD have company-wide resource scope., _report() (+7 more)
+
+### Community 296 - "Community 296"
 Cohesion: 0.53
 Nodes (4): get_url(), run_async_migrations(), run_migrations_offline(), run_migrations_online()
 
-### Community 292 - "Community 292"
-Cohesion: 0.29
-Nodes (4): MonkeyPatch, test_business_policy_defaults_are_compatible(), test_deployed_settings_require_currency_migration(), test_material_routing_keeps_strict_boundary_and_project_manager_rule()
-
-### Community 295 - "Community 295"
-Cohesion: 0.40
-Nodes (5): ImportBatchListResponse, ImportErrorItem, ImportPreviewResponse, ImportQueueResponse, ImportRunResponse
-
-### Community 296 - "Community 296"
-Cohesion: 0.29
-Nodes (6): AsyncSession, LeaveRolloverRequest, LeaveRolloverResponse, User, process_leave_rollover(), Review and post one employee's year-end leave ledger closure.
-
 ### Community 298 - "Community 298"
-Cohesion: 0.50
-Nodes (4): main(), Export the FastAPI OpenAPI schema to ``docs/openapi.json``.  Import-only: buildi, Return the canonical serialization of the live application schema., render_schema()
+Cohesion: 0.60
+Nodes (3): Column, _reference(), upgrade()
 
 ### Community 304 - "Community 304"
-Cohesion: 0.20
-Nodes (9): ApprovalCreateRequest, ApprovalDecisionRequest, ApprovalDelegateListResponse, ApprovalDelegateResponse, ApprovalDelegationRequest, ApprovalListResponse, ApprovalOverrideRequest, ApprovalResponse (+1 more)
+Cohesion: 0.34
+Nodes (13): Path, canonical_bytes(), Trusted inputs and authenticated receipts for complete recovery sets., read_policy(), receipt_signature(), sign_publication_receipt(), sign_scheduled_attempt(), SignedPublicationReceipt (+5 more)
 
 ### Community 306 - "Community 306"
-Cohesion: 0.53
-Nodes (5): Request, Response, UUID, audit_authenticated_request(), _authenticated_user_id()
-
-### Community 307 - "Community 307"
 Cohesion: 0.40
-Nodes (5): AttendanceImportPreviewResponse, HrWorkforceService, User, parse_attendance_csv(), review_attendance_csv()
-
-### Community 308 - "Community 308"
-Cohesion: 0.25
-Nodes (8): AdminPasswordResetRequest, UserCreateRequest, UserDetailResponse, UserListResponse, UserResponse, UserRoleListResponse, UserRoleResponse, UserUpdateRequest
+Nodes (3): Self, CaseActionCreate, CaseActionRead
 
 ### Community 309 - "Community 309"
 Cohesion: 0.33
@@ -1094,127 +1056,123 @@ Nodes (3): test_cleanup_old_notifications_soft_deletes_stale_items(), test_notif
 
 ### Community 310 - "Community 310"
 Cohesion: 0.40
-Nodes (4): UUID, PayrollRunCalculateRequest, PayrollSnapshotCalculateRequest, PayrollTimeDownloadRequest
+Nodes (5): Columns, Foreign keys, import_batches, Indexes, Keys and constraints
 
 ### Community 311 - "Community 311"
 Cohesion: 0.40
-Nodes (5): activity_log, Columns, Foreign keys, Indexes, Keys and constraints
+Nodes (11): AsyncClient, create_test_client(), create_user(), login_for_token(), project_payload(), setup_assigned_supervisor_project(), skip_if_database_unavailable(), test_previous_date_update_is_blocked_for_supervisor() (+3 more)
 
 ### Community 312 - "Community 312"
 Cohesion: 0.40
-Nodes (5): approvals, Columns, Foreign keys, Indexes, Keys and constraints
-
-### Community 313 - "Community 313"
-Cohesion: 0.40
-Nodes (5): boq_items, Columns, Foreign keys, Indexes, Keys and constraints
-
-### Community 314 - "Community 314"
-Cohesion: 0.40
-Nodes (5): Columns, daily_report_approval_history, Foreign keys, Indexes, Keys and constraints
-
-### Community 315 - "Community 315"
-Cohesion: 0.40
-Nodes (5): Columns, document_versions, Foreign keys, Indexes, Keys and constraints
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_tasks
 
 ### Community 316 - "Community 316"
 Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, inventory_movements, Keys and constraints
+Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, supervisor_updates
 
 ### Community 318 - "Community 318"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_manpower
-
-### Community 320 - "Community 320"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, invoices, Keys and constraints
+Cohesion: 0.50
+Nodes (4): main(), Export the FastAPI OpenAPI schema to ``docs/openapi.json``.  Import-only: buildi, Return the canonical serialization of the live application schema., render_schema()
 
 ### Community 321 - "Community 321"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, material_requests
-
-### Community 322 - "Community 322"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, notifications
-
-### Community 323 - "Community 323"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, payments
-
-### Community 324 - "Community 324"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, photos
-
-### Community 325 - "Community 325"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_members
-
-### Community 326 - "Community 326"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_milestones
-
-### Community 328 - "Community 328"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, project_tasks
-
-### Community 329 - "Community 329"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_equipment
-
-### Community 330 - "Community 330"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, report_material_consumption
-
-### Community 331 - "Community 331"
-Cohesion: 0.40
-Nodes (5): Columns, Foreign keys, Indexes, Keys and constraints, storage_locations
-
-### Community 333 - "Community 333"
-Cohesion: 0.50
-Nodes (4): Columns, Foreign keys, Keys and constraints, material_request_lines
-
-### Community 334 - "Community 334"
-Cohesion: 0.50
-Nodes (4): Columns, Indexes, Keys and constraints, suppliers
-
-### Community 335 - "Community 335"
 Cohesion: 0.50
 Nodes (4): Columns, Indexes, Keys and constraints, task_outbox
 
-### Community 336 - "Community 336"
-Cohesion: 0.50
-Nodes (4): Columns, Indexes, Keys and constraints, users
+### Community 322 - "Community 322"
+Cohesion: 0.17
+Nodes (11): AnyOverview, ApprovalsOverview, CompanyOverview, DocumentsOverview, DOMAIN_DEFS, FinanceOverview, InventoryOverview, OverviewDomain (+3 more)
 
-### Community 337 - "Community 337"
-Cohesion: 0.50
-Nodes (4): PayrollClosureRequest, PayrollCorrectionCreate, PayrollExportConfirmRequest, PayrollRunApproveRequest
+### Community 327 - "Community 327"
+Cohesion: 0.29
+Nodes (5): SupplierCreateRequest, SupplierDocumentUrlResponse, SupplierListResponse, SupplierResponse, SupplierUpdateRequest
 
-### Community 338 - "Community 338"
+### Community 329 - "Community 329"
+Cohesion: 0.60
+Nodes (3): Column, _ref(), upgrade()
+
+### Community 332 - "Community 332"
+Cohesion: 0.40
+Nodes (5): AttendanceImportPreviewResponse, HrWorkforceService, User, parse_attendance_csv(), review_attendance_csv()
+
+### Community 333 - "Community 333"
+Cohesion: 0.33
+Nodes (5): DocumentDecisionRequest, DocumentDownloadResponse, DocumentListResponse, DocumentResponse, DocumentVersionResponse
+
+### Community 335 - "Community 335"
 Cohesion: 0.50
 Nodes (4): TimesheetCreateRequest, TimesheetHoursRequest, TimesheetSelfCreateRequest, TimesheetSelfResubmitRequest
 
-### Community 339 - "Community 339"
+### Community 337 - "Community 337"
+Cohesion: 0.40
+Nodes (5): ImportBatchListResponse, ImportErrorItem, ImportPreviewResponse, ImportQueueResponse, ImportRunResponse
+
+### Community 338 - "Community 338"
+Cohesion: 0.33
+Nodes (5): AttachmentRef, SupervisorUpdateCreateRequest, SupervisorUpdateListResponse, SupervisorUpdateResponse, SupervisorUpdateSubmitRequest
+
+### Community 340 - "Community 340"
+Cohesion: 0.40
+Nodes (4): date, LeaveDateEvidenceCreate, LeaveDateEvidenceDetail, LeaveDateEvidenceResponse
+
+### Community 342 - "Community 342"
+Cohesion: 0.40
+Nodes (4): UUID, PayrollRunCalculateRequest, PayrollSnapshotCalculateRequest, PayrollTimeDownloadRequest
+
+### Community 343 - "Community 343"
+Cohesion: 0.40
+Nodes (4): BaseOrmModel, ErrorItem, ErrorResponse, PaginatedResponse
+
+### Community 344 - "Community 344"
+Cohesion: 0.40
+Nodes (4): SupportCaseCreate, SupportCasePage, SupportCaseRead, SupportCaseTransition
+
+### Community 345 - "Community 345"
 Cohesion: 0.50
-Nodes (4): get_offboarding_custody(), get_separation_settlement(), post_offboarding_custody(), require_any_permission()
+Nodes (3): MonkeyPatch, Path, test_benefit_cli_review_and_coverage_through_hr_api()
+
+### Community 346 - "Community 346"
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_cv_cli_reviews_exact_version_and_checks_download_origin()
+
+### Community 347 - "Community 347"
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_interview_cli_checks_private_inputs_and_reads_saved_state()
+
+### Community 350 - "Community 350"
+Cohesion: 0.50
+Nodes (3): MonkeyPatch, Path, test_service_request_cli_protects_private_text_and_checks_current_state()
+
+### Community 354 - "Community 354"
+Cohesion: 0.50
+Nodes (3): AnalyticsSummaryResponse, MaterialUsageRow, ProjectAnalyticsRow
+
+### Community 355 - "Community 355"
+Cohesion: 0.50
+Nodes (3): NotificationListResponse, NotificationResponse, UnreadCountResponse
+
+### Community 356 - "Community 356"
+Cohesion: 0.50
+Nodes (3): SuperAdminChallenge, SuperAdminOverview, SuperAdminToken
 
 ## Knowledge Gaps
-- **774 isolated node(s):** `$schema`, `enabled`, `AsyncSession`, `UUIDPrimaryKeyMixin`, `Any` (+769 more)
+- **892 isolated node(s):** `AsyncSession`, `Any`, `AsyncSession`, `Self`, `Self` (+887 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **20 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **18 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `User` connect `Community 64` to `Auth Dependencies and User API`, `Community 130`, `Community 258`, `Projects Service and Membership`, `Seed Data and Release Contract Tests`, `Community 133`, `Community 263`, `Offline Queue and IndexedDB Sync`, `Community 265`, `Community 132`, `Bulk CSV Import Pipeline`, `Community 262`, `Analytics Export Service`, `Document Control API and Service`, `Audit Retention Enforcement`, `Photo Service and Protected Delivery`, `Community 269`, `Inventory Service and Idempotency`, `Document and Finance API Client`, `Daily Report Endpoints`, `Browser Fixtures and Test Time Utils`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Community 282`, `Notification Delivery`, `Daily Report Repository`, `Health Monitor Daemon`, `Community 286`, `Analytics and Import Test Suites`, `Community 34`, `Community 290`, `Community 292`, `Community 160`, `Supervisor Updates`, `Community 296`, `test_delegation_guards.py cluster`, `audit_retention_policy.py cluster`, `test_request_ip_resolution.py cluster`, `Community 51`, `Community 307`, `security.py cluster`, `test_scope_authorization.py cluster`, `Community 187`, `Community 188`, `test_audit_retention_policy.py cluster`, `Community 65`, `Community 194`, `Community 196`, `Community 69`, `imports.ts cluster`, `Community 75`, `Community 76`, `Community 80`, `storage_service.py cluster`, `Community 84`, `Community 221`, `Community 225`, `Community 228`, `Community 229`, `Community 106`, `Community 107`, `Community 111`, `Community 112`, `Community 255`?**
-  _High betweenness centrality (0.119) - this node is a cross-community bridge._
-- **Why does `API contract` connect `Community 98` to `Community 198`, `Inventory Accounting Tests and Errors`, `Community 106`, `report_export_service.py cluster`, `File Magic Validation`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
-- **Why does `Runtime and data flow` connect `Daily Report Endpoints` to `Community 160`, `Report Service Workflow`, `Community 198`, `Community 77`, `Analytics Export Service`, `report_export_service.py cluster`, `Community 246`, `inventory.py cluster`, `Community 278`, `Community 281`, `Community 124`?**
-  _High betweenness centrality (0.066) - this node is a cross-community bridge._
-- **Are the 1231 inferred relationships involving `User` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
-  _`User` has 1231 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 1007 inferred relationships involving `NotFoundException` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
-  _`NotFoundException` has 1007 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 1000 inferred relationships involving `AppException` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
-  _`AppException` has 1000 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 853 inferred relationships involving `AuditService` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
-  _`AuditService` has 853 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `User` connect `test_delegation_guards.py cluster` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Community 130`, `Community 258`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Community 135`, `Bulk CSV Import Pipeline`, `Document Control API and Service`, `Frontend Auth Session`, `Inventory Service and Idempotency`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Community 286`, `Service Worker Sync Scripts`, `Community 289`, `App Bootstrap and Architecture Docs`, `Community 34`, `Finance Service Logic`, `Community 295`, `Community 42`, `test_report_payment_concurrency.py cluster`, `audit_retention_policy.py cluster`, `Community 51`, `docker-compose.prod.yml cluster`, `security.py cluster`, `Community 311`, `test_session_revocation.py cluster`, `Community 188`, `Community 65`, `Community 66`, `Community 194`, `Community 198`, `Community 71`, `Community 332`, `Community 77`, `Community 78`, `Community 79`, `Community 80`, `Community 218`, `Community 94`, `Community 98`, `Community 99`, `Community 228`, `Community 101`, `Community 106`, `Community 111`, `Community 121`?**
+  _High betweenness centrality (0.115) - this node is a cross-community bridge._
+- **Why does `AppException` connect `Community 42` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Community 130`, `Community 258`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `Document Control API and Service`, `Audit Retention Enforcement`, `Frontend Auth Session`, `Invoices and Payments API`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Community 286`, `Service Worker Sync Scripts`, `Community 288`, `Community 34`, `Finance Service Logic`, `Supervisor Updates`, `test_inventory_accounting.py cluster`, `test_report_payment_concurrency.py cluster`, `test_delegation_guards.py cluster`, `audit_retention_policy.py cluster`, `Community 51`, `docker-compose.prod.yml cluster`, `test_session_revocation.py cluster`, `Community 188`, `test_audit_retention_policy.py cluster`, `Community 320`, `Community 66`, `Community 194`, `Community 198`, `Community 71`, `Community 332`, `Community 205`, `Community 77`, `Community 79`, `Community 89`, `Community 218`, `Community 94`, `Community 98`, `Community 99`, `Community 228`, `Community 101`, `Community 102`, `Community 106`?**
+  _High betweenness centrality (0.097) - this node is a cross-community bridge._
+- **Why does `NotFoundException` connect `Community 42` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Community 130`, `Community 258`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `Document Control API and Service`, `Frontend Auth Session`, `Invoices and Payments API`, `Daily Report Repository`, `Service Worker Sync Scripts`, `Community 34`, `Finance Service Logic`, `Supervisor Updates`, `test_inventory_accounting.py cluster`, `test_report_payment_concurrency.py cluster`, `test_delegation_guards.py cluster`, `audit_retention_policy.py cluster`, `docker-compose.prod.yml cluster`, `test_session_revocation.py cluster`, `test_audit_retention_policy.py cluster`, `Community 320`, `Community 66`, `Community 194`, `Community 198`, `Community 71`, `Community 76`, `Community 79`, `Community 218`, `Community 98`, `Community 228`, `Community 101`, `Community 102`, `Community 106`?**
+  _High betweenness centrality (0.084) - this node is a cross-community bridge._
+- **Are the 1307 inferred relationships involving `User` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
+  _`User` has 1307 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 1301 inferred relationships involving `AppException` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
+  _`AppException` has 1301 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 1289 inferred relationships involving `NotFoundException` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
+  _`NotFoundException` has 1289 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 870 inferred relationships involving `AuditService` (e.g. with `AccessRequestListResponse` and `AccessRequestResponse`) actually correct?**
+  _`AuditService` has 870 INFERRED edges - model-reasoned connections that need verification._

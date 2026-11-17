@@ -31,6 +31,24 @@ from app.schemas.support_evidence_export import (
     SupportEvidenceExportCreate,
     SupportEvidenceExportRead,
 )
+from app.schemas.support_oversight import (
+    SupportApprovalsOverviewRead,
+    SupportBackupsMonitorRead,
+    SupportCompanyOverviewRead,
+    SupportConfigStatusRead,
+    SupportDocumentsOverviewRead,
+    SupportFinanceOverviewRead,
+    SupportIncidentsQuery,
+    SupportIncidentsSummaryRead,
+    SupportInventoryOverviewRead,
+    SupportJobsMonitorRead,
+    SupportJobsQuery,
+    SupportPolicyExplainQuery,
+    SupportPolicyExplainRead,
+    SupportProjectsOverviewRead,
+    SupportSuppliersOverviewRead,
+    SupportWorkforceOverviewRead,
+)
 from app.services.support_business_actions import SupportBusinessActions
 from app.services.support_case_actions import SupportCaseActions
 from app.services.support_case_audit import SupportAuditPage, SupportAuditQuery, read_case_audit
@@ -57,6 +75,23 @@ from app.services.support_log_stream import (
     case_log_events,
     close_case_log_stream,
     open_case_log_stream,
+)
+from app.services.support_monitors import (
+    read_backups_monitor,
+    read_config_status,
+    read_incidents_summary,
+    read_jobs_monitor,
+)
+from app.services.support_overview import (
+    explain_role_policy,
+    read_approvals_overview,
+    read_company_overview,
+    read_documents_overview,
+    read_finance_overview,
+    read_inventory_overview,
+    read_projects_overview,
+    read_suppliers_overview,
+    read_workforce_overview,
 )
 from app.services.support_permission_views import (
     SupportNavigationProjection,
@@ -1180,3 +1215,140 @@ async def end_permission_view(view_id: UUID, request: Request, session: DbSessio
         request.state.request_id,
     )
     return Response(status_code=204)
+
+
+@router.get("/overview", response_model=SupportCompanyOverviewRead)
+async def support_company_overview(
+    request: Request, session: DbSession
+) -> SupportCompanyOverviewRead:
+    return await read_company_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/overview/projects", response_model=SupportProjectsOverviewRead)
+async def support_projects_overview(
+    request: Request,
+    session: DbSession,
+    case_id: UUID | None = None,
+    project_id: UUID | None = None,
+) -> SupportProjectsOverviewRead:
+    return await read_projects_overview(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        request.state.request_id,
+        case_id=case_id,
+        project_id=project_id,
+    )
+
+
+@router.get("/overview/workforce", response_model=SupportWorkforceOverviewRead)
+async def support_workforce_overview(
+    request: Request, session: DbSession
+) -> SupportWorkforceOverviewRead:
+    return await read_workforce_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/overview/inventory", response_model=SupportInventoryOverviewRead)
+async def support_inventory_overview(
+    request: Request,
+    session: DbSession,
+    case_id: UUID | None = None,
+    project_id: UUID | None = None,
+) -> SupportInventoryOverviewRead:
+    return await read_inventory_overview(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        request.state.request_id,
+        case_id=case_id,
+        project_id=project_id,
+    )
+
+
+@router.get("/overview/suppliers", response_model=SupportSuppliersOverviewRead)
+async def support_suppliers_overview(
+    request: Request, session: DbSession
+) -> SupportSuppliersOverviewRead:
+    return await read_suppliers_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/overview/documents", response_model=SupportDocumentsOverviewRead)
+async def support_documents_overview(
+    request: Request, session: DbSession
+) -> SupportDocumentsOverviewRead:
+    return await read_documents_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/overview/finance", response_model=SupportFinanceOverviewRead)
+async def support_finance_overview(
+    request: Request, session: DbSession
+) -> SupportFinanceOverviewRead:
+    return await read_finance_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/overview/approvals", response_model=SupportApprovalsOverviewRead)
+async def support_approvals_overview(
+    request: Request, session: DbSession
+) -> SupportApprovalsOverviewRead:
+    return await read_approvals_overview(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/policy/explain", response_model=SupportPolicyExplainRead)
+async def support_policy_explain(
+    query: Annotated[SupportPolicyExplainQuery, Query()],
+    request: Request,
+    session: DbSession,
+) -> SupportPolicyExplainRead:
+    return await explain_role_policy(
+        session, request.cookies.get(SESSION_COOKIE), query, request.state.request_id
+    )
+
+
+@router.get("/monitor/jobs", response_model=SupportJobsMonitorRead)
+async def support_jobs_monitor(
+    query: Annotated[SupportJobsQuery, Query()],
+    request: Request,
+    session: DbSession,
+) -> SupportJobsMonitorRead:
+    return await read_jobs_monitor(
+        session, request.cookies.get(SESSION_COOKIE), query, request.state.request_id
+    )
+
+
+@router.get("/monitor/backups", response_model=SupportBackupsMonitorRead)
+async def support_backups_monitor(
+    request: Request, session: DbSession
+) -> SupportBackupsMonitorRead:
+    return await read_backups_monitor(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/config/status", response_model=SupportConfigStatusRead)
+async def support_config_status(
+    request: Request, session: DbSession
+) -> SupportConfigStatusRead:
+    return await read_config_status(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/incidents/summary", response_model=SupportIncidentsSummaryRead)
+async def support_incidents_summary(
+    query: Annotated[SupportIncidentsQuery, Query()],
+    request: Request,
+    session: DbSession,
+) -> SupportIncidentsSummaryRead:
+    return await read_incidents_summary(
+        session, request.cookies.get(SESSION_COOKIE), query, request.state.request_id
+    )

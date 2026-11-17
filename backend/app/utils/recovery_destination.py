@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from hmac import compare_digest, digest
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from app.config import Settings
@@ -52,3 +53,59 @@ def verified_recovery_destination(
     ):
         return current
     return None
+
+
+def normalized_business_https_origin(
+    raw: str | None, *, support_host: str = "superadmin.garrisons.lk"
+) -> str | None:
+    try:
+        url = urlsplit((raw or "").strip().rstrip("/"))
+    except ValueError:
+        return None
+    if (
+        url.scheme != "https"
+        or url.hostname is None
+        or url.hostname == support_host
+        or "*" in url.netloc
+        or url.username
+        or url.password
+        or url.query
+        or url.fragment
+        or url.path != ""
+    ):
+        return None
+    return f"https://{url.netloc}"
+
+
+def recovery_portal_origin(
+    settings: Settings, *, support_host: str = "superadmin.garrisons.lk"
+) -> str | None:
+    """Return the validated business portal HTTPS origin when support recovery is active."""
+    if not settings.support_portal_enabled:
+        return None
+    origin = normalized_business_https_origin(
+        settings.normalized_frontend_base_url, support_host=support_host
+    )
+    if origin is None:
+        return None
+    if settings.app_env.strip().lower() == "test":
+        return origin
+    if not settings.support_recovery_delivery_enabled or _key(settings) is None:
+        return None
+    allowed = {
+        parsed
+        for item in settings.support_recovery_allowed_origins.split(",")
+        if (parsed := normalized_business_https_origin(item, support_host=support_host))
+        is not None
+    }
+    return origin if origin in allowed else None
+
+
+def is_recovery_issuance_enabled(
+    settings: Settings, *, support_host: str = "superadmin.garrisons.lk"
+) -> bool:
+    if not settings.support_portal_enabled:
+        return False
+    if settings.app_env.strip().lower() == "test":
+        return True
+    return recovery_portal_origin(settings, support_host=support_host) is not None

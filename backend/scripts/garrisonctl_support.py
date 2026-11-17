@@ -198,6 +198,25 @@ def _read(ctx: Context, path: str, output: Path, **query: Any) -> Result:
     return Result({"written_to_private_file": True})
 
 
+def _read_overview(args: argparse.Namespace, ctx: Context) -> Result:
+    if args.domain not in {"projects", "inventory"} and (
+        args.case is not None or args.project is not None
+    ):
+        raise CLIError(
+            "Case and project scope options apply only to projects and inventory overviews."
+        )
+    if args.project is not None and args.case is None:
+        raise CLIError("Project scoping requires a linked --case.")
+    path = "/overview" if args.domain == "company" else f"/overview/{args.domain}"
+    return _read(
+        ctx,
+        path,
+        args.output,
+        case_id=str(args.case) if args.case is not None else None,
+        project_id=str(args.project) if args.project is not None else None,
+    )
+
+
 def _search_accounts(args: argparse.Namespace, ctx: Context) -> Result:
     path = f"/cases/{args.case}/accounts"
     if args.selector_file is None:
@@ -1088,3 +1107,86 @@ def register(registry: Registry) -> None:
     )
     leaf.add_argument("--view", type=UUID, required=True)
     leaf.add_argument("--apply", action="store_true")
+
+    leaf = registry.add(
+        "support overview show",
+        _read_overview,
+        permission="overview.<domain>.read",
+    )
+    leaf.add_argument(
+        "--domain",
+        choices=(
+            "company",
+            "projects",
+            "workforce",
+            "inventory",
+            "suppliers",
+            "documents",
+            "finance",
+            "approvals",
+        ),
+        default="company",
+    )
+    leaf.add_argument("--case", type=UUID)
+    leaf.add_argument("--project", type=UUID)
+    leaf.add_argument("--output", type=Path, required=True)
+
+    leaf = registry.add(
+        "support policy explain",
+        lambda a, c: _read(
+            c,
+            "/policy/explain",
+            a.output,
+            role_key=a.role,
+            permission_key=a.permission,
+            case_id=str(a.case) if a.case is not None else None,
+        ),
+        permission="simulation.start",
+    )
+    leaf.add_argument("--role", required=True)
+    leaf.add_argument("--permission", required=True)
+    leaf.add_argument("--case", type=UUID)
+    leaf.add_argument("--output", type=Path, required=True)
+
+    leaf = registry.add(
+        "support monitor jobs",
+        lambda a, c: _read(
+            c,
+            "/monitor/jobs",
+            a.output,
+            hours=a.hours,
+            limit=a.limit,
+            queue=a.queue,
+        ),
+        permission="jobs.read",
+    )
+    leaf.add_argument("--hours", type=int, default=24)
+    leaf.add_argument("--limit", type=int, default=25)
+    leaf.add_argument("--queue", choices=("maintenance", "backup", "email", "reports", "images"))
+    leaf.add_argument("--output", type=Path, required=True)
+
+    for command, path, permission in (
+        ("support monitor backups", "/monitor/backups", "backups.read"),
+        ("support config show", "/config/status", "config.read"),
+    ):
+        leaf = registry.add(
+            command,
+            lambda a, c, path=path: _read(c, path, a.output),
+            permission=permission,
+        )
+        leaf.add_argument("--output", type=Path, required=True)
+
+    leaf = registry.add(
+        "support incidents show",
+        lambda a, c: _read(
+            c,
+            "/incidents/summary",
+            a.output,
+            hours=a.hours,
+            case_id=str(a.case) if a.case is not None else None,
+        ),
+        permission="incidents.read",
+    )
+    leaf.add_argument("--hours", type=int, default=24)
+    leaf.add_argument("--case", type=UUID)
+    leaf.add_argument("--output", type=Path, required=True)

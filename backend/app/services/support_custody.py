@@ -46,6 +46,18 @@ GrantCapability = Literal[
     "account.request",
     "logs.audit",
     "simulation.start",
+    "overview.company.read",
+    "overview.projects.read",
+    "overview.workforce.read",
+    "overview.inventory.read",
+    "overview.suppliers.read",
+    "overview.documents.read",
+    "overview.finance.read",
+    "overview.approvals.read",
+    "jobs.read",
+    "backups.read",
+    "config.read",
+    "incidents.read",
 ]
 _CUSTODY_CAPABILITY = "operator.manage"
 _MIN_CUSTODIANS = 2

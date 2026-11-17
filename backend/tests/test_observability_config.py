@@ -163,6 +163,13 @@ def test_dashboards_and_alerting_provisioning_are_parseable_and_complete() -> No
     }
     assert all(rule["noDataState"] == "OK" for rule in rules)
     assert all(rule["execErrState"] == "Alerting" for rule in rules)
+    support_rules = alerts["groups"][1]["rules"]
+    assert {rule["uid"] for rule in support_rules} == {
+        "garrison-support-auth-burst",
+        "garrison-support-recovery-unknown",
+    }
+    assert all(rule["noDataState"] == "OK" for rule in support_rules)
+    assert all(rule["execErrState"] == "Alerting" for rule in support_rules)
     assert alerts["policies"][0]["group_interval"] == "5m"
 
 
