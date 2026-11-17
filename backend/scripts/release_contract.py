@@ -73,7 +73,7 @@ ROLE_IDS = {
     "senior_site_supervisor",
     "site_supervisor",
     "hr_manager",
-    "hr_executive",
+    "hr_executive_reader",
     "administrative_executive",
 }
 PROJECT_MANAGING_ROLES = {

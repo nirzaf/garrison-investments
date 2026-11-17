@@ -124,7 +124,7 @@ async def test_login_otp_me_refresh_and_logout_flow() -> None:
         assert not client.cookies.get("refresh_token")
 
 
-@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+@pytest.mark.parametrize("retired_role", [*RETIRED_ROLE_KEYS, "hr_executive"])
 async def test_retired_role_cannot_login_or_receive_password_reset_challenge(
     retired_role: str,
 ) -> None:

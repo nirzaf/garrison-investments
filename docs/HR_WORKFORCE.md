@@ -10,13 +10,42 @@ work email. It never grants a project membership or changes a portal role.
 | Actor | Access |
 | --- | --- |
 | HR Manager | Workforce records, recruiting and onboarding, employment decisions, protected employee data, HR documents, time and leave, service requests, and offboarding. |
+| HR Executive | Standard user directory and assigned-project dashboard, reports and project documents. |
 | Managing Director and Operations Director | Review and fulfill the account handoff using the existing user service. The handoff does not grant access to the HR directory or private files. |
 | Linked employee | Own profile and contact updates, attendance, leave, shared active documents, policy acknowledgments, and HR service requests in `/me/hr`. |
 
-HR Manager is the single HR role. User mutations, platform-wide audit access
+HR Manager holds the operational HR grants. User mutations, platform-wide audit access
 and generic project-document viewing remain separate permissions. Workflows
 that require independent HR review use two distinct accounts with the same
 HR Manager role. The original workbook matrix remains a historical fixture.
+
+### HR Executive scope and proposed HR tasks
+
+The owner authorized the four standard permissions selected in column J of
+the [role matrix fixture](../backend/tests/business_role_matrix.json).
+The worksheet remains pending review. Column I records historical Manager
+selections. It includes broad grants that have since been removed from the
+Manager role. The in-app matrix shows the [effective permissions](ROLES_AND_PERMISSIONS.md).
+
+| Task | Current authorization and retained HR Manager behavior | Proposed Executive workflow | Spreadsheet evidence and decision needed |
+| --- | --- | --- | --- |
+| User directory | `users:read` exposes the standard directory. User mutations use the director workflow. | Read the same standard directory under its existing rules. | Column J selects `users:read`. Owner authorized this grant. |
+| Dashboard, reports and documents | Company dashboard and report decisions follow their own grants. Report and generic-document record checks use project membership for scoped roles. | Read the assigned-project dashboard, reports and documents. | Column J selects `dashboard:scoped`, `reports:view` and `documents:view`. Owner authorized these three grants. |
+| Onboarding preparation and review | HR Manager maintains employee drafts and checklists. Service checks protect case detail, record changes and evidence. Account fulfillment requires a director. | Prepare drafts and evidence for explicitly assigned employees. Submit a version for Manager review. | No HR workflow selection appears in the source. Decide the employee assignment rule, draft fields, evidence categories, activation reviewer and cases requiring an independent reviewer. |
+| Attendance and overtime | HR Manager records manual/CSV time and corrections. Existing review and period locks constrain decisions. `hr:attendance:record` also reaches calendars and roster functions. | Prepare source-linked entries and corrections under a narrower grant. The Manager reviews and controls locks. | Approve source, allowed corrections, date/shift rules and who can reopen a period. |
+| Leave and balances | HR Manager manages requests; approval, policy and ledger actions have additional boundaries. Self-service uses linked employee identity. | Prepare an assigned employee's request and allowed evidence for independent Manager review, with narrowly scoped balance reads. | Approve evidence and balance visibility, carry-in consumption, expiry and closed-year correction. |
+| HR vault | Ordinary, private, payroll and disciplinary categories are checked separately. A different eligible operator reviews uploaded versions. Generic project documents use a separate route. | Upload assigned employees' ordinary evidence for review. Manager retains confidential access, approval and publication under existing policy. | Decide eligible documents, who can see pending versions and approve retention rules. Column J's `documents:view` applies to generic project documents. |
+| Payroll inputs | Approved-source adjustments, independent review and frozen snapshots are implemented behind payroll permissions. Current roles have zero payroll grants. Existing preparation permission also reaches runs and calculations. | Consider a separate input-only permission after policy approval. Finance handoff, compensation, sensitive exports, approval and settlement require separate assignments. | HR must approve the controlled policy reference, pay calendar, worked examples, source and reviewer rules, correction procedure and Finance handoff. |
+
+The application uses `hr_executive_reader` for the new role. The historical
+`hr_executive` key remains retired, so dormant historical records do not
+inherit the new privileges. The role uses the existing string column and
+requires no schema migration or account rewrite. An authorized director
+must approve any individual assignment. Preserve onboarding and payroll holds.
+The user import and `garrisonctl roles list` use this key through the existing
+role catalogue. Before rolling back to a build that predates this key, review
+any assigned accounts and record their approved disposition so they retain an
+authorized sign-in path on that build.
 
 ## Core workflows
 

@@ -20,6 +20,7 @@ const CANONICAL_ROLES = [
   ['senior_site_supervisor', 'Senior Site Supervisor'],
   ['site_supervisor', 'Site Supervisor'],
   ['hr_manager', 'HR Manager'],
+  ['hr_executive_reader', 'HR Executive'],
   ['administrative_executive', 'Administrative Executive']
 ] as const;
 
@@ -131,7 +132,7 @@ async function assignUserToProject(
   expect(assignResponse.status()).toBe(201);
 }
 
-test('roles page and users roles endpoint expose the nine canonical roles and the HR permissions', async ({
+test('roles page and users roles endpoint expose the ten canonical roles and the HR permissions', async ({
   page
 }) => {
   const director = seedAccount();

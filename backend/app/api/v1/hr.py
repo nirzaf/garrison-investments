@@ -1646,7 +1646,7 @@ async def convert_offer(
 
 @router.get("/onboarding", response_model=OnboardingCaseListResponse)
 async def list_onboarding(
-    _: CanManageOnboarding,
+    actor: CanManageOnboarding,
     session: DbSession,
     response: Response,
     employee_id: Annotated[UUID | None, Query()] = None,
@@ -1656,17 +1656,17 @@ async def list_onboarding(
 ) -> OnboardingCaseListResponse:
     response.headers["Cache-Control"] = "no-store"
     items, total = await HrService(session).list_onboarding_cases(
-        employee_id=employee_id, status=case_status, limit=limit, offset=offset
+        actor=actor, employee_id=employee_id, status=case_status, limit=limit, offset=offset
     )
     return OnboardingCaseListResponse(items=items, total=total)
 
 
 @router.get("/onboarding/{case_id}", response_model=OnboardingCaseResponse)
 async def get_onboarding_case(
-    case_id: UUID, _: CanManageOnboarding, session: DbSession, response: Response
+    case_id: UUID, actor: CanManageOnboarding, session: DbSession, response: Response
 ) -> OnboardingCaseResponse:
     response.headers["Cache-Control"] = "no-store"
-    return await HrService(session).get_onboarding_case(case_id)
+    return await HrService(session).get_onboarding_case(case_id, actor)
 
 
 @router.post(

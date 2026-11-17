@@ -17,7 +17,9 @@ from zipfile import ZipFile
 import httpx
 import pytest
 from cryptography.fernet import Fernet
+from fastapi import UploadFile
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal, check_database, engine
@@ -48,7 +50,13 @@ from app.models.project import Project
 from app.models.project_member import ProjectMember
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.schemas.hr import (
+    HrDocumentDecisionRequest,
+    OnboardingCaseCreateRequest,
+    OnboardingTaskUpdateRequest,
+)
 from app.services.hr_crypto import encrypt_hr_value
+from app.services.hr_workforce_service import HrWorkforceService
 from app.tasks.maintenance import (
     _check_hr_credential_expiry,
     _check_hr_probation_reviews,
@@ -80,6 +88,55 @@ def hr_fernet_env(monkeypatch):
 async def skip_if_database_unavailable() -> None:
     if not await check_database():
         pytest.skip("database is not available")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["quantity_surveyor", "hr_executive_reader", "hr_executive"])
+async def test_hr_onboarding_and_vault_services_authorize_before_record_lookup(role: str) -> None:
+    session = Mock(spec=AsyncSession)
+    service = HrWorkforceService(session)
+    actor = User(role=role)
+    record_id = uuid4()
+    file = UploadFile(io.BytesIO(b"synthetic evidence"), filename="evidence.pdf")
+    calls = (
+        lambda: service.list_onboarding_cases(actor=actor),
+        lambda: service.get_onboarding_case(record_id, actor),
+        lambda: service.create_onboarding_case(
+            OnboardingCaseCreateRequest(employee_id=record_id, start_date=date(2026, 7, 1)),
+            actor,
+        ),
+        lambda: service.update_onboarding_task(
+            record_id,
+            OnboardingTaskUpdateRequest(status="completed", evidence_notes="Checked"),
+            actor,
+        ),
+        lambda: service.list_hr_documents(actor=actor),
+        lambda: service.get_hr_document_detail(record_id, actor),
+        lambda: service.get_hr_document_download_url(record_id, actor),
+        lambda: service.upload_hr_document(
+            title="Synthetic evidence",
+            document_type="onboarding_evidence",
+            category="ordinary",
+            employee_id=record_id,
+            candidate_id=None,
+            issue_date=None,
+            expiry_date=None,
+            issuing_authority=None,
+            reference_number=None,
+            is_employee_visible=False,
+            file=file,
+            actor=actor,
+        ),
+        lambda: service.upload_hr_document_version(record_id, file, actor),
+        lambda: service.decide_hr_document_version(
+            record_id, 1, HrDocumentDecisionRequest(decision="approve"), actor
+        ),
+    )
+    for call in calls:
+        with pytest.raises(AppException) as denied:
+            await call()
+        assert denied.value.status_code == 403
+    assert not session.mock_calls
 
 
 async def _create_portal_user(

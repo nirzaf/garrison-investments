@@ -146,6 +146,12 @@
       "hr:training:manage",
       "hr:performance:manage"
     ],
+    "hr_executive_reader": [
+      "users:read",
+      "dashboard:scoped",
+      "reports:view",
+      "documents:view"
+    ],
     "administrative_executive": [
       "users:read",
       "dashboard:company",

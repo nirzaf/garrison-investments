@@ -168,6 +168,17 @@ const cases: RoleCase[] = [
     denied: { route: '/finance', api: '/api/v1/finance/invoices' }
   },
   {
+    role: 'hr_executive_reader',
+    label: 'HR Executive',
+    links: ['Reports', 'Supervisor updates', 'Documents', 'Photos', 'Users'],
+    inbox: false,
+    feature: 'Users',
+    heading: 'Users',
+    action: 'Create user',
+    canAct: false,
+    denied: { route: '/hr', api: '/api/v1/hr/employees' }
+  },
+  {
     role: 'administrative_executive',
     label: 'Administrative Executive',
     links: ['Materials', 'Suppliers', 'Analytics', 'Documents', 'Launch readiness', 'Users'],
@@ -303,6 +314,7 @@ for (const roleCase of cases) {
     expect((await roleOptions.json()).items.map((item: { role: string }) => item.role)).toEqual([
       'administrative_executive',
       'group_project_manager',
+      'hr_executive_reader',
       'hr_manager',
       'managing_director',
       'mep_project_manager',

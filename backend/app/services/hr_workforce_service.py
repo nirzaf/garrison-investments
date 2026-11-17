@@ -246,6 +246,7 @@ from app.utils.permissions import (
     PERMISSION_HR_CASES_RESTRICTED,
     PERMISSION_HR_DOCUMENTS_MANAGE,
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_ONBOARDING_MANAGE,
     PERMISSION_HR_PAYROLL_APPROVE,
     PERMISSION_HR_PAYROLL_SENSITIVE,
     PERMISSION_HR_POLICY_MANAGE,
@@ -1594,6 +1595,7 @@ class HrWorkforceService:
     async def create_onboarding_case(
         self, payload: OnboardingCaseCreateRequest, actor: User
     ) -> OnboardingCaseResponse:
+        ensure_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE)
         employee = await self._require_employee(payload.employee_id, for_update=True)
         if employee.employment_status not in {"draft", "onboarding"}:
             raise AppException("Only a draft employee can start onboarding.", status_code=409)
@@ -1629,11 +1631,13 @@ class HrWorkforceService:
     async def list_onboarding_cases(
         self,
         *,
+        actor: User,
         employee_id: UUID | None = None,
         status: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[list[OnboardingCaseResponse], int]:
+        ensure_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE)
         stmt = select(HrOnboardingCase)
         count_stmt = select(func.count(HrOnboardingCase.id))
         if employee_id:
@@ -1652,7 +1656,8 @@ class HrWorkforceService:
         total = int(await self.session.scalar(count_stmt) or 0)
         return [await self._serialize_onboarding_case(c) for c in cases], total
 
-    async def get_onboarding_case(self, case_id: UUID) -> OnboardingCaseResponse:
+    async def get_onboarding_case(self, case_id: UUID, actor: User) -> OnboardingCaseResponse:
+        ensure_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE)
         case = await self.session.get(HrOnboardingCase, case_id)
         if case is None:
             raise NotFoundException("Onboarding case")
@@ -1661,6 +1666,7 @@ class HrWorkforceService:
     async def update_onboarding_task(
         self, task_id: UUID, payload: OnboardingTaskUpdateRequest, actor: User
     ) -> OnboardingCaseResponse:
+        ensure_permission(actor, PERMISSION_HR_ONBOARDING_MANAGE)
         task = await self.session.scalar(
             select(HrOnboardingTask).where(HrOnboardingTask.id == task_id)
         )
@@ -1820,6 +1826,7 @@ class HrWorkforceService:
         file: UploadFile,
         actor: User,
     ) -> HrDocumentResponse:
+        ensure_permission(actor, PERMISSION_HR_DOCUMENTS_MANAGE)
         if category not in self._allowed_doc_categories(actor):
             raise PermissionDeniedException(PERMISSION_HR_EMPLOYEES_SENSITIVE)
         if employee_id is not None and candidate_id is not None:
@@ -1891,6 +1898,7 @@ class HrWorkforceService:
         *,
         expected_latest_version: int | None = None,
     ) -> HrDocumentResponse:
+        ensure_permission(actor, PERMISSION_HR_DOCUMENTS_MANAGE)
         doc = await self._get_hr_document(document_id, for_update=True)
         self._ensure_hr_doc_access(doc, actor)
         latest = await self.session.scalar(
@@ -1955,6 +1963,7 @@ class HrWorkforceService:
         payload: HrDocumentDecisionRequest,
         actor: User,
     ) -> HrDocumentResponse:
+        ensure_permission(actor, PERMISSION_HR_EMPLOYEES_SENSITIVE)
         doc = await self._get_hr_document(document_id, for_update=True)
         self._ensure_hr_doc_access(doc, actor)
         version = await self.session.scalar(
@@ -2014,6 +2023,7 @@ class HrWorkforceService:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[HrDocumentResponse], int]:
+        ensure_permission(actor, PERMISSION_HR_DOCUMENTS_MANAGE)
         allowed_categories = self._allowed_doc_categories(actor)
         stmt = select(HrDocument).where(
             HrDocument.deleted_at.is_(None),
@@ -2046,6 +2056,7 @@ class HrWorkforceService:
         return [await self._serialize_hr_document(d) for d in docs], total
 
     async def get_hr_document_detail(self, document_id: UUID, actor: User) -> HrDocumentResponse:
+        ensure_permission(actor, PERMISSION_HR_DOCUMENTS_MANAGE)
         doc = await self._get_hr_document(document_id)
         self._ensure_hr_doc_access(doc, actor)
         return await self._serialize_hr_document(doc)
@@ -2053,6 +2064,7 @@ class HrWorkforceService:
     async def get_hr_document_download_url(
         self, document_id: UUID, actor: User, *, version_number: int | None = None
     ) -> HrDocumentDownloadResponse:
+        ensure_permission(actor, PERMISSION_HR_DOCUMENTS_MANAGE)
         doc = await self.session.scalar(
             select(HrDocument).where(HrDocument.id == document_id, HrDocument.deleted_at.is_(None))
         )

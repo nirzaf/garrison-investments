@@ -181,6 +181,8 @@ async def test_import_template_permissions_follow_the_domain_matrix() -> None:
         ("hr_manager", "materials"),
         ("hr_manager", "documents"),
         ("hr_manager", "boq"),
+        ("hr_executive_reader", "users"),
+        ("hr_executive_reader", "documents"),
     ):
         with pytest.raises(AppException) as error:
             ImportService.ensure_template_access(User(role=role), template)
@@ -200,7 +202,21 @@ async def test_hr_manager_user_import_cannot_assign_protected_director_roles(mon
     assert [(error.row, error.field) for error in errors] == [(2, "role"), (3, "role")]
 
 
-@pytest.mark.parametrize("retired_role", RETIRED_ROLE_KEYS)
+async def test_director_user_import_accepts_hr_executive_reader_as_a_target() -> None:
+    service = ImportService.__new__(ImportService)
+    row = {
+        "email": "reader@example.com",
+        "full_name": "Synthetic Directory Reader",
+        "role": "hr_executive_reader",
+        "employee_code": "SYNTHETIC-READER",
+        "phone": "+94770000019",
+        "designation": "HR Executive",
+        "temporary_password": "Start123!",
+    }
+    assert await service._validate_for_import("users", [row], User(role="managing_director")) == []
+
+
+@pytest.mark.parametrize("retired_role", [*RETIRED_ROLE_KEYS, "hr_executive"])
 async def test_user_import_rejects_each_retired_role_target(retired_role: str) -> None:
     service = ImportService.__new__(ImportService)
     row = {

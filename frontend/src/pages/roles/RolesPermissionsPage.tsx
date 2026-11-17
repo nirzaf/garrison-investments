@@ -16,6 +16,7 @@ const ROLE_LABELS: Record<string, string> = {
   senior_site_supervisor: 'Senior Site Supervisor',
   site_supervisor: 'Site Supervisor',
   hr_manager: 'HR Manager',
+  hr_executive_reader: 'HR Executive',
   administrative_executive: 'Administrative Executive'
 };
 const PERMISSION_LABELS: Record<string, string> = {

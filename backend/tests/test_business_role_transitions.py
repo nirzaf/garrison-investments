@@ -53,6 +53,7 @@ HRM_ALLOWED_TARGETS = {
     "senior_site_supervisor",
     "site_supervisor",
     "administrative_executive",
+    "hr_executive_reader",
 }
 PROTECTED_TARGETS = {"managing_director", "operations_director", "hr_manager"}
 

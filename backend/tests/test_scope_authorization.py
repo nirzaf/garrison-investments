@@ -341,6 +341,73 @@ async def test_document_read_paths_are_project_scoped() -> None:
         ).status_code == 200
 
 
+async def test_hr_executive_reader_has_only_approved_scoped_access() -> None:
+    await skip_if_database_unavailable()
+    async with create_test_client() as client:
+        assigned, other = await two_teams(client)
+        for team in (assigned, other):
+            active = await client.patch(
+                f"/api/v1/projects/{team['project_id']}",
+                json={"status": "active"},
+                headers=auth(team["op_token"]),
+            )
+            assert active.status_code == 200, active.text
+        email, password = await create_user("hr_executive_reader")
+        reader = auth(await login_for_token(client, email, password))
+        identity = (await client.get("/api/v1/auth/me", headers=reader)).json()
+        assert set(identity["permissions"]) == {
+            "users:read", "dashboard:scoped", "reports:view", "documents:view"
+        }
+        directory = await client.get("/api/v1/users", headers=reader)
+        assert directory.status_code == 200
+        unassigned_dashboard = await client.get("/api/v1/dashboard/summary", headers=reader)
+        assert unassigned_dashboard.json()["active_projects"] == 0
+
+        membership = await client.post(
+            f"/api/v1/projects/{assigned['project_id']}/members",
+            json={"user_id": identity["id"], "role_in_project": "hr_executive_reader"},
+            headers=auth(assigned["op_token"]),
+        )
+        assert membership.status_code == 201, membership.text
+        allowed_report, _ = await upload_report_photo(client, assigned)
+        foreign_report, _ = await upload_report_photo(client, other)
+        allowed_document = await upload_document(client, assigned)
+        foreign_document = await upload_document(client, other)
+        company_document = await upload_document(client, assigned, project_scoped=False)
+        dashboard = await client.get("/api/v1/dashboard/summary", headers=reader)
+        assert dashboard.status_code == 200
+        assert dashboard.json()["active_projects"] == 1
+        report_list = await client.get("/api/v1/reports", params={"limit": 100}, headers=reader)
+        assert report_list.status_code == 200
+        assert {row["id"] for row in report_list.json()["items"]} == {allowed_report}
+        assert (await client.get(f"/api/v1/reports/{allowed_report}", headers=reader)).is_success
+        foreign = await client.get(f"/api/v1/reports/{foreign_report}", headers=reader)
+        assert foreign.status_code in (403, 404)
+        assert (
+            await client.get(f"/api/v1/documents/{allowed_document['id']}", headers=reader)
+        ).status_code == 200
+        for document in (foreign_document, company_document):
+            denied = await client.get(
+                f"/api/v1/documents/{document['id']}/download", headers=reader
+            )
+            assert denied.status_code == 404
+
+        for path in (
+            "/api/v1/hr/employees",
+            "/api/v1/hr/documents",
+            "/api/v1/hr/payroll/runs",
+            "/api/v1/audit-logs",
+        ):
+            assert (await client.get(path, headers=reader)).status_code == 403, path
+        blocked_approval = await client.post(
+            f"/api/v1/reports/{allowed_report}/approve",
+            json={"comments": "Synthetic decision", "target_covered": True},
+            headers=reader,
+        )
+        assert blocked_approval.status_code == 403
+        assert (await client.post("/api/v1/users", json={}, headers=reader)).status_code == 403
+
+
 async def test_company_wide_documents_are_hidden_from_project_roles() -> None:
     await skip_if_database_unavailable()
 

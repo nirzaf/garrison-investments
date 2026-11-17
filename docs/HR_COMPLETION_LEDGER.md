@@ -1839,3 +1839,40 @@ including the original idempotent draft apply. The focused Chrome regression
 verified visible per-person issues, omitted source values, and invalidation
 after a role-mapping edit. The frontend build and lint, backend Ruff and mypy,
 and the OpenAPI comparison passed. Only synthetic workbook data was used.
+
+## Slice 90 · combined HR candidate regression
+
+The isolated archive of `4846fe9d1432e2a2d020e868da328e9c2506c44f` contains
+the workbook and service request CLI changes. Both disposable databases were
+migrated from empty to revision 202605310061. The backend/CLI run returned 106
+passes and the Chrome selection `(HR |payroll)` returned 28 passes in 3.4
+minutes. The backend used PostgreSQL 18, Redis, and a local Moto S3 endpoint.
+A synthetic XLSX parse also preserved leading zeros and the country prefix
+in the new columns. The candidate has no delta in migrations or deployment
+configuration from production `fa73693`.
+
+The last exact-main CI, run 44020386126, spent 426 and 408 seconds in its two
+Chrome test steps. Their JUnit reports logged 411.1 and 392.3 seconds of
+case time. Dependency and storage preparation took 11 and 12 seconds.
+The second browser job started 68 seconds after the first and finished
+last. The local candidate regression does not establish a self-hosted
+speedup. The next comparison is runner scheduling and Chrome case time
+on the candidate's self-hosted run.
+[Latest production CI](https://github.com/nirzaf/garrison-investments/actions/runs/44020386126)
+
+## Slice 91 · separate HR Executive read role
+
+HR Executive uses `hr_executive_reader` and has exactly `users:read`,
+`dashboard:scoped`, `reports:view`, and `documents:view`. The historical
+role key stays retired. The [task matrix](HR_WORKFORCE.md#hr-executive-scope-and-proposed-hr-tasks)
+records the worksheet's pending review, the four approved grants and the
+decisions that gate any future preparation duties. Existing onboarding and
+HR vault entry points now check their current permissions in the service
+before a record lookup, in addition to the HTTP route.
+
+The local PostgreSQL/S3 suites passed 166 HR, authorization and CLI tests
+and 172 auth, import and release-contract tests. Four Chrome scenarios
+passed, covering role navigation, catalogue parity and retained HR Manager
+offboarding and training. Ruff, mypy, ESLint and the OpenAPI and generated
+TypeScript checks passed. No migration, account assignment or production
+activation was performed.

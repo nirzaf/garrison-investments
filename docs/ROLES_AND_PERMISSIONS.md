@@ -19,6 +19,7 @@ status.
 | `senior_site_supervisor` | Senior Site Supervisor |
 | `site_supervisor` | Site Supervisor |
 | `hr_manager` | HR Manager |
+| `hr_executive_reader` | HR Executive |
 | `administrative_executive` | Administrative Executive |
 
 The original eight keys (`admin`, `general_manager`, `operation_manager`,
@@ -30,24 +31,24 @@ There is no technical administrator role or role-based bypass.
 
 ## Permission matrix
 
-| Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | Administrative Executive |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `users:manage` | ✓ | ✓ | | | | | | | |
-| `users:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `projects:manage` | ✓ | ✓ | ✓ | ✓ | | | | | |
-| `projects:read` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | | |
-| `audit:view` | ✓ | ✓ | | | | | | | |
-| `dashboard:company` | ✓ | ✓ | | | | | | ✓ | ✓ |
-| `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | |
-| `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | |
-| `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
-| `inventory:manage` | ✓ | ✓ | | | | | | | |
-| `suppliers:manage` | ✓ | ✓ | | ✓ | ✓ | | | | ✓ |
-| `documents:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
-| `documents:manage` | ✓ | ✓ | | | | | | | |
-| `financial:view` | ✓ | ✓ | | | | | | | |
+| Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | Administrative Executive | HR Executive |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `users:manage` | ✓ | ✓ | | | | | | | | |
+| `users:read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `projects:manage` | ✓ | ✓ | ✓ | ✓ | | | | | | |
+| `projects:read` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | | | |
+| `audit:view` | ✓ | ✓ | | | | | | | | |
+| `dashboard:company` | ✓ | ✓ | | | | | | ✓ | ✓ | |
+| `dashboard:scoped` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `reports:view` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | | ✓ |
+| `reports:submit` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
+| `reports:approve` | ✓ | ✓ | ✓ | ✓ | | | | ✓ | | |
+| `inventory:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | |
+| `inventory:manage` | ✓ | ✓ | | | | | | | | |
+| `suppliers:manage` | ✓ | ✓ | | ✓ | ✓ | | | | ✓ | |
+| `documents:view` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ |
+| `documents:manage` | ✓ | ✓ | | | | | | | | |
+| `financial:view` | ✓ | ✓ | | | | | | | | |
 
 MD = Managing Director; OD = Operations Director; Group PM = Group Project Manager; MEP PM = MEP Project Manager; QS =
 Quantity Surveyor. The grant sets are explicit: a permission does not imply another
@@ -55,7 +56,7 @@ permission, and a role receives no future permission by default.
 
 ## HR permissions
 
-HR Manager is the portal’s HR role and has permissions for standard employee records,
+HR Manager has permissions for standard employee records,
 recruitment, onboarding, attendance recording, leave processing, ordinary HR
 documents and compliance, service requests, and HR summaries. Only HR Manager
 receives sensitive employee, attendance approval, leave approval, HR policy and
@@ -64,6 +65,10 @@ account administration. An HR Manager can authorize a linked direct manager to
 recommend specific time and leave requests when the company policy is enabled.
 The authorization applies to that reporting relationship and does not grant
 HR directory, document or final-decision permissions. See [HR and workforce](HR_WORKFORCE.md).
+
+HR Executive receives only the four standard permissions in the matrix. The
+[HR task assessment](HR_WORKFORCE.md#hr-executive-scope-and-proposed-hr-tasks)
+records proposed preparation workflows and their open decisions.
 
 The backend defines 16 standard and 21 HR permission keys. No current role is
 granted `hr:cases:restricted`, `hr:payroll:approve`, `hr:payroll:prepare`,

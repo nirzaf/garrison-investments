@@ -34,7 +34,7 @@ EXPECTED_GRANTS = {
 }
 
 
-HR_EXECUTIVE_GRANTS = {
+HR_MANAGER_CORE_GRANTS = {
     "hr:employees:read",
     "hr:employees:manage",
     "hr:recruitment:manage",
@@ -46,7 +46,7 @@ HR_EXECUTIVE_GRANTS = {
     "hr:requests:process",
     "hr:reports:view",
 }
-HR_MANAGER_GRANTS = HR_EXECUTIVE_GRANTS | {
+HR_MANAGER_GRANTS = HR_MANAGER_CORE_GRANTS | {
     "hr:employees:sensitive",
     "hr:attendance:approve",
     "hr:leave:approve",
@@ -57,17 +57,16 @@ HR_MANAGER_GRANTS = HR_EXECUTIVE_GRANTS | {
 }
 EFFECTIVE_GRANTS = {
     **{role: grants for role, grants in EXPECTED_GRANTS.items() if role != "hr_executive"},
+    "hr_executive_reader": EXPECTED_GRANTS["hr_executive"],
     "hr_manager": (EXPECTED_GRANTS["hr_manager"] - {"users:manage", "audit:view", "documents:view"})
     | HR_MANAGER_GRANTS,
 }
 
 
 def test_exact_role_and_permission_catalogues_match_independent_matrix() -> None:
-    assert set(VALID_ROLES) == set(MATRIX["roles"]) - {"hr_executive"}
-    assert set(ROLE_PERMISSIONS) == set(MATRIX["roles"]) - {"hr_executive"}
-    assert set(ROLE_LABELS) == set(MATRIX["roles"]) - {"hr_executive"}
+    assert set(VALID_ROLES) == set(ROLE_PERMISSIONS) == set(ROLE_LABELS) == set(EFFECTIVE_GRANTS)
     assert ALL_PERMISSIONS == set(PERMISSIONS)
-    assert len(VALID_ROLES) == 9
+    assert len(VALID_ROLES) == 10
     assert len(ALL_PERMISSIONS) == 16
 
 

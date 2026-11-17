@@ -11,6 +11,7 @@ ROLE_QUANTITY_SURVEYOR: Final = "quantity_surveyor"
 ROLE_SENIOR_SITE_SUPERVISOR: Final = "senior_site_supervisor"
 ROLE_SITE_SUPERVISOR: Final = "site_supervisor"
 ROLE_HR_MANAGER: Final = "hr_manager"
+ROLE_HR_EXECUTIVE: Final = "hr_executive_reader"
 ROLE_ADMINISTRATIVE_EXECUTIVE: Final = "administrative_executive"
 
 ROLE_LABELS: Final[dict[str, str]] = {
@@ -22,6 +23,7 @@ ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_SENIOR_SITE_SUPERVISOR: "Senior Site Supervisor",
     ROLE_SITE_SUPERVISOR: "Site Supervisor",
     ROLE_HR_MANAGER: "HR Manager",
+    ROLE_HR_EXECUTIVE: "HR Executive",
     ROLE_ADMINISTRATIVE_EXECUTIVE: "Administrative Executive",
 }
 
@@ -208,6 +210,12 @@ ROLE_PERMISSIONS: Final[dict[str, set[str]]] = {
         PERMISSION_REPORTS_APPROVE,
     }
     | _HR_MANAGER_GRANTS,
+    ROLE_HR_EXECUTIVE: {
+        PERMISSION_USERS_READ,
+        PERMISSION_DASHBOARD_SCOPED,
+        PERMISSION_REPORTS_VIEW,
+        PERMISSION_DOCUMENTS_VIEW,
+    },
     ROLE_ADMINISTRATIVE_EXECUTIVE: {
         PERMISSION_USERS_READ,
         PERMISSION_DASHBOARD_COMPANY,
