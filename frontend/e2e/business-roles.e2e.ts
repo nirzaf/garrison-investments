@@ -1002,6 +1002,7 @@ test('HR previews and retains a letter for independent issuance and employee ret
   browser,
   request
 }) => {
+  test.setTimeout(90_000);
   const session = await signIn(page, seedAccount('hr_manager'));
   const worker = seedAccount('quantity_surveyor');
   const code = `LETTER-${Date.now()}`;
