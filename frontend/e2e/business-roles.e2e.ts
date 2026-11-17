@@ -4079,7 +4079,8 @@ test('HR operators review a private reimbursement receipt and reconcile the paya
 
 test('payroll operators lock a reviewed snapshot and publish its employee payslip', async ({ page, browser, request }) => {
   // The full policy-to-payslip workflow uses four signed-in browser contexts.
-  test.setTimeout(90_000);
+  // It also exercises independent CLI review and multiple database-backed source refreshes.
+  test.setTimeout(180_000);
   const [director, maker, checker, employeeAccount] = seedProjectAccounts(
     'managing_director', 'hr_manager', 'hr_manager', 'quantity_surveyor'
   );
@@ -4350,10 +4351,13 @@ test('payroll operators lock a reviewed snapshot and publish its employee paysli
     }
     await sources.getByRole('button', { name: 'Refresh source review' }).click();
     await expect(time.getByText('Regular hours 40.00 · Overtime hours 2.50')).toBeVisible();
+    await expect(leave.getByText('Paid leave days 0.00 · Unpaid leave days 0.00')).toBeVisible();
     const sourceFiles = new Map<string, Buffer>();
     for (const [source, panel] of [['time', time], ['leave', leave]] as const) {
+      const downloadButton = panel.getByRole('button', { name: `Download verified ${source} CSV` });
+      await expect(downloadButton).toBeEnabled();
       const ready = page.waitForEvent('download');
-      await panel.getByRole('button', { name: `Download verified ${source} CSV` }).click();
+      await downloadButton.click();
       const downloaded = readFileSync((await (await ready).path())!);
       expect(createHash('sha256').update(downloaded).digest('hex')).toBe(
         await panel.getByLabel(`${source} input checksum`).textContent()

@@ -14,6 +14,7 @@ const commonLinks = {
 };
 const guardedLinks = {
   'HR & Workforce': '/hr',
+  'Employee relations': '/hr/cases',
   Projects: '/projects',
   Reports: '/reports/daily',
   'Supervisor updates': '/reports/supervisor-update',
@@ -158,6 +159,7 @@ const cases: RoleCase[] = [
       'Analytics',
       'Launch readiness',
       'Users',
+      'Employee relations',
       'HR & Workforce'
     ],
     inbox: true,
