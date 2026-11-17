@@ -63,6 +63,7 @@ from app.services.hr_workforce_service import HrWorkforceService
 from app.services.user_service import UserService
 from app.utils.exceptions import AppException, NotFoundException, PermissionDeniedException
 from app.utils.permissions import (
+    BUSINESS_ROLES,
     PERMISSION_HR_EMPLOYEES_SENSITIVE,
     PERMISSION_HR_OFFBOARDING_MANAGE,
     PERMISSION_HR_ONBOARDING_MANAGE,
@@ -1669,6 +1670,7 @@ class HrService(HrWorkforceService):
     async def _verify_account_link(self, emp: HrEmployee, target_user: User) -> None:
         if (
             not target_user.is_active
+            or target_user.role not in BUSINESS_ROLES
             or not emp.work_email
             or emp.work_email.casefold() != target_user.email.casefold()
         ):
@@ -1713,6 +1715,8 @@ class HrService(HrWorkforceService):
     ) -> HrAccessRequest:
         await self._require_employee(payload.employee_id)
         normalized_role = validate_role(payload.requested_role) if payload.requested_role else None
+        if normalized_role is not None and normalized_role not in BUSINESS_ROLES:
+            raise PermissionDeniedException("request a technical role through HR")
         req = HrAccessRequest(
             employee_id=payload.employee_id,
             request_type=payload.request_type,

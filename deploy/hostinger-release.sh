@@ -346,7 +346,7 @@ if not isinstance(services, dict) or not services:
     raise SystemExit("Effective Compose configuration is missing services")
 
 sys.path.insert(0, str(candidate / "deploy"))
-from release_config_contract import validate_pinned_service_environment
+from release_config_contract import validate_pinned_service_environment, validate_support_ingress
 
 for svc_name in ("backend", "celery_worker", "celery_beat"):
     svc = services.get(svc_name)
@@ -362,6 +362,7 @@ for svc_name in ("backend", "celery_worker", "celery_beat"):
             raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
 
 mounted_files_by_target: dict[str, Path] = {}
+nginx_files_by_target: dict[str, Path] = {}
 mounted_dirs_by_target: dict[str, Path] = {}
 mounted_sources: list[Path] = []
 
@@ -395,6 +396,8 @@ for svc_name, svc in services.items():
             if st.st_size <= 0:
                 raise SystemExit(f"Bind mount file {mapped} must not be empty")
             mounted_files_by_target[target_raw] = mapped
+            if svc_name == "nginx":
+                nginx_files_by_target[target_raw] = mapped
             mounted_sources.append(mapped)
         elif stat.S_ISDIR(st.st_mode):
             has_file = False
@@ -414,12 +417,21 @@ for svc_name, svc in services.items():
                         raise SystemExit(f"Bind mount file {mapped_member} must not be empty")
                     rel_member = mapped_member.relative_to(mapped).as_posix()
                     mounted_files_by_target[f"{target_raw}/{rel_member}"] = mapped_member
+                    if svc_name == "nginx":
+                        nginx_files_by_target[f"{target_raw}/{rel_member}"] = mapped_member
                     mounted_sources.append(mapped_member)
             if not has_file:
                 raise SystemExit(f"Bind mount directory {mapped} must contain at least one non-empty file")
             mounted_dirs_by_target[target_raw] = mapped
         else:
             raise SystemExit(f"Bind mount source {mapped} must be a regular file or directory")
+
+try:
+    validate_support_ingress(
+        candidate, services.get("nginx") or {}, services["backend"], env_values, nginx_files_by_target
+    )
+except ValueError as error:
+    raise SystemExit(str(error)) from error
 
 # Verify TLS certificate files are mounted via /etc/nginx/ssl or matching paths.
 tls_fullchain = mounted_files_by_target.get("/etc/nginx/ssl/fullchain.pem") or next(

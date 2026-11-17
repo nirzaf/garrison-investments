@@ -22,11 +22,11 @@ from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
+    BUSINESS_ROLES,
     COMPANY_RESOURCE_ROLES,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
     SUPERVISOR_ROLES,
-    VALID_ROLES,
     has_permission,
 )
 
@@ -136,7 +136,7 @@ async def ensure_entity_access(
 
 
 def _ensure_supported_role(actor: User) -> None:
-    if actor.role not in VALID_ROLES:
+    if actor.role not in BUSINESS_ROLES:
         raise AppException(
             "Account has an unsupported role.",
             status_code=403,

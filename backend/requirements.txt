@@ -19,3 +19,4 @@ sqlalchemy[asyncio]==2.1.8
 starlette==1.10.0
 structlog==26.1.0
 uvicorn[standard]==0.54.0
+webauthn==2.7.0

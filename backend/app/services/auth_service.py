@@ -1,19 +1,27 @@
 import asyncio
+import hmac
 from dataclasses import dataclass
-from datetime import timedelta
-from uuid import UUID
+from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models.auth import AuthOtpChallenge, AuthRefreshToken
+from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
+from app.models.support_business_actions import SupportBusinessAction, SupportRecoveryDelivery
 from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.email_service import EmailDeliveryError, EmailService
 from app.utils.exceptions import AppException
-from app.utils.permissions import VALID_ROLES
+from app.utils.permissions import BUSINESS_ROLES
+from app.utils.recovery_destination import (
+    recovery_destination_digest,
+    support_recovery_otp_digest,
+    verified_recovery_destination,
+)
 from app.utils.security import (
     create_access_token,
     decode_access_token,
@@ -27,6 +35,9 @@ from app.utils.security import (
 )
 
 LOGIN_FAILURE_MESSAGE = "Invalid email, password, or verification code."
+TECHNICAL_LOGIN_PURPOSE = "super_admin_login"
+TECHNICAL_ACCESS_TOKEN = "super_admin_access"
+TECHNICAL_SESSION_MINUTES = 15
 
 
 @dataclass(frozen=True)
@@ -54,6 +65,12 @@ class SessionResult:
     refresh_expires_in_seconds: int
 
 
+@dataclass(frozen=True)
+class TechnicalSessionResult:
+    access_token: str
+    expires_at: datetime
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -68,10 +85,10 @@ class AuthService:
         if (
             not user
             or not user.is_active
-            or user.role not in VALID_ROLES
+            or user.role not in BUSINESS_ROLES
             or not verify_password(password, user.password_hash)
         ):
-            if user:
+            if user and user.role in BUSINESS_ROLES:
                 await self._register_failed_login(user, meta)
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="LOGIN_FAILED")
 
@@ -84,6 +101,8 @@ class AuthService:
             )
 
         otp = generate_otp()
+        recipient = user.email
+        email_digest = self._login_recovery_destination(user)
         challenge = await self.auth.add_otp_challenge(
             AuthOtpChallenge(
                 user_id=user.id,
@@ -101,13 +120,20 @@ class AuthService:
         await self.session.commit()
         await self._send_otp(
             challenge,
-            recipient=user.email,
+            recipient=recipient,
             subject="Your Verification Code",
             body=(
                 f"Your verification code is: {otp}\n\n"
                 f"This code expires in {self.settings.otp_expire_minutes} minutes."
             ),
         )
+        if email_digest is not None:
+            await self.session.execute(
+                update(AuthOtpChallenge)
+                .where(AuthOtpChallenge.id == challenge.id, AuthOtpChallenge.consumed_at.is_(None))
+                .values(delivery_email_digest=email_digest)
+            )
+            await self.session.commit()
         return OtpChallengeResult(
             challenge=challenge,
             otp=otp if self.settings.should_expose_dev_otp else None,
@@ -117,34 +143,39 @@ class AuthService:
         challenge, user = await self._get_otp_for_update(challenge_id)
         now = utc_now()
         max_attempts = self.settings.auth_failed_attempt_limit
-        if not challenge or challenge.attempts >= max_attempts:
+        if not challenge or challenge.purpose != "login" or challenge.attempts >= max_attempts:
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
-        otp_matches = challenge.otp_hash == hash_secret(otp) or (
+        matches_delivered_code = hmac.compare_digest(challenge.otp_hash, hash_secret(otp))
+        otp_matches = matches_delivered_code or (
             challenge.purpose == "login"
             and self.settings.staging_login_otp_enabled
             and otp == self.settings.staging_login_otp
         )
 
-        if (
-            challenge.purpose != "login"
-            or challenge.consumed_at is not None
-            or challenge.expires_at <= now
-            or not otp_matches
-        ):
+        if challenge.consumed_at is not None or challenge.expires_at <= now or not otp_matches:
             challenge.attempts += 1
             if challenge.attempts >= max_attempts:
                 challenge.consumed_at = now
             await self.session.commit()
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
-        if not user or not user.is_active or user.role not in VALID_ROLES:
+        if not user or not user.is_active or user.role not in BUSINESS_ROLES:
             raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
 
         challenge.consumed_at = now
         user.failed_login_attempts = 0
         user.locked_until = None
         user.last_login_at = now
+        current_email_digest = self._login_recovery_destination(user)
+        if (
+            matches_delivered_code
+            and current_email_digest is not None
+            and challenge.delivery_email_digest is not None
+            and hmac.compare_digest(challenge.delivery_email_digest, current_email_digest)
+        ):
+            user.recovery_email_digest = current_email_digest
+            user.recovery_email_verified_at = now
         await self.audit.record(
             action="auth.login_success",
             user_id=user.id,
@@ -154,6 +185,168 @@ class AuthService:
         result = await self._create_session(user)
         await self.session.commit()
         return result
+
+    def _login_recovery_destination(self, user: User) -> str | None:
+        if self.settings.should_expose_dev_otp or self.settings.staging_login_otp_enabled:
+            return None
+        return recovery_destination_digest(self.settings, user.id, user.email)
+
+    @staticmethod
+    def _technical_user_eligible(user: User, now: datetime) -> bool:
+        return (
+            user.role == "super_admin"
+            and user.is_active
+            and not user.must_change_password
+            and (user.locked_until is None or user.locked_until <= now)
+        )
+
+    def _technical_otp_digest(self, challenge_id: UUID, otp: str) -> str:
+        key = self.settings.super_admin_otp_key
+        if key is None or len(key.get_secret_value().encode()) < 32:
+            raise AppException("Super Admin sign-in is unavailable.", status_code=503)
+        value = f"{TECHNICAL_LOGIN_PURPOSE}:{challenge_id}:{otp}"
+        return hmac.digest(key.get_secret_value().encode(), value.encode(), "sha256").hex()
+
+    async def create_technical_login_challenge(
+        self, email: str, password: str, meta: RequestMeta
+    ) -> AuthOtpChallenge:
+        user = await self.users.get_by_email(email, for_update=True)
+        now = utc_now()
+        if user is None or not self._technical_user_eligible(user, now):
+            raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="LOGIN_FAILED")
+        if not verify_password(password, user.password_hash):
+            await self._register_failed_login(user, meta)
+            raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="LOGIN_FAILED")
+
+        recent = await self.auth.recent_otp_challenges(
+            user.id, TECHNICAL_LOGIN_PURPOSE, now - timedelta(minutes=15)
+        )
+        if len(recent) >= 3 or (recent and recent[0].created_at > now - timedelta(seconds=60)):
+            raise AppException(
+                "Wait before requesting another verification code.",
+                status_code=429,
+                error_code="OTP_RATE_LIMITED",
+            )
+
+        otp = generate_otp()
+        challenge_id = uuid4()
+        expires_in = min(5, self.settings.otp_expire_minutes)
+        for previous in recent:
+            if previous.consumed_at is None:
+                previous.consumed_at = now
+        challenge = await self.auth.add_otp_challenge(
+            AuthOtpChallenge(
+                id=challenge_id,
+                user_id=user.id,
+                purpose=TECHNICAL_LOGIN_PURPOSE,
+                otp_hash=self._technical_otp_digest(challenge_id, otp),
+                created_at=now,
+                expires_at=now + timedelta(minutes=expires_in),
+            )
+        )
+        await self.audit.record(
+            action="auth.super_admin_login_otp_created",
+            user_id=user.id,
+            ip_address=meta.ip_address,
+            user_agent=meta.user_agent,
+        )
+        await self.session.commit()
+        await self._send_otp(
+            challenge,
+            recipient=user.email,
+            subject="Garrisons Super Admin verification code",
+            body=f"Your verification code is: {otp}\n\nIt expires in {expires_in} minutes.",
+        )
+        return challenge
+
+    async def verify_technical_login(
+        self, challenge_id: UUID, otp: str, meta: RequestMeta
+    ) -> TechnicalSessionResult:
+        challenge, user = await self._get_otp_for_update(challenge_id)
+        now = utc_now()
+        attempt_limit = min(3, self.settings.auth_failed_attempt_limit)
+        if (
+            challenge is None
+            or challenge.purpose != TECHNICAL_LOGIN_PURPOSE
+            or challenge.consumed_at is not None
+            or challenge.expires_at <= now
+            or challenge.attempts >= attempt_limit
+            or user is None
+            or not self._technical_user_eligible(user, now)
+        ):
+            raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
+        if not hmac.compare_digest(
+            challenge.otp_hash, self._technical_otp_digest(challenge_id, otp)
+        ):
+            challenge.attempts += 1
+            if challenge.attempts >= attempt_limit:
+                challenge.consumed_at = now
+            await self.session.commit()
+            raise AppException(LOGIN_FAILURE_MESSAGE, status_code=401, error_code="OTP_FAILED")
+
+        challenge.consumed_at = now
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.last_login_at = now
+        auth_session = await self.auth.add_session(
+            AuthSession(
+                id=uuid4(),
+                user_id=user.id,
+                created_at=now,
+                expires_at=now + timedelta(minutes=TECHNICAL_SESSION_MINUTES),
+            )
+        )
+        token, expires_at = create_access_token(
+            user.id,
+            user.role,
+            access_revision=user.access_revision,
+            auth_session_id=auth_session.id,
+            session_expires_at=auth_session.expires_at,
+            token_type=TECHNICAL_ACCESS_TOKEN,
+        )
+        await self.audit.record(
+            action="auth.super_admin_login_success",
+            user_id=user.id,
+            ip_address=meta.ip_address,
+            user_agent=meta.user_agent,
+        )
+        await self.session.commit()
+        return TechnicalSessionResult(access_token=token, expires_at=expires_at)
+
+    async def get_technical_session(self, token: str, *, for_update: bool = False) -> AuthSession:
+        failure = AppException(
+            "Invalid or expired session.", status_code=401, error_code="INVALID_TOKEN"
+        )
+        payload = decode_access_token(token, token_type=TECHNICAL_ACCESS_TOKEN)
+        try:
+            user_id = UUID(payload["sub"])
+            session_id = UUID(payload["sid"])
+        except (KeyError, AttributeError, TypeError, ValueError) as exc:
+            raise failure from exc
+        user = await self.users.get_by_id(user_id, for_update=for_update)
+        now = utc_now()
+        if (
+            user is None
+            or not self._technical_user_eligible(user, now)
+            or payload.get("role") != user.role
+            or payload.get("access_revision") != user.access_revision
+        ):
+            raise failure
+        auth_session = await self.auth.get_session(session_id, user_id)
+        if auth_session is None or auth_session.revoked_at or auth_session.expires_at <= now:
+            raise failure
+        return auth_session
+
+    async def logout_technical_session(self, token: str, meta: RequestMeta) -> None:
+        auth_session = await self.get_technical_session(token, for_update=True)
+        auth_session.revoked_at = utc_now()
+        await self.audit.record(
+            action="auth.super_admin_logout",
+            user_id=auth_session.user_id,
+            ip_address=meta.ip_address,
+            user_agent=meta.user_agent,
+        )
+        await self.session.commit()
 
     async def refresh(self, refresh_token: str, meta: RequestMeta) -> SessionResult:
         token_hash = hash_secret(refresh_token)
@@ -165,9 +358,8 @@ class AuthService:
         if (
             not user
             or not user.is_active
-            or user.role not in VALID_ROLES
+            or user.role not in BUSINESS_ROLES
             or not token
-            or token.revoked_at
             or token.expires_at <= now
         ):
             raise AppException(
@@ -176,8 +368,30 @@ class AuthService:
                 error_code="REFRESH_TOKEN_INVALID",
             )
 
+        auth_session = (
+            await self.auth.get_session(token.session_id, user.id) if token.session_id else None
+        )
+        if token.revoked_at and auth_session and auth_session.revoked_at is None:
+            auth_session.revoked_at = now
+            await self.audit.record(
+                action="auth.refresh_replay_revoked_session",
+                user_id=user.id,
+                entity_type="auth_sessions",
+                entity_id=auth_session.id,
+            )
+            await self.session.commit()
+        if token.revoked_at or (
+            token.session_id
+            and (not auth_session or auth_session.revoked_at or auth_session.expires_at <= now)
+        ):
+            raise AppException(
+                "Refresh session is invalid or expired.",
+                status_code=401,
+                error_code="REFRESH_TOKEN_INVALID",
+            )
+
         token.revoked_at = now
-        result = await self._create_session(user)
+        result = await self._create_session(user, auth_session, legacy_expiry=token.expires_at)
         await self.audit.record(
             action="auth.refresh",
             user_id=user.id,
@@ -189,9 +403,17 @@ class AuthService:
 
     async def logout(self, refresh_token: str | None, meta: RequestMeta) -> None:
         if refresh_token:
-            token = await self.auth.get_refresh_token_by_hash(hash_secret(refresh_token))
+            token_hash = hash_secret(refresh_token)
+            token = await self.auth.get_refresh_token_by_hash(token_hash)
+            if token is not None:
+                await self.users.get_by_id(token.user_id, for_update=True)
+                token = await self.auth.get_refresh_token_by_hash(token_hash, for_update=True)
             if token and not token.revoked_at:
                 token.revoked_at = utc_now()
+                if token.session_id:
+                    auth_session = await self.auth.get_session(token.session_id, token.user_id)
+                    if auth_session and auth_session.revoked_at is None:
+                        auth_session.revoked_at = token.revoked_at
                 await self.audit.record(
                     action="auth.logout",
                     user_id=token.user_id,
@@ -200,20 +422,36 @@ class AuthService:
                 )
                 await self.session.commit()
 
-    async def get_user_from_access_token(self, token: str) -> User:
+    async def get_user_from_access_token(
+        self, token: str, *, require_session: bool = False, for_update: bool = False
+    ) -> User:
         payload = decode_access_token(token)
-        user = await self.users.get_by_id(UUID(payload["sub"]))
+        try:
+            user_id = UUID(payload["sub"])
+            session_id = UUID(payload["sid"]) if "sid" in payload else None
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise AppException(
+                "Invalid or expired session.", status_code=401, error_code="INVALID_TOKEN"
+            ) from exc
+        user = await self.users.get_by_id(user_id, for_update=for_update)
         if (
             not user
             or not user.is_active
-            or user.role not in VALID_ROLES
+            or user.role not in BUSINESS_ROLES
             or payload.get("access_revision", 0) != user.access_revision
+            or (require_session and session_id is None)
         ):
             raise AppException(
                 "Invalid or expired session.",
                 status_code=401,
                 error_code="INVALID_TOKEN",
             )
+        if session_id is not None:
+            auth_session = await self.auth.get_session(session_id, user.id)
+            if not auth_session or auth_session.revoked_at or auth_session.expires_at <= utc_now():
+                raise AppException(
+                    "Invalid or expired session.", status_code=401, error_code="INVALID_TOKEN"
+                )
         return user
 
     async def change_password(
@@ -237,6 +475,7 @@ class AuthService:
         validate_password_policy(new_password)
         locked_user.password_hash = hash_password(new_password)
         locked_user.must_change_password = False
+        locked_user.access_revision += 1
         await self.auth.revoke_user_authentication(locked_user.id)
         await self.audit.record(
             action="auth.password_changed",
@@ -252,7 +491,7 @@ class AuthService:
         meta: RequestMeta,
     ) -> OtpChallengeResult | None:
         user = await self.users.get_by_email(email, for_update=True)
-        if not user or not user.is_active or user.role not in VALID_ROLES:
+        if not user or not user.is_active or user.role not in BUSINESS_ROLES:
             return None
         otp = generate_otp()
         challenge = await self.auth.add_otp_challenge(
@@ -299,8 +538,9 @@ class AuthService:
             if delivered <= 0:
                 raise EmailDeliveryError("No recipient accepted the OTP email.")
         except EmailDeliveryError:
-            if self.settings.should_expose_dev_otp or (
-                challenge.purpose == "login" and self.settings.staging_login_otp_enabled
+            if challenge.purpose in {"login", "password_reset"} and (
+                self.settings.should_expose_dev_otp
+                or (challenge.purpose == "login" and self.settings.staging_login_otp_enabled)
             ):
                 return
             challenge.consumed_at = utc_now()
@@ -322,28 +562,39 @@ class AuthService:
         challenge, user = await self._get_otp_for_update(challenge_id)
         now = utc_now()
         max_attempts = self.settings.auth_failed_attempt_limit
-        if not challenge or challenge.attempts >= max_attempts:
+        if not challenge or challenge.attempts >= max_attempts or challenge.purpose not in {
+            "password_reset", "support_password_reset"
+        }:
             raise AppException(
                 "Invalid or expired password reset code.",
                 status_code=401,
                 error_code="PASSWORD_RESET_FAILED",
+            )
+        recovery = None
+        expected_otp: str | None = hash_secret(otp)
+        if challenge.purpose == "support_password_reset":
+            recovery = await self._accepted_support_recovery(challenge, user)
+            expected_otp = (
+                support_recovery_otp_digest(self.settings, challenge.id, otp)
+                if recovery is not None else None
             )
         if (
-            challenge.purpose != "password_reset"
-            or challenge.consumed_at is not None
+            challenge.consumed_at is not None
             or challenge.expires_at <= now
-            or challenge.otp_hash != hash_secret(otp)
+            or expected_otp is None
+            or not hmac.compare_digest(challenge.otp_hash, expected_otp)
         ):
-            challenge.attempts += 1
-            if challenge.attempts >= max_attempts:
-                challenge.consumed_at = now
-            await self.session.commit()
+            if expected_otp is not None:
+                challenge.attempts += 1
+                if challenge.attempts >= max_attempts:
+                    challenge.consumed_at = now
+                await self.session.commit()
             raise AppException(
                 "Invalid or expired password reset code.",
                 status_code=401,
                 error_code="PASSWORD_RESET_FAILED",
             )
-        if not user or not user.is_active or user.role not in VALID_ROLES:
+        if not user or not user.is_active or user.role not in BUSINESS_ROLES:
             raise AppException(
                 "Invalid or expired password reset code.",
                 status_code=401,
@@ -352,8 +603,11 @@ class AuthService:
         challenge.consumed_at = now
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
+        user.access_revision += 1
         user.failed_login_attempts = 0
         user.locked_until = None
+        if recovery is not None:
+            recovery.completed_at = now
         await self.auth.revoke_user_authentication(user.id)
         await self.audit.record(
             action="auth.password_reset_completed",
@@ -362,6 +616,39 @@ class AuthService:
             user_agent=meta.user_agent,
         )
         await self.session.commit()
+
+    async def _accepted_support_recovery(
+        self, challenge: AuthOtpChallenge, user: User | None
+    ) -> SupportRecoveryDelivery | None:
+        if (
+            user is None or not user.is_active or user.role not in BUSINESS_ROLES
+            or self.settings.app_env.lower() != "test" or not self.settings.support_portal_enabled
+        ):
+            return None
+        binding = verified_recovery_destination(
+            self.settings, user.id, user.email, user.recovery_email_digest,
+            user.recovery_email_verified_at,
+        )
+        if binding is None:
+            return None
+        return await self.session.scalar(
+            select(SupportRecoveryDelivery)
+            .join(
+                SupportBusinessAction,
+                SupportBusinessAction.id == SupportRecoveryDelivery.action_id,
+            )
+            .where(
+                SupportRecoveryDelivery.challenge_id == challenge.id,
+                SupportRecoveryDelivery.status == "accepted",
+                SupportRecoveryDelivery.completed_at.is_(None),
+                SupportBusinessAction.kind == "recover",
+                SupportBusinessAction.user_id == user.id,
+                SupportBusinessAction.user_revision + 1 == user.access_revision,
+                SupportBusinessAction.recovery_destination_digest == binding,
+                SupportBusinessAction.applied_at.is_not(None),
+            )
+            .with_for_update(of=SupportRecoveryDelivery)
+        )
 
     async def _get_otp_for_update(
         self, challenge_id: UUID
@@ -386,19 +673,44 @@ class AuthService:
         )
         await self.session.commit()
 
-    async def _create_session(self, user: User) -> SessionResult:
-        if user.role not in VALID_ROLES:
+    async def _create_session(
+        self,
+        user: User,
+        auth_session: AuthSession | None = None,
+        *,
+        legacy_expiry: datetime | None = None,
+    ) -> SessionResult:
+        if user.role not in BUSINESS_ROLES:
             raise AppException(
                 "Invalid or expired session.", status_code=401, error_code="INVALID_TOKEN"
             )
+        now = utc_now()
+        if auth_session is None:
+            expiry = now + timedelta(hours=self.settings.refresh_token_expire_hours)
+            if legacy_expiry is not None:
+                expiry = min(expiry, legacy_expiry)
+            if expiry <= now:
+                raise AppException(
+                    "Refresh session is invalid or expired.",
+                    status_code=401,
+                    error_code="REFRESH_TOKEN_INVALID",
+                )
+            auth_session = await self.auth.add_session(
+                AuthSession(id=uuid4(), user_id=user.id, created_at=now, expires_at=expiry)
+            )
+        refresh_expires_at = auth_session.expires_at
         access_token, access_expires_at = create_access_token(
-            user.id, user.role, access_revision=user.access_revision
+            user.id,
+            user.role,
+            access_revision=user.access_revision,
+            auth_session_id=auth_session.id,
+            session_expires_at=refresh_expires_at,
         )
         refresh_token = generate_refresh_token()
-        refresh_expires_at = utc_now() + timedelta(hours=self.settings.refresh_token_expire_hours)
         await self.auth.add_refresh_token(
             AuthRefreshToken(
                 user_id=user.id,
+                session_id=auth_session.id,
                 token_hash=hash_secret(refresh_token),
                 expires_at=refresh_expires_at,
             )

@@ -3658,6 +3658,327 @@
         "title": "BudgetSummaryResponse",
         "type": "object"
       },
+      "BusinessActionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "case_revision": {
+            "minimum": 1.0,
+            "title": "Case Revision",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "revoke_sessions",
+              "unlock",
+              "disable",
+              "reactivate",
+              "permission_view",
+              "recover",
+              "request_summary",
+              "navigation_view",
+              "project_list",
+              "project_detail"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "permission_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Key"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "permission_triage",
+              "request_triage"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_revision": {
+            "minimum": 0.0,
+            "title": "User Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "user_id",
+          "user_revision",
+          "case_revision",
+          "reason_code",
+          "reason"
+        ],
+        "title": "BusinessActionCreate",
+        "type": "object"
+      },
+      "BusinessActionProofOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "contact_ref": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Ref"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/BusinessActionRead"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          },
+          "required_reviews": {
+            "title": "Required Reviews",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "proposal",
+          "required_reviews"
+        ],
+        "title": "BusinessActionProofOptions",
+        "type": "object"
+      },
+      "BusinessActionProofVerify": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SupportAssertion"
+          },
+          "expected_contact_ref": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Contact Ref"
+          },
+          "expected_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential",
+          "expected_digest"
+        ],
+        "title": "BusinessActionProofVerify",
+        "type": "object"
+      },
+      "BusinessActionRead": {
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "case_revision": {
+            "title": "Case Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "revoke_sessions",
+              "unlock",
+              "disable",
+              "reactivate",
+              "permission_view",
+              "recover",
+              "request_summary",
+              "navigation_view",
+              "project_list",
+              "project_detail"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "permission_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Key"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_revision": {
+            "title": "User Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "user_id",
+          "user_revision",
+          "case_revision",
+          "kind",
+          "reason_code",
+          "permission_key",
+          "source_event_id",
+          "project_id",
+          "reason",
+          "digest",
+          "expires_at",
+          "applied_at"
+        ],
+        "title": "BusinessActionRead",
+        "type": "object"
+      },
+      "BusinessActionReviewContext": {
+        "additionalProperties": false,
+        "properties": {
+          "contact_ref": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Ref"
+          }
+        },
+        "title": "BusinessActionReviewContext",
+        "type": "object"
+      },
       "BusinessPolicyResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4091,6 +4412,250 @@
           "updated_at"
         ],
         "title": "CandidateResponse",
+        "type": "object"
+      },
+      "CaseActionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "member_add",
+              "member_remove",
+              "evidence_link",
+              "verify",
+              "close",
+              "subject_set",
+              "subject_remove",
+              "project_add",
+              "project_remove"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          },
+          "subject_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject User Id"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "CaseActionCreate",
+        "type": "object"
+      },
+      "CaseActionOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/CaseActionRead"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "proposal"
+        ],
+        "title": "CaseActionOptions",
+        "type": "object"
+      },
+      "CaseActionRead": {
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "case_revision": {
+            "title": "Case Revision",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "member_add",
+              "member_remove",
+              "evidence_link",
+              "verify",
+              "close",
+              "subject_set",
+              "subject_remove",
+              "project_add",
+              "project_remove"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "source_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Event Id"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id"
+          },
+          "source_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Status"
+          },
+          "subject_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject User Id"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "kind",
+          "member_id",
+          "source_event_id",
+          "subject_user_id",
+          "project_id",
+          "source_request_id",
+          "source_status",
+          "case_revision",
+          "expires_at",
+          "reviewer_id",
+          "applied_at"
+        ],
+        "title": "CaseActionRead",
         "type": "object"
       },
       "CertificationCreateRequest": {
@@ -9261,6 +9826,134 @@
           }
         },
         "title": "GoalUpdateRequest",
+        "type": "object"
+      },
+      "GrantChangeOptions": {
+        "properties": {
+          "capability": {
+            "enum": [
+              "cases.manage",
+              "logs.runtime",
+              "logs.stream",
+              "logs.export",
+              "health.read",
+              "directory.read",
+              "account.request",
+              "logs.audit",
+              "simulation.start"
+            ],
+            "title": "Capability",
+            "type": "string"
+          },
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "enable": {
+            "title": "Enable",
+            "type": "boolean"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "target_id",
+          "capability",
+          "enable"
+        ],
+        "title": "GrantChangeOptions",
+        "type": "object"
+      },
+      "GrantChangeRead": {
+        "properties": {
+          "capability": {
+            "enum": [
+              "cases.manage",
+              "logs.runtime",
+              "logs.stream",
+              "logs.export",
+              "health.read",
+              "directory.read",
+              "account.request",
+              "logs.audit",
+              "simulation.start"
+            ],
+            "title": "Capability",
+            "type": "string"
+          },
+          "enable": {
+            "title": "Enable",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grant_change_id": {
+            "format": "uuid",
+            "title": "Grant Change Id",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_change_id",
+          "target_id",
+          "capability",
+          "enable",
+          "expires_at"
+        ],
+        "title": "GrantChangeRead",
+        "type": "object"
+      },
+      "GrantChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "enum": [
+              "cases.manage",
+              "logs.runtime",
+              "logs.stream",
+              "logs.export",
+              "health.read",
+              "directory.read",
+              "account.request",
+              "logs.audit",
+              "simulation.start"
+            ],
+            "title": "Capability",
+            "type": "string"
+          },
+          "enable": {
+            "title": "Enable",
+            "type": "boolean"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "capability",
+          "enable"
+        ],
+        "title": "GrantChangeRequest",
         "type": "object"
       },
       "HolidayCreateRequest": {
@@ -14504,6 +15197,57 @@
           "has_more"
         ],
         "title": "ManagerReviewListResponse",
+        "type": "object"
+      },
+      "MaskedProject": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "status"
+        ],
+        "title": "MaskedProject",
+        "type": "object"
+      },
+      "MaskedProjectDetail": {
+        "properties": {
+          "counts_capped": {
+            "title": "Counts Capped",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "milestones": {
+            "title": "Milestones",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tasks": {
+            "title": "Tasks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "status",
+          "milestones",
+          "tasks",
+          "counts_capped"
+        ],
+        "title": "MaskedProjectDetail",
         "type": "object"
       },
       "MaterialQuantityCommand": {
@@ -22866,6 +23610,411 @@
         "title": "RefreshResponse",
         "type": "object"
       },
+      "RegistrationAlgorithm": {
+        "properties": {
+          "alg": {
+            "title": "Alg",
+            "type": "integer"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "alg"
+        ],
+        "title": "RegistrationAlgorithm",
+        "type": "object"
+      },
+      "RegistrationAttestation": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "rawId": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Rawid",
+            "type": "string"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RegistrationAttestationResponse"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "title": "RegistrationAttestation",
+        "type": "object"
+      },
+      "RegistrationAttestationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attestationObject": {
+            "maxLength": 16384,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Attestationobject",
+            "type": "string"
+          },
+          "clientDataJSON": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Clientdatajson",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attestationObject",
+          "clientDataJSON"
+        ],
+        "title": "RegistrationAttestationResponse",
+        "type": "object"
+      },
+      "RegistrationAuthenticator": {
+        "properties": {
+          "requireResidentKey": {
+            "title": "Requireresidentkey",
+            "type": "boolean"
+          },
+          "residentKey": {
+            "const": "required",
+            "title": "Residentkey",
+            "type": "string"
+          },
+          "userVerification": {
+            "const": "required",
+            "title": "Userverification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "residentKey",
+          "requireResidentKey",
+          "userVerification"
+        ],
+        "title": "RegistrationAuthenticator",
+        "type": "object"
+      },
+      "RegistrationCreationOptions": {
+        "properties": {
+          "public_key": {
+            "$ref": "#/components/schemas/RegistrationPublicKeyOptions"
+          }
+        },
+        "required": [
+          "public_key"
+        ],
+        "title": "RegistrationCreationOptions",
+        "type": "object"
+      },
+      "RegistrationDecision": {
+        "properties": {
+          "invitations": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitations"
+          }
+        },
+        "required": [
+          "invitations"
+        ],
+        "title": "RegistrationDecision",
+        "type": "object"
+      },
+      "RegistrationInvitation": {
+        "additionalProperties": false,
+        "properties": {
+          "invitation": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Invitation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation"
+        ],
+        "title": "RegistrationInvitation",
+        "type": "object"
+      },
+      "RegistrationProofOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "enroll",
+              "recover"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "target_id",
+          "kind"
+        ],
+        "title": "RegistrationProofOptions",
+        "type": "object"
+      },
+      "RegistrationProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "enroll",
+              "recover"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "kind"
+        ],
+        "title": "RegistrationProposal",
+        "type": "object"
+      },
+      "RegistrationProposalRead": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "enroll",
+              "recover"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "target_id",
+          "kind",
+          "expires_at"
+        ],
+        "title": "RegistrationProposalRead",
+        "type": "object"
+      },
+      "RegistrationPublicKeyOptions": {
+        "properties": {
+          "attestation": {
+            "const": "none",
+            "title": "Attestation",
+            "type": "string"
+          },
+          "authenticatorSelection": {
+            "$ref": "#/components/schemas/RegistrationAuthenticator"
+          },
+          "challenge": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Challenge",
+            "type": "string"
+          },
+          "pubKeyCredParams": {
+            "items": {
+              "$ref": "#/components/schemas/RegistrationAlgorithm"
+            },
+            "title": "Pubkeycredparams",
+            "type": "array"
+          },
+          "rp": {
+            "$ref": "#/components/schemas/RegistrationRp"
+          },
+          "timeout": {
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "user": {
+            "$ref": "#/components/schemas/RegistrationUser"
+          }
+        },
+        "required": [
+          "challenge",
+          "rp",
+          "user",
+          "pubKeyCredParams",
+          "timeout",
+          "attestation",
+          "authenticatorSelection"
+        ],
+        "title": "RegistrationPublicKeyOptions",
+        "type": "object"
+      },
+      "RegistrationResult": {
+        "properties": {
+          "activated": {
+            "title": "Activated",
+            "type": "boolean"
+          },
+          "awaiting_other_custodian": {
+            "default": false,
+            "title": "Awaiting Other Custodian",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "activated"
+        ],
+        "title": "RegistrationResult",
+        "type": "object"
+      },
+      "RegistrationRp": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "RegistrationRp",
+        "type": "object"
+      },
+      "RegistrationStatus": {
+        "properties": {
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "registered",
+              "activated"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "state"
+        ],
+        "title": "RegistrationStatus",
+        "type": "object"
+      },
+      "RegistrationUser": {
+        "properties": {
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "displayName"
+        ],
+        "title": "RegistrationUser",
+        "type": "object"
+      },
+      "RegistrationVerify": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "$ref": "#/components/schemas/RegistrationAttestation"
+          },
+          "invitation": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Invitation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation",
+          "credential"
+        ],
+        "title": "RegistrationVerify",
+        "type": "object"
+      },
       "ReimbursementCreateRequest": {
         "properties": {
           "amount": {
@@ -25186,6 +26335,77 @@
         "title": "StockResponse",
         "type": "object"
       },
+      "SuperAdminChallenge": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "expires_at"
+        ],
+        "title": "SuperAdminChallenge",
+        "type": "object"
+      },
+      "SuperAdminOverview": {
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "scope": {
+            "const": "platform",
+            "default": "platform",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "const": "portal-api",
+            "default": "portal-api",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "const": "available",
+            "default": "available",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_at"
+        ],
+        "title": "SuperAdminOverview",
+        "type": "object"
+      },
+      "SuperAdminToken": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_at"
+        ],
+        "title": "SuperAdminToken",
+        "type": "object"
+      },
       "SupervisorUpdateCreateRequest": {
         "properties": {
           "attachment_refs": {
@@ -25892,6 +27112,1771 @@
           }
         },
         "title": "SupplierUpdateRequest",
+        "type": "object"
+      },
+      "SupportAccountEvent": {
+        "properties": {
+          "category": {
+            "enum": [
+              "login_succeeded",
+              "login_failed",
+              "session_replay_revoked",
+              "password_changed",
+              "password_recovered"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "category"
+        ],
+        "title": "SupportAccountEvent",
+        "type": "object"
+      },
+      "SupportAccountRead": {
+        "properties": {
+          "access_revision": {
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "case_revision": {
+            "title": "Case Revision",
+            "type": "integer"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email_masked": {
+            "title": "Email Masked",
+            "type": "string"
+          },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "membership_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Membership Ids",
+            "type": "array"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "recent_auth_events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportAccountEvent"
+            },
+            "title": "Recent Auth Events",
+            "type": "array"
+          },
+          "recovery_destination_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Destination Verified"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "case_revision",
+          "user_id",
+          "display_name",
+          "email_masked",
+          "employee_code",
+          "role",
+          "permissions",
+          "access_revision",
+          "active",
+          "deleted",
+          "locked",
+          "recovery_destination_verified",
+          "membership_ids",
+          "recent_auth_events"
+        ],
+        "title": "SupportAccountRead",
+        "type": "object"
+      },
+      "SupportAccountSelector": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "enum": [
+              "email",
+              "employee_code",
+              "name",
+              "role"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 254,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ],
+        "title": "SupportAccountSelector",
+        "type": "object"
+      },
+      "SupportAssertion": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "rawId": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Rawid",
+            "type": "string"
+          },
+          "response": {
+            "$ref": "#/components/schemas/SupportAssertionResponse"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "title": "SupportAssertion",
+        "type": "object"
+      },
+      "SupportAssertionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticatorData": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Authenticatordata",
+            "type": "string"
+          },
+          "clientDataJSON": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Clientdatajson",
+            "type": "string"
+          },
+          "signature": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Signature",
+            "type": "string"
+          },
+          "userHandle": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Userhandle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authenticatorData",
+          "clientDataJSON",
+          "signature",
+          "userHandle"
+        ],
+        "title": "SupportAssertionResponse",
+        "type": "object"
+      },
+      "SupportAuditEvent": {
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "case",
+              "case_decision",
+              "account_decision",
+              "directory",
+              "runtime"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "title": "Reference Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference_id",
+          "operator_id",
+          "occurred_at",
+          "family",
+          "event"
+        ],
+        "title": "SupportAuditEvent",
+        "type": "object"
+      },
+      "SupportAuditPage": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportAuditEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "events",
+          "truncated"
+        ],
+        "title": "SupportAuditPage",
+        "type": "object"
+      },
+      "SupportCaseCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "external_ref": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "title": "External Ref",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "availability",
+              "access",
+              "functional",
+              "data_integrity"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_ref",
+          "severity",
+          "reason_code"
+        ],
+        "title": "SupportCaseCreate",
+        "type": "object"
+      },
+      "SupportCasePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCaseRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SupportCasePage",
+        "type": "object"
+      },
+      "SupportCaseRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_ref": {
+            "title": "External Ref",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "availability",
+              "access",
+              "functional",
+              "data_integrity"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "investigating",
+              "mitigated",
+              "verified",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "external_ref",
+          "owner_id",
+          "status",
+          "severity",
+          "reason_code",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SupportCaseRead",
+        "type": "object"
+      },
+      "SupportCaseTransition": {
+        "additionalProperties": false,
+        "properties": {
+          "reason_code": {
+            "enum": [
+              "availability",
+              "access",
+              "functional",
+              "data_integrity"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "investigating",
+              "mitigated"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason_code"
+        ],
+        "title": "SupportCaseTransition",
+        "type": "object"
+      },
+      "SupportCliHandoff": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id"
+        ],
+        "title": "SupportCliHandoff",
+        "type": "object"
+      },
+      "SupportCliOptionsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "pairing_code": {
+            "pattern": "^[a-f0-9]{12}$",
+            "title": "Pairing Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "pairing_code"
+        ],
+        "title": "SupportCliOptionsRequest",
+        "type": "object"
+      },
+      "SupportCliProofEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "sealed": {
+            "pattern": "^[A-Za-z0-9_-]{1,32768}$",
+            "title": "Sealed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sealed"
+        ],
+        "title": "SupportCliProofEnvelope",
+        "type": "object"
+      },
+      "SupportCliProofOptions": {
+        "properties": {
+          "action_id": {
+            "format": "uuid",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "encryption_key": {
+            "pattern": "^[A-Za-z0-9_-]{350,512}$",
+            "title": "Encryption Key",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "encryption_key",
+          "operation",
+          "stage",
+          "action_id"
+        ],
+        "title": "SupportCliProofOptions",
+        "type": "object"
+      },
+      "SupportCliProofPair": {
+        "additionalProperties": false,
+        "properties": {
+          "pairing_code": {
+            "pattern": "^[a-f0-9]{12}$",
+            "title": "Pairing Code",
+            "type": "string"
+          },
+          "reference": {
+            "format": "uuid",
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "pairing_code"
+        ],
+        "title": "SupportCliProofPair",
+        "type": "object"
+      },
+      "SupportCliProofReference": {
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "format": "uuid",
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "title": "SupportCliProofReference",
+        "type": "object"
+      },
+      "SupportCliProofStart": {
+        "additionalProperties": false,
+        "properties": {
+          "encryption_key": {
+            "pattern": "^[A-Za-z0-9_-]{350,512}$",
+            "title": "Encryption Key",
+            "type": "string"
+          },
+          "pairing_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Pairing Hash",
+            "type": "string"
+          },
+          "proof_id": {
+            "format": "uuid",
+            "title": "Proof Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proof_id",
+          "pairing_hash",
+          "encryption_key"
+        ],
+        "title": "SupportCliProofStart",
+        "type": "object"
+      },
+      "SupportCliProofSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "pairing_code": {
+            "pattern": "^[a-f0-9]{12}$",
+            "title": "Pairing Code",
+            "type": "string"
+          },
+          "reference": {
+            "format": "uuid",
+            "title": "Reference",
+            "type": "string"
+          },
+          "sealed": {
+            "pattern": "^[A-Za-z0-9_-]{1,32768}$",
+            "title": "Sealed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "pairing_code",
+          "sealed"
+        ],
+        "title": "SupportCliProofSubmit",
+        "type": "object"
+      },
+      "SupportCliStart": {
+        "additionalProperties": false,
+        "properties": {
+          "code_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Code Hash",
+            "type": "string"
+          },
+          "csrf_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Csrf Hash",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "token_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Token Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "token_hash",
+          "csrf_hash",
+          "code_hash"
+        ],
+        "title": "SupportCliStart",
+        "type": "object"
+      },
+      "SupportCliVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SupportAssertion"
+          },
+          "pairing_code": {
+            "pattern": "^[a-f0-9]{12}$",
+            "title": "Pairing Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential",
+          "pairing_code"
+        ],
+        "title": "SupportCliVerifyRequest",
+        "type": "object"
+      },
+      "SupportEvidenceDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SupportAssertion"
+          },
+          "expected_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential",
+          "expected_sha256"
+        ],
+        "title": "SupportEvidenceDecision",
+        "type": "object"
+      },
+      "SupportEvidenceExportCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/SupportEvidenceFilters"
+          },
+          "reason": {
+            "enum": [
+              "incident_review",
+              "audit_review"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filters",
+          "reason"
+        ],
+        "title": "SupportEvidenceExportCreate",
+        "type": "object"
+      },
+      "SupportEvidenceExportRead": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "downloaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloaded At"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SupportEvidenceFilters"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "incident_review",
+              "audit_review"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "filters",
+          "reason",
+          "row_count",
+          "truncated",
+          "sha256",
+          "expires_at",
+          "approved_at",
+          "downloaded_at"
+        ],
+        "title": "SupportEvidenceExportRead",
+        "type": "object"
+      },
+      "SupportEvidenceFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "ended_at": {
+            "format": "date-time",
+            "title": "Ended At",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10000,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "request_id": {
+            "maxLength": 36,
+            "pattern": "^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "maximum": 599.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "request_id",
+          "started_at",
+          "ended_at"
+        ],
+        "title": "SupportEvidenceFilters",
+        "type": "object"
+      },
+      "SupportEvidenceProofOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "export": {
+            "$ref": "#/components/schemas/SupportEvidenceExportRead"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "export"
+        ],
+        "title": "SupportEvidenceProofOptions",
+        "type": "object"
+      },
+      "SupportHealthRead": {
+        "properties": {
+          "database": {
+            "enum": [
+              "operational",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "object_storage": {
+            "enum": [
+              "operational",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Object Storage",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "redis": {
+            "enum": [
+              "operational",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Redis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "redis",
+          "object_storage",
+          "observed_at"
+        ],
+        "title": "SupportHealthRead",
+        "type": "object"
+      },
+      "SupportLoginOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key"
+        ],
+        "title": "SupportLoginOptions",
+        "type": "object"
+      },
+      "SupportLoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id"
+        ],
+        "title": "SupportLoginRequest",
+        "type": "object"
+      },
+      "SupportNavigationProjection": {
+        "properties": {
+          "adapter": {
+            "const": "navigation",
+            "default": "navigation",
+            "title": "Adapter",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/SupportNavigationRoute"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "case_id",
+          "operator_id",
+          "subject_id",
+          "expires_at",
+          "routes"
+        ],
+        "title": "SupportNavigationProjection",
+        "type": "object"
+      },
+      "SupportNavigationRoute": {
+        "properties": {
+          "route_id": {
+            "title": "Route Id",
+            "type": "string"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "route_id",
+          "visible"
+        ],
+        "title": "SupportNavigationRoute",
+        "type": "object"
+      },
+      "SupportOtpRequired": {
+        "properties": {
+          "otp_reference": {
+            "format": "uuid",
+            "title": "Otp Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "otp_reference"
+        ],
+        "title": "SupportOtpRequired",
+        "type": "object"
+      },
+      "SupportOtpVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "otp": {
+            "pattern": "^[0-9]{6}$",
+            "title": "Otp",
+            "type": "string"
+          },
+          "otp_reference": {
+            "format": "uuid",
+            "title": "Otp Reference",
+            "type": "string"
+          },
+          "pairing_code": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pairing Code"
+          }
+        },
+        "required": [
+          "otp_reference",
+          "otp"
+        ],
+        "title": "SupportOtpVerification",
+        "type": "object"
+      },
+      "SupportPermissionExplanation": {
+        "properties": {
+          "adapter": {
+            "const": "permission-explanation",
+            "default": "permission-explanation",
+            "title": "Adapter",
+            "type": "string"
+          },
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "permission_key": {
+            "title": "Permission Key",
+            "type": "string"
+          },
+          "scope": {
+            "const": "role",
+            "default": "role",
+            "title": "Scope",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "case_id",
+          "operator_id",
+          "subject_id",
+          "expires_at",
+          "permission_key",
+          "allowed"
+        ],
+        "title": "SupportPermissionExplanation",
+        "type": "object"
+      },
+      "SupportProfile": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "expires_at",
+          "capabilities"
+        ],
+        "title": "SupportProfile",
+        "type": "object"
+      },
+      "SupportProjectDetail": {
+        "properties": {
+          "adapter": {
+            "const": "project-detail-summary",
+            "default": "project-detail-summary",
+            "title": "Adapter",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "project": {
+            "$ref": "#/components/schemas/MaskedProjectDetail"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "case_id",
+          "operator_id",
+          "subject_id",
+          "expires_at",
+          "project"
+        ],
+        "title": "SupportProjectDetail",
+        "type": "object"
+      },
+      "SupportProjectList": {
+        "properties": {
+          "adapter": {
+            "const": "project-list",
+            "default": "project-list",
+            "title": "Adapter",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/MaskedProject"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_id",
+          "case_id",
+          "operator_id",
+          "subject_id",
+          "expires_at",
+          "projects"
+        ],
+        "title": "SupportProjectList",
+        "type": "object"
+      },
+      "SupportPublicKeyOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "allowCredentials": {
+            "default": [],
+            "items": {},
+            "title": "Allowcredentials",
+            "type": "array"
+          },
+          "challenge": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Challenge",
+            "type": "string"
+          },
+          "rpId": {
+            "title": "Rpid",
+            "type": "string"
+          },
+          "timeout": {
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "userVerification": {
+            "const": "required",
+            "title": "Userverification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "rpId",
+          "timeout",
+          "userVerification"
+        ],
+        "title": "SupportPublicKeyOptions",
+        "type": "object"
+      },
+      "SupportRecoveryStatus": {
+        "properties": {
+          "action_id": {
+            "format": "uuid",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "delivery_resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Resolved At"
+          },
+          "delivery_state": {
+            "enum": [
+              "not_queued",
+              "pending",
+              "dispatching",
+              "accepted",
+              "unknown",
+              "cancelled"
+            ],
+            "title": "Delivery State",
+            "type": "string"
+          },
+          "queued_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued At"
+          },
+          "reset_state": {
+            "enum": [
+              "not_issued",
+              "waiting",
+              "ready",
+              "unavailable",
+              "completed",
+              "expired",
+              "revoked"
+            ],
+            "title": "Reset State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "action_id",
+          "delivery_state",
+          "reset_state"
+        ],
+        "title": "SupportRecoveryStatus",
+        "type": "object"
+      },
+      "SupportRequestEvent": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "request",
+              "handled_error",
+              "unhandled_error"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "OPTIONS"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "maximum": 599.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "kind",
+          "method",
+          "status_code"
+        ],
+        "title": "SupportRequestEvent",
+        "type": "object"
+      },
+      "SupportRequestLogPage": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportRequestEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "request_id",
+          "events",
+          "truncated"
+        ],
+        "title": "SupportRequestLogPage",
+        "type": "object"
+      },
+      "SupportRequestSummary": {
+        "properties": {
+          "adapter": {
+            "const": "request-summary",
+            "default": "request-summary",
+            "title": "Adapter",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "request_ref": {
+            "title": "Request Ref",
+            "type": "string"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "integer"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "view_id": {
+            "format": "uuid",
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_ref",
+          "method",
+          "status_code",
+          "occurred_at",
+          "view_id",
+          "case_id",
+          "operator_id",
+          "subject_id",
+          "expires_at"
+        ],
+        "title": "SupportRequestSummary",
+        "type": "object"
+      },
+      "SupportSessionRead": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "expires_at"
+        ],
+        "title": "SupportSessionRead",
+        "type": "object"
+      },
+      "SupportTimelineEvent": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "request_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Status"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id",
+          "occurred_at",
+          "kind",
+          "revision",
+          "status"
+        ],
+        "title": "SupportTimelineEvent",
+        "type": "object"
+      },
+      "SupportTimelineRead": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportTimelineEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "events",
+          "truncated"
+        ],
+        "title": "SupportTimelineRead",
+        "type": "object"
+      },
+      "SupportVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SupportAssertion"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential"
+        ],
+        "title": "SupportVerifyRequest",
+        "type": "object"
+      },
+      "SuspensionOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "target_id"
+        ],
+        "title": "SuspensionOptions",
+        "type": "object"
+      },
+      "SuspensionRead": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "suspension_id": {
+            "format": "uuid",
+            "title": "Suspension Id",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suspension_id",
+          "target_id",
+          "expires_at"
+        ],
+        "title": "SuspensionRead",
+        "type": "object"
+      },
+      "SuspensionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id"
+        ],
+        "title": "SuspensionRequest",
         "type": "object"
       },
       "TimesheetCreateRequest": {
@@ -50616,13 +53601,32 @@
               ],
               "title": "Created From"
             }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
             "description": "Successful Response"
@@ -53069,6 +56073,185 @@
         ]
       }
     },
+    "/api/v1/super-admin/auth/login": {
+      "post": {
+        "operationId": "login_api_v1_super_admin_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuperAdminChallenge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Login Api V1 Super Admin Auth Login Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "Super Admin"
+        ]
+      }
+    },
+    "/api/v1/super-admin/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_super_admin_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Logout Api V1 Super Admin Auth Logout Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "Super Admin"
+        ]
+      }
+    },
+    "/api/v1/super-admin/auth/verify-otp": {
+      "post": {
+        "operationId": "verify_otp_api_v1_super_admin_auth_verify_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyOtpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuperAdminToken"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Verify Otp Api V1 Super Admin Auth Verify Otp Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Verify Otp",
+        "tags": [
+          "Super Admin"
+        ]
+      }
+    },
+    "/api/v1/super-admin/overview": {
+      "get": {
+        "operationId": "read_overview_api_v1_super_admin_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuperAdminOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Overview Api V1 Super Admin Overview Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Overview",
+        "tags": [
+          "Super Admin"
+        ]
+      }
+    },
     "/api/v1/supervisor-updates": {
       "get": {
         "operationId": "list_supervisor_updates_api_v1_supervisor_updates_get",
@@ -53770,6 +56953,3169 @@
         "summary": "Upload Tds Document",
         "tags": [
           "Suppliers"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli-proof/options": {
+      "post": {
+        "operationId": "cli_proof_options_api_v1_support_auth_cli_proof_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliProofPair"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCliProofOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Cli Proof Options Api V1 Support Auth Cli Proof Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Cli Proof Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli-proof/start": {
+      "post": {
+        "operationId": "start_cli_proof_api_v1_support_auth_cli_proof_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliProofStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCliProofReference"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Start Cli Proof Api V1 Support Auth Cli Proof Start Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Start Cli Proof",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli-proof/submit": {
+      "post": {
+        "operationId": "submit_cli_proof_api_v1_support_auth_cli_proof_submit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliProofSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Submit Cli Proof Api V1 Support Auth Cli Proof Submit Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Submit Cli Proof",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli-proof/take": {
+      "post": {
+        "operationId": "take_cli_proof_api_v1_support_auth_cli_proof_take_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliProofReference"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCliProofEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Take Cli Proof Api V1 Support Auth Cli Proof Take Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Take Cli Proof",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli/options": {
+      "post": {
+        "operationId": "cli_login_options_api_v1_support_auth_cli_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliOptionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportLoginOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Cli Login Options Api V1 Support Auth Cli Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Cli Login Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli/start": {
+      "post": {
+        "operationId": "start_cli_login_api_v1_support_auth_cli_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCliHandoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Start Cli Login Api V1 Support Auth Cli Start Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Start Cli Login",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/cli/verify": {
+      "post": {
+        "operationId": "verify_cli_login_api_v1_support_auth_cli_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCliVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportOtpRequired"
+                }
+              }
+            },
+            "description": "Email verification required"
+          },
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Verify Cli Login Api V1 Support Auth Cli Verify Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Verify Cli Login",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_support_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Logout Api V1 Support Auth Logout Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/options": {
+      "post": {
+        "operationId": "login_options_api_v1_support_auth_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportLoginOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Login Options Api V1 Support Auth Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Login Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/verify": {
+      "post": {
+        "operationId": "verify_login_api_v1_support_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SupportSessionRead"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SupportOtpRequired"
+                    }
+                  ],
+                  "title": "Response Verify Login Api V1 Support Auth Verify Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Verify Login Api V1 Support Auth Verify Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Verify Login",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/verify-otp": {
+      "post": {
+        "operationId": "verify_login_otp_api_v1_support_auth_verify_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportOtpVerification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportSessionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "CLI session confirmed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Verify Login Otp Api V1 Support Auth Verify Otp Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Verify Login Otp",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases": {
+      "get": {
+        "operationId": "list_cases_api_v1_support_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCasePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Cases Api V1 Support Cases Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "List Cases",
+        "tags": [
+          "Support"
+        ]
+      },
+      "post": {
+        "operationId": "create_case_api_v1_support_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCaseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCaseRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Create Case Api V1 Support Cases Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Create Case",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}": {
+      "get": {
+        "operationId": "read_case_api_v1_support_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCaseRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Case Api V1 Support Cases  Case Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Read Case",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/account-actions": {
+      "post": {
+        "operationId": "propose_business_action_api_v1_support_cases__case_id__account_actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessActionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessActionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Business Action Api V1 Support Cases  Case Id  Account Actions Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Business Action",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/recovery-status": {
+      "get": {
+        "operationId": "support_recovery_status_api_v1_support_cases__case_id__account_actions__action_id__recovery_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportRecoveryStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Recovery Status Api V1 Support Cases  Case Id  Account Actions  Action Id  Recovery Status Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Recovery Status",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/{stage}": {
+      "post": {
+        "operationId": "decide_business_action_api_v1_support_cases__case_id__account_actions__action_id___stage__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessActionProofVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessActionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Business Action Api V1 Support Cases  Case Id  Account Actions  Action Id   Stage  Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Decide Business Action",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/{stage}/options": {
+      "post": {
+        "operationId": "business_action_options_api_v1_support_cases__case_id__account_actions__action_id___stage__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BusinessActionReviewContext"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessActionProofOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Business Action Options Api V1 Support Cases  Case Id  Account Actions  Action Id   Stage  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Business Action Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/accounts": {
+      "get": {
+        "operationId": "support_case_account_api_v1_support_cases__case_id__accounts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Case Account Api V1 Support Cases  Case Id  Accounts Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Case Account",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/accounts/search": {
+      "post": {
+        "operationId": "search_support_case_account_api_v1_support_cases__case_id__accounts_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportAccountSelector"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Search Support Case Account Api V1 Support Cases  Case Id  Accounts Search Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Search Support Case Account",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/accounts/{user_id}": {
+      "get": {
+        "operationId": "support_account_api_v1_support_cases__case_id__accounts__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAccountRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Account Api V1 Support Cases  Case Id  Accounts  User Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Account",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/actions": {
+      "post": {
+        "operationId": "propose_case_action_api_v1_support_cases__case_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": true,
+            "schema": {
+              "pattern": "^\"[1-9][0-9]{0,9}\"$",
+              "title": "If-Match",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseActionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseActionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Case Action Api V1 Support Cases  Case Id  Actions Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Case Action",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/actions/{action_id}/apply": {
+      "post": {
+        "operationId": "apply_case_action_api_v1_support_cases__case_id__actions__action_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseActionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Apply Case Action Api V1 Support Cases  Case Id  Actions  Action Id  Apply Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Apply Case Action",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/actions/{action_id}/options": {
+      "post": {
+        "operationId": "case_action_options_api_v1_support_cases__case_id__actions__action_id__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseActionOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Case Action Options Api V1 Support Cases  Case Id  Actions  Action Id  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Case Action Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/audit": {
+      "get": {
+        "operationId": "support_case_audit_api_v1_support_cases__case_id__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "started_at",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Started At",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ended_at",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Ended At",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAuditPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Case Audit Api V1 Support Cases  Case Id  Audit Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Case Audit",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/exports": {
+      "post": {
+        "operationId": "propose_evidence_export_api_v1_support_cases__case_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportEvidenceExportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportEvidenceExportRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Evidence Export Api V1 Support Cases  Case Id  Exports Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Evidence Export",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/download": {
+      "post": {
+        "operationId": "download_evidence_export_api_v1_support_cases__case_id__exports__export_id__download_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportEvidenceDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Download Evidence Export Api V1 Support Cases  Case Id  Exports  Export Id  Download Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Download Evidence Export",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/review": {
+      "post": {
+        "operationId": "review_evidence_export_api_v1_support_cases__case_id__exports__export_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportEvidenceDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportEvidenceExportRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Review Evidence Export Api V1 Support Cases  Case Id  Exports  Export Id  Review Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Review Evidence Export",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/{stage}/options": {
+      "post": {
+        "operationId": "evidence_export_options_api_v1_support_cases__case_id__exports__export_id___stage__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "download"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportEvidenceProofOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Evidence Export Options Api V1 Support Cases  Case Id  Exports  Export Id   Stage  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Evidence Export Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/logs": {
+      "get": {
+        "operationId": "get_case_logs_api_v1_support_cases__case_id__logs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "pattern": "^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "started_at",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Started At",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ended_at",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Ended At",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 599,
+                  "minimum": 100,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportRequestLogPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Case Logs Api V1 Support Cases  Case Id  Logs Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Get Case Logs",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/logs/stream": {
+      "get": {
+        "operationId": "stream_case_logs_api_v1_support_cases__case_id__logs_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "pattern": "^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Stream Case Logs Api V1 Support Cases  Case Id  Logs Stream Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Stream Case Logs",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/timeline": {
+      "get": {
+        "operationId": "support_case_timeline_api_v1_support_cases__case_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTimelineRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Case Timeline Api V1 Support Cases  Case Id  Timeline Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Case Timeline",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/cases/{case_id}/transitions": {
+      "post": {
+        "operationId": "transition_case_api_v1_support_cases__case_id__transitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-match",
+            "required": true,
+            "schema": {
+              "pattern": "^\"[1-9][0-9]{0,9}\"$",
+              "title": "If-Match",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportCaseTransition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCaseRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Transition Case Api V1 Support Cases  Case Id  Transitions Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Transition Case",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/grant-changes": {
+      "post": {
+        "operationId": "propose_grant_change_api_v1_support_custody_grant_changes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantChangeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Grant Change Api V1 Support Custody Grant Changes Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Grant Change",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/grant-changes/{change_id}/{stage}": {
+      "post": {
+        "operationId": "decide_grant_change_api_v1_support_custody_grant_changes__change_id___stage__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Change Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Grant Change Api V1 Support Custody Grant Changes  Change Id   Stage  Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Decide Grant Change",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/grant-changes/{change_id}/{stage}/options": {
+      "post": {
+        "operationId": "grant_change_options_api_v1_support_custody_grant_changes__change_id___stage__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "change_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Change Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantChangeOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Grant Change Options Api V1 Support Custody Grant Changes  Change Id   Stage  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Grant Change Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/registrations": {
+      "post": {
+        "operationId": "propose_registration_api_v1_support_custody_registrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Registration Api V1 Support Custody Registrations Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Registration",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/registrations/{kind}/{proposal_id}/{stage}": {
+      "post": {
+        "operationId": "decide_registration_api_v1_support_custody_registrations__kind___proposal_id___stage__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "enroll",
+                "recover"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Registration Api V1 Support Custody Registrations  Kind   Proposal Id   Stage  Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Decide Registration",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/registrations/{kind}/{proposal_id}/{stage}/options": {
+      "post": {
+        "operationId": "registration_proof_options_api_v1_support_custody_registrations__kind___proposal_id___stage__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "enroll",
+                "recover"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationProofOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Registration Proof Options Api V1 Support Custody Registrations  Kind   Proposal Id   Stage  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Registration Proof Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/suspensions": {
+      "post": {
+        "operationId": "propose_suspension_api_v1_support_custody_suspensions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspensionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspensionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Propose Suspension Api V1 Support Custody Suspensions Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Propose Suspension",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/suspensions/{suspension_id}/{stage}": {
+      "post": {
+        "operationId": "decide_suspension_api_v1_support_custody_suspensions__suspension_id___stage__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suspension_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Suspension Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Decide Suspension Api V1 Support Custody Suspensions  Suspension Id   Stage  Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Decide Suspension",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/custody/suspensions/{suspension_id}/{stage}/options": {
+      "post": {
+        "operationId": "suspension_options_api_v1_support_custody_suspensions__suspension_id___stage__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suspension_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Suspension Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "stage",
+            "required": true,
+            "schema": {
+              "enum": [
+                "review",
+                "execute"
+              ],
+              "title": "Stage",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspensionOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Suspension Options Api V1 Support Custody Suspensions  Suspension Id   Stage  Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Suspension Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/health": {
+      "get": {
+        "operationId": "support_health_api_v1_support_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportHealthRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Health Api V1 Support Health Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Health",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/me": {
+      "get": {
+        "operationId": "read_me_api_v1_support_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Me Api V1 Support Me Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Read Me",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/registration/options": {
+      "post": {
+        "operationId": "passkey_registration_options_api_v1_support_registration_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationInvitation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationCreationOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Passkey Registration Options Api V1 Support Registration Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Passkey Registration Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/registration/status": {
+      "post": {
+        "operationId": "registration_status_api_v1_support_registration_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationInvitation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Registration Status Api V1 Support Registration Status Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Registration Status",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/registration/verify": {
+      "post": {
+        "operationId": "register_passkey_api_v1_support_registration_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationVerify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Register Passkey Api V1 Support Registration Verify Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Register Passkey",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/end": {
+      "post": {
+        "operationId": "end_permission_view_api_v1_support_views__view_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 End Permission View Api V1 Support Views  View Id  End Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "End Permission View",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/projection/navigation": {
+      "get": {
+        "operationId": "support_navigation_api_v1_support_views__view_id__projection_navigation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportNavigationProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Navigation Api V1 Support Views  View Id  Projection Navigation Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Navigation",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/projection/permission-explanation": {
+      "get": {
+        "operationId": "support_permission_view_api_v1_support_views__view_id__projection_permission_explanation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportPermissionExplanation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Permission View Api V1 Support Views  View Id  Projection Permission Explanation Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Permission View",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/projection/project-detail-summary": {
+      "get": {
+        "operationId": "support_project_detail_api_v1_support_views__view_id__projection_project_detail_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Project Detail Api V1 Support Views  View Id  Projection Project Detail Summary Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Project Detail",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/projection/project-list": {
+      "get": {
+        "operationId": "support_project_list_api_v1_support_views__view_id__projection_project_list_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportProjectList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Project List Api V1 Support Views  View Id  Projection Project List Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Project List",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/views/{view_id}/projection/request-summary": {
+      "get": {
+        "operationId": "support_request_summary_api_v1_support_views__view_id__projection_request_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportRequestSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Request Summary Api V1 Support Views  View Id  Projection Request Summary Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Request Summary",
+        "tags": [
+          "Support"
         ]
       }
     },

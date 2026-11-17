@@ -47,7 +47,7 @@ services:
   backend:
     build:
       context: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-access-log
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-access-log --no-proxy-headers
     env_file:
       - .env
     environment:

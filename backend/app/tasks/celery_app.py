@@ -30,6 +30,7 @@ celery_app = Celery(
         "app.tasks.maintenance",
         "app.tasks.imports",
         "app.tasks.outbox",
+        "app.tasks.support_recovery",
     ],
 )
 
@@ -79,6 +80,11 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=0),
     },
 }
+if settings.app_env.lower() == "test" and settings.support_portal_enabled:
+    celery_app.conf.beat_schedule["dispatch-support-recovery-deliveries"] = {
+        "task": "dispatch_support_recovery_deliveries",
+        "schedule": 30,
+    }
 if settings.hr_reminder_window_days is not None:
     celery_app.conf.beat_schedule["check-hr-credential-expiry-daily"] = {
         "task": "check_hr_credential_expiry",

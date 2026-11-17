@@ -15,8 +15,10 @@ from app.api.v1.notifications import router as notifications_router
 from app.api.v1.photos import router as photos_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.reports import router as reports_router
+from app.api.v1.super_admin import router as super_admin_router
 from app.api.v1.supervisor_updates import router as supervisor_updates_router
 from app.api.v1.suppliers import router as suppliers_router
+from app.api.v1.support import router as support_router
 from app.api.v1.users import router as users_router
 from app.utils.exceptions import AppErrorResponse, ValidationErrorResponse
 
@@ -53,6 +55,8 @@ api_router.include_router(notifications_router)
 api_router.include_router(photos_router)
 api_router.include_router(projects_router)
 api_router.include_router(reports_router)
+api_router.include_router(super_admin_router)
+api_router.include_router(support_router)
 api_router.include_router(supervisor_updates_router)
 api_router.include_router(suppliers_router)
 api_router.include_router(users_router)

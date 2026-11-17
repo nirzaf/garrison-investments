@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -322,3 +323,461 @@ def test_health_checks_payload_and_errors_do_not_echo_body():
     assert code == 0 and result["data"] == {"status": "ready", "database": "connected"}
     code, result = invoke(["health", "check"], lambda _: response({"status": "not_ready"}))
     assert code == 5 and result["changed"] is False
+
+
+def test_technical_cli_login_and_private_readback_never_send_business_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import garrisonctl_support
+
+    tmp_path.chmod(0o700)
+    session = tmp_path / "technical-session.json"
+    output = tmp_path / "profile.json"
+    secret, csrf, code = "A" * 43, "B" * 43, "123456789abc"
+    handoff = str(uuid4())
+    tokens = iter([secret, csrf])
+    monkeypatch.setattr(garrisonctl_support, "token_urlsafe", lambda _: next(tokens))
+    monkeypatch.setattr(garrisonctl_support, "token_hex", lambda _: code)
+    monkeypatch.setattr(garrisonctl_support, "_private_terminal", lambda: io.StringIO("\n" * 300))
+    monkeypatch.setattr(
+        garrisonctl_support.webbrowser, "open",
+        lambda url, **_: url == f"https://superadmin.garrisons.lk/#cli={handoff}",
+    )
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        assert request.url.host == "superadmin.garrisons.lk"
+        assert "Authorization" not in request.headers
+        if request.url.path.endswith("/start"):
+            body = json.loads(request.content)
+            assert body["operator_id"] == ACTOR
+            assert not any(x in request.content.decode() for x in (secret, csrf, code))
+            return response({"challenge_id": handoff})
+        assert request.headers["X-Support-CSRF"] == csrf
+        assert f"__Host-garrison-support={secret}" in request.headers["Cookie"]
+        if request.url.path.endswith("/logout"):
+            return httpx.Response(204)
+        if request.url.path.endswith("/health"):
+            return response({"detail": "restricted"}, status=403)
+        return response({"operator_id": ACTOR, "capabilities": ["cases.manage"]})
+
+    settings = ["--session-file", str(session)]
+    login = ["support", "auth", "login", "--operator", ACTOR, *settings]
+    result, preview = invoke(login, handler)
+    assert result == 0 and preview["outcome"] == "preview" and not seen
+    result, connected = invoke([*login, "--apply"], handler)
+    assert result == 0 and connected["data"]["authenticated"]
+    assert session.stat().st_mode & 0o777 == 0o600
+    result, profile = invoke(
+        ["support", "auth", "whoami", "--output", str(output), *settings], handler
+    )
+    assert result == 0 and profile["data"] == {"written_to_private_file": True}
+    assert json.loads(output.read_text())["operator_id"] == ACTOR
+    assert output.stat().st_mode & 0o777 == 0o600
+    denied = tmp_path / "denied.json"
+    result, failure = invoke(
+        ["support", "health", "show", "--output", str(denied), *settings], handler
+    )
+    assert result != 0 and failure["errors"][0]["details"]["http_status"] == 403
+    assert not denied.exists()
+    result, signout = invoke(["support", "auth", "logout", "--apply", *settings], handler)
+    assert result == 0 and not session.exists()
+    for value in (secret, csrf, code, TOKEN):
+        assert value not in json.dumps([preview, connected, profile, failure, signout])
+    result, rejected = invoke(
+        ["--base-url", "https://portal.example.invalid", *login, "--apply"], handler
+    )
+    assert result != 0 and rejected["outcome"] == "error"
+    assert len(seen) == 5
+
+
+def _support_file(path: Path, payload: dict) -> str:
+    path.write_text(json.dumps(payload))
+    path.chmod(0o600)
+    return str(path)
+
+
+def _technical_session(tmp_path: Path) -> list[str]:
+    tmp_path.chmod(0o700)
+    return ["--session-file", _support_file(tmp_path / "support.json", {
+        "origin": "https://superadmin.garrisons.lk",
+        "support_token": "Z" * 43,
+        "support_csrf": "X" * 43,
+    })]
+
+
+def test_support_account_lookup_uses_case_scope_and_writes_private_result(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    output = tmp_path / "account.json"
+    payload = {"case_id": PROJECT, "user_id": ACTOR, "email_masked": "a***@example.com"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.host == "superadmin.garrisons.lk"
+        assert request.url.path == f"/api/v1/support/cases/{PROJECT}/accounts"
+        assert not request.url.query and "Authorization" not in request.headers
+        assert "__Host-garrison-support=" + "Z" * 43 in request.headers["Cookie"]
+        return response(payload)
+
+    args = ["support", "accounts", "search", "--case", PROJECT, "--output", str(output), *flags]
+    status, result = invoke(args, handler)
+    assert status == 0 and result["data"] == {"written_to_private_file": True}
+    assert json.loads(output.read_text()) == payload
+    assert output.stat().st_mode & 0o777 == 0o600
+
+
+def test_support_account_selector_is_sent_only_in_private_request_body(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    output = tmp_path / "matched.json"
+    selector = {"field": "email", "value": "synthetic-operator-search@example.com"}
+    fixture = _support_file(tmp_path / "selector.json", selector)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == f"/api/v1/support/cases/{PROJECT}/accounts/search"
+        assert not request.url.query and "Authorization" not in request.headers
+        assert json.loads(request.content) == selector
+        return response({"case_id": PROJECT, "user_id": ACTOR})
+
+    status, result = invoke([
+        "support", "accounts", "search", "--case", PROJECT, "--selector-file", fixture,
+        "--output", str(output), *flags,
+    ], handler)
+    assert status == 0 and result["data"] == {"written_to_private_file": True}
+    assert selector["value"] not in json.dumps(result) + output.read_text()
+
+
+def test_support_cli_follows_case_evidence_and_resumes_from_private_cursor(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    output = tmp_path / "stream.json"
+    source = uuid4().hex
+    cursor = str(uuid4())
+    receipt = _support_file(tmp_path / "previous.json", {
+        "case_id": PROJECT, "request_id": source, "last_event_id": cursor,
+    })
+    item = {
+        "id": str(uuid4()), "occurred_at": "2026-11-17T01:00:00Z",
+        "kind": "request", "method": "GET", "status_code": 200,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "superadmin.garrisons.lk"
+        assert request.url.path == f"/api/v1/support/cases/{PROJECT}/logs/stream"
+        assert request.url.params["request_id"] == source
+        assert request.headers["Last-Event-ID"] == cursor
+        assert "Authorization" not in request.headers
+        assert "__Host-garrison-support=" + "Z" * 43 in request.headers["Cookie"]
+        return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, text=(
+            ": keep-alive\n\n"
+            f"id: {item['id']}\ndata: {json.dumps({**item, 'private': 'synthetic-marker'})}\n\n"
+            'event: closed\ndata: {"reason": "access_ended"}\n\n'
+        ))
+
+    args = ["support", "cases", "follow-logs", "--case", PROJECT, "--request", source,
+            "--output", str(output), "--cursor-from", receipt, *flags]
+    status, result = invoke(args, handler)
+    assert status == 0 and result["data"]["finished_by"] == "access_ended"
+    contents = json.loads(output.read_text())
+    assert contents["items"] == [item] and contents["last_event_id"] == item["id"]
+    assert output.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_support_cli_download_verifies_approved_bytes_before_private_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corrupt: bool,
+) -> None:
+    from scripts import garrisonctl_support
+
+    flags = _technical_session(tmp_path)
+    export_id, challenge = str(uuid4()), str(uuid4())
+    source = uuid4().hex
+    content = b"record_type,event_id\nmanifest,\n"
+    digest = hashlib.sha256(content).hexdigest()
+    approval = {
+        "id": export_id, "case_id": PROJECT, "filters": {
+            "request_id": source, "started_at": "2026-11-17T00:00:00Z",
+            "ended_at": "2026-11-17T01:00:00Z", "limit": 10_000, "status_code": None,
+        },
+        "reason": "incident_review", "row_count": 0, "truncated": False, "sha256": digest,
+        "expires_at": "2026-11-17T01:15:00Z",
+        "approved_at": "2026-11-17T01:01:00Z", "downloaded_at": None,
+    }
+    receipt = _support_file(tmp_path / "approval.json", approval)
+    plan = tmp_path / "plan.json"
+    output = tmp_path / "evidence.csv"
+    attempts: list[str] = []
+
+    def handoff(_ctx, headers, proof_id):
+        assert proof_id == challenge and "Authorization" not in headers
+        return {"challenge_id": proof_id, "credential": {"id": "fixture"}}
+
+    monkeypatch.setattr(garrisonctl_support, "_proof_handoff", handoff)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "superadmin.garrisons.lk"
+        assert "Authorization" not in request.headers
+        if request.url.path.endswith("/me"):
+            return response({"operator_id": ACTOR})
+        path = f"/api/v1/support/cases/{PROJECT}/exports/{export_id}/download"
+        attempts.append(request.url.path)
+        if request.url.path == path + "/options":
+            return response({"challenge_id": challenge, "export": approval})
+        assert request.url.path == path
+        assert json.loads(request.content)["expected_sha256"] == digest
+        return httpx.Response(200, content=content + (b"wrong" if corrupt else b""), headers={
+            "Content-Type": "text/csv", "X-Support-Export-Sha256": digest,
+        })
+
+    command = ["support", "cases", "export", "download", "--input", receipt, *flags]
+    code, preview = invoke([*command, "--dry-run", "--output", str(plan)], handler)
+    assert code == 0 and not attempts
+    code, result = invoke([
+        *command, "--apply", "--expect", preview["data"]["plan_sha256"],
+        "--plan", str(plan), "--output", str(output),
+    ], handler)
+    assert len(attempts) == 2
+    if corrupt:
+        assert code != 0 and not output.exists()
+        assert result["changed"] is True
+        return
+    assert code == 0
+    assert result["data"]["sha256"] == digest and output.read_bytes() == content
+    assert output.stat().st_mode & 0o777 == 0o600
+
+
+def test_support_case_transition_declines_stale_plan_and_verifies_exact_record(
+    tmp_path: Path,
+) -> None:
+    flags = _technical_session(tmp_path)
+    payload = {"status": "investigating", "reason_code": "functional"}
+    args = ["support", "cases", "transition", "--case", PROJECT, *flags,
+            "--input", _support_file(tmp_path / "input.json", payload)]
+    current = {"id": PROJECT, "owner_id": ACTOR, "external_ref": "private-synthetic-reference",
+               "status": "open", "revision": 1, "severity": "high", "reason_code": "functional",
+               "created_at": "2026-11-01T00:00:00Z", "updated_at": "2026-11-01T00:00:00Z"}
+    attempts = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.url.host == "superadmin.garrisons.lk"
+        assert "Authorization" not in req.headers
+        if req.url.path.endswith("/me"):
+            return response({"operator_id": ACTOR})
+        if req.method == "POST":
+            assert req.url.path.endswith(f"/cases/{PROJECT}/transitions")
+            assert req.headers["If-Match"] == '"1"'
+            assert req.headers["X-Support-CSRF"] == "X" * 43
+            attempts.append(json.loads(req.content))
+            current.update(revision=2, status="investigating")
+        return response(current)
+
+    plan, receipt = tmp_path / "plan.json", tmp_path / "receipt.json"
+    code, preview = invoke([*args, "--dry-run", "--output", str(plan)], handler)
+    assert code == 0 and not attempts
+    apply = [*args, "--apply", "--output", str(receipt), "--plan", str(plan),
+             "--expect", preview["data"]["plan_sha256"]]
+    current["revision"] = 2
+    assert invoke(apply, handler)[0] != 0
+    assert not attempts and not receipt.exists()
+    current["revision"] = 1
+    code, verified = invoke(apply, handler)
+    assert code == 0 and verified["changed"] is True and attempts == [payload]
+    assert json.loads(receipt.read_text())["revision"] == 2
+    assert "private-synthetic-reference" not in json.dumps(verified)
+
+
+def test_support_account_proposal_retries_same_intent_with_existing_api_key(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    body = {"kind": "unlock", "user_id": USER, "user_revision": 4, "case_revision": 8,
+            "reason_code": "failed_sign_in", "reason": "Private synthetic justification"}
+    cmd = ["support", "accounts", "action", "propose", "--case", PROJECT, *flags,
+           "--input", _support_file(tmp_path / "input.json", body)]
+    keys: list[str] = []
+    receipts: dict[str, str] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/me"):
+            return response({"operator_id": ACTOR})
+        assert req.url.path.endswith(f"/cases/{PROJECT}/account-actions")
+        assert req.method == "POST"
+        key = req.headers["Idempotency-Key"]
+        keys.append(key)
+        return response({
+            **json.loads(req.content), "id": receipts.setdefault(key, str(uuid4())),
+            "case_id": PROJECT, "digest": "b" * 64, "expires_at": "2026-11-17T00:15:00Z",
+            "applied_at": None,
+        }, status=201)
+
+    for index in range(2):
+        plan = tmp_path / f"plan-{index}.json"
+        code, preview = invoke([*cmd, "--dry-run", "--output", str(plan)], handler)
+        assert code == 0
+        for retry in range(2):
+            receipt = tmp_path / f"receipt-{index}-{retry}.json"
+            code, approved = invoke([
+                *cmd, "--apply", "--plan", str(plan), "--expect", preview["data"]["plan_sha256"],
+                "--output", str(receipt),
+            ], handler)
+            assert code == 0 and "Private synthetic justification" not in json.dumps(approved)
+            assert "Private synthetic justification" in receipt.read_text()
+    assert keys[0] == keys[1] and keys[2] == keys[3] and keys[0] != keys[2]
+
+
+def test_support_custody_proposal_records_attempt_before_unkeyed_write(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    cmd = ["support", "custody", "grant", "propose", *flags, "--input",
+           _support_file(tmp_path / "input.json", {
+               "target_id": USER, "capability": "health.read", "enable": True,
+           })]
+    attempts = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/me"):
+            return response({"operator_id": ACTOR})
+        assert req.url.path.endswith("/custody/grant-changes")
+        attempts.append(req)
+        raise httpx.ConnectError("synthetic uncertain receipt")
+
+    plan = tmp_path / "plan.json"
+    code, preview = invoke([*cmd, "--dry-run", "--output", str(plan)], handler)
+    assert code == 0
+    for retry in range(2):
+        code, _ = invoke([*cmd, "--apply", "--plan", str(plan), "--expect",
+                          preview["data"]["plan_sha256"], "--output",
+                          str(tmp_path / f"receipt-{retry}.json")], handler)
+        assert code != 0
+    assert len(attempts) == 1
+    assert (tmp_path / "plan.json.submitted").stat().st_mode & 0o777 == 0o600
+
+
+def test_cli_review_uses_original_action_route_and_rejects_invalid_seal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from base64 import urlsafe_b64decode, urlsafe_b64encode
+
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    from scripts import garrisonctl_support
+
+    flags = _technical_session(tmp_path)
+    reference, challenge, action = (str(uuid4()) for _ in range(3))
+    receipt = {"suspension_id": action, "target_id": USER, "expires_at": "2026-11-17T00:00:00Z"}
+    command = ["support", "custody", "suspend", "review", *flags, "--input",
+               _support_file(tmp_path / "proposal.json", receipt)]
+    path = f"/api/v1/support/custody/suspensions/{action}/review"
+    assertion = {
+        "challenge_id": challenge,
+        "credential": {
+            "id": "opaque", "rawId": "opaque", "type": "public-key",
+            "response": {
+                "authenticatorData": "opaque", "clientDataJSON": "opaque",
+                "signature": "opaque", "userHandle": "opaque",
+            },
+        },
+    }
+    monkeypatch.setattr(garrisonctl_support, "_private_terminal", lambda: io.StringIO("\n" * 500))
+    monkeypatch.setattr(garrisonctl_support.webbrowser, "open", lambda *_, **__: True)
+    sealed = ""
+    corrupt = True
+    decisions: list[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal sealed
+        assert "Authorization" not in req.headers
+        if req.url.path.endswith("/me"):
+            return response({"operator_id": ACTOR})
+        assert req.headers["X-Support-CSRF"] == "X" * 43
+        if req.url.path == f"{path}/options":
+            return response({"target_id": USER, "challenge_id": challenge})
+        if req.url.path.endswith("/start"):
+            value = json.loads(req.content)["encryption_key"]
+            der = urlsafe_b64decode(value + "=" * (-len(value) % 4))
+            pub = serialization.load_der_public_key(der)
+            assert isinstance(pub, rsa.RSAPublicKey)
+            oaep = padding.OAEP(
+                mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None,
+            )
+            key = AESGCM.generate_key(bit_length=256)
+            nonce = bytes(range(12))
+            data = AESGCM(key).encrypt(
+                nonce, json.dumps(assertion).encode(),
+                (str(uuid4()) if corrupt else reference).encode(),
+            )
+            sealed = urlsafe_b64encode(pub.encrypt(key, oaep) + nonce + data).decode().rstrip("=")
+            return response({"reference": reference})
+        if req.url.path.endswith("/take"):
+            assert json.loads(req.content) == {"reference": reference}
+            return response({"sealed": sealed})
+        assert req.url.path == path
+        decisions.append(json.loads(req.content))
+        return httpx.Response(204)
+
+    plan = tmp_path / "plan.json"
+    code, preview = invoke([*command, "--dry-run", "--output", str(plan)], handler)
+    assert code == 0
+    args = [*command, "--apply", "--plan", str(plan), "--expect", preview["data"]["plan_sha256"]]
+    bad = tmp_path / "bad.json"
+    code, denied = invoke([*args, "--output", str(bad)], handler)
+    assert code != 0 and not bad.exists() and not decisions
+    assert sealed not in json.dumps(denied)
+    corrupt = False
+    result = tmp_path / "decision.json"
+    code, applied = invoke([*args, "--output", str(result)], handler)
+    assert code == 0 and applied["changed"] is True
+    assert decisions == [assertion]
+    assert json.loads(result.read_text()) == {"action": action, "stage": "review", "result": None}
+
+
+def test_cli_device_registration_splits_invitations_and_confirms_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import garrisonctl_support
+
+    tmp_path.chmod(0o700)
+    first, second = "B" * 43, "C" * 43
+    custody = _support_file(tmp_path / "execution.json", {
+        "action": PROJECT, "stage": "execute", "operator_reference": ACTOR,
+        "result": {"invitations": [first, second]},
+    })
+    single = tmp_path / "single-device.json"
+    receipt = tmp_path / "registration.json"
+    code, split = invoke([
+        "support", "custody", "enrollment", "invitation", "--input", custody,
+        "--slot", "2", "--output", str(single),
+    ])
+    assert code == 0
+    assert single.stat().st_mode & 0o777 == 0o600
+    assert json.loads(single.read_text()) == {
+        "version": 1, "operator_reference": ACTOR, "invitation": second,
+    }
+    url: list[str] = []
+    monkeypatch.setattr(garrisonctl_support, "_private_terminal", lambda: io.StringIO("\n" * 400))
+
+    def open_browser(target: str, **_: object) -> bool:
+        url.append(target)
+        return True
+
+    monkeypatch.setattr(garrisonctl_support.webbrowser, "open", open_browser)
+    requests = 0
+    status = iter(["pending", "registered"])
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        assert req.url.host == "superadmin.garrisons.lk"
+        assert req.url.path == "/api/v1/support/registration/status"
+        assert "Cookie" not in req.headers and "Authorization" not in req.headers
+        assert json.loads(req.content) == {"invitation": second}
+        return response({"operator_id": ACTOR, "state": next(status)})
+
+    args = ["support", "custody", "enrollment", "register",
+            "--input", str(single), "--output", str(receipt)]
+    code, preview = invoke(args, handler)
+    assert code == 0 and preview["outcome"] == "preview" and not requests
+    code, registered = invoke([*args, "--apply"], handler)
+    assert code == 0 and registered["changed"] and registered["data"]["state"] == "registered"
+    assert requests == 2 and url == ["https://superadmin.garrisons.lk/#register"]
+    assert json.loads(receipt.read_text()) == {"operator_id": ACTOR, "state": "registered"}
+    assert all(value not in json.dumps([split, preview, registered]) for value in (first, second))

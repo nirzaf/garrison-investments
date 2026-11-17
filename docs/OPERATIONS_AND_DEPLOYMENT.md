@@ -71,7 +71,7 @@ Runner availability changes, so do not assume one runner executes all seven CI j
 
 Compare the exact candidate's Actions run with recent runs that cover the same tests. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests and the browser jobs log individual test durations. Look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and confirm the same required checks and test coverage ran.
 
-The backend suite and Google Chrome browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. The integration matrix runs at most two of those jobs at a time on the shared self-hosted runners. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser files by measured test time. One shard selects a set of files and the other selects its complement, including newly added files. Each shard runs individual tests in parallel with two workers. Each browser test uses its own browser context, synthetic accounts and project data. The browser jobs reuse Google Chrome when the installed binary can report its version. On a new runner, they install Chrome under a lock while building the production bundle, then wait for both before serving it. They still type-check the browser tests, and the required frontend job type-checks the application. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
+The backend suite and Google Chrome browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. The integration matrix runs at most two of those jobs at a time on the shared self-hosted runners. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser tests by measured duration. One shard uses the checked-in test selection and the other runs its complement, including newly added tests. Each shard uses one Chrome worker to stay within shared-host capacity. Each browser test uses its own browser context, synthetic accounts and project data. The browser jobs reuse Google Chrome when the installed binary can report its version. On a new runner, they install Chrome under a lock while building the production bundle, then wait for both before serving it. They still type-check the browser tests, and the required frontend job type-checks the application. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
 Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
 
@@ -80,6 +80,20 @@ The backend reports from HR checkpoint CI run `43902036278` recorded
 project 211.15 and 210.34 seconds using those same case timings. Local
 collection verified that the new assignments cover all 916 cases once.
 Compare runner wall time on the next CI run before recording a speedup.
+
+On `21750a2`, self-hosted CI run `44029735679` passed in 13m 02s.
+Chrome test steps took 425s and 409s across 34 and 36 cases. Backend test
+steps took 204s and 209s. The Chrome shards are close in elapsed time, and
+`business-roles.e2e.ts` accounts for 518s of their combined JUnit case
+time. Measure fixture startup and repeated sign-in within that suite before
+adjusting the shard split again. The deployment step took 100s in run
+`44031348063`.
+
+Fourteen Chrome scenarios now seed their shared-project accounts in one
+command per scenario, avoiding 27 Python launches. In five local runs per
+mode, the median time to seed four accounts was 1.526s with separate
+commands and 0.391s with one command. Compare the Chrome job wall time on
+the next self-hosted run to measure the pipeline impact.
 
 For browser rebalancing, sum JUnit case times across both reports. The first
 Chrome shard uses [a Playwright test list](../frontend/e2e/ci-shard-1.txt).
@@ -464,3 +478,452 @@ python scripts/launch_evidence.py --target production \
 ```
 
 The script records the supplied backup object name. Attach the Grafana backup reference and the actual restore results to the sign-off record.
+### Super Admin activation
+
+Keep the Super Admin entry points disabled until the operator enrollment
+and dedicated ingress are approved. The support portal uses separate
+passkey-backed operators, opaque host-only sessions and case-scoped request
+evidence. The legacy `/api/v1/super-admin` email-only API is a test fixture.
+Production uses `/api/v1/support` with passkey verification followed by email
+OTP. The business user, HR and role-cutover tools do not provision operators.
+
+The default catch-all rejects the reserved hostname and both technical API
+prefixes. The approved host overlay mounts the tested
+[technical virtual host](../nginx/support.prod.conf) at
+`/etc/nginx/conf.d/support.conf` read-only. Provide a TLS pair for
+`superadmin.garrisons.lk` as `support-fullchain.pem` and
+`support-privkey.pem`, and `support-allowlist.conf`, under the mounted
+`/etc/nginx/ssl/` directory. Restrict the key to mode `0600`. The allowlist
+contains one `allow <IP-or-CIDR>;` directive per approved direct source
+address or VPN egress network. Nginx checks the socket source address and
+applies `deny all` after the allowlist. A proxy that obscures the approved
+source needs a separately authenticated ingress design.
+
+The host preflight uses OpenSSL to check that the certificate is currently
+valid, lists the technical hostname in a DNS subject alternative name
+(a matching wildcard is accepted), and loads with the mounted private key.
+The allowlist check rejects IPv4 or IPv6 rules that collectively cover
+every address. Verify the served certificate chain from an authorized
+browser or operator network during activation.
+
+Set `SUPPORT_PORTAL_ENABLED=true` and `SUPPORT_INGRESS_PEER` to the exact
+Nginx address on the private `backend_proxy` network when activating that
+overlay. The release preflight checks that the flag and virtual host match,
+the peer matches the effective Compose address, and the TLS and allowlist
+files are mounted. The backend pins the actual connection peer and verifies
+the technical hostname and request origin. The dedicated virtual host
+allows the support page, built assets and support API. Business API, file,
+service worker and legacy technical routes return 404 there. Prove both
+hostnames and the allowed and denied paths before enrolling operators.
+
+The isolated Nginx 1.25 HTTPS rehearsal passed with two separate source IPs.
+It checked default-deny routing, mismatched TLS SNI and host, removal of
+caller-supplied forwarding and bearer headers, and `no-store` responses.
+143 support and related backend tests, 80 release and observability tests,
+and six synthetic Chrome scenarios passed. The Chrome scenarios used the
+isolated application fixture. Production DNS, certificates, source access,
+and operator sign-in still require their own verification.
+
+Revision `202605310062` adds business session persistence and refresh-token
+ownership. Revisions `063` through `074` add empty support identity, evidence
+and custody tables. None of these migrations enrolls operators or issues grants.
+The production maintenance procedure applies even when changes are additive.
+Before applying it, rehearse the exact candidate on a populated isolated
+restore, verify legacy session expiry and revocation, and record the backup
+and rollback procedure. Roll back application code with the additional
+schema retained. Review session compatibility and revocation before restoring
+traffic to any earlier application version.
+
+Prepare enrollment proposals in the restricted operations record. Each
+proposal names the verified identity, the separate custodian, the approved
+capabilities, case and expiry limits, registered devices, and reviewer. A
+proposed address already used by a director requires an explicit disposition
+before enrollment. Preserve the director account and existing role. Obtain
+explicit owner confirmation immediately before applying either operator's
+concrete grant. Prove independent recovery and protected-custodian checks
+before exposing the sign-in screen. Disable the dedicated ingress and revoke
+technical sessions before an application rollback. Preserve evidence and audit
+history.
+
+Technical sign-in on the dedicated host requires an enrolled passkey followed
+by a six-digit code sent to the operator's verified technical mailbox. Browser
+and CLI sign-in both use this check. Configure `SUPPORT_EMAIL_OTP_KEY` with an
+independent random secret of at least 32 bytes and
+`SUPPORT_EMAIL_OTP_RECIPIENTS` with a JSON object mapping approved support
+operator UUIDs to their dedicated mailboxes. Keep both values in protected
+runtime configuration. A missing binding or failed transport closes the sign-in
+attempt. The host release preflight checks key independence and valid,
+distinct mailbox bindings for at least two operator references when ingress
+is enabled. Apply the exact candidate's Alembic head using the [production
+maintenance procedure](#production-maintenance) before enabling ingress.
+Revision `202605310089` introduces email OTP. Disable ingress before reverting
+to an earlier version.
+
+#### Draft verification
+
+An isolated PostgreSQL rehearsal upgraded a populated schema from
+`202605310061` to `202605310062`. It preserved the existing identity and the
+legacy refresh expiry. The subsequent refresh created its owned session.
+The draft passed 85 focused backend tests and three desktop Chrome
+regressions for password change, denial on the business host, and the released
+HR Executive role. An isolated Nginx container accepted the syntax and
+returned 404 for both support prefixes on the business host and for
+business API and file routes on the reserved host.
+
+### Support identity and case evidence
+
+The [support schema reference](schema/support_identity.md) describes the
+separate operator and audit tables. The isolated browser fixture uses a
+synthetic resident credential and Chrome's virtual WebAuthn authenticator.
+It covers passkey sign-in, session reload, denied out-of-case evidence,
+redacted authorized evidence and sign-out. Local PostgreSQL verifies
+concurrent login replay, session expiry, grant and case membership checks,
+and append-only audit records.
+
+The email-verification draft passed 177 focused backend tests and six
+existing Chrome scenarios. A separate isolated Chrome run used real
+WebAuthn verification with a synthetic email transport. It exercised a
+wrong-code retry and verified that browser and CLI sessions open only after
+the code succeeds. Migration `089` passed the populated upgrade and
+disposable restore checks. Production mail delivery remains unverified.
+
+The updated draft passed 100 focused backend tests with no skips and five
+Chrome scenarios against disposable services. The populated upgrade from
+`061` through `074` retained the fixture business identity and legacy
+refresh expiry. The custody workflow was exercised through the API with
+synthetic credentials, including concurrent suspensions, stale authorization,
+proof replay and cross-session rejection, revocation and append-only audit.
+The production host has received none of these revisions.
+
+The test-only custody API supports operator suspension. One eligible custodian
+proposes and executes the suspension, and a different eligible custodian
+reviews it. Both decisions require a fresh passkey proof bound to the
+proposal, action and authenticated session. Both custodians must remain
+eligible at execution. The transaction preserves at least two usable
+custodians, revokes the target's credentials and sessions, advances the
+grant epoch and records the decision. Keep the custody schema and audit
+history through an application rollback.
+
+The case API requires `cases.manage` to open cases and both live membership
+and the relevant capability to read assigned records. The owner proposes
+case scope changes against the current revision. An eligible independent
+custodian reviews membership changes. An independent case member with the
+matching capability applies evidence links, verification, account scope or
+closure using a fresh passkey proof. Resolution verification requires an
+already reviewed safe request-completion event after mitigation, and the
+independent reviewer confirms the resolution against that evidence. Closure
+requires an applied verification receipt. The timeline shows the latest 25
+events and redacted request references, including on closed assigned cases.
+The masked directory resolves the exact subject of an approved case scope
+from the case ID and includes at most 25 authentication events in the
+previous 24 hours. Operators may supply an account reference to require an
+exact match. Both lookup paths record the same disclosure audit. Changes to
+case scope advance the revision and invalidate stale proposals.
+
+A disposable database restore preserved revision `074`, case and account decisions, audit disclosures and custody
+events, and the append-only protections. Alembic rejected a downgrade to
+`073`. Chrome exercised case creation, a duplicate reference, triage and
+persistence after reload. The case workflow also exercised reviewed assignment,
+masked account lookup, reviewed unlock, redacted case audit, evidence
+linking, independent verification, closure and the retained timeline. Separate synthetic requester, reviewer and
+target sessions exercised self-review denial, reviewed capability grant and
+target sign-in after session revocation. Two virtual Chrome authenticators
+registered distinct credentials through reviewed enrollment and the resulting
+operator signed in. API tests exercised reviewed recovery, replay, duplicate
+and backup-eligible credential denial, and rejection of replaced credentials.
+Health tests checked unavailable dependencies and session revocation during a
+probe. An isolated Nginx container rejected tested support routes on the
+business host and returned 404 for the reserved host, its business API and
+file routes. Application rollback keeps the expanded schema and audit history.
+
+#### Technical capabilities
+
+The technical portal is the operations console for platform oversight,
+diagnosis and controlled intervention. Each named capability is a separate
+grant. Case evidence is scoped by live membership, approved request links,
+and the source and time filters. A grant change requires a distinct
+reviewer and a fresh passkey for each review and execution. Operational
+grants persist until revoked. Changing a grant revokes the target's current
+sessions and advances the authorization epoch.
+
+| Capability | Proposed production authority | Local implementation |
+| --- | --- | --- |
+| `operator.manage` | Propose and execute or independently review operator enrollment, recovery, suspension and grant changes. Use a separate reviewer with an active custody grant and two registered passkeys. | Reviewed actions and the last-two-custodians guard verified. Bootstrap of the first two custodians is a separate offline ceremony. |
+| `cases.manage` | Open, inspect and triage cases with live membership. Independent review for evidence verification and closure. | Case creation and triage, reviewed membership and evidence links, independent verification and controlled closure implemented. |
+| `logs.runtime` | Inspect redacted runtime summaries for explicitly linked requests on assigned open or investigating cases. | Linked request evidence, bounded case timeline, and separate reviewed live-stream and export paths are implemented. The explorer currently uses indexed request events. Additional sources require their own bounded projections. |
+| `health.read` | Check fixed dependency health, with timestamp and bounded status. | PostgreSQL, Redis and object-bucket checks verified. No mail message or host command is issued. |
+| `directory.read` | Inspect masked identity, access and authentication history for an approved subject in an assigned case. | Account reference, verified email, employee code, name and role match only the approved subject. The response includes masked identity, permission keys, bounded authentication history and membership IDs for approved case projects. The separate project-list projection requires its own approval. |
+| `account.request` | Request reviewed recovery, unlock, session revocation, disable or reactivation through existing business safeguards. Protected subjects require two independent reviews and a verified offline owner-contact receipt. | Reviewed recovery issuance, queued delivery, status, reset confirmation, session revocation, unlock, disable and reactivation are implemented locally. The separately approved owner-notification channel and production delivery evidence remain open. |
+| `simulation.start` | Start a short-lived, read-only, consented or independently approved support projection with explicit case, subject, adapter and project limits. | The five independently reviewed adapters are implemented locally: role permission, navigation, request summary, project list and project detail. |
+| `logs.audit`, `logs.stream`, `logs.export` | Inspect approved audit evidence, follow bounded redacted streams, or export a reviewed immutable result. Export requires independent approval. | Assigned-case audit reads, request streaming and reviewed export are implemented locally. Streaming and export each require `logs.runtime` and their own grant. |
+
+The portal's Follow live evidence control and `garrisonctl support cases
+follow-logs` share the same redacted request projection. A session can
+resume from the last event while the request remains in scope. The API
+allows two concurrent streams per operator for up to 15 minutes each and
+checks the session, capabilities, case and request link before every batch
+and on the idle polling interval. Streams do not renew idle sessions or
+hold a database connection while waiting. Pause closes the transport.
+An isolated Chrome run followed a live HTTPS feed, paused and released its
+server slot, resumed from the last event, and stopped after the grant was
+revoked. The fixture used synthetic case evidence and a local HTTPS proxy.
+
+Evidence export uses one approved request link, a window of at most seven
+days, 10,000 rows and 10 MiB. The CSV includes a manifest row with the
+normalized filters, row count and truncation status. An independent
+operator with the same case scope approves the proposed SHA-256 with a
+passkey. Only the original requester session can download it, with a
+fresh passkey and a live authorization check. The API re-creates the
+redacted projection and checks its SHA-256 before consuming the download.
+The audit receipt records the filters, checksum, row count, timestamps
+and correlation references. It retains no exported bytes.
+
+Technical grants do not confer any business role. Invoice approval, payroll
+release, access to private records, and changes to business roles continue
+through their owning workflows. Host restarts, production restore, destructive
+retention and irreversible deployment actions use the separate production
+maintenance procedure. Audit and custody records remain append-only.
+
+#### Business account interventions
+
+The account must be linked to an assigned open or investigating case.
+An `account.request` grant permits an unlock, session revocation, disable
+or reactivation proposal referencing the current case revision and business access
+revision. A separate eligible case member reviews the exact digest with
+a fresh passkey. The requester executes with a new passkey proof. A
+protected role requires two distinct eligible reviewers and an unexpired
+offline owner-contact receipt. An assigned custody reviewer with two usable
+passkeys can record their attestation during review. Enter the opaque
+reference only after independently verifying owner contact offline. The
+review proof binds the reference and the exact proposal digest. The portal
+stores the attestation without contact details or message contents.
+
+The transaction reuses the business access-management lock and existing
+session, refresh-token and challenge revocation. Unlock clears failed
+attempts and the lock timestamp, preserving active status, credentials
+and role. Disable rejects a change that would leave the company without
+another usable director. Reactivation preserves revoked sessions.
+The technical audit remains separate from the business actor.
+The offline contact channel and production notification routing still
+require approval and verification.
+
+Recovery destination verification requires a separate protected
+`SUPPORT_RECOVERY_KEY` of at least 32 bytes. With the key configured, a
+completed business sign-in can verify the existing mailbox when the
+provider accepted delivery and the correct delivered OTP was supplied.
+An address change or key rotation invalidates an earlier binding.
+Developer-echoed OTPs and the staging bypass do not establish eligibility.
+There is no backfill from login history. The case directory adds only
+the verification status for operators with `account.request`.
+
+The reviewed recovery action is restricted to the isolated support
+environment. Applies recheck the verified mailbox, increment the
+business access revision, revoke old authentication, and commit the
+new single-use challenge and delivery row together. Protected accounts
+still require two independent reviews and an exact owner-contact
+attestation. The reset code and mailbox are absent from the action
+receipt. The reset endpoint requires an accepted delivery, an active
+account, and the same mailbox and access revision.
+
+In the isolated support environment, the recovery worker claims one
+delivery at a time. Before sending it rechecks the case, requester and
+reviewer grants, the protected contact receipt when applicable, the
+account revision, and the current verified destination and challenge.
+The message carries a portal reset link and code. The link fragment
+contains only the opaque challenge reference. A transport timeout,
+exception, or interrupted claim records an unknown outcome for review.
+Recovery codes use one transport attempt per reviewed action. Ordinary
+mail keeps its existing fallback behavior. Separate owner acceptance
+and completion notifications still require an approved channel.
+
+Use **Recovery status** with the case ID and the reviewed action
+reference. The requester or another current case member needs
+`account.request`. Delivery acceptance only means the provider
+accepted the message. The reset result separately shows whether the
+code is ready, unusable, expired, revoked or completed. The panel
+shows timestamps and opaque references and audits each disclosure.
+If delivery is unknown, inspect the provider evidence before a fresh
+independently reviewed recovery. A new recovery invalidates the prior
+challenge.
+
+The revision 081 suite passed 125 backend checks, six Chrome scenarios
+and a disposable restore that retained the status-read audit events.
+A focused follow-up passed ten backend checks and one Chrome scenario.
+Chrome queued a reviewed synthetic recovery and showed its pending
+status. The API tests separately covered acceptance, unknown and
+cancelled outcomes, reset completion, and denial outside the case.
+
+The revision 080 validation passed 125 backend checks and six Chrome
+scenarios. The fake transport accepted one message under concurrent
+dispatch, simulated an uncertain result without fallback, and received no
+message after reviewer authority was revoked. Chrome opened the reset form
+from the opaque link. The disposable restore retained a completed recovery
+and an unknown outcome.
+
+The local revision 079 suite passed 111 backend checks and five Chrome
+regressions. The API tests covered ordinary and protected recovery,
+changed destination denial, atomic authentication revocation, and
+single-use confirmation after a simulated delivery acknowledgement.
+The disposable restore retained the queue and completed recovery record.
+
+The populated upgrade from revision 061 through 078 preserved the
+existing business identity and legacy session expiry. The local suite
+passed 109 backend checks and five Chrome scenarios. The restored
+database retained an email verification binding and the protected
+action audit records. The change has not been deployed.
+
+Revision `202605310077` passed the local 104-check backend suite,
+five Chrome scenarios and a disposable restore. The API tests recorded
+the protected-action contact attestation through passkey review and
+rejected omission of the bound reference and an ineligible operator.
+A subsequent focused run passed seven backend checks and one Chrome
+scenario, including the contact field's custody-grant visibility.
+
+With `simulation.start`, a requester can propose an explanation of one
+known role permission for the case subject. An independent assigned
+operator reviews the exact proposal. The requester uses the original
+technical session to open and read the view. The result shows whether
+the role grants that permission. Each read rechecks live case membership,
+reviewer eligibility and subject access revision. The view expires
+after 20 minutes at most or 10 minutes idle, and operators can end it
+earlier. Opening, reading and ending it are audited.
+
+The navigation adapter uses the business sidebar visibility rules and returns
+only stable route identifiers and visibility flags. Keep the
+[backend policy](../backend/app/portal_navigation.json) and
+[frontend copy](../frontend/src/components/layout/portalNavigation.json) in
+sync. The permission suite checks their parity. API authorization still
+runs on every protected business request.
+
+An open or investigating case can carry up to ten exact project references.
+The case owner proposes each addition or removal. Both operators need
+`cases.manage` and `simulation.start`, and the reviewer must be a separate
+assigned case member. Review uses the existing passkey proof. Each applied
+change advances the case revision and invalidates earlier support views.
+The review shows only the submitted project reference and keeps the decision
+in the case audit history.
+Revision 084 passed 139 focused backend checks and six Chrome scenarios.
+Chrome approved both the scope addition and removal. The disposable
+PostgreSQL restore retained both decisions and the append-only audit history.
+
+Project projections intersect the reviewed case project scope with the
+account's live Projects permission and membership. Company-wide project
+access is still limited to projects in the case. The list binds the visible
+set to the approved action. The detail view binds one exact project and shows
+its case-local label, lifecycle status and capped milestone and task counts.
+If the approved list changes or the detail project becomes inaccessible, the
+request fails and closes that view. No project IDs, names, documents or
+financial details are returned by either projection.
+Revision 085 passed 142 focused backend tests and a disposable restore of
+both applied project views. Six Chrome scenarios passed after updating
+the case fixture to expect the selected project manager during review.
+Chrome approved, displayed and ended both project projections.
+
+Revision 083 passed 138 focused backend tests and six Chrome scenarios in
+the isolated release rehearsal. Chrome confirmed independent review, the
+visible and hidden route labels, and closure of the navigation view. The
+disposable PostgreSQL restore retained the applied review and audit history.
+
+The request-summary adapter requires an exact event already linked through
+the case's evidence review and attributed to the approved business account.
+The requester and independent reviewer see the event reference. The original
+technical session can read the HTTP method, status, observed time and opaque
+request reference. The view denies reads after the evidence is withdrawn
+or no longer attributable to the case subject. It omits the endpoint,
+request contents, session identifiers and client metadata.
+
+The revision 082 validation passed 126 backend checks and a disposable
+restore. After correcting the Chrome fixture to use a separate event
+captured after mitigation, the focused run passed three backend checks
+and the full Chrome case scenario. Chrome approved, displayed and ended
+the request summary before closing the case.
+
+The local overlay on `21750a2` passed 104 backend checks and five Chrome
+scenarios through revision `202605310076`. The permission explanation test
+verified review before opening, denial to a different session, a redacted
+role-only response, and denial after ending. Chrome exercised the same
+workflow with synthetic passkeys. A disposable restore retained permission
+view audit records and the downgrade guard rejected dropping them.
+
+The `logs.audit` capability reads redacted event labels, timestamps and
+opaque technical references for an assigned case. It accepts up to 24
+hours and 100 events. The disclosure itself is recorded before results are
+returned. Audit output excludes business-account IDs, free-text reasons,
+credentials and original request bodies.
+
+#### Production operator record
+
+Both proposed operators use separate technical identity records. Record the
+verified person and mailbox ownership before the offline bootstrap ceremony.
+
+| Proposed mailbox | Identity and authority |
+| --- | --- |
+| First custodian | Record the designated dedicated mailbox in the restricted activation record. Proposed bootstrap `operator.manage`, followed by individually reviewed `cases.manage`, `logs.runtime`, `health.read`, `directory.read`, `account.request`, and `logs.audit` grants as assigned. |
+| Second custodian pending | Record a separately verified person and their dedicated technical mailbox in the restricted approval record. Preserve the existing Managing Director identity and business permissions. |
+
+Record the approved office or VPN egress IPv4/IPv6 addresses or CIDRs in
+the restricted activation record. Use addresses as seen by Nginx. The
+host operator verifies the direct ingress target, DNS record and served
+certificate, then tests both an approved and a denied source before
+distributing invitations. If either source check fails, disable the host
+and retain the pending operator records while correcting ingress.
+
+For the first pair, a host operator verifies the signed approval through
+the restricted records system and records its exact SHA-256. Use an
+owner-only JSON file with `version: 1`, `purpose: "initial_support_custody"`,
+distinct UUIDs in `preparer_reference` and `reviewer_reference`, and two
+ordered `custodians` entries with `person_reference` and `mailbox`.
+The command checks the file and binds it to the roster. The human reviewer
+verifies the signed approval and the two people and mailboxes independently.
+
+From the tested backend on the approved host, run
+`python -m scripts.bootstrap_support --approval <private-file> --approval-sha256 <approved-sha256>`
+to verify the record locally. For the separately authorized issuance, add
+`--apply --output <new-file-in-private-directory>`. The command writes the
+operator references and invitations to that protected file. Give each
+custodian only their own invitations through the approved private channel.
+Initial issuance can run with ingress disabled on the migrated backend.
+After issuance, run the same command with the approval arguments and
+`--write-otp-config <new-private-env-file>` in place of `--apply`. It
+derives the two mailbox bindings from the matching issued registry and
+writes only the recipient setting. Install that setting and an independent
+generated OTP key in the protected runtime configuration. Run
+`--verify-otp-config` with the same approval arguments in the configured
+backend to confirm both bindings before operator sign-in. The check
+reports success or failure without printing either mailbox or key.
+
+Use `--reissue` with the same approval before activation to replace unused
+invitations if the ten-minute lifetime elapses while configuring ingress.
+Reissue keeps the approved operator references. Both operators remain
+pending until both have registered two
+distinct passkeys, when only `operator.manage` is granted to each. Later
+grants use the independent custody workflow. Activation and device
+registration are retained in the bootstrap audit. See the
+[CLI parity inventory](CLI_ADMINISTRATION.md#super-admin-command-parity).
+
+Revision 086 passed 145 focused backend tests and six existing Chrome
+scenarios. The API verified that the first custodian could sign in only
+after both had enrolled two passkeys. A separate CLI rehearsal on a fresh
+migrated database wrote four invitations to a mode `0600` file and rejected
+approval and audit edits. Both operators stayed pending until the fourth
+synthetic passkey was registered, when the initial custody grants took effect.
+
+Enrollment and recovery issue two ten-minute one-use invitations after
+independent review. Deliver each invitation only through the verified
+private channel. The [CLI registration handoff](CLI_ADMINISTRATION.md#super-admin-command-parity)
+can prepare a private file for one device at a time and confirm its state
+via the existing invitation. Registration requires a resident passkey with user
+verification at the pinned support origin. The application checks distinct
+credential keys and rejects backup-eligible credentials during registration
+and sign-in. The ceremony must verify two physical devices and their custody.
+See the [WebAuthn backup state model](https://www.w3.org/TR/webauthn-3/#sctn-credential-backup). Record the reviewer,
+separate approver, device custody and exact persistent grants before
+requesting confirmation for the concrete activation. Suspension and
+recovery revoke earlier credential and session authority.
+
+Revision `067` retains prior custody evidence under the new table names.
+Keep support ingress closed when rolling back to code from before that
+revision. Production rollout still requires a committed candidate, passing
+self-hosted CI for the candidate SHA, the approved maintenance procedure and
+a verified restricted DNS/TLS and proxy configuration. Verify production
+denials on both hostnames before opening an authenticated support session.

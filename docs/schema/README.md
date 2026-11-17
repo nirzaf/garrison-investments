@@ -13,6 +13,7 @@ A dash in the default column means the database has no server default. Applicati
 | [`users`](users.md) | Portal accounts, roles, profile fields, password hashes, and sign-in lockout state. |
 | [`auth_otp_challenges`](auth_otp_challenges.md) | Hashed one-time codes for login and password reset, with expiry, attempts, and consumption state. |
 | [`auth_refresh_tokens`](auth_refresh_tokens.md) | Hashed refresh tokens with expiry and revocation timestamps. |
+| [Support operators and sessions](support_identity.md) | Draft separate technical identity, passkey credentials, and case evidence access. |
 
 ## Projects and planning
 
@@ -72,6 +73,7 @@ A dash in the default column means the database has no server default. Applicati
 | [`notifications`](notifications.md) | User notifications with read, mute, and email delivery state. |
 | [`import_batches`](import_batches.md) | Spreadsheet import status, row counts, validation errors, and results. |
 | [`activity_log`](activity_log.md) | Audit and operational events with actor, request, context, and retention metadata. |
+| [`business_log_streams`](activity_log.md#business-audit-streams) | Open and close timestamps for bounded business audit streams. |
 | [`idempotency_records`](idempotency_records.md) | Request keys and resource references used to deduplicate retried writes. |
 | [`task_outbox`](task_outbox.md) | Background work recorded in the same database transaction as the operation that schedules it. |
 

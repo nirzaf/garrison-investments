@@ -20,6 +20,7 @@ from scripts import (
     garrisonctl_data,
     garrisonctl_hr,
     garrisonctl_ops,
+    garrisonctl_support,
 )
 from scripts.garrisonctl_common import (
     CONNECTION,
@@ -89,6 +90,7 @@ def build_parser() -> Parser:
     garrisonctl_data.register(registry)
     garrisonctl_ops.register(registry)
     garrisonctl_hr.register(registry)
+    garrisonctl_support.register(registry)
     registry.add("health check", health, permission="public readiness")
     for command in ("config", "finance policy"):
         registry.add(
@@ -160,9 +162,12 @@ def run(
     try:
         args = build_parser().parse_args(argv)
         json_output = getattr(args, "json", False)
-        base_url = normalize_url(
-            getattr(args, "base_url", None) or os.getenv("GARRISON_API_BASE_URL") or DEFAULT_URL
+        default_url = (
+            garrisonctl_support.ORIGIN
+            if args.command_name.startswith("support ")
+            else os.getenv("GARRISON_API_BASE_URL") or DEFAULT_URL
         )
+        base_url = normalize_url(getattr(args, "base_url", None) or default_url)
         environment = (
             getattr(args, "environment", None)
             or os.getenv("GARRISON_ENVIRONMENT")

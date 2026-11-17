@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from typing import cast as type_cast
 from uuid import UUID
@@ -5,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.auth import AuthOtpChallenge, AuthRefreshToken
+from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
 from app.utils.security import utc_now
 
 
@@ -33,6 +34,22 @@ class AuthRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def recent_otp_challenges(
+        self, user_id: UUID, purpose: str, since: datetime
+    ) -> list[AuthOtpChallenge]:
+        result = await self.session.scalars(
+            select(AuthOtpChallenge)
+            .where(
+                AuthOtpChallenge.user_id == user_id,
+                AuthOtpChallenge.purpose == purpose,
+                AuthOtpChallenge.created_at >= since,
+                AuthOtpChallenge.deleted_at.is_(None),
+            )
+            .order_by(AuthOtpChallenge.created_at.desc())
+            .limit(3)
+        )
+        return list(result)
+
     async def revoke_all_refresh_tokens(self, user_id: UUID) -> int:
         """Revoke every live session for a user; returns the number of rows affected.
 
@@ -54,6 +71,11 @@ class AuthRepository:
         # Callers already hold the user's lock, which every session issuer takes.
         await self.revoke_all_refresh_tokens(user_id)
         await self.session.execute(
+            update(AuthSession)
+            .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=utc_now())
+        )
+        await self.session.execute(
             update(AuthOtpChallenge)
             .where(
                 AuthOtpChallenge.user_id == user_id,
@@ -67,6 +89,16 @@ class AuthRepository:
         self.session.add(refresh_token)
         await self.session.flush()
         return refresh_token
+
+    async def add_session(self, auth_session: AuthSession) -> AuthSession:
+        self.session.add(auth_session)
+        await self.session.flush()
+        return auth_session
+
+    async def get_session(self, session_id: UUID, user_id: UUID) -> AuthSession | None:
+        return await self.session.scalar(
+            select(AuthSession).where(AuthSession.id == session_id, AuthSession.user_id == user_id)
+        )
 
     async def get_refresh_token_by_hash(
         self,

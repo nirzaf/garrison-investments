@@ -1,8 +1,9 @@
 from app.models.activity_log import ActivityLog
 from app.models.approval import Approval
-from app.models.auth import AuthOtpChallenge, AuthRefreshToken
+from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
 from app.models.base import Base
 from app.models.boq_item import BoqItem
+from app.models.business_log_stream import BusinessLogStream
 from app.models.daily_report import (
     DailyReport,
     DailyReportApprovalHistory,
@@ -32,6 +33,52 @@ from app.models.project_task import ProjectTask
 from app.models.report_export import ReportExport
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
+from app.models.support_business_actions import (
+    SupportBusinessAction,
+    SupportBusinessApproval,
+    SupportBusinessContact,
+    SupportBusinessEvent,
+    SupportBusinessProof,
+)
+from app.models.support_case_actions import (
+    SupportCaseAction,
+    SupportCaseActionEvent,
+    SupportCaseActionProof,
+    SupportCaseProject,
+)
+from app.models.support_case_audit import SupportCaseAuditRead
+from app.models.support_cases import (
+    SupportCase,
+    SupportCaseEvent,
+    SupportCaseMember,
+    SupportCaseRequest,
+    SupportLogRead,
+    SupportLogStream,
+    SupportOperatorGrant,
+)
+from app.models.support_cli_proof import SupportCliProof
+from app.models.support_custody import (
+    SupportCustodyAction,
+    SupportCustodyEvent,
+    SupportCustodyProof,
+)
+from app.models.support_directory import SupportCaseSubject, SupportDirectoryRead
+from app.models.support_evidence_export import SupportEvidenceExport, SupportEvidenceProof
+from app.models.support_health import SupportHealthEvent
+from app.models.support_identity import (
+    SupportAuthEvent,
+    SupportCredential,
+    SupportEmailOtp,
+    SupportLoginChallenge,
+    SupportOperator,
+    SupportSession,
+)
+from app.models.support_permission_view import SupportPermissionView, SupportPermissionViewEvent
+from app.models.support_registration import (
+    SupportBootstrap,
+    SupportBootstrapEvent,
+    SupportRegistration,
+)
 from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 
@@ -40,8 +87,10 @@ __all__ = [
     "Approval",
     "AuthOtpChallenge",
     "AuthRefreshToken",
+    "AuthSession",
     "Base",
     "BoqItem",
+    "BusinessLogStream",
     "DailyReport",
     "DailyReportApprovalHistory",
     "Document",
@@ -68,6 +117,43 @@ __all__ = [
     "ReportMaterialConsumption",
     "SupervisorUpdate",
     "Supplier",
+    "SupportAuthEvent",
+    "SupportBusinessAction",
+    "SupportBusinessApproval",
+    "SupportBusinessContact",
+    "SupportBusinessEvent",
+    "SupportBusinessProof",
+    "SupportCase",
+    "SupportCaseAction",
+    "SupportCaseActionEvent",
+    "SupportCaseActionProof",
+    "SupportCaseProject",
+    "SupportCaseAuditRead",
+    "SupportCaseEvent",
+    "SupportCaseMember",
+    "SupportCaseRequest",
+    "SupportCaseSubject",
+    "SupportDirectoryRead",
+    "SupportEvidenceExport",
+    "SupportEvidenceProof",
+    "SupportCredential",
+    "SupportEmailOtp",
+    "SupportLoginChallenge",
+    "SupportLogRead",
+    "SupportLogStream",
+    "SupportHealthEvent",
+    "SupportOperator",
+    "SupportOperatorGrant",
+    "SupportPermissionView",
+    "SupportPermissionViewEvent",
+    "SupportBootstrap",
+    "SupportBootstrapEvent",
+    "SupportRegistration",
+    "SupportSession",
+    "SupportCliProof",
+    "SupportCustodyAction",
+    "SupportCustodyEvent",
+    "SupportCustodyProof",
     "StorageLocation",
     "TaskOutbox",
     "User",

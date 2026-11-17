@@ -1,16 +1,178 @@
 import io
 import json
+import runpy
 import shlex
 import subprocess
 import tarfile
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 from scripts.release_contract import deployment_receipt_fields, utc, verify_host_deployment_receipt
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "hostinger-release.sh"
+
+
+def _support_tls_fixture(certificate: Path, key: Path, fault: str | None) -> None:
+    private = ec.generate_private_key(ec.SECP256R1())
+    label = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "superadmin.garrisons.lk")])
+    now = datetime.now(UTC)
+    start = now + timedelta(days=1) if fault == "future-cert" else now - timedelta(days=2)
+    end = now - timedelta(days=1) if fault == "expired-cert" else now + timedelta(days=2)
+    builder = (
+        x509.CertificateBuilder()
+        .subject_name(label)
+        .issuer_name(label)
+        .public_key(private.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(start)
+        .not_valid_after(end)
+    )
+    if fault != "cn-only-cert":
+        names = {
+            "wrong-cert-host": "portal.garrisons.lk",
+            "wildcard-cert": "*.garrisons.lk",
+        }
+        address = names.get(fault or "", "superadmin.garrisons.lk")
+        builder = builder.add_extension(x509.SubjectAlternativeName([x509.DNSName(address)]), False)
+    built = builder.sign(private, hashes.SHA256())
+    certificate.write_bytes(
+        b"not a certificate"
+        if fault == "bad-pem" else built.public_bytes(serialization.Encoding.PEM)
+    )
+    if fault == "mismatched-cert-key":
+        private = ec.generate_private_key(ec.SECP256R1())
+    encoding = (
+        serialization.BestAvailableEncryption(b"synthetic-passphrase")
+        if fault == "encrypted-key" else serialization.NoEncryption()
+    )
+    key.write_bytes(private.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, encoding,
+    ))
+    key.chmod(0o644 if fault == "key-mode" else 0o600)
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_error"),
+    [
+        (None, None),
+        ("no-host", "enabled together"),
+        ("flag-off", "enabled together"),
+        ("other-host-file", "tested candidate"),
+        ("writable-mount", "mounted read-only"),
+        ("forwarded-peer", "must use the socket peer"),
+        ("contradictory-peer", "must use the socket peer"),
+        ("wrong-peer", "private backend peer"),
+        ("missing-tls", "TLS pair"),
+        ("key-mode", "TLS key must be private"),
+        ("wrong-cert-host", "DNS SAN for superadmin.garrisons.lk"),
+        ("cn-only-cert", "DNS SAN for superadmin.garrisons.lk"),
+        ("wildcard-cert", None),
+        ("expired-cert", "outside its validity period"),
+        ("future-cert", "outside its validity period"),
+        ("mismatched-cert-key", "private key do not load together"),
+        ("encrypted-key", "private key do not load together"),
+        ("bad-pem", "private key do not load together"),
+        ("empty-allowlist", "no approved"),
+        ("wide-allowlist", "bounded, explicit IP networks"),
+        ("combined-ipv4", "collectively allow every address"),
+        ("combined-ipv6", "collectively allow every address"),
+        ("other-directive", "bounded, explicit IP networks"),
+        ("otp-key-absent", "independent email OTP key"),
+        ("otp-key-reused", "independent email OTP key"),
+        ("otp-missing-second", "distinct OTP mailbox bindings"),
+        ("otp-duplicate-mailbox", "distinct OTP mailbox bindings"),
+        ("otp-duplicate-operator", "distinct OTP mailbox bindings"),
+        ("otp-duplicate-json-key", "distinct OTP mailbox bindings"),
+        ("otp-bad-reference", "distinct OTP mailbox bindings"),
+        ("otp-bad-mailbox", "distinct OTP mailbox bindings"),
+    ],
+)
+def test_production_support_ingress_configuration(
+    tmp_path: Path, fault: str | None, expected_error: str | None
+) -> None:
+    validate = runpy.run_path(str(SCRIPT.parent / "release_config_contract.py"))[
+        "validate_support_ingress"
+    ]
+    host = "/etc/nginx/conf.d/support.conf"
+    tls = "/etc/nginx/ssl/"
+    nginx = {
+        "networks": {"backend_proxy": {"ipv4_address": "192.0.2.10"}},
+        "volumes": [{"target": host, "read_only": fault != "writable-mount"}],
+    }
+    env = {
+        "SUPPORT_PORTAL_ENABLED": "false" if fault == "flag-off" else "true",
+        "SUPPORT_INGRESS_PEER": "192.0.2.11" if fault == "wrong-peer" else "192.0.2.10",
+        "SUPPORT_EMAIL_OTP_KEY": "test-only-otp-key-not-runtime-config",
+    }
+    first = "a4f0517e-d4e4-4a91-83c8-77d9c5d0478f"
+    second = "ccbad879-60fc-4ac1-b82c-27ff391fe6a1"
+    addresses = {
+        first: "synthetic-first@example.com",
+        second: "synthetic-second@example.com",
+    }
+    if fault == "otp-key-absent":
+        env.pop("SUPPORT_EMAIL_OTP_KEY")
+    if fault == "otp-key-reused":
+        env["SUPPORT_RECOVERY_KEY"] = env["SUPPORT_EMAIL_OTP_KEY"]
+    if fault == "otp-missing-second":
+        del addresses[second]
+    if fault == "otp-duplicate-mailbox":
+        addresses[second] = addresses[first].upper()
+    if fault == "otp-duplicate-operator":
+        addresses[first.upper()] = addresses.pop(second)
+    if fault == "otp-bad-reference":
+        addresses["bad-reference"] = addresses.pop(second)
+    if fault == "otp-bad-mailbox":
+        addresses[second] = "synthetic-secret-marker"
+    env["SUPPORT_EMAIL_OTP_RECIPIENTS"] = json.dumps(addresses)
+    if fault == "otp-duplicate-json-key":
+        env["SUPPORT_EMAIL_OTP_RECIPIENTS"] = (
+            f'{{"{first}":"synthetic-first@example.com",'
+            f'"{first}":"synthetic-other@example.com","{second}":"synthetic-second@example.com"}}'
+        )
+    tls_key = tmp_path / "key.pem"
+    certificate = tmp_path / "cert.pem"
+    _support_tls_fixture(certificate, tls_key, fault)
+    allowlist = tmp_path / "support-allowlist.conf"
+    allowlist.write_text({
+        "empty-allowlist": "# No active networks\n",
+        "wide-allowlist": "allow 0.0.0.0/0;\n",
+        "combined-ipv4": "allow 0.0.0.0/1;\nallow 128.0.0.0/1;\n",
+        "combined-ipv6": "allow ::/1;\nallow 8000::/1;\n",
+        "other-directive": "allow 192.0.2.20;\nsatisfy any;\n",
+    }.get(fault or "", "allow 192.0.2.20; # fixture\nallow 2001:db8::/64;\n"))
+    vhost = "other.conf" if fault == "other-host-file" else "nginx/support.prod.conf"
+    files = {
+        host: tmp_path / vhost,
+        tls + "support-fullchain.pem": certificate,
+        tls + "support-privkey.pem": tls_key,
+        tls + "support-allowlist.conf": allowlist,
+    }
+    if fault == "no-host":
+        files.pop(host)
+    if fault == "missing-tls":
+        files.pop(tls + "support-fullchain.pem")
+    command = ["uvicorn", "app.main:app"]
+    if fault != "forwarded-peer":
+        command.append("--no-proxy-headers")
+    if fault == "contradictory-peer":
+        command.append("--proxy-headers")
+    backend = {"command": command}
+    validate(tmp_path, {}, {}, {}, {})
+    if expected_error:
+        with pytest.raises(ValueError, match=expected_error) as rejected:
+            validate(tmp_path, nginx, backend, env, files)
+        assert "synthetic-secret-marker" not in str(rejected.value)
+        assert "test-only-otp-key" not in str(rejected.value)
+    else:
+        validate(tmp_path, nginx, backend, env, files)
 
 
 @pytest.mark.parametrize("job_attempt", [2, 3])

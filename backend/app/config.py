@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, HttpUrl, SecretStr, model_validator
+from pydantic import EmailStr, Field, HttpUrl, IPvAnyAddress, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.business_policy import DEFAULT_BUSINESS_CURRENCY, BusinessPolicy, BusinessPolicyResponse
@@ -15,6 +15,13 @@ class Settings(BaseSettings, BusinessPolicy):
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     frontend_base_url: str | None = None
+    super_admin_enabled: bool = False
+    super_admin_otp_key: SecretStr | None = None
+    support_portal_enabled: bool = False
+    support_ingress_peer: IPvAnyAddress | None = None
+    support_recovery_key: SecretStr | None = None
+    support_email_otp_key: SecretStr | None = None
+    support_email_otp_recipients: dict[UUID, EmailStr] = Field(default_factory=dict, repr=False)
 
     database_url: str = (
         "postgresql+asyncpg://garrison:garrison_dev_password@localhost:5432/garrison_portal"

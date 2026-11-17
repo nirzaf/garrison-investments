@@ -18,10 +18,9 @@ from app.schemas.users import (
 )
 from app.services.user_service import UserService
 from app.utils.permissions import (
+    BUSINESS_ROLE_LABELS,
     PERMISSION_USERS_MANAGE,
     PERMISSION_USERS_READ,
-    ROLE_LABELS,
-    VALID_ROLES,
     can_assign_user_role,
     permissions_for_role,
 )
@@ -73,11 +72,11 @@ async def list_user_roles(current_user: CanReadUsers) -> UserRoleListResponse:
         items=[
             UserRoleResponse(
                 role=role,
-                label=ROLE_LABELS[role],
+                label=BUSINESS_ROLE_LABELS[role],
                 permissions=permissions_for_role(role),
                 assignable=can_assign_user_role(current_user.role, role),
             )
-            for role in sorted(VALID_ROLES)
+            for role in sorted(BUSINESS_ROLE_LABELS)
         ]
     )
 

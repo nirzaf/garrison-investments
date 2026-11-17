@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService, RequestMeta
+from app.utils.exceptions import AppException
 from app.utils.permissions import ensure_permission
 from app.utils.request import get_client_ip
 
@@ -29,15 +30,19 @@ def get_request_meta(request: Request) -> RequestMeta:
 RequestMetadata = Annotated[RequestMeta, Depends(get_request_meta)]
 
 
-async def get_current_user(
-    session: DbSession,
+async def get_bearer_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-) -> User:
-    from app.utils.exceptions import AppException
-
+) -> str:
     if not credentials or credentials.scheme.lower() != "bearer":
         raise AppException("Authentication required.", status_code=401, error_code="AUTH_REQUIRED")
-    return await AuthService(session).get_user_from_access_token(credentials.credentials)
+    return credentials.credentials
+
+
+BearerToken = Annotated[str, Depends(get_bearer_token)]
+
+
+async def get_current_user(session: DbSession, token: BearerToken) -> User:
+    return await AuthService(session).get_user_from_access_token(token)
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

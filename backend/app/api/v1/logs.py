@@ -1,19 +1,22 @@
-import asyncio
-import json
-from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
+from functools import partial
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import DbSession, require_permission
-from app.config import get_settings
+from app.api.dependencies import BearerToken, DbSession, require_permission
+from app.api.streaming import ManagedEventStream
 from app.database import AsyncSessionLocal
 from app.models.user import User
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse
 from app.services.audit_service import AuditService
+from app.services.business_log_stream import (
+    admit_business_log_stream,
+    business_log_events,
+    release_business_log_stream,
+)
 from app.utils.permissions import PERMISSION_AUDIT_VIEW
 
 router = APIRouter(prefix="/log-events", tags=["Log Events"])
@@ -91,15 +94,20 @@ async def list_log_events(
             }
         },
     )
+    await session.commit()
     return AuditLogListResponse(
         items=[AuditLogResponse.model_validate(log) for log in logs],
         total=total,
     )
 
 
-@router.get("/stream")
+@router.get(
+    "/stream",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
 async def stream_log_events(
-    current_user: CanViewLogs,
+    token: BearerToken,
     request: Request,
     event_type: Annotated[str | None, Query(max_length=32)] = None,
     severity: Annotated[str | None, Query(max_length=16)] = None,
@@ -112,66 +120,47 @@ async def stream_log_events(
     storage_tier: Annotated[str | None, Query(max_length=16)] = None,
     search: Annotated[str | None, Query(max_length=200)] = None,
     created_from: Annotated[datetime | None, Query()] = None,
+    last_event_id: Annotated[UUID | None, Header()] = None,
 ) -> StreamingResponse:
+    if created_from is not None and created_from.tzinfo is None:
+        created_from = created_from.replace(tzinfo=UTC)
+    filters = {
+        "event_type": event_type,
+        "severity": severity,
+        "action": action,
+        "entity_type": entity_type,
+        "user_id": user_id,
+        "session_id": session_id,
+        "endpoint": endpoint,
+        "source_service": source_service,
+        "storage_tier": storage_tier,
+        "search": search,
+        "created_from": created_from,
+    }
     async with AsyncSessionLocal() as session:
+        user, stream = await admit_business_log_stream(
+            session, token, request.state.request_id, last_event_id, created_from
+        )
         await _record_log_access(
             session=session,
-            current_user=current_user,
+            current_user=user,
             request=request,
             action="logs.cli.stream" if _cli_session_id(request) else "logs.stream",
             context_payload={
                 "filters": {
-                    "event_type": event_type,
-                    "severity": severity,
-                    "action": action,
-                    "entity_type": entity_type,
+                    **filters,
                     "user_id": str(user_id) if user_id else None,
-                    "session_id": session_id,
-                    "endpoint": endpoint,
-                    "source_service": source_service,
-                    "storage_tier": storage_tier,
-                    "search": search,
                     "created_from": created_from.isoformat() if created_from else None,
-                }
+                },
+                "stream_id": str(stream.id),
+                "last_event_id": str(last_event_id) if last_event_id else None,
             },
         )
+        await session.commit()
 
-    async def event_stream() -> AsyncIterator[str]:
-        poll_seconds = get_settings().log_stream_poll_seconds
-        page_size = 100
-        after: tuple[datetime, UUID] | None = None
-        while True:
-            if await request.is_disconnected():
-                break
-            async with AsyncSessionLocal() as session:
-                logs, _ = await AuditService(session).list_logs(
-                    event_type=event_type,
-                    severity=severity,
-                    action=action,
-                    entity_type=entity_type,
-                    user_id=user_id,
-                    session_id=session_id,
-                    endpoint=endpoint,
-                    source_service=source_service,
-                    storage_tier=storage_tier,
-                    search=search,
-                    created_from=created_from,
-                    limit=page_size,
-                    ascending=True,
-                    after=after,
-                    include_total=False,
-                )
-            for log in logs:
-                after = (log.created_at, log.id)
-                payload = AuditLogResponse.model_validate(log).model_dump(mode="json")
-                yield f"data: {json.dumps(payload)}\n\n"
-            if len(logs) == page_size:
-                continue
-            yield ": keep-alive\n\n"
-            await asyncio.sleep(poll_seconds)
-
-    return StreamingResponse(
-        event_stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
+    return ManagedEventStream(
+        business_log_events(stream, token, filters),
+        partial(release_business_log_stream, stream.id),
     )
 
 
@@ -195,7 +184,6 @@ async def _record_log_access(
             "cli_session_id": _cli_session_id(request),
         },
     )
-    await session.commit()
 
 
 def _cli_session_id(request: Request) -> str | None:

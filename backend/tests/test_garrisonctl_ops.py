@@ -225,6 +225,31 @@ def test_tail_returns_one_envelope_from_bounded_sample(tmp_path: Path) -> None:
     assert result["data"] == {"items": [{"action": "fixture"}], "finished_by": "event_limit"}
 
 
+def test_tail_resumes_from_header_and_reports_revocation(tmp_path: Path) -> None:
+    token = tmp_path / "access"
+    token.write_text(SECRET, encoding="utf-8")
+    token.chmod(0o600)
+    cursor = "a0300f69-121f-449c-bfa0-7e204feafbad"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Last-Event-ID"] == cursor
+        assert cursor not in str(request.url) and SECRET not in str(request.url)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text='data: {"action":"fixture"}\n\n: closed authorization_ended\n\n',
+        )
+
+    status, result = cli(
+        "logs", "tail", "--last-event-id", cursor, "--token-file", str(token), handler=handler
+    )
+    assert status == 0
+    assert result["data"] == {
+        "items": [{"action": "fixture"}],
+        "finished_by": "authorization_ended",
+    }
+
+
 @pytest.mark.parametrize(
     ("http_status", "body", "expected"),
     [

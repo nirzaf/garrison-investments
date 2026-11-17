@@ -5079,6 +5079,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/super-admin/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_super_admin_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/super-admin/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v1_super_admin_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/super-admin/auth/verify-otp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Otp */
+        post: operations["verify_otp_api_v1_super_admin_auth_verify_otp_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/super-admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Overview */
+        get: operations["read_overview_api_v1_super_admin_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supervisor-updates": {
         parameters: {
             query?: never;
@@ -5179,6 +5247,891 @@ export interface paths {
         put?: never;
         /** Upload Tds Document */
         post: operations["upload_tds_document_api_v1_suppliers__supplier_id__tds_document_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli-proof/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cli Proof Options */
+        post: operations["cli_proof_options_api_v1_support_auth_cli_proof_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli-proof/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Cli Proof */
+        post: operations["start_cli_proof_api_v1_support_auth_cli_proof_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli-proof/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Cli Proof */
+        post: operations["submit_cli_proof_api_v1_support_auth_cli_proof_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli-proof/take": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take Cli Proof */
+        post: operations["take_cli_proof_api_v1_support_auth_cli_proof_take_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cli Login Options */
+        post: operations["cli_login_options_api_v1_support_auth_cli_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Cli Login */
+        post: operations["start_cli_login_api_v1_support_auth_cli_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/cli/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Cli Login */
+        post: operations["verify_cli_login_api_v1_support_auth_cli_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v1_support_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login Options */
+        post: operations["login_options_api_v1_support_auth_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Login */
+        post: operations["verify_login_api_v1_support_auth_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/verify-otp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Login Otp */
+        post: operations["verify_login_otp_api_v1_support_auth_verify_otp_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cases */
+        get: operations["list_cases_api_v1_support_cases_get"];
+        put?: never;
+        /** Create Case */
+        post: operations["create_case_api_v1_support_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Case */
+        get: operations["read_case_api_v1_support_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/account-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Business Action */
+        post: operations["propose_business_action_api_v1_support_cases__case_id__account_actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/recovery-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Recovery Status */
+        get: operations["support_recovery_status_api_v1_support_cases__case_id__account_actions__action_id__recovery_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Business Action */
+        post: operations["decide_business_action_api_v1_support_cases__case_id__account_actions__action_id___stage__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/account-actions/{action_id}/{stage}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Business Action Options */
+        post: operations["business_action_options_api_v1_support_cases__case_id__account_actions__action_id___stage__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Case Account */
+        get: operations["support_case_account_api_v1_support_cases__case_id__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/accounts/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Support Case Account */
+        post: operations["search_support_case_account_api_v1_support_cases__case_id__accounts_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/accounts/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Account */
+        get: operations["support_account_api_v1_support_cases__case_id__accounts__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Case Action */
+        post: operations["propose_case_action_api_v1_support_cases__case_id__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/actions/{action_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Case Action */
+        post: operations["apply_case_action_api_v1_support_cases__case_id__actions__action_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/actions/{action_id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Case Action Options */
+        post: operations["case_action_options_api_v1_support_cases__case_id__actions__action_id__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Case Audit */
+        get: operations["support_case_audit_api_v1_support_cases__case_id__audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Evidence Export */
+        post: operations["propose_evidence_export_api_v1_support_cases__case_id__exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download Evidence Export */
+        post: operations["download_evidence_export_api_v1_support_cases__case_id__exports__export_id__download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Evidence Export */
+        post: operations["review_evidence_export_api_v1_support_cases__case_id__exports__export_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/exports/{export_id}/{stage}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evidence Export Options */
+        post: operations["evidence_export_options_api_v1_support_cases__case_id__exports__export_id___stage__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case Logs */
+        get: operations["get_case_logs_api_v1_support_cases__case_id__logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/logs/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream Case Logs */
+        get: operations["stream_case_logs_api_v1_support_cases__case_id__logs_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Case Timeline */
+        get: operations["support_case_timeline_api_v1_support_cases__case_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/cases/{case_id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition Case */
+        post: operations["transition_case_api_v1_support_cases__case_id__transitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/grant-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Grant Change */
+        post: operations["propose_grant_change_api_v1_support_custody_grant_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/grant-changes/{change_id}/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Grant Change */
+        post: operations["decide_grant_change_api_v1_support_custody_grant_changes__change_id___stage__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/grant-changes/{change_id}/{stage}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Grant Change Options */
+        post: operations["grant_change_options_api_v1_support_custody_grant_changes__change_id___stage__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Registration */
+        post: operations["propose_registration_api_v1_support_custody_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/registrations/{kind}/{proposal_id}/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Registration */
+        post: operations["decide_registration_api_v1_support_custody_registrations__kind___proposal_id___stage__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/registrations/{kind}/{proposal_id}/{stage}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Registration Proof Options */
+        post: operations["registration_proof_options_api_v1_support_custody_registrations__kind___proposal_id___stage__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/suspensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Suspension */
+        post: operations["propose_suspension_api_v1_support_custody_suspensions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/suspensions/{suspension_id}/{stage}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Suspension */
+        post: operations["decide_suspension_api_v1_support_custody_suspensions__suspension_id___stage__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/custody/suspensions/{suspension_id}/{stage}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspension Options */
+        post: operations["suspension_options_api_v1_support_custody_suspensions__suspension_id___stage__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Health */
+        get: operations["support_health_api_v1_support_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Me */
+        get: operations["read_me_api_v1_support_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/registration/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Passkey Registration Options */
+        post: operations["passkey_registration_options_api_v1_support_registration_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/registration/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Registration Status */
+        post: operations["registration_status_api_v1_support_registration_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/registration/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Passkey */
+        post: operations["register_passkey_api_v1_support_registration_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End Permission View */
+        post: operations["end_permission_view_api_v1_support_views__view_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/projection/navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Navigation */
+        get: operations["support_navigation_api_v1_support_views__view_id__projection_navigation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/projection/permission-explanation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Permission View */
+        get: operations["support_permission_view_api_v1_support_views__view_id__projection_permission_explanation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/projection/project-detail-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Project Detail */
+        get: operations["support_project_detail_api_v1_support_views__view_id__projection_project_detail_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/projection/project-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Project List */
+        get: operations["support_project_list_api_v1_support_views__view_id__projection_project_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/views/{view_id}/projection/request-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Request Summary */
+        get: operations["support_request_summary_api_v1_support_views__view_id__projection_request_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6414,6 +7367,114 @@ export interface components {
             /** Remaining Budget */
             remaining_budget: string;
         };
+        /** BusinessActionCreate */
+        BusinessActionCreate: {
+            /** Case Revision */
+            case_revision: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail";
+            /** Permission Key */
+            permission_key?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "suspected_access" | "verified_user_report" | "failed_sign_in" | "permission_triage" | "request_triage";
+            /** Source Event Id */
+            source_event_id?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Revision */
+            user_revision: number;
+        };
+        /** BusinessActionProofOptions */
+        BusinessActionProofOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Contact Ref */
+            contact_ref?: string | null;
+            proposal: components["schemas"]["BusinessActionRead"];
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+            /** Required Reviews */
+            required_reviews: number;
+        };
+        /** BusinessActionProofVerify */
+        BusinessActionProofVerify: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            credential: components["schemas"]["SupportAssertion"];
+            /** Expected Contact Ref */
+            expected_contact_ref?: string | null;
+            /** Expected Digest */
+            expected_digest: string;
+        };
+        /** BusinessActionRead */
+        BusinessActionRead: {
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Case Revision */
+            case_revision: number;
+            /** Digest */
+            digest: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "revoke_sessions" | "unlock" | "disable" | "reactivate" | "permission_view" | "recover" | "request_summary" | "navigation_view" | "project_list" | "project_detail";
+            /** Permission Key */
+            permission_key: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Reason */
+            reason: string;
+            /** Reason Code */
+            reason_code: string;
+            /** Source Event Id */
+            source_event_id: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Revision */
+            user_revision: number;
+        };
+        /** BusinessActionReviewContext */
+        BusinessActionReviewContext: {
+            /** Contact Ref */
+            contact_ref?: string | null;
+        };
         /** BusinessPolicyResponse */
         BusinessPolicyResponse: {
             /**
@@ -6580,6 +7641,73 @@ export interface components {
             updated_at: string;
             /** Years Experience */
             years_experience: string | null;
+        };
+        /** CaseActionCreate */
+        CaseActionCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "member_add" | "member_remove" | "evidence_link" | "verify" | "close" | "subject_set" | "subject_remove" | "project_add" | "project_remove";
+            /** Member Id */
+            member_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Source Event Id */
+            source_event_id?: string | null;
+            /** Subject User Id */
+            subject_user_id?: string | null;
+        };
+        /** CaseActionOptions */
+        CaseActionOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            proposal: components["schemas"]["CaseActionRead"];
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+        };
+        /** CaseActionRead */
+        CaseActionRead: {
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Case Revision */
+            case_revision: number;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "member_add" | "member_remove" | "evidence_link" | "verify" | "close" | "subject_set" | "subject_remove" | "project_add" | "project_remove";
+            /** Member Id */
+            member_id: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Reviewer Id */
+            reviewer_id: string | null;
+            /** Source Event Id */
+            source_event_id: string | null;
+            /** Source Request Id */
+            source_request_id: string | null;
+            /** Source Status */
+            source_status: number | null;
+            /** Subject User Id */
+            subject_user_id: string | null;
         };
         /** CertificationCreateRequest */
         CertificationCreateRequest: {
@@ -8152,6 +9280,67 @@ export interface components {
             progress_percent?: number | string | null;
             /** Status */
             status?: ("active" | "completed" | "deferred" | "cancelled") | null;
+        };
+        /** GrantChangeOptions */
+        GrantChangeOptions: {
+            /**
+             * Capability
+             * @enum {string}
+             */
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start";
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Enable */
+            enable: boolean;
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** GrantChangeRead */
+        GrantChangeRead: {
+            /**
+             * Capability
+             * @enum {string}
+             */
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start";
+            /** Enable */
+            enable: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Grant Change Id
+             * Format: uuid
+             */
+            grant_change_id: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** GrantChangeRequest */
+        GrantChangeRequest: {
+            /**
+             * Capability
+             * @enum {string}
+             */
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start";
+            /** Enable */
+            enable: boolean;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /** HolidayCreateRequest */
         HolidayCreateRequest: {
@@ -10135,6 +11324,26 @@ export interface components {
             has_more: boolean;
             /** Items */
             items: components["schemas"]["ManagerReviewItemResponse"][];
+        };
+        /** MaskedProject */
+        MaskedProject: {
+            /** Label */
+            label: string;
+            /** Status */
+            status: string;
+        };
+        /** MaskedProjectDetail */
+        MaskedProjectDetail: {
+            /** Counts Capped */
+            counts_capped: boolean;
+            /** Label */
+            label: string;
+            /** Milestones */
+            milestones: number;
+            /** Status */
+            status: string;
+            /** Tasks */
+            tasks: number;
         };
         /** MaterialQuantityCommand */
         MaterialQuantityCommand: {
@@ -12948,6 +14157,185 @@ export interface components {
             token_type: string;
             user: components["schemas"]["AuthUserResponse"];
         };
+        /** RegistrationAlgorithm */
+        RegistrationAlgorithm: {
+            /** Alg */
+            alg: number;
+            /**
+             * Type
+             * @constant
+             */
+            type: "public-key";
+        };
+        /** RegistrationAttestation */
+        RegistrationAttestation: {
+            /** Id */
+            id: string;
+            /** Rawid */
+            rawId: string;
+            response: components["schemas"]["RegistrationAttestationResponse"];
+            /**
+             * Type
+             * @constant
+             */
+            type: "public-key";
+        };
+        /** RegistrationAttestationResponse */
+        RegistrationAttestationResponse: {
+            /** Attestationobject */
+            attestationObject: string;
+            /** Clientdatajson */
+            clientDataJSON: string;
+        };
+        /** RegistrationAuthenticator */
+        RegistrationAuthenticator: {
+            /** Requireresidentkey */
+            requireResidentKey: boolean;
+            /**
+             * Residentkey
+             * @constant
+             */
+            residentKey: "required";
+            /**
+             * Userverification
+             * @constant
+             */
+            userVerification: "required";
+        };
+        /** RegistrationCreationOptions */
+        RegistrationCreationOptions: {
+            public_key: components["schemas"]["RegistrationPublicKeyOptions"];
+        };
+        /** RegistrationDecision */
+        RegistrationDecision: {
+            /** Invitations */
+            invitations: [
+                string,
+                string
+            ] | null;
+        };
+        /** RegistrationInvitation */
+        RegistrationInvitation: {
+            /** Invitation */
+            invitation: string;
+        };
+        /** RegistrationProofOptions */
+        RegistrationProofOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "enroll" | "recover";
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** RegistrationProposal */
+        RegistrationProposal: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "enroll" | "recover";
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** RegistrationProposalRead */
+        RegistrationProposalRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "enroll" | "recover";
+            /**
+             * Proposal Id
+             * Format: uuid
+             */
+            proposal_id: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** RegistrationPublicKeyOptions */
+        RegistrationPublicKeyOptions: {
+            /**
+             * Attestation
+             * @constant
+             */
+            attestation: "none";
+            authenticatorSelection: components["schemas"]["RegistrationAuthenticator"];
+            /** Challenge */
+            challenge: string;
+            /** Pubkeycredparams */
+            pubKeyCredParams: components["schemas"]["RegistrationAlgorithm"][];
+            rp: components["schemas"]["RegistrationRp"];
+            /** Timeout */
+            timeout: number;
+            user: components["schemas"]["RegistrationUser"];
+        };
+        /** RegistrationResult */
+        RegistrationResult: {
+            /** Activated */
+            activated: boolean;
+            /**
+             * Awaiting Other Custodian
+             * @default false
+             */
+            awaiting_other_custodian: boolean;
+        };
+        /** RegistrationRp */
+        RegistrationRp: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** RegistrationStatus */
+        RegistrationStatus: {
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "registered" | "activated";
+        };
+        /** RegistrationUser */
+        RegistrationUser: {
+            /** Displayname */
+            displayName: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** RegistrationVerify */
+        RegistrationVerify: {
+            credential: components["schemas"]["RegistrationAttestation"];
+            /** Invitation */
+            invitation: string;
+        };
         /** ReimbursementCreateRequest */
         ReimbursementCreateRequest: {
             /** Amount */
@@ -13811,6 +15199,55 @@ export interface components {
             /** Reserved Qty */
             reserved_qty: string;
         };
+        /** SuperAdminChallenge */
+        SuperAdminChallenge: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** SuperAdminOverview */
+        SuperAdminOverview: {
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Scope
+             * @default platform
+             * @constant
+             */
+            scope: "platform";
+            /**
+             * Source
+             * @default portal-api
+             * @constant
+             */
+            source: "portal-api";
+            /**
+             * Status
+             * @default available
+             * @constant
+             */
+            status: "available";
+        };
+        /** SuperAdminToken */
+        SuperAdminToken: {
+            /** Access Token */
+            access_token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** SupervisorUpdateCreateRequest */
         SupervisorUpdateCreateRequest: {
             /** Attachment Refs */
@@ -14022,6 +15459,851 @@ export interface components {
             tds_certificate_number?: string | null;
             /** Tds Expiry Date */
             tds_expiry_date?: string | null;
+        };
+        /** SupportAccountEvent */
+        SupportAccountEvent: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "login_succeeded" | "login_failed" | "session_replay_revoked" | "password_changed" | "password_recovered";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+        };
+        /** SupportAccountRead */
+        SupportAccountRead: {
+            /** Access Revision */
+            access_revision: number;
+            /** Active */
+            active: boolean;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Case Revision */
+            case_revision: number;
+            /** Deleted */
+            deleted: boolean;
+            /** Display Name */
+            display_name: string;
+            /** Email Masked */
+            email_masked: string;
+            /** Employee Code */
+            employee_code: string | null;
+            /** Locked */
+            locked: boolean;
+            /** Membership Ids */
+            membership_ids: string[];
+            /** Permissions */
+            permissions: string[];
+            /** Recent Auth Events */
+            recent_auth_events: components["schemas"]["SupportAccountEvent"][];
+            /** Recovery Destination Verified */
+            recovery_destination_verified: boolean | null;
+            /** Role */
+            role: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SupportAccountSelector */
+        SupportAccountSelector: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "email" | "employee_code" | "name" | "role";
+            /** Value */
+            value: string;
+        };
+        /** SupportAssertion */
+        SupportAssertion: {
+            /** Id */
+            id: string;
+            /** Rawid */
+            rawId: string;
+            response: components["schemas"]["SupportAssertionResponse"];
+            /**
+             * Type
+             * @constant
+             */
+            type: "public-key";
+        };
+        /** SupportAssertionResponse */
+        SupportAssertionResponse: {
+            /** Authenticatordata */
+            authenticatorData: string;
+            /** Clientdatajson */
+            clientDataJSON: string;
+            /** Signature */
+            signature: string;
+            /** Userhandle */
+            userHandle: string;
+        };
+        /** SupportAuditEvent */
+        SupportAuditEvent: {
+            /** Event */
+            event: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "case" | "case_decision" | "account_decision" | "directory" | "runtime";
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /**
+             * Reference Id
+             * Format: uuid
+             */
+            reference_id: string;
+        };
+        /** SupportAuditPage */
+        SupportAuditPage: {
+            /** Events */
+            events: components["schemas"]["SupportAuditEvent"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** SupportCaseCreate */
+        SupportCaseCreate: {
+            /** External Ref */
+            external_ref: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "availability" | "access" | "functional" | "data_integrity";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+        };
+        /** SupportCasePage */
+        SupportCasePage: {
+            /** Items */
+            items: components["schemas"]["SupportCaseRead"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** SupportCaseRead */
+        SupportCaseRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** External Ref */
+            external_ref: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "availability" | "access" | "functional" | "data_integrity";
+            /** Revision */
+            revision: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "investigating" | "mitigated" | "verified" | "closed";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SupportCaseTransition */
+        SupportCaseTransition: {
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "availability" | "access" | "functional" | "data_integrity";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "investigating" | "mitigated";
+        };
+        /** SupportCliHandoff */
+        SupportCliHandoff: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+        };
+        /** SupportCliOptionsRequest */
+        SupportCliOptionsRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Pairing Code */
+            pairing_code: string;
+        };
+        /** SupportCliProofEnvelope */
+        SupportCliProofEnvelope: {
+            /** Sealed */
+            sealed: string;
+        };
+        /** SupportCliProofOptions */
+        SupportCliProofOptions: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            /** Encryption Key */
+            encryption_key: string;
+            /** Operation */
+            operation: string;
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+            /** Stage */
+            stage: string;
+        };
+        /** SupportCliProofPair */
+        SupportCliProofPair: {
+            /** Pairing Code */
+            pairing_code: string;
+            /**
+             * Reference
+             * Format: uuid
+             */
+            reference: string;
+        };
+        /** SupportCliProofReference */
+        SupportCliProofReference: {
+            /**
+             * Reference
+             * Format: uuid
+             */
+            reference: string;
+        };
+        /** SupportCliProofStart */
+        SupportCliProofStart: {
+            /** Encryption Key */
+            encryption_key: string;
+            /** Pairing Hash */
+            pairing_hash: string;
+            /**
+             * Proof Id
+             * Format: uuid
+             */
+            proof_id: string;
+        };
+        /** SupportCliProofSubmit */
+        SupportCliProofSubmit: {
+            /** Pairing Code */
+            pairing_code: string;
+            /**
+             * Reference
+             * Format: uuid
+             */
+            reference: string;
+            /** Sealed */
+            sealed: string;
+        };
+        /** SupportCliStart */
+        SupportCliStart: {
+            /** Code Hash */
+            code_hash: string;
+            /** Csrf Hash */
+            csrf_hash: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Token Hash */
+            token_hash: string;
+        };
+        /** SupportCliVerifyRequest */
+        SupportCliVerifyRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            credential: components["schemas"]["SupportAssertion"];
+            /** Pairing Code */
+            pairing_code: string;
+        };
+        /** SupportEvidenceDecision */
+        SupportEvidenceDecision: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            credential: components["schemas"]["SupportAssertion"];
+            /** Expected Sha256 */
+            expected_sha256: string;
+        };
+        /** SupportEvidenceExportCreate */
+        SupportEvidenceExportCreate: {
+            filters: components["schemas"]["SupportEvidenceFilters"];
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "incident_review" | "audit_review";
+        };
+        /** SupportEvidenceExportRead */
+        SupportEvidenceExportRead: {
+            /** Approved At */
+            approved_at: string | null;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Downloaded At */
+            downloaded_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            filters: components["schemas"]["SupportEvidenceFilters"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "incident_review" | "audit_review";
+            /** Row Count */
+            row_count: number;
+            /** Sha256 */
+            sha256: string;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** SupportEvidenceFilters */
+        SupportEvidenceFilters: {
+            /**
+             * Ended At
+             * Format: date-time
+             */
+            ended_at: string;
+            /**
+             * Limit
+             * @default 10000
+             */
+            limit: number;
+            /** Request Id */
+            request_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status Code */
+            status_code?: number | null;
+        };
+        /** SupportEvidenceProofOptions */
+        SupportEvidenceProofOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            export: components["schemas"]["SupportEvidenceExportRead"];
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+        };
+        /** SupportHealthRead */
+        SupportHealthRead: {
+            /**
+             * Database
+             * @enum {string}
+             */
+            database: "operational" | "unavailable" | "unknown";
+            /**
+             * Object Storage
+             * @enum {string}
+             */
+            object_storage: "operational" | "unavailable" | "unknown";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Redis
+             * @enum {string}
+             */
+            redis: "operational" | "unavailable" | "unknown";
+        };
+        /** SupportLoginOptions */
+        SupportLoginOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+        };
+        /** SupportLoginRequest */
+        SupportLoginRequest: {
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+        };
+        /** SupportNavigationProjection */
+        SupportNavigationProjection: {
+            /**
+             * Adapter
+             * @default navigation
+             * @constant
+             */
+            adapter: "navigation";
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Routes */
+            routes: components["schemas"]["SupportNavigationRoute"][];
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
+        };
+        /** SupportNavigationRoute */
+        SupportNavigationRoute: {
+            /** Route Id */
+            route_id: string;
+            /** Visible */
+            visible: boolean;
+        };
+        /** SupportOtpRequired */
+        SupportOtpRequired: {
+            /**
+             * Otp Reference
+             * Format: uuid
+             */
+            otp_reference: string;
+        };
+        /** SupportOtpVerification */
+        SupportOtpVerification: {
+            /** Otp */
+            otp: string;
+            /**
+             * Otp Reference
+             * Format: uuid
+             */
+            otp_reference: string;
+            /** Pairing Code */
+            pairing_code?: string | null;
+        };
+        /** SupportPermissionExplanation */
+        SupportPermissionExplanation: {
+            /**
+             * Adapter
+             * @default permission-explanation
+             * @constant
+             */
+            adapter: "permission-explanation";
+            /** Allowed */
+            allowed: boolean;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Permission Key */
+            permission_key: string;
+            /**
+             * Scope
+             * @default role
+             * @constant
+             */
+            scope: "role";
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
+        };
+        /** SupportProfile */
+        SupportProfile: {
+            /** Capabilities */
+            capabilities: string[];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+        };
+        /** SupportProjectDetail */
+        SupportProjectDetail: {
+            /**
+             * Adapter
+             * @default project-detail-summary
+             * @constant
+             */
+            adapter: "project-detail-summary";
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            project: components["schemas"]["MaskedProjectDetail"];
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
+        };
+        /** SupportProjectList */
+        SupportProjectList: {
+            /**
+             * Adapter
+             * @default project-list
+             * @constant
+             */
+            adapter: "project-list";
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Projects */
+            projects: components["schemas"]["MaskedProject"][];
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
+        };
+        /** SupportPublicKeyOptions */
+        SupportPublicKeyOptions: {
+            /**
+             * Allowcredentials
+             * @default []
+             */
+            allowCredentials: unknown[];
+            /** Challenge */
+            challenge: string;
+            /** Rpid */
+            rpId: string;
+            /** Timeout */
+            timeout: number;
+            /**
+             * Userverification
+             * @constant
+             */
+            userVerification: "required";
+        };
+        /** SupportRecoveryStatus */
+        SupportRecoveryStatus: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Delivery Resolved At */
+            delivery_resolved_at?: string | null;
+            /**
+             * Delivery State
+             * @enum {string}
+             */
+            delivery_state: "not_queued" | "pending" | "dispatching" | "accepted" | "unknown" | "cancelled";
+            /** Queued At */
+            queued_at?: string | null;
+            /**
+             * Reset State
+             * @enum {string}
+             */
+            reset_state: "not_issued" | "waiting" | "ready" | "unavailable" | "completed" | "expired" | "revoked";
+        };
+        /** SupportRequestEvent */
+        SupportRequestEvent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "request" | "handled_error" | "unhandled_error";
+            /** Method */
+            method: ("GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS") | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Status Code */
+            status_code: number | null;
+        };
+        /** SupportRequestLogPage */
+        SupportRequestLogPage: {
+            /** Events */
+            events: components["schemas"]["SupportRequestEvent"][];
+            /** Request Id */
+            request_id: string;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** SupportRequestSummary */
+        SupportRequestSummary: {
+            /**
+             * Adapter
+             * @default request-summary
+             * @constant
+             */
+            adapter: "request-summary";
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Method */
+            method: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Request Ref */
+            request_ref: string;
+            /** Status Code */
+            status_code: number;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * View Id
+             * Format: uuid
+             */
+            view_id: string;
+        };
+        /** SupportSessionRead */
+        SupportSessionRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+        };
+        /** SupportTimelineEvent */
+        SupportTimelineEvent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** Request Status */
+            request_status?: number | null;
+            /** Revision */
+            revision: number;
+            /** Status */
+            status: string | null;
+        };
+        /** SupportTimelineRead */
+        SupportTimelineRead: {
+            /** Events */
+            events: components["schemas"]["SupportTimelineEvent"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** SupportVerifyRequest */
+        SupportVerifyRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            credential: components["schemas"]["SupportAssertion"];
+        };
+        /** SuspensionOptions */
+        SuspensionOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** SuspensionRead */
+        SuspensionRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Suspension Id
+             * Format: uuid
+             */
+            suspension_id: string;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
+        /** SuspensionRequest */
+        SuspensionRequest: {
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /** TimesheetCreateRequest */
         TimesheetCreateRequest: {
@@ -25957,7 +28239,9 @@ export interface operations {
                 search?: string | null;
                 created_from?: string | null;
             };
-            header?: never;
+            header?: {
+                "last-event-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -25969,7 +28253,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/event-stream": string;
                 };
             };
             /** @description Invalid request */
@@ -27171,6 +29455,128 @@ export interface operations {
             };
         };
     };
+    login_api_v1_super_admin_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuperAdminChallenge"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    logout_api_v1_super_admin_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_otp_api_v1_super_admin_auth_verify_otp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyOtpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuperAdminToken"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_overview_api_v1_super_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuperAdminOverview"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_supervisor_updates_api_v1_supervisor_updates_get: {
         parameters: {
             query?: {
@@ -27493,6 +29899,1775 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplierResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    cli_proof_options_api_v1_support_auth_cli_proof_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliProofPair"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCliProofOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    start_cli_proof_api_v1_support_auth_cli_proof_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliProofStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCliProofReference"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_cli_proof_api_v1_support_auth_cli_proof_submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliProofSubmit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    take_cli_proof_api_v1_support_auth_cli_proof_take_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliProofReference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCliProofEnvelope"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    cli_login_options_api_v1_support_auth_cli_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportLoginOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    start_cli_login_api_v1_support_auth_cli_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCliHandoff"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_cli_login_api_v1_support_auth_cli_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCliVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Email verification required */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportOtpRequired"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    logout_api_v1_support_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    login_options_api_v1_support_auth_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportLoginOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_login_api_v1_support_auth_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSessionRead"] | components["schemas"]["SupportOtpRequired"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_login_otp_api_v1_support_auth_verify_otp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportOtpVerification"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSessionRead"];
+                };
+            };
+            /** @description CLI session confirmed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    list_cases_api_v1_support_cases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCasePage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    create_case_api_v1_support_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCaseRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_case_api_v1_support_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCaseRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_business_action_api_v1_support_cases__case_id__account_actions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessActionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessActionRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_recovery_status_api_v1_support_cases__case_id__account_actions__action_id__recovery_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportRecoveryStatus"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_business_action_api_v1_support_cases__case_id__account_actions__action_id___stage__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessActionProofVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessActionRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    business_action_options_api_v1_support_cases__case_id__account_actions__action_id___stage__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BusinessActionReviewContext"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessActionProofOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_case_account_api_v1_support_cases__case_id__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAccountRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    search_support_case_account_api_v1_support_cases__case_id__accounts_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportAccountSelector"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAccountRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_account_api_v1_support_cases__case_id__accounts__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAccountRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_case_action_api_v1_support_cases__case_id__actions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "if-match": string;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseActionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseActionRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_case_action_api_v1_support_cases__case_id__actions__action_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseActionRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    case_action_options_api_v1_support_cases__case_id__actions__action_id__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseActionOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_case_audit_api_v1_support_cases__case_id__audit_get: {
+        parameters: {
+            query: {
+                started_at: string;
+                ended_at: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAuditPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_evidence_export_api_v1_support_cases__case_id__exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportEvidenceExportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportEvidenceExportRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    download_evidence_export_api_v1_support_cases__case_id__exports__export_id__download_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportEvidenceDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    review_evidence_export_api_v1_support_cases__case_id__exports__export_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportEvidenceDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportEvidenceExportRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    evidence_export_options_api_v1_support_cases__case_id__exports__export_id___stage__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                export_id: string;
+                stage: "review" | "download";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportEvidenceProofOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_case_logs_api_v1_support_cases__case_id__logs_get: {
+        parameters: {
+            query: {
+                request_id: string;
+                started_at: string;
+                ended_at: string;
+                limit?: number;
+                status_code?: number | null;
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportRequestLogPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    stream_case_logs_api_v1_support_cases__case_id__logs_stream_get: {
+        parameters: {
+            query: {
+                request_id: string;
+                hours?: number;
+            };
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_case_timeline_api_v1_support_cases__case_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTimelineRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    transition_case_api_v1_support_cases__case_id__transitions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "if-match": string;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportCaseTransition"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCaseRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_grant_change_api_v1_support_custody_grant_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantChangeRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_grant_change_api_v1_support_custody_grant_changes__change_id___stage__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    grant_change_options_api_v1_support_custody_grant_changes__change_id___stage__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                change_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantChangeOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_registration_api_v1_support_custody_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationProposal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationProposalRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_registration_api_v1_support_custody_registrations__kind___proposal_id___stage__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "enroll" | "recover";
+                proposal_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationDecision"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    registration_proof_options_api_v1_support_custody_registrations__kind___proposal_id___stage__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "enroll" | "recover";
+                proposal_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationProofOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_suspension_api_v1_support_custody_suspensions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuspensionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuspensionRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_suspension_api_v1_support_custody_suspensions__suspension_id___stage__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suspension_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    suspension_options_api_v1_support_custody_suspensions__suspension_id___stage__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suspension_id: string;
+                stage: "review" | "execute";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuspensionOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_health_api_v1_support_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportHealthRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_me_api_v1_support_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportProfile"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    passkey_registration_options_api_v1_support_registration_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationInvitation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationCreationOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    registration_status_api_v1_support_registration_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationInvitation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationStatus"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    register_passkey_api_v1_support_registration_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationVerify"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationResult"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    end_permission_view_api_v1_support_views__view_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_navigation_api_v1_support_views__view_id__projection_navigation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportNavigationProjection"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_permission_view_api_v1_support_views__view_id__projection_permission_explanation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPermissionExplanation"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_project_detail_api_v1_support_views__view_id__projection_project_detail_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportProjectDetail"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_project_list_api_v1_support_views__view_id__projection_project_list_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportProjectList"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_request_summary_api_v1_support_views__view_id__projection_request_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                view_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportRequestSummary"];
                 };
             };
             /** @description Invalid request */

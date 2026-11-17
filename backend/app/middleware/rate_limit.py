@@ -14,6 +14,21 @@ class AuthRateLimiter:
         "/api/v1/auth/verify-otp",
         "/api/v1/auth/password-reset/request",
         "/api/v1/auth/password-reset/confirm",
+        "/api/v1/super-admin/auth/login",
+        "/api/v1/super-admin/auth/verify-otp",
+        "/api/v1/support/auth/options",
+        "/api/v1/support/auth/verify",
+        "/api/v1/support/auth/verify-otp",
+        "/api/v1/support/auth/cli/start",
+        "/api/v1/support/auth/cli/options",
+        "/api/v1/support/auth/cli/verify",
+        "/api/v1/support/auth/cli-proof/start",
+        "/api/v1/support/auth/cli-proof/options",
+        "/api/v1/support/auth/cli-proof/submit",
+        "/api/v1/support/auth/cli-proof/take",
+        "/api/v1/support/registration/options",
+        "/api/v1/support/registration/status",
+        "/api/v1/support/registration/verify",
     }
 
     def __init__(self, *, redis_url: str, window_seconds: int, max_requests: int) -> None:
@@ -39,6 +54,8 @@ class AuthRateLimiter:
         return f"rate-limit:auth:{request.url.path}:{client_id}:{identity}"
 
     async def _request_identity(self, request: Request) -> str:
+        if request.url.path.startswith("/api/v1/support/"):
+            return "anonymous"
         try:
             body = await request.body()
         except Exception:
@@ -51,15 +68,19 @@ class AuthRateLimiter:
             payload = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return "anonymous"
+        if not isinstance(payload, dict):
+            return "anonymous"
 
         if request.url.path in {
             "/api/v1/auth/login",
             "/api/v1/auth/password-reset/request",
+            "/api/v1/super-admin/auth/login",
         }:
             return str(payload.get("email") or "anonymous").strip().lower()
         if request.url.path in {
             "/api/v1/auth/verify-otp",
             "/api/v1/auth/password-reset/confirm",
+            "/api/v1/super-admin/auth/verify-otp",
         }:
             return str(payload.get("challenge_id") or "anonymous").strip().lower()
         return "anonymous"

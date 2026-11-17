@@ -1,0 +1,117 @@
+{
+  "dashboard": {
+    "any_permissions": [],
+    "excluded_roles": []
+  },
+  "projects": {
+    "any_permissions": [
+      "projects:read"
+    ],
+    "excluded_roles": []
+  },
+  "reports": {
+    "any_permissions": [
+      "reports:view",
+      "reports:submit"
+    ],
+    "excluded_roles": []
+  },
+  "supervisor-updates": {
+    "any_permissions": [
+      "reports:view"
+    ],
+    "excluded_roles": [
+      "senior_site_supervisor",
+      "site_supervisor"
+    ]
+  },
+  "materials": {
+    "any_permissions": [
+      "inventory:view"
+    ],
+    "excluded_roles": []
+  },
+  "suppliers": {
+    "any_permissions": [
+      "suppliers:manage"
+    ],
+    "excluded_roles": []
+  },
+  "finance": {
+    "any_permissions": [
+      "financial:view"
+    ],
+    "excluded_roles": []
+  },
+  "analytics": {
+    "any_permissions": [
+      "dashboard:company"
+    ],
+    "excluded_roles": []
+  },
+  "documents": {
+    "any_permissions": [
+      "documents:view"
+    ],
+    "excluded_roles": []
+  },
+  "hr-workforce": {
+    "any_permissions": [
+      "hr:employees:read",
+      "users:manage"
+    ],
+    "excluded_roles": []
+  },
+  "my-hr": {
+    "any_permissions": [],
+    "excluded_roles": []
+  },
+  "photos": {
+    "any_permissions": [
+      "reports:view"
+    ],
+    "excluded_roles": []
+  },
+  "approvals": {
+    "any_permissions": [],
+    "excluded_roles": []
+  },
+  "security": {
+    "any_permissions": [
+      "audit:view"
+    ],
+    "excluded_roles": []
+  },
+  "launch-readiness": {
+    "any_permissions": [
+      "dashboard:company"
+    ],
+    "excluded_roles": []
+  },
+  "roles": {
+    "any_permissions": [],
+    "excluded_roles": []
+  },
+  "manual": {
+    "any_permissions": [],
+    "excluded_roles": []
+  },
+  "audit": {
+    "any_permissions": [
+      "audit:view"
+    ],
+    "excluded_roles": []
+  },
+  "imports": {
+    "any_permissions": [
+      "users:manage"
+    ],
+    "excluded_roles": []
+  },
+  "users": {
+    "any_permissions": [
+      "users:read"
+    ],
+    "excluded_roles": []
+  }
+}

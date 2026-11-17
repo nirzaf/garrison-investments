@@ -23,7 +23,7 @@ from app.schemas.hr import (
 )
 from app.services.audit_service import AuditService
 from app.utils.exceptions import AppException
-from app.utils.permissions import VALID_ROLES
+from app.utils.permissions import BUSINESS_ROLES
 from app.utils.security import utc_now
 
 XLSX_NAMESPACE = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -255,7 +255,7 @@ async def preview_workbook(
     overrides = {
         k.strip().lower(): v.strip().lower()
         for k, v in (explicit_role_overrides or {}).items()
-        if v.strip().lower() in VALID_ROLES
+        if v.strip().lower() in BUSINESS_ROLES
     }
 
     names = [row.user_name.strip().casefold() for row in rows]
@@ -324,12 +324,12 @@ async def preview_workbook(
         if duplicate:
             issues.append("Duplicate workbook identity. Reconcile these rows before import.")
 
-        # Role evaluation: never guess from business title unless explicitly in VALID_ROLES or
+        # Role evaluation: never guess from business title unless explicitly in BUSINESS_ROLES or
         # explicit_role_overrides.
         mapped_role: str | None = None
         if not portal_req:
             role_mapping_status = "not_required"
-        elif role_norm in VALID_ROLES:
+        elif role_norm in BUSINESS_ROLES:
             role_mapping_status = "valid_portal_role"
             mapped_role = role_norm
         elif role_norm in overrides:

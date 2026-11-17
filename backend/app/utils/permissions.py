@@ -13,8 +13,9 @@ ROLE_SITE_SUPERVISOR: Final = "site_supervisor"
 ROLE_HR_MANAGER: Final = "hr_manager"
 ROLE_HR_EXECUTIVE: Final = "hr_executive_reader"
 ROLE_ADMINISTRATIVE_EXECUTIVE: Final = "administrative_executive"
+ROLE_SUPER_ADMIN: Final = "super_admin"
 
-ROLE_LABELS: Final[dict[str, str]] = {
+BUSINESS_ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_MANAGING_DIRECTOR: "Managing Director",
     ROLE_OPERATIONS_DIRECTOR: "Operations Director",
     ROLE_GROUP_PROJECT_MANAGER: "Group Project Manager",
@@ -27,7 +28,15 @@ ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_ADMINISTRATIVE_EXECUTIVE: "Administrative Executive",
 }
 
+BUSINESS_ROLES: Final[frozenset[str]] = frozenset(BUSINESS_ROLE_LABELS)
+ROLE_LABELS: Final[dict[str, str]] = {**BUSINESS_ROLE_LABELS, ROLE_SUPER_ADMIN: "Super Admin"}
 VALID_ROLES: Final[set[str]] = set(ROLE_LABELS)
+PERMISSION_PLATFORM_ACCESS: Final = "platform:access"
+PERMISSION_PLATFORM_OVERVIEW_READ: Final = "platform:overview:read"
+TECHNICAL_PERMISSIONS: Final[frozenset[str]] = frozenset({
+    PERMISSION_PLATFORM_ACCESS,
+    PERMISSION_PLATFORM_OVERVIEW_READ,
+})
 
 PERMISSION_USERS_MANAGE: Final = "users:manage"
 PERMISSION_USERS_READ: Final = "users:read"
@@ -153,6 +162,7 @@ _MD_OD_PERMISSIONS = {
 }
 
 ROLE_PERMISSIONS: Final[dict[str, set[str]]] = {
+    ROLE_SUPER_ADMIN: {PERMISSION_PLATFORM_ACCESS, PERMISSION_PLATFORM_OVERVIEW_READ},
     ROLE_MANAGING_DIRECTOR: set(_MD_OD_PERMISSIONS),
     ROLE_OPERATIONS_DIRECTOR: set(_MD_OD_PERMISSIONS),
     ROLE_GROUP_PROJECT_MANAGER: {
@@ -274,8 +284,8 @@ PROTECTED_USER_ROLES: Final[set[str]] = {
 def has_permission(user: User, permission: str) -> bool:
     if user.role not in VALID_ROLES:
         return False
-    return permission in (ALL_PERMISSIONS | HR_PERMISSIONS) and permission in ROLE_PERMISSIONS.get(
-        user.role, set()
+    return permission in (ALL_PERMISSIONS | HR_PERMISSIONS | TECHNICAL_PERMISSIONS) and (
+        permission in ROLE_PERMISSIONS.get(user.role, set())
     )
 
 
@@ -284,17 +294,13 @@ def permissions_for_role(role: str) -> list[str]:
 
 
 def roles_with_permission(permission: str) -> set[str]:
-    if permission in (ALL_PERMISSIONS | HR_PERMISSIONS):
+    if permission in (ALL_PERMISSIONS | HR_PERMISSIONS | TECHNICAL_PERMISSIONS):
         return {role for role, permissions in ROLE_PERMISSIONS.items() if permission in permissions}
     return set()
 
 
 def can_assign_user_role(actor_role: str, target_role: str) -> bool:
-    if target_role not in VALID_ROLES:
-        return False
-    if actor_role in COMPANY_RESOURCE_ROLES:
-        return True
-    return False
+    return actor_role in USER_MANAGER_ROLES and target_role in BUSINESS_ROLES
 
 
 def ensure_permission(user: User, permission: str) -> None:

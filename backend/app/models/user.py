@@ -37,3 +37,5 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    recovery_email_digest: Mapped[str | None] = mapped_column(String(64))
+    recovery_email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
