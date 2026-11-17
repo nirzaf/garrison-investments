@@ -1,25 +1,33 @@
 import json
 from datetime import timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import select
 
 from app.config import Settings
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
-from app.models.auth import AuthOtpChallenge, AuthRefreshToken
+from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailDeliveryError
-from app.utils.security import create_access_token, hash_password, hash_secret, utc_now
+from app.utils.recovery_destination import verified_recovery_destination
+from app.utils.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    hash_secret,
+    utc_now,
+)
 
 pytestmark = pytest.mark.asyncio
-RETIRED_ROLE_KEYS = json.loads(
-    Path(__file__).with_name("business_role_matrix.json").read_text()
-)["retired_roles"]
+RETIRED_ROLE_KEYS = json.loads(Path(__file__).with_name("business_role_matrix.json").read_text())[
+    "retired_roles"
+]
 
 
 @pytest.fixture(autouse=True)
@@ -117,15 +125,24 @@ async def test_login_otp_me_refresh_and_logout_flow() -> None:
 
         assert refresh_response.status_code == 200
         assert refresh_response.json()["access_token"]
+        first = decode_access_token(token_payload["access_token"])
+        rotated = decode_access_token(refresh_response.json()["access_token"])
+        assert UUID(first["sid"]) == UUID(rotated["sid"])
 
         logout_response = await client.post("/api/v1/auth/logout")
 
         assert logout_response.status_code == 200
+        assert (
+            await client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {refresh_response.json()['access_token']}"},
+            )
+        ).status_code == 401
         assert not client.cookies.get("refresh_token")
 
 
-@pytest.mark.parametrize("retired_role", [*RETIRED_ROLE_KEYS, "hr_executive"])
-async def test_retired_role_cannot_login_or_receive_password_reset_challenge(
+@pytest.mark.parametrize("retired_role", [*RETIRED_ROLE_KEYS, "hr_executive", "super_admin"])
+async def test_role_unavailable_to_business_auth_cannot_login_or_receive_reset_challenge(
     retired_role: str,
 ) -> None:
     await skip_if_database_unavailable()
@@ -191,13 +208,16 @@ async def test_retired_role_cannot_login_or_receive_password_reset_challenge(
             )
         )
         assert challenge is None
-        assert await session.scalar(
-            select(AuthRefreshToken.id).where(
-                AuthRefreshToken.user_id == user_id,
-                AuthRefreshToken.token_hash == hash_secret(legacy_refresh),
-                AuthRefreshToken.revoked_at.is_(None),
+        assert (
+            await session.scalar(
+                select(AuthRefreshToken.id).where(
+                    AuthRefreshToken.user_id == user_id,
+                    AuthRefreshToken.token_hash == hash_secret(legacy_refresh),
+                    AuthRefreshToken.revoked_at.is_(None),
+                )
             )
-        ) is not None
+            is not None
+        )
 
 
 async def test_failed_logins_temporarily_lock_account() -> None:
@@ -247,6 +267,10 @@ async def test_change_password_clears_forced_change_flag() -> None:
         )
 
         assert change_response.status_code == 200
+        assert client.cookies.get("refresh_token") is None
+        assert (
+            await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+        ).status_code == 401
 
         login_after_change = await client.post(
             "/api/v1/auth/login",
@@ -254,6 +278,42 @@ async def test_change_password_clears_forced_change_flag() -> None:
         )
 
         assert login_after_change.status_code == 200
+
+
+async def test_confirming_password_reset_revokes_existing_access_token() -> None:
+    await skip_if_database_unavailable()
+    email = f"reset-access-{uuid4().hex}@example.com"
+    await create_test_user(email=email, password="Start123!")
+
+    async with create_test_client() as client:
+        login = (
+            await client.post("/api/v1/auth/login", json={"email": email, "password": "Start123!"})
+        ).json()
+        token = (
+            await client.post(
+                "/api/v1/auth/verify-otp",
+                json={
+                    "challenge_id": login["challenge_id"],
+                    "otp": login["dev_otp"],
+                },
+            )
+        ).json()["access_token"]
+        reset = (
+            await client.post("/api/v1/auth/password-reset/request", json={"email": email})
+        ).json()
+        confirmed = await client.post(
+            "/api/v1/auth/password-reset/confirm",
+            json={
+                "challenge_id": reset["challenge_id"],
+                "otp": reset["dev_otp"],
+                "new_password": "Changed123!",
+            },
+        )
+        assert confirmed.status_code == 200
+        assert (
+            await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        ).status_code == 401
+        assert (await client.post("/api/v1/auth/refresh")).status_code == 401
 
 
 async def test_refresh_token_cannot_be_reused_after_rotation() -> None:
@@ -290,6 +350,51 @@ async def test_refresh_token_cannot_be_reused_after_rotation() -> None:
 
         assert reuse_response.status_code == 401
         assert reuse_response.json()["error_code"] == "REFRESH_TOKEN_INVALID"
+        assert (
+            await client.get(
+                "/api/v1/auth/me",
+                headers={"Authorization": f"Bearer {refresh_response.json()['access_token']}"},
+            )
+        ).status_code == 401
+        assert (
+            await client.post(
+                "/api/v1/auth/refresh", cookies={"refresh_token": rotated_refresh_token}
+            )
+        ).status_code == 401
+
+
+async def test_legacy_refresh_upgrade_preserves_expiry_and_checks_session_owner() -> None:
+    await skip_if_database_unavailable()
+    email = f"legacy-session-{uuid4().hex}@example.com"
+    other_email = f"other-session-{uuid4().hex}@example.com"
+    await create_test_user(email=email)
+    await create_test_user(email=other_email)
+    refresh = f"legacy-refresh-{uuid4().hex}"
+    expiry = utc_now() + timedelta(minutes=5)
+    async with AsyncSessionLocal() as session:
+        user = await UserRepository(session).get_by_email(email)
+        other = await UserRepository(session).get_by_email(other_email)
+        assert user and other
+        user_id, other_id = user.id, other.id
+        session.add(
+            AuthRefreshToken(user_id=user_id, token_hash=hash_secret(refresh), expires_at=expiry)
+        )
+        await session.commit()
+
+    async with create_test_client() as client:
+        rotated = await client.post("/api/v1/auth/refresh", cookies={"refresh_token": refresh})
+        assert rotated.status_code == 200
+        claims = decode_access_token(rotated.json()["access_token"])
+        session_id = UUID(claims["sid"])
+        assert claims["exp"] <= int(expiry.timestamp())
+        invalid, _ = create_access_token(other_id, "managing_director", auth_session_id=session_id)
+        assert (
+            await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {invalid}"})
+        ).status_code == 401
+
+    async with AsyncSessionLocal() as session:
+        result = await session.get(AuthSession, session_id)
+        assert result and result.user_id == user_id and result.expires_at == expiry
 
 
 async def test_login_otp_is_invalidated_after_max_failed_attempts() -> None:
@@ -413,6 +518,79 @@ async def test_dev_otp_is_never_exposed_in_staging(monkeypatch) -> None:
 
         assert login_response.status_code == 200
         assert login_response.json()["dev_otp"] is None
+
+
+@pytest.mark.parametrize("mode", ["delivered", "staging", "echoed", "changed", "failed"])
+async def test_recovery_destination_requires_current_email_and_delivered_otp(
+    mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await skip_if_database_unavailable()
+    email = f"recovery-{uuid4().hex}@example.com"
+    await create_test_user(email=email)
+    settings = Settings(
+        app_env="staging" if mode == "staging" else "test",
+        dev_expose_otp=mode == "echoed",
+        staging_login_otp="246810" if mode == "staging" else None,
+        support_recovery_key=SecretStr("disposable-test-recovery-key-only-not-production"),
+    )
+    monkeypatch.setattr("app.services.auth_service.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.auth_service.generate_otp", lambda: "193826")
+
+    def mail(*_args, recipients: list[str], subject: str, body: str) -> int:
+        assert recipients == [email] and "193826" in body and "Verification" in subject
+        if mode == "failed":
+            raise EmailDeliveryError("Synthetic delivery failure.")
+        return 1
+
+    monkeypatch.setattr("app.services.auth_service.EmailService.send", mail)
+    async with create_test_client() as client:
+        login = await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": "Start123!"}
+        )
+        if mode == "failed":
+            assert login.status_code == 503 and "challenge_id" not in login.json()
+            async with AsyncSessionLocal() as db:
+                user = await UserRepository(db).get_by_email(email)
+                assert user is not None and user.recovery_email_digest is None
+                rejected = await db.scalar(
+                    select(AuthOtpChallenge).where(AuthOtpChallenge.user_id == user.id)
+                )
+                assert rejected is not None and rejected.delivery_email_digest is None
+                assert rejected.consumed_at is not None
+            return
+        assert login.status_code == 200, login.text
+        challenge = login.json()
+        assert challenge["dev_otp"] == ("193826" if mode == "echoed" else None)
+        async with AsyncSessionLocal() as db:
+            user = await UserRepository(db).get_by_email(email, for_update=True)
+            assert user is not None and user.recovery_email_verified_at is None
+            user_id = user.id
+            if mode == "changed":
+                user.email = f"changed-{uuid4().hex}@example.com"
+                await db.commit()
+        verified = await client.post(
+            "/api/v1/auth/verify-otp",
+            json={
+                "challenge_id": challenge["challenge_id"],
+                "otp": "246810" if mode == "staging" else "193826",
+            },
+        )
+        assert verified.status_code == 200, verified.text
+        assert "recovery_email_digest" not in verified.text
+        async with AsyncSessionLocal() as db:
+            user = await db.get(User, user_id)
+            assert user is not None
+            binding = verified_recovery_destination(
+                settings, user.id, user.email, user.recovery_email_digest,
+                user.recovery_email_verified_at,
+            )
+            assert (binding is not None) == (mode == "delivered")
+            if binding is not None:
+                assert binding not in verified.text and user.email not in binding
+                assert verified_recovery_destination(
+                    settings, user.id, "different@example.com", binding,
+                    user.recovery_email_verified_at,
+                ) is None
 
 
 async def test_auth_returns_service_unavailable_when_otp_delivery_fails(monkeypatch) -> None:

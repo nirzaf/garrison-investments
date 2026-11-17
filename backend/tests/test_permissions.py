@@ -8,14 +8,24 @@ from app.models.user import User
 from app.utils.exceptions import AppException, PermissionDeniedException
 from app.utils.permissions import (
     ALL_PERMISSIONS,
+    BUSINESS_ROLES,
     HR_PERMISSIONS,
+    PERMISSION_PLATFORM_ACCESS,
+    PERMISSION_PLATFORM_OVERVIEW_READ,
     ROLE_LABELS,
     ROLE_PERMISSIONS,
+    ROLE_SUPER_ADMIN,
+    TECHNICAL_PERMISSIONS,
     VALID_ROLES,
     ensure_permission,
     has_permission,
     permissions_for_role,
     validate_role,
+)
+from app.utils.portal_navigation import (
+    NAVIGATION_POLICY,
+    NAVIGATION_POLICY_PATH,
+    navigation_visibility,
 )
 
 FIXTURE_PATH = Path(__file__).with_name("business_role_matrix.json")
@@ -23,6 +33,29 @@ FRONTEND_MATRIX_PATH = (
     Path(__file__).resolve().parents[2] / "frontend/src/pages/roles/rolePermissions.json"
 )
 MATRIX = json.loads(FIXTURE_PATH.read_text())
+
+
+def test_portal_navigation_policies_match() -> None:
+    frontend_policy = (
+        FRONTEND_MATRIX_PATH.parents[2] / "components/layout/portalNavigation.json"
+    )
+    assert frontend_policy.read_bytes() == NAVIGATION_POLICY_PATH.read_bytes()
+    for rule in NAVIGATION_POLICY.values():
+        assert set(rule["any_permissions"]) <= ALL_PERMISSIONS | HR_PERMISSIONS
+        assert set(rule["excluded_roles"]) <= BUSINESS_ROLES
+
+
+@pytest.mark.parametrize("role", sorted(BUSINESS_ROLES))
+def test_navigation_preserves_report_and_supervisor_links(role: str) -> None:
+    permissions = set(permissions_for_role(role))
+    visibility = navigation_visibility(role)
+    assert visibility["reports"] is bool(permissions & {"reports:view", "reports:submit"})
+    assert visibility["supervisor-updates"] is (
+        role not in {"senior_site_supervisor", "site_supervisor"}
+        and "reports:view" in permissions
+    )
+
+
 PERMISSIONS = MATRIX["permissions"]
 EXPECTED_GRANTS = {
     role: {
@@ -64,9 +97,11 @@ EFFECTIVE_GRANTS = {
 
 
 def test_exact_role_and_permission_catalogues_match_independent_matrix() -> None:
-    assert set(VALID_ROLES) == set(ROLE_PERMISSIONS) == set(ROLE_LABELS) == set(EFFECTIVE_GRANTS)
+    assert BUSINESS_ROLES == set(EFFECTIVE_GRANTS)
+    assert set(VALID_ROLES) == BUSINESS_ROLES | {ROLE_SUPER_ADMIN}
+    assert set(ROLE_PERMISSIONS) == set(ROLE_LABELS) == VALID_ROLES
     assert ALL_PERMISSIONS == set(PERMISSIONS)
-    assert len(VALID_ROLES) == 10
+    assert len(BUSINESS_ROLES) == 10
     assert len(ALL_PERMISSIONS) == 16
 
 
@@ -97,14 +132,14 @@ def test_all_160_source_decisions_and_role_totals_match() -> None:
     )
     role_totals = [sum(metadata["decisions"]) for metadata in MATRIX["roles"].values()]
     assert role_totals == MATRIX["expected_role_grants"]
-    assert ROLE_PERMISSIONS == EFFECTIVE_GRANTS
+    assert {role: ROLE_PERMISSIONS[role] for role in BUSINESS_ROLES} == EFFECTIVE_GRANTS
 
 
 def test_frontend_matrix_matches_source_and_backend() -> None:
     frontend = json.loads(FRONTEND_MATRIX_PATH.read_text())
     assert frontend["permissions"] == PERMISSIONS + sorted(HR_PERMISSIONS)
-    assert set(frontend["roles"]) == set(ROLE_PERMISSIONS)
-    assert {role: set(grants) for role, grants in frontend["roles"].items()} == ROLE_PERMISSIONS
+    assert set(frontend["roles"]) == BUSINESS_ROLES
+    assert {role: set(grants) for role, grants in frontend["roles"].items()} == EFFECTIVE_GRANTS
 
 
 @pytest.mark.parametrize("role", [*MATRIX["retired_roles"], "hr_executive"])
@@ -119,10 +154,21 @@ def test_retired_roles_are_rejected_and_have_no_permissions(role: str) -> None:
         validate_role(f"  {role.upper()}  ")
 
 
-@pytest.mark.parametrize("role", sorted(VALID_ROLES))
+@pytest.mark.parametrize("role", sorted(BUSINESS_ROLES))
 def test_every_target_role_validates_and_has_exact_permissions(role: str) -> None:
     assert validate_role(role) == role
     assert set(permissions_for_role(role)) == EFFECTIVE_GRANTS[role]
+
+
+def test_super_admin_has_only_registered_technical_permissions() -> None:
+    assert validate_role(ROLE_SUPER_ADMIN) == ROLE_SUPER_ADMIN
+    assert TECHNICAL_PERMISSIONS == {PERMISSION_PLATFORM_ACCESS, PERMISSION_PLATFORM_OVERVIEW_READ}
+    assert set(permissions_for_role(ROLE_SUPER_ADMIN)) == TECHNICAL_PERMISSIONS
+    operator = User(role=ROLE_SUPER_ADMIN)
+    assert all(not has_permission(operator, key) for key in ALL_PERMISSIONS | HR_PERMISSIONS)
+    assert all(
+        not has_permission(User(role=role), PERMISSION_PLATFORM_ACCESS) for role in BUSINESS_ROLES
+    )
 
 
 def test_permission_helpers_fail_closed_for_unknown_role_and_future_permission() -> None:

@@ -848,3 +848,158 @@ JSON writes one envelope to stdout with `format_version`, `command`, `environmen
 | 7 | Reconciliation found differences |
 
 Agents start with `capabilities --json`, confirm the target and caller with `auth whoami`, then inspect the needed records and prepare a dry run. Production writes require the user's explicit authorization. Keep the returned request ID for audit follow-up. If an access change needs reversing, plan a new authorized change against the current state. For binary rollback after changing access, retain the additive access revision migration and coordinate session invalidation because older binaries did not enforce the access revision claim.
+
+## Super Admin command parity
+
+The technical portal uses its own operator identity and session. The business
+`garrisonctl auth` session cannot authorize support commands. The inventory
+below tracks the technical [support API](../backend/app/api/v1/support.py).
+The listed commands are implemented locally. A browser handoff retains the
+technical origin, passkey user presence and approval challenge.
+
+| Portal operation | CLI command family | Status |
+| --- | --- | --- |
+| Initial two-custodian enrollment | `python -m scripts.bootstrap_support` | Implemented as host maintenance for an empty technical registry. The approved pair registers both passkeys in the browser. |
+| Sign-in, session profile and sign-out | `support auth login`, `support auth whoami`, `support auth logout` | Sign-in uses a browser handoff with a passkey and a code sent to the registered technical mailbox. |
+| Suspend an operator, review and execute | `support custody suspend propose`, `review`, `execute` | Implemented locally. The two decisions require browser passkey handoff. |
+| Add or revoke a capability, review and execute | `support custody grant propose`, `review`, `execute` | Implemented locally. The two decisions require browser passkey handoff. |
+| Enroll or recover a technical operator, review, execute and register passkeys | `support custody enrollment propose`, `review`, `execute`, `invitation`, `register` | Implemented locally. Decisions use Chrome handoff and native passkey registration runs on the physical device. Invitation files and registration receipts stay private. |
+| List, open, inspect or transition a case | `support cases list`, `create`, `show`, `transition` | Implemented locally. Creation and transitions verify the case after the write. Transitions retain the server revision check. |
+| Add or remove a case member, business subject or project; link evidence; verify resolution; close | `support cases action propose`, `apply` | Implemented locally. `apply` is the review and application step, backed by one action-bound browser passkey. |
+| Look up the approved case account and recent authentication history | `support accounts search`, `support accounts show` | Search takes a case reference and an optional `--selector-file` containing `field` and `value`. Supported fields are `email` (verified), `employee_code`, `name` and `role`. Show matches the supplied account reference. Both write the masked case-scoped projection to a private file. |
+| Propose, review or execute session revocation, unlock, disable, reactivation or recovery | `support accounts action propose`, `review`, `execute` | Implemented locally with browser passkey handoff and existing protected-account review and attestation. |
+| Read recovery delivery and reset status | `support accounts recovery-status` | Implemented locally. Uses the existing status receipt. |
+| Request and open a role permission, navigation, request summary, project list or project detail view | `support accounts action propose`, `review`, `execute` | Implemented locally for all five adapters. The requester must use the same technical session to execute and read the view. |
+| Read or end an approved support view | `support views show`, `end` | Implemented locally. `show` selects one of the five fixed projection adapters. Views use the original technical session in either interface. |
+| Read runtime request evidence, audit or the case timeline | `support cases logs`, `audit`, `timeline` | Implemented locally. Uses case-bound filters and existing disclosure audits. |
+| Read service health | `support health show` | Implemented locally. Uses the technical health API and capability. |
+| Follow approved request evidence | `support cases follow-logs` | Reads the same redacted stream as the portal. The bounded sample is written to a private file. |
+| Independently reviewed evidence export | `support cases export propose`, `review`, `download` | Requires `logs.runtime` and `logs.export` in the assigned case. The reviewer and requester use fresh passkeys. The original requester session can save the approved CSV once. |
+
+The [production activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
+owns the host-only bootstrap. Routine CLI operations must go through the
+technical API and its existing authorization and audit records.
+
+To sign in from a private terminal, run `garrisonctl support auth login
+--operator <operator-reference> --apply`. Enter the short pairing code on
+the page opened at `https://superadmin.garrisons.lk` and approve with the
+registered passkey in Chrome. Enter the six-digit code from your technical
+mailbox and wait for confirmation. Return to the terminal and press Enter.
+The browser approval issues no browser cookie and never receives
+the CLI session tokens. The CLI reads back its operator identity before
+saving an owner-only technical session file. An explicit `--session-file`
+can select a different file. The technical origin is pinned and business
+bearer tokens are excluded.
+
+For a case list, use `garrisonctl support cases list --output
+<new-file-in-private-directory>`. Pass `--cursor-from <previous-page-file>`
+to fetch another page. Every command that reads a protected payload requires
+a new owner-only output file. The terminal reports completion or a sanitized
+error. `garrisonctl support auth logout --apply` revokes the technical
+session and removes its local file. Both login and logout preview without
+`--apply`.
+
+To follow a linked request, run `garrisonctl support cases follow-logs
+--case <case-id> --request <request-id> --output <private-file>`.
+The command samples for up to 20 seconds or 25 events by default. Use a
+new output file and pass `--cursor-from <previous-private-file>` to resume.
+
+For an export, put the linked request ID, UTC `started_at` and `ended_at`
+in a private JSON file under `filters`. Set `reason` to `incident_review`
+or `audit_review`. The optional filter fields are `limit` and `status_code`.
+Run `support cases export propose --case <case-id> --input <request.json>
+--dry-run --output <plan.json>`. Apply with `--apply --plan <plan.json>
+--expect <plan-sha256> --output <request-receipt.json>`. Repeat that
+preview and apply sequence for `export review` as an independent assigned
+operator, using the request receipt as input. The original technical CLI
+session uses the approved receipt for `export download` and chooses a new
+private CSV path. The CLI verifies the approved SHA-256 before it saves the
+file. A lost download response requires a new export review.
+
+Use the private JSON payload for the corresponding API request when creating
+or transitioning a case or submitting a proposal. For example, with the
+case-create fields `external_ref`, `severity` and `reason_code` in a private
+file, run:
+
+```sh
+garrisonctl support cases create --input private/case.json --dry-run \
+  --output private/case-plan.json
+garrisonctl support cases create --input private/case.json --apply \
+  --plan private/case-plan.json --expect "$APPROVED_PLAN_SHA256" \
+  --output private/case-receipt.json
+```
+
+Plans bind the technical operator, requested payload, action intent and
+applicable case revision. A changed case or operator requires a new plan.
+Apply writes the verified receipt to a new private file. An account-action
+retry with the same plan reuses the API idempotency key. Case and custody
+proposal APIs lack a replay key, so the CLI records that the plan was
+submitted before sending it. If the outcome is uncertain, check the case
+and proposal state before submitting a new plan.
+
+For an independent decision, use the private proposal receipt as `--input`
+to the appropriate `review`, `execute` or case-action `apply` command. For
+protected account review, an approved offline-contact UUID can be supplied
+from `--contact-file` in a private file. Prepare and approve a matching
+dry-run plan. The CLI prompts for the browser handoff and Chrome shows the
+action and stage before asking for the passkey. The browser encrypts the
+signed response to the terminal's temporary key. The original technical
+session retrieves it once and submits it through the existing action API.
+Each stage requires its own passkey proof and the same existing approval
+rules. Invitations and other sensitive receipts are saved to the requested
+private file.
+
+After an approved enrollment or recovery execution, use `support custody
+enrollment invitation --input <private-execution-receipt> --slot 1
+--output <new-private-device-file>` to prepare one device file. Prepare slot
+2 separately. For initial custody, use the private bootstrap bundle as the
+input and add `--operator <custodian-reference>`. Give each intended device
+only its own file using the approved private channel.
+
+On the device, run `support custody enrollment register --input
+<private-device-file> --output <new-private-receipt> --apply`. The command
+opens the dedicated registration page in the default browser. In Chrome,
+select the single-device file and confirm the passkey. The CLI reads the invitation
+status back before writing a receipt. Its states are `registered` while
+other required devices are still pending and `activated` once the operator
+can sign in. A fresh readback requires an invitation that is still within
+its original validity window. The registration link contains no invitation
+value and the command never sends a business or technical session token.
+
+The device-file workflow passed 170 backend and CLI tests and six isolated
+Chrome scenarios. Chrome rejected a file for the wrong operator, then
+registered the passkey from the correct file. The API denied expired and
+superseded invitations and confirmed activation only after the required devices registered.
+
+Revision `202605310088` passed 169 backend and CLI tests and six Chrome
+scenarios. Chrome approved a case membership change with the encrypted
+handoff and the existing case-action endpoint applied it. API tests denied
+cross-session collection and admitted exactly one concurrent collection.
+The CLI rejected a tampered encrypted response before sending a decision.
+
+The isolated mutation regression ran the CLI through the real support API.
+It created a case, advanced its revision through a transition, confirmed the
+audit trail and denied an unrelated operator's read. The combined backend
+and CLI suite passed 167 tests, including stale-plan and proposal replay
+cases.
+
+Revision `202605310087` passed 163 backend and CLI tests and six isolated
+Chrome scenarios. The Chrome handoff approved the CLI login in the existing
+tab and verified that only the CLI could read back the technical profile.
+The API replay test accepted exactly one concurrent passkey submission.
+
+## Output and agent use
+
+JSON writes one envelope to stdout with `format_version`, `command`, `environment`, `outcome`, `changed`, `data`, `errors` and `request_id` where available. A preview has `changed: false`. A null change value indicates that the CLI cannot prove whether a mutation committed or was replayed. Read back the resource, batch or audit record before retrying. Check the exit code even when the envelope contains data.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Successful read, preview, verified operation, or unchanged result |
+| 2 | Invalid command, configuration, input or API validation failure |
+| 3 | Authentication or authorization failure |
+| 4 | Missing record, stale plan or other conflict |
+| 5 | Connection, readiness or server failure |
+| 6 | Failed or partial operation, interrupted command, or failed verification |
+| 7 | Reconciliation found differences |
+
+Agents start with `capabilities --json`, confirm the target and caller with `auth whoami`, then inspect the needed records and prepare a dry run. Production writes require the user's explicit authorization. Keep the returned request ID for audit follow-up. If an access change needs reversing, plan a new authorized change against the current state. For binary rollback after changing access, retain the additive access revision migration and coordinate session invalidation because older binaries did not enforce the access revision claim.

@@ -112,6 +112,30 @@ def test_cloudflare_fallback_after_usesend_failure(failure: str) -> None:
     }
 
 
+def test_single_transport_does_not_fall_back_after_an_uncertain_result() -> None:
+    endpoint = "https://mail.example.com/api/v1/emails"
+    settings = Settings(
+        usesend_api_url=HttpUrl(endpoint),
+        usesend_api_key=SecretStr("primary-token"),
+        cloudflare_email_account_id="a" * 32,
+        cloudflare_email_api_token=SecretStr("fallback-token"),
+    )
+    with (
+        patch("app.services.email_service.get_settings", return_value=settings),
+        patch(
+            "app.services.email_service.httpx.post",
+            side_effect=httpx.ReadTimeout("response timed out"),
+        ) as post,
+        pytest.raises(EmailDeliveryError),
+    ):
+        EmailService().send(
+            recipients=["receiver@example.com"], subject="Subject", body="Body",
+            allow_fallback=False,
+        )
+    assert post.call_count == 1
+    assert post.call_args.args == (endpoint,)
+
+
 @pytest.mark.parametrize("fallback_accepts", [True, False])
 def test_smtp_partial_refusal_falls_back_only_for_refused_recipient(fallback_accepts: bool) -> None:
     settings = Settings(

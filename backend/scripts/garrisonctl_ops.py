@@ -18,7 +18,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from dotenv.parser import parse_stream
 from pydantic import ValidationError
@@ -401,8 +401,11 @@ def audit_search(args: argparse.Namespace, ctx: Context) -> Any:
 def logs_tail(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
     if not 1 <= args.max_events <= 200 or not 1 <= args.seconds <= 60:
         raise CLIError("Tail accepts 1 through 200 events and 1 through 60 seconds.")
-    events = []
+    events: list[dict[str, Any]] = []
     connected = False
+    headers = log_cli._cli_headers(str(uuid4()))
+    if args.last_event_id:
+        headers["Last-Event-ID"] = str(args.last_event_id)
     try:
         with (
             health_monitor.deadline(args.seconds),
@@ -410,7 +413,7 @@ def logs_tail(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
                 "GET",
                 "/api/v1/log-events/stream",
                 params=_filters(args, STREAM_FILTERS),
-                headers=log_cli._cli_headers(str(uuid4())),
+                headers=headers,
                 timeout=args.seconds + 1,
             ) as response,
         ):
@@ -419,6 +422,10 @@ def logs_tail(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
                 raise CLIError("The API returned an invalid log stream.", CONNECTION)
             connected = True
             for line in response.iter_lines():
+                if line.startswith(": closed "):
+                    reason = line.removeprefix(": closed ")
+                    if reason in {"authorization_ended", "time_limit", "unavailable"}:
+                        return {"items": events, "finished_by": reason}
                 if not line.startswith("data: "):
                     continue
                 event = release_contract.strict_json(line.removeprefix("data: ").encode())
@@ -584,6 +591,7 @@ def register(registry: Registry) -> None:
     _log_arguments(tail, STREAM_FILTERS, pagination=False)
     tail.add_argument("--max-events", type=int, default=20)
     tail.add_argument("--seconds", type=int, default=10)
+    tail.add_argument("--last-event-id", type=UUID)
     audit = registry.add("audit search", audit_search, permission="audit:view")
     _log_arguments(audit, AUDIT_FILTERS)
 

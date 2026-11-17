@@ -5,6 +5,8 @@ import { defineConfig } from '@playwright/test';
 
 const hrFixtureKey = env.BROWSER_TEST_HR_ENCRYPTION_KEY ??=
   randomBytes(32).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+const supportRecoveryFixtureKey = env.BROWSER_TEST_SUPPORT_RECOVERY_KEY ??=
+  randomBytes(32).toString('hex');
 
 const previewCommand =
   'npm run preview -- --config e2e/vite.config.ts --host 127.0.0.1 --port 4325 --strictPort';
@@ -27,7 +29,9 @@ export default defineConfig({
       cwd: '../backend',
       env: {
         // Each disposable API run has its own HR vault key.
-        HR_ENCRYPTION_KEY: hrFixtureKey
+        HR_ENCRYPTION_KEY: hrFixtureKey,
+        SUPPORT_PORTAL_ENABLED: 'true',
+        SUPPORT_RECOVERY_KEY: supportRecoveryFixtureKey
       },
       command:
         '"${BROWSER_TEST_PYTHON:-python}" -m tests.browser_fixtures serve --enable-fixture-payroll',

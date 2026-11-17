@@ -144,8 +144,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string): Promise<void> => {
+      const departing = getBrowserSession();
       await changePasswordRequest(currentPassword, newPassword);
-      setUser((current) => (current ? { ...current, must_change_password: false } : current));
+      if (!departing) return;
+      clearBrowserSession(departing);
+      // Invalidate the browser generation while retaining the account's queued work.
+      const suspended: OfflineSession = {
+        ...departing.scope,
+        generation: crypto.randomUUID(),
+        state: 'suspended'
+      };
+      if (await writeOfflineSession(suspended, departing.scope.generation).catch(() => false)) {
+        notifySessionChange();
+      }
     },
     []
   );

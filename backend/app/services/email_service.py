@@ -19,7 +19,9 @@ class EmailService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def send(self, *, recipients: list[str], subject: str, body: str) -> int:
+    def send(
+        self, *, recipients: list[str], subject: str, body: str, allow_fallback: bool = True
+    ) -> int:
         if not recipients:
             raise ValueError("At least one recipient is required")
 
@@ -34,14 +36,14 @@ class EmailService:
                 return self._send_usesend(recipients=recipients, subject=subject, body=body)
             refused = self._send_smtp(recipients=recipients, subject=subject, body=body)
         except EmailDeliveryError:
-            if not self._cloudflare_configured():
+            if not allow_fallback or not self._cloudflare_configured():
                 raise
             return self._send_cloudflare(recipients=recipients, subject=subject, body=body)
 
         accepted = len(recipients) - len(refused)
         if refused:
             logger.warning("email_recipients_refused", refused=len(refused), accepted=accepted)
-            if self._cloudflare_configured():
+            if allow_fallback and self._cloudflare_configured():
                 try:
                     accepted += self._send_cloudflare(
                         recipients=refused, subject=subject, body=body

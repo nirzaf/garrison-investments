@@ -103,7 +103,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Total-Count", "X-Report-Revision"],
+        expose_headers=["X-Total-Count", "X-Report-Revision", "X-HR-Case-Review"],
     )
 
     async def request_context_middleware(request: Request, call_next):
@@ -154,6 +154,8 @@ def create_app() -> FastAPI:
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Session-ID"] = session_id
             response.headers["X-Process-Time"] = f"{duration:.6f}"
+            if request.url.path.startswith(f"{settings.api_v1_prefix}/support/"):
+                response.headers["Cache-Control"] = "no-store"
             return response
         finally:
             clear_log_context()

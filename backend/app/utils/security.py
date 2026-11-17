@@ -174,22 +174,32 @@ def validate_signing_keys() -> None:
 
 
 def create_access_token(
-    user_id: UUID, role: str, *, access_revision: int = 0
+    user_id: UUID,
+    role: str,
+    *,
+    access_revision: int = 0,
+    auth_session_id: UUID | None = None,
+    session_expires_at: datetime | None = None,
+    token_type: str = "access",
 ) -> tuple[str, datetime]:
     settings = get_settings()
     expires_at = utc_now() + timedelta(minutes=settings.access_token_expire_minutes)
+    if session_expires_at is not None:
+        expires_at = min(expires_at, session_expires_at)
     payload = {
         "sub": str(user_id),
         "role": role,
         "access_revision": access_revision,
-        "type": "access",
+        "type": token_type,
         "exp": expires_at,
         "iat": utc_now(),
     }
+    if auth_session_id is not None:
+        payload["sid"] = str(auth_session_id)
     return jwt.encode(payload, _jwt_private_key(), algorithm=settings.jwt_algorithm), expires_at
 
 
-def decode_access_token(token: str) -> dict[str, Any]:
+def decode_access_token(token: str, *, token_type: str = "access") -> dict[str, Any]:
     settings = get_settings()
     try:
         payload = jwt.decode(token, _jwt_public_key(), algorithms=[settings.jwt_algorithm])
@@ -199,6 +209,6 @@ def decode_access_token(token: str) -> dict[str, Any]:
             status_code=401,
             error_code="INVALID_TOKEN",
         ) from exc
-    if payload.get("type") != "access" or not payload.get("sub"):
+    if payload.get("type") != token_type or not payload.get("sub"):
         raise AppException("Invalid session token.", status_code=401, error_code="INVALID_TOKEN")
     return payload

@@ -87,6 +87,7 @@ test('a managing director creates a user, changes their role, and sees the audit
   await searchInput.fill('  users.updated  ');
   await page.clock.runFor(299);
   expect(searches).toEqual([]);
-  await page.clock.runFor(1);
+  // Let React commit the debounced state and schedule its query after the timer fires.
+  await page.clock.resume();
   await expect.poll(() => searches).toEqual(['users.updated']);
 });

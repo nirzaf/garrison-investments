@@ -29,65 +29,66 @@ import { useAuth } from '../../context/useAuth';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 import { OfflineIndicator } from '../shared/OfflineIndicator';
 import { StatusBadge } from '../shared/StatusBadge';
+import navigationPolicy from './portalNavigation.json';
 
 type NavItem = {
   label: string;
   to: string;
-  permission?: string | string[];
+  id: keyof typeof navigationPolicy;
   icon: typeof Home;
   mobile?: boolean;
 };
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: Home, mobile: true },
+  { id: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: Home, mobile: true },
   {
+    id: 'projects',
     label: 'Projects',
     to: '/projects',
-    permission: 'projects:read',
     icon: BriefcaseBusiness,
     mobile: true
   },
   {
+    id: 'reports',
     label: 'Reports',
     to: '/reports',
-    permission: ['reports:view', 'reports:submit'],
     icon: ClipboardList,
     mobile: true
   },
   {
+    id: 'supervisor-updates',
     label: 'Supervisor updates',
     to: '/reports/supervisor-update',
-    permission: ['reports:view', 'reports:submit'],
     icon: ClipboardList
   },
   {
+    id: 'materials',
     label: 'Materials',
     to: '/materials',
-    permission: 'inventory:view',
     icon: Package,
     mobile: true
   },
-  { label: 'Suppliers', to: '/suppliers', permission: 'suppliers:manage', icon: Truck },
-  { label: 'Finance', to: '/finance', permission: 'financial:view', icon: Receipt },
-  { label: 'Analytics', to: '/analytics', permission: 'dashboard:company', icon: LineChart },
-  { label: 'Documents', to: '/documents', permission: 'documents:view', icon: FileText },
-  { label: 'HR & Workforce', to: '/hr', permission: ['hr:employees:read', 'users:manage'], icon: BriefcaseBusiness },
-  { label: 'My HR', to: '/me/hr', icon: UserRound },
-  { label: 'Photos', to: '/photos', permission: 'reports:view', icon: Camera },
-  { label: 'Approvals', to: '/approvals', icon: ShieldCheck },
-  { label: 'Security', to: '/security', permission: 'audit:view', icon: ShieldCheck },
-  { label: 'Launch readiness', to: '/delivery', permission: 'dashboard:company', icon: Cloud },
-  { label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
-  { label: 'User Manual', to: '/manual', icon: BookOpen },
-  { label: 'Audit', to: '/admin/audit-logs', permission: 'audit:view', icon: ListChecks },
-  { label: 'Imports', to: '/admin/imports', permission: 'users:manage', icon: Import },
-  { label: 'Users', to: '/admin/users', permission: 'users:read', icon: UserCog },
+  { id: 'suppliers', label: 'Suppliers', to: '/suppliers', icon: Truck },
+  { id: 'finance', label: 'Finance', to: '/finance', icon: Receipt },
+  { id: 'analytics', label: 'Analytics', to: '/analytics', icon: LineChart },
+  { id: 'documents', label: 'Documents', to: '/documents', icon: FileText },
+  { id: 'hr-workforce', label: 'HR & Workforce', to: '/hr', icon: BriefcaseBusiness },
+  { id: 'my-hr', label: 'My HR', to: '/me/hr', icon: UserRound },
+  { id: 'photos', label: 'Photos', to: '/photos', icon: Camera },
+  { id: 'approvals', label: 'Approvals', to: '/approvals', icon: ShieldCheck },
+  { id: 'security', label: 'Security', to: '/security', icon: ShieldCheck },
+  { id: 'launch-readiness', label: 'Launch readiness', to: '/delivery', icon: Cloud },
+  { id: 'roles', label: 'Roles & Permissions', to: '/roles', icon: BookOpen },
+  { id: 'manual', label: 'User Manual', to: '/manual', icon: BookOpen },
+  { id: 'audit', label: 'Audit', to: '/admin/audit-logs', icon: ListChecks },
+  { id: 'imports', label: 'Imports', to: '/admin/imports', icon: Import },
+  { id: 'users', label: 'Users', to: '/admin/users', icon: UserCog },
 ];
 
-function canAccess(item: NavItem, permissions: string[]) {
-  return !item.permission || (Array.isArray(item.permission)
-    ? item.permission.some((permission) => permissions.includes(permission))
-    : permissions.includes(item.permission));
+function canAccess(item: NavItem, permissions: string[], role: string) {
+  const { any_permissions, excluded_roles } = navigationPolicy[item.id];
+  return !excluded_roles.some((excludedRole) => excludedRole === role)
+    && (any_permissions.length === 0 || any_permissions.some((permission) => permissions.includes(permission)));
 }
 
 function labelFromPath(pathname: string) {
@@ -115,20 +116,9 @@ export function AppLayout() {
   const visibleNavItems = useMemo(
     () =>
       navItems
-        .filter((item) => canAccess(item, user?.permissions ?? []))
-        .filter(
-          (item) =>
-            !['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ||
-            item.label !== 'Supervisor updates'
-        )
-        .filter(
-          (item) =>
-            item.label !== 'Supervisor updates' ||
-            ['senior_site_supervisor', 'site_supervisor'].includes(user?.role ?? '') ||
-            user?.permissions?.includes('reports:view')
-        )
+        .filter((item) => canAccess(item, user?.permissions ?? [], user?.role ?? ''))
         .map((item) =>
-          item.label === 'Reports'
+          item.id === 'reports'
             ? {
                 ...item,
                 to:

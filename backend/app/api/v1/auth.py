@@ -123,6 +123,7 @@ async def me(current_user: CurrentUser) -> AuthUserResponse:
 @router.post("/change-password", response_model=MessageResponse)
 async def change_password(
     payload: PasswordChangeRequest,
+    response: Response,
     current_user: CurrentUser,
     session: DbSession,
     meta: RequestMetadata,
@@ -133,6 +134,7 @@ async def change_password(
         payload.new_password,
         meta,
     )
+    _clear_refresh_cookie(response)
     return MessageResponse(message="Password updated.")
 
 

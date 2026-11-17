@@ -18,6 +18,15 @@ Audit entries can contain actions, state changes, request outcomes, authenticati
 
 Both `GET /api/v1/log-events` and `GET /api/v1/log-events/stream` require an authenticated user with `audit:view`. See [roles and permissions](ROLES_AND_PERMISSIONS.md) for assignments. Access is itself audited. CLI requests carry a CLI session ID and are recorded as `logs.cli.query` or `logs.cli.stream`.
 
+A business audit stream also requires a durable signed-in session. It
+checks the bearer token, session and current access before querying and
+before sending a nonempty batch. Idle feeds recheck within five seconds
+without renewing the session. An operator can hold two streams for at most
+15 minutes each. A disconnect releases its slot, and the database records
+the open and close times. To resume, use the last event UUID with the
+same filters and a current bearer token. Both CLI tail commands accept
+`--last-event-id <uuid>` and send it as a header.
+
 From the repository root, use the backend Python environment with its dependencies installed:
 
 ```bash
@@ -162,6 +171,24 @@ python -m scripts.health_monitor \
 Supply the profile digest from the approved release record. After a responder has received the message, use `--acknowledge CHECK_ID --operator NAME --ack-ref REFERENCE --message-id ID` with the same profile, digest and state directory in place of `--receipt`. The acknowledgement records the received message identity and the local account that entered the attestation. Provider acceptance and human acknowledgement are separate evidence.
 
 Generate the dedicated missing-ingestion rule with the same profile and digest and `--heartbeat-rule "$HEARTBEAT_RULE"`. Before provisioning that output, enable `LOG_HEALTHCHECKS` in the approved environment and verify the actual readiness completion stream in Loki at the approved cadence. The rule detects a missing readiness stream. The existing error-count rules retain their idle no-data behavior.
+
+## Support request evidence
+
+The draft [request evidence projection](../backend/app/services/support_request_logs.py)
+reads only HTTP event metadata for an exact request ID. It uses an explicit
+timezone-aware window of at most 24 hours, a five-second deadline and at most
+100 returned events. It does not select comments, raw endpoints, request
+bodies, account fields, or the audit JSON payload. Unknown methods and
+invalid status codes become null. A truncated result is labelled.
+
+In the isolated support portal, the browser calls
+`GET /api/v1/support/cases/{case_id}/logs`. The server requires a live
+technical session, `logs.runtime`, current membership of an open or
+investigating case, and the exact request ID linked to that case. It allows
+20 searches per minute per operator and commits an append-only access record
+before returning evidence. Runtime source adapters beyond SQL HTTP metadata,
+incident evidence, and approved exports remain separate work. Production
+support ingress is disabled.
 
 ## Verify logging changes
 

@@ -60,3 +60,12 @@ Audit and operational events with actor, request, context, and retention metadat
 | `ix_activity_log_source_service` | `btree` | `source_service` | No | — |
 | `ix_activity_log_storage_tier` | `btree` | `storage_tier` | No | — |
 | `ix_activity_log_user_action` | `btree` | `user_id, action` | No | — |
+
+## Business audit streams
+
+[Revision 092](../../backend/alembic/versions/202605310092_business_log_streams.py)
+adds `business_log_streams`. Each row records the user and correlation IDs
+and the open, expiry and close timestamps. The user UUID is retained when
+an account is deleted. The index on user and expiry supports the two-stream
+admission check. The table keeps stream receipts independent of the
+business token and event payload.

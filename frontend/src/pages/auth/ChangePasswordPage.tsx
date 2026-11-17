@@ -49,7 +49,7 @@ export function ChangePasswordPage() {
     setIsSubmitting(true);
     try {
       await changePassword(currentPassword, newPassword);
-      navigate('/dashboard', { replace: true });
+      navigate('/login', { replace: true });
     } catch (err: unknown) {
       const detail = getApiErrorDetail(err);
       setError(detail ?? 'Unable to update password. Check the current password and try again.');

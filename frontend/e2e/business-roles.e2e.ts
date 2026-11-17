@@ -4606,3 +4606,39 @@ test('HR independently reviews legacy leave work dates', async ({ page, browser,
     await reviewerContext.close();
   }
 });
+
+test('changing a password ends the current browser session and requires a fresh sign-in', async ({ page }) => {
+  const account = seedAccount();
+  await signIn(page, account);
+  await page.goto('/change-password');
+  const updatedPassword = 'Synthetic-Password-98#';
+  await page.getByLabel('Current password', { exact: true }).fill(account.password);
+  await page.getByLabel('New password', { exact: true }).fill(updatedPassword);
+  await page.getByLabel('Confirm new password', { exact: true }).fill(updatedPassword);
+  await page.getByRole('button', { name: 'Update password' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await signIn(page, { email: account.email, password: updatedPassword });
+});
+
+test('directors cannot open the Super Admin portal', async ({ page, request }) => {
+  const director = await signIn(page, seedAccount());
+  await page.goto('/super-admin');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('heading', { name: 'Super Admin', exact: true })).toHaveCount(0);
+  const response = await request.get('/api/v1/super-admin/overview', {
+    headers: { Authorization: `Bearer ${director.accessToken}` }
+  });
+  expect(response.status()).toBe(404);
+});
+
+test('reviewed recovery opens the reset confirmation without requesting another code', async ({ page }) => {
+  const reference = '67de2676-1cca-4d56-90a1-ae771509e633';
+  await page.goto('/password-reset#recovery=' + reference);
+  await expect(page.getByLabel('Email', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Verification code', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset password' })).toBeVisible();
+  await page.goto('/login');
+  await page.goto('/password-reset#recovery=unrecognized');
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send reset code' })).toBeVisible();
+});

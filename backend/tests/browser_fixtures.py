@@ -466,7 +466,7 @@ async def seed_legacy_leave(employee_id: UUID, reviewer_id: UUID) -> None:
 
 
 if __name__ == "__main__":
-    from app.utils.permissions import VALID_ROLES
+    from app.utils.permissions import BUSINESS_ROLES
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -482,7 +482,7 @@ if __name__ == "__main__":
             "expire-login",
         ],
     )
-    parser.add_argument("--role", choices=sorted(VALID_ROLES), default="managing_director")
+    parser.add_argument("--role", choices=sorted(BUSINESS_ROLES), default="managing_director")
     parser.add_argument("--project-id", type=UUID)
     parser.add_argument("--challenge-id", type=UUID)
     parser.add_argument("--employee-id", type=UUID)

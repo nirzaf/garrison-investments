@@ -33,7 +33,12 @@ from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
-from app.utils.permissions import COMPANY_RESOURCE_ROLES, VALID_ROLES
+from app.utils.permissions import (
+    BUSINESS_ROLES,
+    COMPANY_RESOURCE_ROLES,
+    ROLE_SUPER_ADMIN,
+    VALID_ROLES,
+)
 from app.utils.security import utc_now
 
 MAX_MANIFEST_BYTES = 10 * 1024 * 1024
@@ -132,7 +137,7 @@ def parse_manifest(raw: bytes) -> RoleManifest:
         if not isinstance(expected_role, str) or not expected_role:
             raise MigrationInputError(f"{label}.expected_role must be an exact stored role key.")
         target_role = row.get("target_role")
-        if not isinstance(target_role, str) or target_role not in VALID_ROLES:
+        if not isinstance(target_role, str) or target_role not in BUSINESS_ROLES:
             raise MigrationInputError(f"{label}.target_role is not a supported target role.")
         access_revision = row.get("expected_access_revision")
         if type(access_revision) is not int or access_revision < 0:
@@ -202,6 +207,8 @@ def _is_usable_director(user: User, role: str) -> bool:
 
 
 def validate_snapshot(users: list[User], manifest: RoleManifest) -> dict[str, Any]:
+    if any(user.role == ROLE_SUPER_ADMIN for user in users):
+        raise MigrationInputError("Business role cutover cannot change technical accounts.")
     by_id = {user.id: user for user in users}
     mappings = {mapping.user_id: mapping for mapping in manifest.mappings}
     missing = set(by_id) - set(mappings)

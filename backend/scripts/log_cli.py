@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -61,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     tail_parser.add_argument("--storage-tier")
     tail_parser.add_argument("--created-from")
     tail_parser.add_argument("--max-events", type=int, default=0)
+    tail_parser.add_argument("--last-event-id", type=UUID)
 
     return parser
 
@@ -182,11 +183,14 @@ def _tail(client, args, *, stdout, session_id: str) -> int:
         }
     )
     seen = 0
+    headers = _cli_headers(session_id)
+    if args.last_event_id:
+        headers["Last-Event-ID"] = str(args.last_event_id)
     with client.stream(
         "GET",
         "/api/v1/log-events/stream",
         params=params,
-        headers=_cli_headers(session_id),
+        headers=headers,
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():

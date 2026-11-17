@@ -1,6 +1,6 @@
 # Roles and permissions
 
-The portal accepts exactly the nine role keys below. Their current portal and HR grants are defined in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
+Business sign-in accepts the ten role keys below. Their current portal and HR grants are defined in [the frontend role fixture](../frontend/src/pages/roles/rolePermissions.json)
 and [the backend permission definitions](../backend/app/utils/permissions.py). The
 independent [business matrix test fixture](../backend/tests/business_role_matrix.json)
 records the 160 historical source decisions. The current catalogue grants HR workflow permissions to HR Manager. A role grant is only one authorization boundary:
@@ -27,7 +27,14 @@ The original eight keys (`admin`, `general_manager`, `operation_manager`,
 `accounts`) and the later `hr_executive` key are retired. They are not aliases, valid login roles,
 assignment options, import targets, seed defaults, or worker privileges. Historical
 records and explicit rejection/migration tests may still contain those strings.
-There is no technical administrator role or role-based bypass.
+
+The synthetic legacy test route reserves `super_admin` with `platform:access`
+and `platform:overview:read`. Business assignments, HR account links, workbook
+imports and role cutover use the business catalogue above. The technical portal
+defaults to disabled. Its separate operator registry uses an enrolled passkey
+followed by a single-use email code. Browser sessions use a host-only cookie
+and a separate server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
+describes operator enrollment, ingress and production verification.
 
 ## Permission matrix
 

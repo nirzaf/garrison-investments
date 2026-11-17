@@ -19,7 +19,7 @@ from app.models.user import User
 from app.schemas.finance import InvoiceCreateRequest, InvoiceUpdateRequest, PaymentCreateRequest
 from app.schemas.projects import ProjectOption
 from app.schemas.supervisor_updates import SupervisorUpdateCreateRequest
-from app.schemas.users import AdminPasswordResetRequest, UserUpdateRequest
+from app.schemas.users import AdminPasswordResetRequest, UserCreateRequest, UserUpdateRequest
 from app.services.finance_service import FinanceService
 from app.services.project_service import ProjectService
 from app.services.report_service import ReportService
@@ -27,9 +27,11 @@ from app.services.reporting_service import ReportingService
 from app.services.user_service import UserService
 from app.utils.exceptions import AppException, NotFoundException
 from app.utils.permissions import (
+    BUSINESS_ROLES,
     COMPANY_RESOURCE_ROLES,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
+    ROLE_SUPER_ADMIN,
     VALID_ROLES,
     can_assign_user_role,
     has_permission,
@@ -143,9 +145,9 @@ def _user_service(
 
 
 def test_role_assignment_ceilings_match_policy() -> None:
-    assert set(VALID_ROLES) == HRM_ALLOWED_TARGETS | PROTECTED_TARGETS
+    assert BUSINESS_ROLES == HRM_ALLOWED_TARGETS | PROTECTED_TARGETS
     for director_role in COMPANY_RESOURCE_ROLES:
-        for target_role in VALID_ROLES:
+        for target_role in BUSINESS_ROLES:
             assert can_assign_user_role(director_role, target_role) is True
         for retired_role in RETIRED_ROLES:
             assert can_assign_user_role(director_role, retired_role) is False
@@ -160,6 +162,54 @@ def test_role_assignment_ceilings_match_policy() -> None:
     for non_manager in VALID_ROLES - {"managing_director", "operations_director", "hr_manager"}:
         for target_role in VALID_ROLES:
             assert can_assign_user_role(non_manager, target_role) is False
+
+
+@pytest.mark.asyncio
+async def test_business_management_cannot_assign_or_change_a_reserved_technical_account(
+) -> None:
+    snapshot = datetime(2026, 11, 16, 20, 0, tzinfo=UTC)
+    director = _user("managing_director", updated_at=snapshot)
+    business = _user("quantity_surveyor", updated_at=snapshot)
+    technical = _user(ROLE_SUPER_ADMIN, updated_at=snapshot)
+    service, auth_repo, session = _user_service([director, business, technical])
+
+    with pytest.raises(AppException) as denied_create:
+        await service.create_user(
+            UserCreateRequest(
+                email="synthetic-super-admin@example.com",
+                full_name="Synthetic technical operator",
+                employee_code="SYN-TECH",
+                phone="0000000",
+                role=ROLE_SUPER_ADMIN,
+                temporary_password="Synthetic-Example-98#",
+            ),
+            director,
+        )
+    assert denied_create.value.status_code == 403
+
+    for target, mutation in (
+        (business, UserUpdateRequest(role=ROLE_SUPER_ADMIN, expected_updated_at=snapshot)),
+        (technical, UserUpdateRequest(role="quantity_surveyor", expected_updated_at=snapshot)),
+        (technical, UserUpdateRequest(is_active=False, expected_updated_at=snapshot)),
+        (technical, UserUpdateRequest(full_name="Changed", expected_updated_at=snapshot)),
+    ):
+        with pytest.raises(AppException) as denied:
+            await service.update_user(target.id, mutation, director)
+        assert denied.value.status_code == 403
+    assert not can_assign_user_role(ROLE_SUPER_ADMIN, "managing_director")
+    with pytest.raises(AppException) as denied_reset:
+        await service.admin_reset_password(
+            technical.id,
+            AdminPasswordResetRequest(
+                new_password="Synthetic-Example-55#", expected_updated_at=snapshot
+            ),
+            director,
+        )
+    assert denied_reset.value.status_code == 403
+    assert technical.is_active and technical.role == ROLE_SUPER_ADMIN
+    assert business.role == "quantity_surveyor"
+    assert auth_repo.revoked_user_ids == []
+    assert session.commits == 0
 
 
 @pytest.mark.asyncio

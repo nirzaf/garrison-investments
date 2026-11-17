@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { confirmPasswordReset, requestPasswordReset } from '../../api/auth';
 
@@ -14,8 +14,13 @@ function validatePasswordPolicy(password: string): string | null {
 
 export function PasswordResetPage() {
   const navigate = useNavigate();
+  const { hash } = useLocation();
   const [email, setEmail] = useState('');
-  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(() => {
+    const recovery = new URLSearchParams(hash.slice(1)).get('recovery');
+    return recovery && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recovery)
+      ? recovery : null;
+  });
   const [devOtp, setDevOtp] = useState<string | null | undefined>(null);
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -71,7 +76,7 @@ export function PasswordResetPage() {
         <p className="mt-5 text-sm font-medium text-brand-600">Account Security</p>
         <h1 className="mt-2 text-2xl font-semibold text-theme-text-primary">Reset password</h1>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <label className="block">
+          {(!challengeId || email) && <label className="block">
             <span className="text-sm font-medium text-theme-text-secondary">Email</span>
             <input
               className="mt-1 w-full rounded-md border border-theme-border bg-theme-card px-3 py-2 text-sm text-theme-text-primary"
@@ -81,7 +86,7 @@ export function PasswordResetPage() {
               type="email"
               value={email}
             />
-          </label>
+          </label>}
 
           {challengeId ? (
             <>

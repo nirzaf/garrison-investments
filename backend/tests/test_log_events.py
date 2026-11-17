@@ -4,22 +4,26 @@ import asyncio
 import io
 import json
 import socket
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
 import uvicorn
+from sqlalchemy import func, select, update
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
 from app.models.activity_log import ActivityLog
+from app.models.auth import AuthSession
+from app.models.business_log_stream import BusinessLogStream
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services import business_log_stream
 from app.services.audit_retention_policy import AuditRetentionPolicyError
 from app.services.audit_service import AuditService
-from app.utils.security import utc_now
+from app.utils.security import create_access_token, decode_access_token, utc_now
 from scripts import log_cli
 from tests.password_fixtures import hash_fixture_password
 
@@ -153,6 +157,18 @@ async def test_log_event_stream_returns_matching_events() -> None:
         )
         assert forbidden.status_code == 403
         admin_token = await login_for_token(client, admin_email, admin_password)
+        query_only = await client.get(
+            "/api/v1/log-events/stream", params={"access_token": "fixture"}
+        )
+        assert query_only.status_code == 401
+        token_without_session, _ = create_access_token(
+            UUID(decode_access_token(admin_token)["sub"]), "managing_director",
+        )
+        assert (await client.get(
+            "/api/v1/log-events/stream",
+            headers={"Authorization": f"Bearer {token_without_session}"},
+        )).status_code == 401
+        headers = {"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"}
         async with (
             asyncio.timeout(10),
             client.stream(
@@ -162,11 +178,12 @@ async def test_log_event_stream_returns_matching_events() -> None:
                     "action": action,
                     "created_from": (utc_now() - timedelta(minutes=5)).isoformat(),
                 },
-                headers={"Authorization": f"Bearer {admin_token}", "X-Log-CLI-Session": "cli-tail"},
+                headers=headers,
             ) as response,
         ):
             assert response.status_code == 200
             assert response.headers["x-accel-buffering"] == "no"
+            assert response.headers["cache-control"] == "no-store"
             ids: list[str] = []
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
@@ -177,6 +194,141 @@ async def test_log_event_stream_returns_matching_events() -> None:
                     break
             assert len(ids) == event_count
             assert ids == sorted(set(ids))
+        async with (
+            asyncio.timeout(5),
+            client.stream(
+                "GET", "/api/v1/log-events/stream", params={"action": action},
+                headers={**headers, "Last-Event-ID": ids[99]},
+            ) as resumed,
+        ):
+            assert resumed.status_code == 200
+            lines = resumed.aiter_lines()
+            assert await anext(lines) == f"id: {ids[100]}"
+
+
+async def test_log_stream_limits_and_releases_slots_then_stops_after_idle_revocation() -> None:
+    await skip_if_database_unavailable()
+    email, password = await create_user("managing_director")
+    path = "/api/v1/log-events/stream"
+    params = {"action": f"test.revocation.{uuid4().hex}"}
+    async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
+        token = await login_for_token(client, email, password)
+        claims = decode_access_token(token)
+        user_id, auth_id = UUID(claims["sub"]), UUID(claims["sid"])
+        headers = {"Authorization": f"Bearer {token}"}
+        async with asyncio.timeout(10), AsyncExitStack() as stack:
+            admitted = await asyncio.gather(*(
+                stack.enter_async_context(
+                    client.stream("GET", path, params=params, headers=headers)
+                )
+                for _ in range(3)
+            ))
+            assert sorted(item.status_code for item in admitted) == [200, 200, 429]
+            first, second = [item for item in admitted if item.status_code == 200]
+            assert await anext(first.aiter_lines()) == ": keep-alive"
+            await first.aclose()
+            while True:
+                async with AsyncSessionLocal() as db:
+                    closed = await db.scalar(select(func.count()).select_from(
+                        BusinessLogStream
+                    ).where(
+                        BusinessLogStream.user_id == user_id,
+                        BusinessLogStream.closed_at.is_not(None),
+                    ))
+                if closed == 1:
+                    break
+                await asyncio.sleep(0.05)
+            third = await stack.enter_async_context(
+                client.stream("GET", path, params=params, headers=headers)
+            )
+            assert third.status_code == 200
+            async with AsyncSessionLocal() as db:
+                await db.execute(update(AuthSession).where(AuthSession.id == auth_id).values(
+                    revoked_at=utc_now()
+                ))
+                db.add(ActivityLog(action=params["action"], comments="after-revocation-fixture"))
+                await db.commit()
+            for stream in (second, third):
+                lines = [line async for line in stream.aiter_lines()]
+                assert ": closed authorization_ended" in lines
+                assert not any(line.startswith("data: ") for line in lines)
+
+
+async def test_log_stream_rechecks_role_after_query_before_sending_a_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    email, password = await create_user("managing_director")
+    action = f"test.role-loss.{uuid4().hex}"
+    projected, proceed = asyncio.Event(), asyncio.Event()
+    original = AuditService.list_logs
+
+    async def observe_query(self, **kwargs):
+        result = await original(self, **kwargs)
+        if kwargs.get("action") == action and kwargs.get("ascending"):
+            projected.set()
+            await proceed.wait()
+        return result
+
+    monkeypatch.setattr(AuditService, "list_logs", observe_query)
+    async with AsyncSessionLocal() as db:
+        db.add(ActivityLog(action=action, comments="preauthorization-fixture"))
+        await db.commit()
+    async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
+        token = await login_for_token(client, email, password)
+        async with asyncio.timeout(6), client.stream(
+            "GET", "/api/v1/log-events/stream", params={"action": action},
+            headers={"Authorization": f"Bearer {token}"},
+        ) as response:
+            assert response.status_code == 200
+            try:
+                await projected.wait()
+                async with AsyncSessionLocal() as db:
+                    await db.execute(update(User).where(User.email == email).values(
+                        role="quantity_surveyor"
+                    ))
+                    await db.commit()
+            finally:
+                proceed.set()
+            lines = [line async for line in response.aiter_lines()]
+            assert ": closed authorization_ended" in lines
+            assert not any(line.startswith("data: ") for line in lines)
+
+
+async def test_log_stream_stops_for_an_expired_bearer_even_while_idle() -> None:
+    await skip_if_database_unavailable()
+    email, password = await create_user("managing_director")
+    async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
+        token = await login_for_token(client, email, password)
+        claims = decode_access_token(token)
+        short, _ = create_access_token(
+            UUID(claims["sub"]), "managing_director", access_revision=claims["access_revision"],
+            auth_session_id=UUID(claims["sid"]),
+            session_expires_at=utc_now() + timedelta(seconds=2),
+        )
+        async with asyncio.timeout(7), client.stream(
+            "GET", "/api/v1/log-events/stream", params={"action": f"unused.{uuid4().hex}"},
+            headers={"Authorization": f"Bearer {short}"},
+        ) as response:
+            assert response.status_code == 200
+            lines = [line async for line in response.aiter_lines()]
+            assert ": keep-alive" in lines and ": closed authorization_ended" in lines
+            assert not any(line.startswith("data: ") for line in lines)
+
+
+async def test_log_stream_has_a_server_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    await skip_if_database_unavailable()
+    email, password = await create_user("managing_director")
+    monkeypatch.setattr(business_log_stream, "_MAX_DURATION", timedelta(milliseconds=300))
+    async with serve_test_api() as base_url, httpx.AsyncClient(base_url=base_url) as client:
+        token = await login_for_token(client, email, password)
+        async with asyncio.timeout(4):
+            response = await client.get(
+                "/api/v1/log-events/stream", params={"action": f"unused.{uuid4().hex}"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        assert response.text.endswith(": closed time_limit\n\n")
 
 
 async def test_unconfigured_log_retention_archives_without_purging_old_logs() -> None:
