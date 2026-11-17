@@ -80,6 +80,7 @@ from app.schemas.hr import (
     EmploymentHistoryListResponse,
     EmploymentHistoryResponse,
     EmploymentPeriodListResponse,
+    EmploymentPeriodMissingStartPage,
     EmploymentPeriodResponse,
     ExpiringComplianceResponse,
     GoalCreateRequest,
@@ -137,6 +138,7 @@ from app.schemas.hr import (
     LeavePolicyResponse,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
+    LeaveRequestDecisionState,
     LeaveRequestListResponse,
     LeaveRequestResponse,
     LeaveRequestResubmitRequest,
@@ -1046,10 +1048,7 @@ async def list_employment_changes(
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> EmploymentChangeListResponse:
-    rows, total = await HrService(session).list_employment_changes(employee_id, limit, offset)
-    return EmploymentChangeListResponse(
-        items=[EmploymentChangeResponse.model_validate(row) for row in rows], total=total
-    )
+    return await HrService(session).list_employment_changes(employee_id, limit, offset)
 
 
 @router.get("/employment-changes/due", response_model=DueEmploymentChangeList)
@@ -1133,6 +1132,16 @@ async def transition_employee_status(
     session: DbSession,
 ) -> EmployeeDetailResponse:
     return await HrService(session).transition_employee_status(employee_id, payload, actor)
+
+
+@router.get("/employment-periods/missing-start", response_model=EmploymentPeriodMissingStartPage)
+async def list_employment_periods_missing_start(
+    _: CanAccessSensitive,
+    session: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> EmploymentPeriodMissingStartPage:
+    return await HrService(session).list_employment_periods_missing_start(limit, offset)
 
 
 @router.get(
@@ -2300,9 +2309,11 @@ async def list_leave_requests(
     session: DbSession,
     employee_id: Annotated[UUID | None, Query()] = None,
     req_status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LeaveRequestListResponse:
     rows, total = await HrService(session).list_leave_requests(
-        employee_id=employee_id, status=req_status
+        employee_id=employee_id, status=req_status, limit=limit, offset=offset
     )
     return LeaveRequestListResponse(
         items=[LeaveRequestResponse.model_validate(r) for r in rows], total=total
@@ -2317,6 +2328,13 @@ async def create_leave_request(
 ) -> LeaveRequestResponse:
     row = await HrService(session).create_leave_request(payload, actor)
     return LeaveRequestResponse.model_validate(row)
+
+
+@router.get("/leave/requests/{leave_request_id}/decision", response_model=LeaveRequestDecisionState)
+async def get_leave_decision_state(
+    leave_request_id: UUID, _: CanApproveLeave, session: DbSession
+) -> LeaveRequestDecisionState:
+    return await HrService(session).get_leave_decision_state(leave_request_id)
 
 
 @router.post("/leave/requests/{leave_request_id}/decision", response_model=LeaveRequestResponse)

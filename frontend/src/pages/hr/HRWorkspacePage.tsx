@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -47,7 +47,7 @@ import {
   type ExpiringComplianceResponse,
   type HrDocumentRecord,
   type HrServiceRequestRecord,
-  type LeaveRequestRecord,
+  type HrSchemas,
   type LeaveTypeRecord,
   type OffboardingCaseRecord,
   type PolicyDocumentRecord,
@@ -96,6 +96,9 @@ type HrTab =
   | 'training'
   | 'payroll'
   | 'performance';
+
+const LEAVE_PAGE_SIZE = 25;
+const LEAVE_REQUESTS_KEY = ['hr', 'leave-requests'];
 
 function OrgBranch({ node }: { node: OrgChartNode }) {
   return (
@@ -151,7 +154,16 @@ export function HRWorkspacePage() {
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
   const [compliance, setCompliance] = useState<ExpiringComplianceResponse | null>(null);
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeRecord[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequestRecord[]>([]);
+  const [leaveStatus, setLeaveStatus] = useState('');
+  const [leaveOffset, setLeaveOffset] = useState(0);
+  const leaveQueue = useQuery({
+    queryKey: [...LEAVE_REQUESTS_KEY, user?.id, leaveStatus, leaveOffset],
+    queryFn: ({ signal }) => listLeaveRequests({
+      limit: LEAVE_PAGE_SIZE, offset: leaveOffset, req_status: leaveStatus || undefined
+    }, signal),
+    enabled: tab === 'leave' && hasPerm('hr:leave:manage'),
+    gcTime: 0
+  });
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
   const [serviceReqs, setServiceReqs] = useState<HrServiceRequestRecord[]>([]);
   const [requestAssignees, setRequestAssignees] = useState<
@@ -225,7 +237,6 @@ export function HRWorkspacePage() {
       }
       if (hasPerm('hr:leave:manage')) {
         setLeaveTypes((await listLeaveTypes()).items);
-        setLeaveRequests((await listLeaveRequests()).items);
       }
       if (hasPerm('hr:employees:read')) setPolicies((await listPolicies()).items);
       if (hasPerm('hr:requests:process')) {
@@ -463,6 +474,15 @@ export function HRWorkspacePage() {
     } finally {
       setPending(false);
     }
+  }
+
+  async function runLeaveDecision(
+    requestId: string, payload: HrSchemas['LeaveRequestDecisionRequest'], fallback: string
+  ) {
+    await runChange(async () => {
+      await decideLeaveRequest(requestId, payload);
+      await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+    }, fallback, false);
   }
 
   const tabs: { key: HrTab; label: string; visible: boolean }[] = [
@@ -1563,8 +1583,37 @@ export function HRWorkspacePage() {
 
           {user && <HRLeaveDateEvidence key={user.id} actorId={user.id} />}
           <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
-            <h3 className="text-base font-semibold">Leave Requests ({leaveRequests.length})</h3>
-            {leaveRequests.map((lr) => (
+            <h3 className="text-base font-semibold">
+              Leave Requests{leaveQueue.data && ` (${leaveQueue.data.total})`}
+            </h3>
+            <label className="block">
+              Request status
+              <select
+                className={hrInputClass}
+                value={leaveStatus}
+                disabled={pending}
+                onChange={(event) => {
+                  setLeaveOffset(0);
+                  setLeaveStatus(event.target.value);
+                }}
+              >
+                <option value="">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            {leaveQueue.isPending && <p role="status">Loading leave requests…</p>}
+            {leaveQueue.isError && (
+              <p role="alert">
+                {errMsg(leaveQueue.error, 'Could not load leave requests.')}
+                {' '}<button type="button" onClick={() => void leaveQueue.refetch()}>Retry</button>
+              </p>
+            )}
+            {leaveQueue.data?.items.length === 0 && <p>No matching requests on this page.</p>}
+            {leaveQueue.data?.items.map((lr) => (
               <div
                 className="flex items-center justify-between rounded border border-theme-border p-2.5 text-xs"
                 key={lr.id}
@@ -1597,12 +1646,9 @@ export function HRWorkspacePage() {
                       className="rounded bg-brand-600 px-2 py-1 text-white"
                       disabled={pending}
                       onClick={() =>
-                        void runChange(
-                          () =>
-                            decideLeaveRequest(lr.id, {
-                              decision: 'approved',
-                              expected_revision: lr.record_revision
-                            }),
+                        void runLeaveDecision(
+                          lr.id,
+                          { decision: 'approved', expected_revision: lr.record_revision },
                           'Could not approve leave.'
                         )
                       }
@@ -1614,13 +1660,13 @@ export function HRWorkspacePage() {
                       className="rounded border border-theme-border px-2 py-1"
                       disabled={pending}
                       onClick={() =>
-                        void runChange(
-                          () =>
-                            decideLeaveRequest(lr.id, {
-                              decision: 'rejected',
-                              notes: leaveDecisionNotes[lr.id],
-                              expected_revision: lr.record_revision
-                            }),
+                        void runLeaveDecision(
+                          lr.id,
+                          {
+                            decision: 'rejected',
+                            notes: leaveDecisionNotes[lr.id],
+                            expected_revision: lr.record_revision
+                          },
                           'Could not reject leave.'
                         )
                       }
@@ -1640,12 +1686,13 @@ export function HRWorkspacePage() {
                         event.preventDefault();
                         if (pending) return;
                         const reason = String(new FormData(event.currentTarget).get('reason')).trim();
-                        void runChange(
-                          () => decideLeaveRequest(lr.id, {
+                        void runLeaveDecision(
+                          lr.id,
+                          {
                             decision: 'cancelled',
                             notes: reason,
                             expected_revision: lr.record_revision
-                          }),
+                          },
                           'Could not reverse approved leave.'
                         );
                       }}
@@ -1666,6 +1713,19 @@ export function HRWorkspacePage() {
                 )}
               </div>
             ))}
+            {(leaveOffset > 0 || (leaveQueue.data?.total ?? 0) > LEAVE_PAGE_SIZE) && (
+              <nav className="flex gap-3" aria-label="Leave request pages">
+                <button type="button" disabled={pending || leaveOffset === 0}
+                  onClick={() => setLeaveOffset(leaveOffset - LEAVE_PAGE_SIZE)}>
+                  Previous requests
+                </button>
+                <button type="button"
+                  disabled={pending || leaveOffset + LEAVE_PAGE_SIZE >= (leaveQueue.data?.total ?? 0)}
+                  onClick={() => setLeaveOffset(leaveOffset + LEAVE_PAGE_SIZE)}>
+                  Next requests
+                </button>
+              </nav>
+            )}
           </div>
         </div>
       )}

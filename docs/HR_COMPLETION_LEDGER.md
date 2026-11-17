@@ -1749,3 +1749,25 @@ a misleading name match and a denied non-HR request. The Chrome workflow
 selected an interviewer by employee code, then withdrew the application
 and confirmed cancellation of the assigned interview. Backend lint and
 typing, frontend lint and build, and generated API type checks passed.
+
+## Slice 85 · verify training, performance and employment changes together
+
+The portal records progress, no-show and cancellation on open training
+enrollments and rejects an update if its starting status changed. The CLI
+lists and creates courses and enrollments, confirms enrollment status changes,
+and reads the saved state back. Training completion still requires an approved
+certificate version. Participants can submit performance actions through an
+actor-bound CLI plan. The receipt confirms the event without displaying notes
+or ratings. The portal and CLI use the server's business date for effective-dated
+employment changes and identify proposals whose employee revision changed.
+
+The combined local worktree on main `06c0f9d` passed 184 selected backend
+tests and all 50 frontend unit tests. The backend selection covered HR,
+garrisonctl, OpenAPI, authentication, Super Admin sign-in and role transitions
+against disposable PostgreSQL, Redis and object storage. The 31 selected
+Chrome cases passed, including training verification after a status change,
+employment scheduling and application, and HR access revocation. Repository-wide
+backend Ruff and mypy and the OpenAPI and generated TypeScript checks passed.
+
+These results cover the local application and test data. Live HR acceptance,
+account onboarding and payroll operating approval remain open.

@@ -736,6 +736,39 @@ test('independent HR Managers approve and apply an effective-dated employment ch
         })
       ])
     );
+    const latest = await request.get(employeePath, { headers });
+    const nextDate = new Date(Date.parse(effective) + 86_400_000).toISOString().slice(0, 10);
+    const scheduled = await request.post(`${employeePath}/employment-changes`, {
+      headers,
+      data: {
+        change_type: 'transfer',
+        effective_date: nextDate,
+        employee_revision: (await latest.json()).record_revision,
+        reason: 'Synthetic future transfer',
+        updates: { work_location: 'Future site' }
+      }
+    });
+    expect(scheduled.status()).toBe(201);
+    const scheduledId = (await scheduled.json()).id as string;
+    const approvedSchedule = await request.post(
+      `${employeePath}/employment-changes/${scheduledId}/decision`,
+      {
+        headers: { Authorization: `Bearer ${reviewer.accessToken}` },
+        data: { decision: 'approved' }
+      }
+    );
+    expect(approvedSchedule.status()).toBe(200);
+    expect(() =>
+      cli(reviewer.accessToken, 'apply', ['--change-id', scheduledId, '--dry-run'])
+    ).toThrow();
+    await reviewerPage.reload();
+    await openEmployee(reviewerPage);
+    const scheduledRow = reviewerPage
+      .getByRole('article').filter({ hasText: 'Synthetic future transfer' });
+    await expect(scheduledRow.getByText(`Scheduled for ${nextDate}.`)).toBeVisible();
+    await expect(
+      scheduledRow.getByRole('button', { name: 'Apply due employment change' })
+    ).toHaveCount(0);
   } finally {
     await reviewerContext.close();
   }
@@ -1086,11 +1119,7 @@ test('HR previews and retains a letter for independent issuance and employee ret
       (row: { subject: string }) => row.subject === requestSubject
     );
     expect(reopened).toMatchObject({ status: 'open', generated_letter_id: letterId });
-    await page.reload();
-    await page.getByRole('button', { name: 'Policies & Requests' }).click();
-    await requestCard.getByRole('button', { name: 'Start review' }).click();
-    await expect(requestCard).toContainText('(in_review)');
-    const runCompletion = (...mode: string[]) =>
+    const runRequest = (command: string, ...options: string[]) =>
       JSON.parse(
         execFileSync(
           PYTHON_BIN,
@@ -1099,12 +1128,10 @@ test('HR previews and retains a letter for independent issuance and employee ret
             'scripts.garrisonctl',
             'hr',
             'request',
-            'complete',
+            command,
             '--request-id',
             reopened.id,
-            '--letter-id',
-            letterId,
-            ...mode,
+            ...options,
             '--json'
           ],
           {
@@ -1119,9 +1146,20 @@ test('HR previews and retains a letter for independent issuance and employee ret
           }
         )
       );
-    const completionPlan = runCompletion('--dry-run').data;
+    expect(runRequest('status').data).toMatchObject({ id: reopened.id, status: 'open' });
+    const startPlan = runRequest('start', '--dry-run').data;
+    expect(runRequest('status').data.status).toBe('open');
+    expect(runRequest('start', '--apply', '--expect', startPlan.plan_sha256).data).toMatchObject({
+      status: 'in_review',
+      assigned_to_id: session.userId
+    });
+    const completion = ['--letter-id', letterId];
+    const completionPlan = runRequest('complete', ...completion, '--dry-run').data;
     expect(completionPlan.proposed.generated_letter_id).toBe(letterId);
-    expect(runCompletion('--apply', '--expect', completionPlan.plan_sha256).data).toMatchObject({
+    expect(JSON.stringify(completionPlan)).not.toContain('a <b>staff</b> record');
+    expect(runRequest(
+      'complete', ...completion, '--apply', '--expect', completionPlan.plan_sha256
+    ).data).toMatchObject({
       status: 'completed',
       generated_letter_id: letterId
     });
@@ -2330,6 +2368,11 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await approvedLeave.getByRole('textbox', { name: 'Reversal reason' }).fill('Synthetic roster change');
     await approvedLeave.getByRole('button', { name: 'Confirm reversal', exact: true }).click();
     await expect(approvedLeave).toContainText('cancelled');
+    const queueStatus = reviewerPage.getByRole('combobox', { name: 'Request status', exact: true });
+    await queueStatus.selectOption('approved');
+    await expect(approvedLeave).toHaveCount(0);
+    await queueStatus.selectOption('cancelled');
+    await expect(approvedLeave).toContainText('cancelled');
     await workerPage.reload();
     await expect(workerPage.getByText('Synthetic roster change', { exact: true })).toBeVisible();
     const othersDirectory = await workerPage.request.get('/api/v1/hr/employees', {
@@ -2700,6 +2743,14 @@ test('HR verifies training against an independently approved certificate', async
   const enrollment = page.getByRole('article').filter({ hasText: `Safety ${marker}` });
   await expect(enrollment.getByText('Enrollment enrolled')).toBeVisible();
   await expect(enrollment.getByRole('button', { name: 'Verify completion' })).toBeDisabled();
+  await enrollment
+    .getByRole('combobox', { name: 'Enrollment status', exact: true })
+    .selectOption('in_progress');
+  await enrollment.getByRole('button', { name: 'Update enrollment' }).click();
+  await expect(enrollment.getByText('Enrollment in progress')).toBeVisible();
+  await page.reload();
+  await selectTrainingEmployee();
+  await expect(enrollment.getByText('Enrollment in progress')).toBeVisible();
 
   await page.getByLabel('Certificate title').fill(`Credential ${marker}`);
   await page.getByLabel('Certificate issue date').fill(trainingDate);
@@ -2757,6 +2808,7 @@ test('HR verifies training against an independently approved certificate', async
   await selectTrainingEmployee();
   await enrollment.getByRole('button', { name: 'Show verified receipt' }).click();
   await expect(enrollment.getByText('Verified certificate version 1 · 2026-06-01')).toBeVisible();
+  await expect(enrollment.getByRole('button', { name: 'Update enrollment' })).toHaveCount(0);
   const receipt = JSON.parse(
     execFileSync(
       PYTHON_BIN,

@@ -145,6 +145,7 @@ from app.schemas.hr import (
     LeavePolicyDecisionRequest,
     LeaveRequestCreateRequest,
     LeaveRequestDecisionRequest,
+    LeaveRequestDecisionState,
     LeaveRequestFields,
     LeaveRequestResubmitRequest,
     LeaveTypeCreateRequest,
@@ -4015,6 +4016,12 @@ class HrWorkforceService:
                 "This request overlaps existing leave.", status_code=409, error_code="LEAVE_OVERLAP"
             )
 
+    async def get_leave_decision_state(self, leave_request_id: UUID) -> LeaveRequestDecisionState:
+        request = await self.session.get(HrLeaveRequest, leave_request_id)
+        if request is None:
+            raise NotFoundException("Leave request")
+        return LeaveRequestDecisionState.model_validate(request)
+
     async def decide_leave_request(
         self,
         leave_request_id: UUID,
@@ -4157,15 +4164,21 @@ class HrWorkforceService:
         return req
 
     async def list_leave_requests(
-        self, *, employee_id: UUID | None = None, status: str | None = None
+        self, *, employee_id: UUID | None = None, status: str | None = None,
+        limit: int | None = None, offset: int = 0,
     ) -> tuple[list[HrLeaveRequest], int]:
         stmt = select(HrLeaveRequest)
         if employee_id:
             stmt = stmt.where(HrLeaveRequest.employee_id == employee_id)
         if status:
             stmt = stmt.where(HrLeaveRequest.status == status)
-        rows = list(await self.session.scalars(stmt.order_by(HrLeaveRequest.created_at.desc())))
-        return rows, len(rows)
+        ordered = stmt.order_by(HrLeaveRequest.created_at.desc(), HrLeaveRequest.id.desc())
+        if limit is None and offset == 0:
+            rows = list(await self.session.scalars(ordered))
+            return rows, len(rows)
+        total = await self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+        rows = list(await self.session.scalars(ordered.offset(offset).limit(limit)))
+        return rows, total or 0
 
     # --- Policies, Letter Templates, HR Service Requests (HR-016) ---
 
@@ -5818,14 +5831,21 @@ class HrWorkforceService:
             )
         if enr.status not in {"enrolled", "in_progress"}:
             raise AppException("The training enrollment is closed.", status_code=409)
+        if payload.expected_status is not None and payload.expected_status != enr.status:
+            raise AppException(
+                "The enrollment changed. Reload it before updating its status.", status_code=409
+            )
         if payload.completed_date is not None or payload.score is not None:
             raise AppException("Date and score belong to verified completion.", status_code=422)
+        previous_status = enr.status
         enr.status = payload.status
         await self.audit.record(
             action="hr.training.updated",
             user_id=actor.id,
             entity_type="hr_training_enrollments",
             entity_id=enr.id,
+            old_values={"status": previous_status},
+            new_values={"status": enr.status},
         )
         await self._commit_and_refresh(enr)
         return enr

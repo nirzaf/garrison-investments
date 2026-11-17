@@ -286,6 +286,34 @@ export function HRTraining({ canManageDocuments }: { canManageDocuments: boolean
                     Verified certificate version {receipt.version_number} · {receipt.completed_date}
                   </p>
                 )}
+                {(row.status === 'enrolled' || row.status === 'in_progress') && (
+                  <form
+                    className="flex flex-wrap items-end gap-2"
+                    onSubmit={(event) =>
+                      void submit(event, (data) =>
+                        apiClient.patch(`${prefix}/enrollments/${row.id}`, {
+                          status: data.get('status'),
+                          expected_status: row.status
+                        })
+                      )
+                    }
+                  >
+                    <label>
+                      Enrollment status{' '}
+                      <select className={hrInputClass} name="status" required defaultValue="">
+                        <option value="">Select status</option>
+                        {row.status === 'enrolled' && (
+                          <option value="in_progress">In progress</option>
+                        )}
+                        <option value="no_show">No show</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </label>
+                    <button className={hrButtonClass} type="submit" disabled={pending}>
+                      Update enrollment
+                    </button>
+                  </form>
+                )}
                 {['enrolled', 'in_progress'].includes(row.status) && (
                   <form
                     className="flex flex-wrap items-end gap-2"

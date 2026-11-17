@@ -244,7 +244,11 @@ To reverse approved leave, preview
 `hr leave requests decide --leave-request-id ID --decision cancelled --notes "Decision reference" --dry-run`.
 Use a reference or short reason suitable for the employee to see. Apply with
 `--apply --expect PLAN_SHA256`. The server verifies the original debit and
-blocks changes to a closed leave year or approved payroll.
+blocks changes to a closed leave year or approved payroll. The CLI reads
+the selected request's decision state before and after applying. Its
+preview and receipt omit the leave reason, attachments and decision notes.
+`hr leave requests list --status submitted --limit 25 --offset 0` lists
+the first page of the review queue and reports the total matching count.
 
 Use `hr leave policy propose --file POLICY.json --dry-run` to preview a
 dated proposal. The JSON uses the leave policy creation contract, including
@@ -520,6 +524,30 @@ List accessible reviews with `hr performance list`. Read one review with
 `hr performance show --review-id ID`. The same participant checks and
 publication stage apply as in the portal.
 
+Use `hr performance act --review-id ID --event-id UUID --file action.json
+--dry-run` to preview an available review action. Store `action` and any
+`notes`, `rating`, or `replacement_reviewer_id` in the owner-only JSON file.
+The command gets the current revision from the API. Confirm with
+`--apply --expect PLAN_SHA256` using the same file and event UUID. The
+receipt confirms the recorded event without displaying the narrative or
+rating. Retrying the same confirmation returns that receipt when the actor
+can still read the event.
+
+List the course catalogue with `hr training courses list` and an employee's
+assignments with `hr training enrollments list --employee-id ID`. Use
+`hr training courses create --file course.json --dry-run` with `code` and
+`title`, or `hr training enrollments create --file enrollment.json --dry-run`
+with `employee_id`, `course_id`, and an optional `scheduled_date`.
+Apply with `--apply --expect PLAN_SHA256` as the same HR operator. The command
+reads back the created record. The server rejects duplicate course codes,
+duplicate open enrollments, and assignments outside current employment.
+
+Use `hr training enrollments update --employee-id ID --enrollment-id ID
+--status in_progress --dry-run` to preview a status change. The other
+available choices are `no_show` and `cancelled`. Apply with
+`--apply --expect PLAN_SHA256`. If the status changed since preview, get
+a fresh plan. Record completion with approved certificate evidence.
+
 To verify training against already approved ordinary employee evidence,
 use `hr training completion verify --enrollment-id ID --document-id ID
 --version-number NUMBER --completed-date YYYY-MM-DD --dry-run`. Add
@@ -563,6 +591,12 @@ and `changes apply` commands. Check old and new periods via
 onboarding case and reviewed change. Portal access continues through a fresh
 director-fulfilled request.
 
+Run `hr employees periods-missing-start --limit 20 --offset 0` as an
+authorized HR Manager to identify closed employment periods whose start date
+is missing. The report includes employee and separation references and the
+recorded end date. It leaves the original records available for reconciliation
+against approved source evidence.
+
 For a `contract_renewal` proposal, `updates` contains
 `current_contract_document_id`, `current_contract_version`,
 `renewal_contract_document_id`, `renewal_contract_version`, and
@@ -576,12 +610,17 @@ before assigning or reassigning an active request. Confirm the preview using
 `--apply --expect PLAN_SHA256`. Assignment preserves the request's status and
 SLA clock. Use an operational reason without personal or confidential details.
 
+Use `hr request status --request-id ID` to inspect status and assignee.
+The current assignee can preview `hr request start --request-id ID --dry-run`
+and confirm with `--apply --expect PLAN_SHA256`. An unassigned request
+becomes assigned to the operator who starts review.
+
 Use `hr request complete --request-id ID --letter-id ID --dry-run`
 to preview completion with an already-issued letter for that employee.
 The letter argument is optional. Pass `--response-file FILE` with a JSON
 string to share response text. After review, apply with
-`--apply --expect PLAN_SHA256`. The dry run can display private letter or
-response text, so review it in a private terminal.
+`--apply --expect PLAN_SHA256`. The preview and receipt omit private letter
+and response text.
 
 Use `hr letter list` and `hr letter show --letter-id ID` for your own issued
 letters. HR Managers can add `--employee-id ID` to inspect a selected employee's

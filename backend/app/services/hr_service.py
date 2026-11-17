@@ -42,7 +42,11 @@ from app.schemas.hr import (
     EmployeeUpdateRequest,
     EmploymentChangeDecision,
     EmploymentChangeFields,
+    EmploymentChangeListResponse,
     EmploymentChangeProposal,
+    EmploymentChangeResponse,
+    EmploymentPeriodMissingStart,
+    EmploymentPeriodMissingStartPage,
     OnboardingCaseResponse,
     OrgChartNode,
     OrgChartResponse,
@@ -744,6 +748,37 @@ class HrService(HrWorkforceService):
         total = await self.session.scalar(select(func.count(HrEmploymentPeriod.id)).where(*filters))
         return rows, total or 0
 
+    async def list_employment_periods_missing_start(
+        self, limit: int, offset: int
+    ) -> EmploymentPeriodMissingStartPage:
+        query = (
+            select(
+                HrEmploymentPeriod.id.label("period_id"),
+                HrEmploymentPeriod.employee_id,
+                HrEmployee.employee_code,
+                HrEmploymentPeriod.ended_on,
+                HrEmploymentPeriod.separation_case_id,
+            )
+            .join(HrEmployee, HrEmployee.id == HrEmploymentPeriod.employee_id)
+            .where(
+                HrEmploymentPeriod.started_on.is_(None),
+                HrEmploymentPeriod.ended_on.is_not(None),
+                HrEmployee.deleted_at.is_(None),
+            )
+        )
+        total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
+        rows = (
+            await self.session.execute(
+                query.order_by(HrEmploymentPeriod.ended_on, HrEmploymentPeriod.id)
+                .limit(limit)
+                .offset(offset)
+            )
+        ).mappings()
+        return EmploymentPeriodMissingStartPage(
+            items=[EmploymentPeriodMissingStart.model_validate(row) for row in rows],
+            total=total or 0,
+        )
+
     async def _check_rehire(
         self,
         emp: HrEmployee,
@@ -999,7 +1034,7 @@ class HrService(HrWorkforceService):
 
     async def list_employment_changes(
         self, employee_id: UUID, limit: int, offset: int
-    ) -> tuple[list[HrEmploymentChange], int]:
+    ) -> EmploymentChangeListResponse:
         await self._require_employee(employee_id)
         query = select(HrEmploymentChange).where(HrEmploymentChange.employee_id == employee_id)
         rows = list(
@@ -1014,7 +1049,11 @@ class HrService(HrWorkforceService):
                 HrEmploymentChange.employee_id == employee_id
             )
         )
-        return rows, total or 0
+        return EmploymentChangeListResponse(
+            as_of=business_today(),
+            items=[EmploymentChangeResponse.model_validate(row) for row in rows],
+            total=total or 0,
+        )
 
     async def list_due_employment_changes(self, limit: int, offset: int) -> DueEmploymentChangeList:
         today = business_today()

@@ -49,6 +49,7 @@ from app.schemas.hr import (
     PayrollRunCalculateRequest,
     PayrollSettlementRequest,
     PayrollSnapshotCalculateRequest,
+    PerformanceReviewActionRequest,
     PolicyAcknowledgeRequest,
     PolicyDocumentCreateRequest,
     ProbationReviewRequest,
@@ -63,6 +64,8 @@ from app.schemas.hr import (
     TimesheetCreateRequest,
     TimesheetDecisionRequest,
     TrainingCompletionRequest,
+    TrainingCourseCreateRequest,
+    TrainingEnrollmentCreateRequest,
     WorkCalendarCreateRequest,
     WorkCalendarDecisionRequest,
     WorkCalendarUpdateRequest,
@@ -109,6 +112,7 @@ PERM_PAYROLL_APPROVE = "hr:payroll:approve"
 PERM_PAYROLL_SENSITIVE = "hr:payroll:sensitive"
 PERM_RECRUITMENT = "hr:recruitment:manage"
 PERM_ONBOARDING = "hr:onboarding:manage"
+PERM_TRAINING = "hr:training:manage"
 
 
 def _require_any_permission(ctx: Context, *permissions: str) -> None:
@@ -367,10 +371,15 @@ def _access_requests_decide(args: argparse.Namespace, ctx: Context) -> Result:
 
 def _leave_requests_decide(args: argparse.Namespace, ctx: Context) -> Result:
     require_preview_permission(ctx, PERM_LEAVE_APPROVE)
-    rows = ctx.request("GET", f"{HR}/leave/requests").get("items", [])
-    target = next((row for row in rows if row.get("id") == args.leave_request_id), None)
-    if target is None:
-        raise CLIError("Leave request was not found.", CONFLICT)
+    path = f"{HR}/leave/requests/{args.leave_request_id}/decision"
+    target = ctx.request("GET", path)
+    if target["id"] != args.leave_request_id:
+        raise CLIError("The response does not match the requested leave record.", CONFLICT)
+    payload = {
+        "decision": args.decision,
+        "expected_revision": target["record_revision"],
+        "notes": args.notes,
+    }
     plan = checked_plan(
         args,
         ctx,
@@ -381,25 +390,24 @@ def _leave_requests_decide(args: argparse.Namespace, ctx: Context) -> Result:
             "record_revision": target.get("record_revision"),
             "manager_recommendation": target.get("manager_recommendation"),
             "decision": args.decision,
-            "notes": args.notes,
+            "request_sha256": sha256_json(payload),
         },
         bind_actor=True,
     )
     if args.dry_run:
         return Result(plan, outcome="preview")
-    payload: dict[str, Any] = {
-        "decision": args.decision,
-        "expected_revision": target.get("record_revision"),
-    }
-    if args.notes:
-        payload["notes"] = args.notes
-    updated = ctx.request(
-        "POST",
-        f"{HR}/leave/requests/{args.leave_request_id}/decision",
-        json=payload,
-        write=True,
+    actor_id = ctx.identity()["id"]
+    ctx.request("POST", path, json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: ctx.request("GET", path),
+        lambda row: (
+            row["id"] == args.leave_request_id
+            and row["status"] == args.decision
+            and row["record_revision"] == target["record_revision"] + 1
+            and row["decided_by_id"] == actor_id
+        ),
     )
-    return Result(updated, changed=True)
 
 
 def _offboarding_initiate(args: argparse.Namespace, ctx: Context) -> Result:
@@ -550,6 +558,169 @@ def _record_separation_settlement(args: argparse.Namespace, ctx: Context) -> Res
         lambda: ctx.request("GET", path, params={"event_id": args.event_id})["items"],
         lambda items: items == [saved] and saved["id"] == args.event_id,
     )
+
+
+def _record_performance_action(args: argparse.Namespace, ctx: Context) -> Result:
+    path = f"{HR}/performance/reviews/{args.review_id}"
+
+    def events_for(review: dict[str, Any]) -> list[dict[str, Any]]:
+        if review["id"] != args.review_id:
+            raise CLIError(
+                "The response does not match the requested performance review.", CONFLICT
+            )
+        events: list[dict[str, Any]] = review["events"]
+        return events
+
+    review = ctx.request("GET", path)
+    actor_id = ctx.identity()["id"]
+    existing = next((event for event in events_for(review) if event["id"] == args.event_id), None)
+    revision = existing["revision"] - 1 if existing else review["revision"]
+    try:
+        raw = json.loads(read_private_bytes(args.file, max_bytes=24 * 1024))
+        if not isinstance(raw, dict) or {"event_id", "expected_revision"} & raw.keys():
+            raise ValueError
+        payload = PerformanceReviewActionRequest.model_validate(
+            {**raw, "event_id": args.event_id, "expected_revision": revision}
+        ).model_dump(mode="json")
+    except ValueError:
+        raise CLIError("Supply valid review action fields in an owner-only JSON file.") from None
+
+    def matches(event: dict[str, Any]) -> bool:
+        return (
+            event["actor_id"] == actor_id
+            and event["revision"] == revision + 1
+            and all(event[key] == payload[key] for key in (
+                "action", "notes", "rating", "replacement_reviewer_id"
+            ))
+        )
+
+    def receipt(event: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "review_id": args.review_id,
+            **{key: event[key] for key in ("id", "revision", "action", "occurred_at")},
+        }
+
+    if existing and not matches(existing):
+        raise CLIError("The performance event ID is already in use.", CONFLICT)
+    if not existing and payload["action"] not in review["allowed_actions"]:
+        raise CLIError("This action is unavailable at the current review stage.", AUTH)
+    if not existing and payload["action"] in {
+        "submit_self_review", "submit_manager_review", "calibrate"
+    }:
+        scale = review["rating_scale"]
+        rating = payload["rating"]
+        if (scale and rating not in scale) or (not scale and rating is not None):
+            raise CLIError("Use an approved cycle rating, or omit it for a narrative assessment.")
+    plan = checked_plan(
+        args, ctx, {
+            "operation": args.command_name,
+            "review_id": args.review_id,
+            "event_id": args.event_id,
+            "action": payload["action"],
+            "expected_revision": revision,
+            "request_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    if existing:
+        return Result(receipt(existing))
+    ctx.request("POST", f"{path}/actions", json=payload, write=True)
+    observed = verified(
+        ctx,
+        lambda: next(
+            (
+                event
+                for event in events_for(ctx.request("GET", path))
+                if event["id"] == args.event_id
+            ),
+            None,
+        ),
+        lambda event: event is not None and matches(event),
+    )
+    return Result(receipt(observed.data), changed=True)
+
+
+def _create_training_record(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_TRAINING)
+    schema = (
+        TrainingCourseCreateRequest
+        if args.training_resource == "courses"
+        else TrainingEnrollmentCreateRequest
+    )
+    try:
+        proposed = schema.model_validate(
+            load_json(args.file, max_bytes=16 * 1024), extra="forbid"
+        )
+    except ValidationError:
+        raise CLIError("Supply valid training fields in the JSON file.") from None
+
+    path = f"{HR}/training/{args.training_resource}"
+    payload = proposed.model_dump(mode="json")
+    params = {"employee_id": payload["employee_id"]} if "employee_id" in payload else None
+    plan = checked_plan(
+        args,
+        ctx,
+        {"operation": args.command_name, "proposed": payload},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+
+    saved = ctx.request("POST", path, json=payload, write=True)
+
+    def read_record() -> Any:
+        rows = ctx.request("GET", path, params=params)["items"]
+        return next((row for row in rows if row["id"] == saved["id"]), None)
+
+    def matches(record: Any) -> bool:
+        if record is None:
+            return False
+        try:
+            return schema.model_validate({key: record[key] for key in payload}) == proposed
+        except (KeyError, ValidationError):
+            return False
+
+    return verified(ctx, read_record, matches)
+
+
+def _update_training_enrollment(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_TRAINING)
+    path = f"{HR}/training/enrollments"
+
+    def read_enrollment() -> dict[str, Any]:
+        page = ctx.request("GET", path, params={"employee_id": args.employee_id})
+        for enrollment in page["items"]:
+            if (
+                enrollment["id"] == args.enrollment_id
+                and enrollment["employee_id"] == args.employee_id
+            ):
+                return enrollment
+        raise CLIError("The enrollment was not found for this employee.", CONFLICT)
+
+    current = read_enrollment()
+    if current["status"] not in {"enrolled", "in_progress"}:
+        raise CLIError("The training enrollment is closed.", CONFLICT)
+    if current["status"] == args.status:
+        raise CLIError("The enrollment already has the requested status.", CONFLICT)
+
+    payload = {"status": args.status, "expected_status": current["status"]}
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "employee_id": args.employee_id,
+            "enrollment_id": args.enrollment_id,
+            "proposed": payload,
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("PATCH", f"{path}/{args.enrollment_id}", json=payload, write=True)
+    return verified(ctx, read_enrollment, lambda row: row["status"] == args.status)
 
 
 def _verify_training_completion(args: argparse.Namespace, ctx: Context) -> Result:
@@ -2729,8 +2900,17 @@ def _review_or_apply_employment_change(args: argparse.Namespace, ctx: Context) -
     else:
         if change["status"] != "approved":
             raise CLIError("Only an approved change can be applied.", CONFLICT)
+        review_date = ctx.request(
+            "GET", f"{HR}/employment-changes/due", params={"limit": 1}
+        )["as_of"]
+        if change["effective_date"] > review_date:
+            raise CLIError("This change has not reached its effective date.", CONFLICT)
         payload = {}
         status = "applied"
+    if status in {"approved", "applied"}:
+        employee = ctx.request("GET", f"{HR}/employees/{args.employee_id}")
+        if employee["record_revision"] != change["employee_revision"]:
+            raise CLIError("The employee changed. Prepare a fresh proposal.", CONFLICT)
     plan = checked_plan(
         args,
         ctx,
@@ -2744,6 +2924,43 @@ def _review_or_apply_employment_change(args: argparse.Namespace, ctx: Context) -
         ctx,
         lambda: ctx.request("GET", path),
         lambda row: row["status"] == status and row["id"] == args.change_id,
+    )
+
+
+def _service_request_receipt(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key]
+        for key in ("id", "status", "assigned_to_id", "generated_letter_id", "updated_at")
+    }
+
+
+def _start_service_request(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_REQUESTS_PROCESS)
+    path = f"{HR}/requests/{args.request_id}"
+    current = _service_request_receipt(ctx.request("GET", path))
+    actor_id = ctx.identity()["id"]
+    if current["id"] != args.request_id or current["status"] != "open":
+        raise CLIError("Only an open request can enter review.", CONFLICT)
+    if current["assigned_to_id"] not in {None, actor_id}:
+        raise CLIError("The current assignee must start review.", CONFLICT)
+    payload = {"status": "in_review", "expected_updated_at": current["updated_at"]}
+    plan = checked_plan(
+        args,
+        ctx,
+        {"operation": args.command_name, "current": current, "proposed": payload},
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{path}/resolve", json=payload, write=True)
+    return verified(
+        ctx,
+        lambda: _service_request_receipt(ctx.request("GET", path)),
+        lambda row: (
+            row["id"] == args.request_id
+            and row["status"] == "in_review"
+            and row["assigned_to_id"] == actor_id
+        ),
     )
 
 
@@ -2771,20 +2988,26 @@ def _assign_service_request(args: argparse.Namespace, ctx: Context) -> Result:
             "operation": args.command_name,
             "request_id": args.request_id,
             "previous_assignee": current["assigned_to_id"],
-            "proposed": payload,
+            "proposed": {
+                "assigned_to_id": args.assignee_id,
+                "expected_updated_at": current["updated_at"],
+            },
+            "request_sha256": sha256_json(payload),
         },
         bind_actor=True,
     )
     if args.dry_run:
         return Result(plan, outcome="preview")
     if current["assigned_to_id"] == args.assignee_id:
-        return Result(current, outcome="unchanged")
+        return Result(_service_request_receipt(current), outcome="unchanged")
     ctx.request("POST", f"{path}/assign", json=payload, write=True)
     return verified(
         ctx,
-        lambda: ctx.request("GET", path),
+        lambda: _service_request_receipt(ctx.request("GET", path)),
         lambda row: (
-            row["assigned_to_id"] == args.assignee_id and row["status"] == current["status"]
+            row["id"] == args.request_id
+            and row["assigned_to_id"] == args.assignee_id
+            and row["status"] == current["status"]
         ),
     )
 
@@ -2819,19 +3042,23 @@ def _complete_service_request(args: argparse.Namespace, ctx: Context) -> Result:
         {
             "operation": args.command_name,
             "request_id": args.request_id,
-            "response_letter": letter,
-            "proposed": payload,
+            "response_letter_id": args.letter_id,
+            "proposed": {
+                key: value for key, value in payload.items() if key != "resolution_notes"
+            },
+            "request_sha256": sha256_json({"payload": payload, "letter": letter}),
         },
         bind_actor=True,
     )
     if args.dry_run:
         return Result(plan, outcome="preview")
     ctx.request("POST", f"{path}/resolve", json=payload, write=True)
-    return verified(
+    observed = verified(
         ctx,
         lambda: ctx.request("GET", path),
         lambda row: (
-            row["status"] == "completed"
+            row["id"] == args.request_id
+            and row["status"] == "completed"
             and row["generated_letter_id"] == (args.letter_id or request["generated_letter_id"])
             and (
                 "resolution_notes" not in payload
@@ -2839,6 +3066,7 @@ def _complete_service_request(args: argparse.Namespace, ctx: Context) -> Result:
             )
         ),
     )
+    return Result(_service_request_receipt(observed.data), changed=True)
 
 
 def _letters_path(employee_id: str | None) -> str:
@@ -4518,6 +4746,16 @@ def register(registry: Registry) -> None:
     page(p)
 
     p = registry.add(
+        "hr employees periods-missing-start",
+        lambda a, c: c.request(
+            "GET", f"{HR}/employment-periods/missing-start", params=query(a, "limit", "offset")
+        ),
+        permission=PERM_SENSITIVE,
+    )
+    page(p)
+    p.set_defaults(limit=20)
+
+    p = registry.add(
         "hr employees changes due",
         lambda a, c: c.request(
             "GET", f"{HR}/employment-changes/due", params=query(a, "limit", "offset")
@@ -4571,6 +4809,21 @@ def register(registry: Registry) -> None:
         lambda a, c: c.request("GET", f"{HR}/requests/assignees"),
         permission=PERM_REQUESTS_PROCESS,
     )
+    p = registry.add(
+        "hr request status",
+        lambda a, c: _service_request_receipt(c.request("GET", f"{HR}/requests/{a.request_id}")),
+        permission=PERM_REQUESTS_PROCESS,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    p = registry.add(
+        "hr request start",
+        _start_service_request,
+        permission=PERM_REQUESTS_PROCESS,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--request-id", type=uuid_arg, required=True)
+    mode(p)
     p = registry.add(
         "hr request assign",
         _assign_service_request,
@@ -4827,12 +5080,14 @@ def register(registry: Registry) -> None:
         lambda a, c: c.request(
             "GET",
             f"{HR}/leave/requests",
-            params=query(a, "req_status", "employee_id"),
+            params=query(a, "req_status", "employee_id", "limit", "offset"),
         ),
         permission=PERM_LEAVE_MANAGE,
     )
     p.add_argument("--status", dest="req_status")
     p.add_argument("--employee-id", type=uuid_arg)
+    p.add_argument("--limit", type=int)
+    p.add_argument("--offset", type=int)
 
     p = registry.add(
         "hr leave requests decide",
@@ -5134,6 +5389,52 @@ def register(registry: Registry) -> None:
         permission="authenticated",
     )
     p.add_argument("--review-id", type=uuid_arg, required=True)
+
+    p = registry.add(
+        "hr performance act",
+        _record_performance_action,
+        permission="authenticated",
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--review-id", type=uuid_arg, required=True)
+    p.add_argument("--event-id", type=uuid_arg, required=True)
+    p.add_argument("--file", type=Path, required=True)
+    mode(p)
+
+    registry.add(
+        "hr training courses list",
+        lambda _a, c: c.request("GET", f"{HR}/training/courses"),
+        permission=PERM_TRAINING,
+    )
+    p = registry.add(
+        "hr training enrollments list",
+        lambda a, c: c.request("GET", f"{HR}/training/enrollments", params=query(a, "employee_id")),
+        permission=PERM_TRAINING,
+    )
+    p.add_argument("--employee-id", type=uuid_arg, required=True)
+    p = registry.add(
+        "hr training enrollments update",
+        _update_training_enrollment,
+        permission=PERM_TRAINING,
+        mutates=True,
+        preview=True,
+    )
+    p.add_argument("--employee-id", type=uuid_arg, required=True)
+    p.add_argument("--enrollment-id", type=uuid_arg, required=True)
+    p.add_argument("--status", required=True, choices=("in_progress", "no_show", "cancelled"))
+    mode(p)
+    for resource in ("courses", "enrollments"):
+        p = registry.add(
+            f"hr training {resource} create",
+            _create_training_record,
+            permission=PERM_TRAINING,
+            mutates=True,
+            preview=True,
+        )
+        p.set_defaults(training_resource=resource)
+        p.add_argument("--file", type=Path, required=True)
+        mode(p)
 
     p = registry.add(
         "hr training requirements list",

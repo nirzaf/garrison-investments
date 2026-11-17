@@ -8516,6 +8516,11 @@
       },
       "EmploymentChangeListResponse": {
         "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/EmploymentChangeResponse"
@@ -8529,6 +8534,7 @@
           }
         },
         "required": [
+          "as_of",
           "items",
           "total"
         ],
@@ -8867,6 +8873,64 @@
           "total"
         ],
         "title": "EmploymentPeriodListResponse",
+        "type": "object"
+      },
+      "EmploymentPeriodMissingStart": {
+        "properties": {
+          "employee_code": {
+            "title": "Employee Code",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "ended_on": {
+            "format": "date",
+            "title": "Ended On",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "separation_case_id": {
+            "format": "uuid",
+            "title": "Separation Case Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_id",
+          "employee_id",
+          "employee_code",
+          "ended_on",
+          "separation_case_id"
+        ],
+        "title": "EmploymentPeriodMissingStart",
+        "type": "object"
+      },
+      "EmploymentPeriodMissingStartPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EmploymentPeriodMissingStart"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EmploymentPeriodMissingStartPage",
         "type": "object"
       },
       "EmploymentPeriodResponse": {
@@ -13131,6 +13195,55 @@
           "decision"
         ],
         "title": "LeaveRequestDecisionRequest",
+        "type": "object"
+      },
+      "LeaveRequestDecisionState": {
+        "properties": {
+          "decided_by_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "manager_recommendation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Recommendation"
+          },
+          "record_revision": {
+            "title": "Record Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "record_revision",
+          "manager_recommendation",
+          "decided_by_id"
+        ],
+        "title": "LeaveRequestDecisionState",
         "type": "object"
       },
       "LeaveRequestListResponse": {
@@ -26629,6 +26742,21 @@
             ],
             "title": "Completed Date"
           },
+          "expected_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "enrolled",
+                  "in_progress"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Status"
+          },
           "score": {
             "anyOf": [
               {
@@ -36485,6 +36613,75 @@
         ]
       }
     },
+    "/api/v1/hr/employment-periods/missing-start": {
+      "get": {
+        "operationId": "list_employment_periods_missing_start_api_v1_hr_employment_periods_missing_start_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmploymentPeriodMissingStartPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 List Employment Periods Missing Start Api V1 Hr Employment Periods Missing Start Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Employment Periods Missing Start",
+        "tags": [
+          "HR & Workforce"
+        ]
+      }
+    },
     "/api/v1/hr/goals": {
       "get": {
         "operationId": "list_goals_api_v1_hr_goals_get",
@@ -37948,6 +38145,35 @@
               ],
               "title": "Req Status"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -38044,6 +38270,60 @@
       }
     },
     "/api/v1/hr/leave/requests/{leave_request_id}/decision": {
+      "get": {
+        "operationId": "get_leave_decision_state_api_v1_hr_leave_requests__leave_request_id__decision_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leave_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Leave Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveRequestDecisionState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Get Leave Decision State Api V1 Hr Leave Requests  Leave Request Id  Decision Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Leave Decision State",
+        "tags": [
+          "HR & Workforce"
+        ]
+      },
       "post": {
         "operationId": "decide_leave_request_api_v1_hr_leave_requests__leave_request_id__decision_post",
         "parameters": [

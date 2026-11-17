@@ -386,6 +386,7 @@ class EmploymentChangeResponse(BaseModel):
 
 
 class EmploymentChangeListResponse(BaseModel):
+    as_of: date
     items: list[EmploymentChangeResponse]
     total: int
 
@@ -418,6 +419,19 @@ class EmploymentPeriodResponse(BaseModel):
 
 class EmploymentPeriodListResponse(BaseModel):
     items: list[EmploymentPeriodResponse]
+    total: int
+
+
+class EmploymentPeriodMissingStart(BaseModel):
+    period_id: UUID
+    employee_id: UUID
+    employee_code: str
+    ended_on: date
+    separation_case_id: UUID
+
+
+class EmploymentPeriodMissingStartPage(BaseModel):
+    items: list[EmploymentPeriodMissingStart]
     total: int
 
 
@@ -1822,6 +1836,16 @@ class LeaveRequestDecisionRequest(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class LeaveRequestDecisionState(BaseModel):
+    id: UUID
+    status: str
+    record_revision: int
+    manager_recommendation: str | None
+    decided_by_id: UUID | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LeaveRequestResponse(ManagerRecommendationResponse):
     id: UUID
     employee_id: UUID
@@ -2572,6 +2596,7 @@ class TrainingEnrollmentCreateRequest(BaseModel):
 
 class TrainingEnrollmentUpdateRequest(BaseModel):
     status: Literal["enrolled", "in_progress", "completed", "no_show", "cancelled"]
+    expected_status: Literal["enrolled", "in_progress"] | None = None
     completed_date: date | None = None
     score: Decimal | None = None
 

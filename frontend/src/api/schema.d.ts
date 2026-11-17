@@ -1694,6 +1694,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hr/employment-periods/missing-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Employment Periods Missing Start */
+        get: operations["list_employment_periods_missing_start_api_v1_hr_employment_periods_missing_start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hr/goals": {
         parameters: {
             query?: never;
@@ -2046,7 +2063,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Leave Decision State */
+        get: operations["get_leave_decision_state_api_v1_hr_leave_requests__leave_request_id__decision_get"];
         put?: never;
         /** Decide Leave Request */
         post: operations["decide_leave_request_api_v1_hr_leave_requests__leave_request_id__decision_post"];
@@ -7865,6 +7883,11 @@ export interface components {
         };
         /** EmploymentChangeListResponse */
         EmploymentChangeListResponse: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
             /** Items */
             items: components["schemas"]["EmploymentChangeResponse"][];
             /** Total */
@@ -7994,6 +8017,38 @@ export interface components {
         EmploymentPeriodListResponse: {
             /** Items */
             items: components["schemas"]["EmploymentPeriodResponse"][];
+            /** Total */
+            total: number;
+        };
+        /** EmploymentPeriodMissingStart */
+        EmploymentPeriodMissingStart: {
+            /** Employee Code */
+            employee_code: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /**
+             * Ended On
+             * Format: date
+             */
+            ended_on: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /**
+             * Separation Case Id
+             * Format: uuid
+             */
+            separation_case_id: string;
+        };
+        /** EmploymentPeriodMissingStartPage */
+        EmploymentPeriodMissingStartPage: {
+            /** Items */
+            items: components["schemas"]["EmploymentPeriodMissingStart"][];
             /** Total */
             total: number;
         };
@@ -9539,6 +9594,22 @@ export interface components {
             expected_revision?: number | null;
             /** Notes */
             notes?: string | null;
+        };
+        /** LeaveRequestDecisionState */
+        LeaveRequestDecisionState: {
+            /** Decided By Id */
+            decided_by_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Manager Recommendation */
+            manager_recommendation: string | null;
+            /** Record Revision */
+            record_revision: number;
+            /** Status */
+            status: string;
         };
         /** LeaveRequestListResponse */
         LeaveRequestListResponse: {
@@ -14279,6 +14350,8 @@ export interface components {
         TrainingEnrollmentUpdateRequest: {
             /** Completed Date */
             completed_date?: string | null;
+            /** Expected Status */
+            expected_status?: ("enrolled" | "in_progress") | null;
             /** Score */
             score?: number | string | null;
             /**
@@ -18897,6 +18970,38 @@ export interface operations {
             };
         };
     };
+    list_employment_periods_missing_start_api_v1_hr_employment_periods_missing_start_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmploymentPeriodMissingStartPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     list_goals_api_v1_hr_goals_get: {
         parameters: {
             query?: {
@@ -19659,6 +19764,8 @@ export interface operations {
             query?: {
                 employee_id?: string | null;
                 req_status?: string | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -19706,6 +19813,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeaveRequestResponse"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    get_leave_decision_state_api_v1_hr_leave_requests__leave_request_id__decision_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                leave_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveRequestDecisionState"];
                 };
             };
             /** @description Invalid request */

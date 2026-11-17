@@ -911,8 +911,13 @@ export async function decideLeaveDateEvidence(
   await apiClient.post(`/hr/leave/requests/${requestId}/date-evidence/${proposalId}/decision`, payload);
 }
 
-export async function listLeaveRequests() {
-  const { data } = await apiClient.get<HrSchemas['LeaveRequestListResponse']>('/hr/leave/requests');
+export async function listLeaveRequests(
+  params: { limit: number; offset: number; req_status?: string },
+  signal?: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['LeaveRequestListResponse']>('/hr/leave/requests', {
+    params, signal
+  });
   return data;
 }
 

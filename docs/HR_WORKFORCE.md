@@ -105,7 +105,8 @@ without an approved account, source roster, field mapping and authorized owner.
   changes on or after their effective date. Select **Inspect employee** to
   review and apply the exact change. The list flags changes when the current
   employee record differs from the version reviewed.
-  HR applies the approved proposal on or after that date. An intervening employee
+  HR can apply the approved proposal once the server's business date reaches
+  its effective date. Future changes appear as scheduled. An intervening employee
   edit requires a fresh proposal. Application adds one dated history entry,
   checks available position headcount, and clears the former manager's review
   authority when the reporting manager changes. Reporting changes leave portal
@@ -303,6 +304,8 @@ without an approved account, source roster, field mapping and authorized owner.
   Confirming the preview posts the transfer and expiry together and closes
   the source year for the selected employee and leave type. A later change
   to a closed year requires an audited correction workflow.
+  In **Leave Requests**, filter by request status. The queue loads 25
+  records at a time and reports the total matching count.
   An HR reviewer can choose **Reverse approved leave** on an approved request
   and enter a reason. The portal checks the original debit and posts one
   offsetting credit, preserving the original. The employee can see the
@@ -331,7 +334,9 @@ without an approved account, source roster, field mapping and authorized owner.
   the former assessment stays in HR history. Published reviews keep the
   original handoff and assessment history.
 - **Training.** In **Training**, create a course and enroll a current
-  employee. Upload their ordinary training-certificate PDF with the issue date
+  employee. Use **Update enrollment** on an open enrollment to record
+  progress, a no-show, or cancellation. A conflicting update requires a
+  reload. Upload their ordinary training-certificate PDF with the issue date
   and optional expiry. A different HR Manager approves the file version in
   **Docs & Compliance**. Choose that exact approved version and the completion
   date, then verify the enrollment. Refresh the training view if approval was
@@ -828,6 +833,14 @@ payroll needs the controlled policy and operating decisions described under
 The calculation assumes no statutory rates or entitlement schedule.
 
 ## Remaining acceptance work
+
+Self-hosted CI and the production deployment completed for `06c0f9d`.
+The deployment run verified the live image and readiness. A subsequent
+read-only check of the [production readiness endpoint](https://portal.garrisons.lk/health/readiness)
+returned `ready`. Authenticated HR acceptance, operator enrollment and live
+payroll approval remain open.
+[CI run](https://github.com/nirzaf/garrison-investments/actions/runs/43956212246) ·
+[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/43959017531)
 
 The last pre-cutover configuration inspection was against production SHA
 `1399710589f8f2d82bac2e79326bc9b88bbb888d` on 2026-11-15. It showed

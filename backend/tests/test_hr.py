@@ -32,6 +32,7 @@ from app.models.hr import (
     HrDocumentVersion,
     HrEmployee,
     HrEmployeePrivate,
+    HrEmploymentPeriod,
     HrIssuedLetter,
     HrLeaveLedger,
     HrOffer,
@@ -2908,7 +2909,7 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
 @pytest.mark.asyncio
 async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
     await skip_if_database_unavailable()
-    _, hrm_email, pw = await _create_portal_user("hr_manager")
+    hrm_uid, hrm_email, pw = await _create_portal_user("hr_manager")
     _, reviewer_email, _ = await _create_portal_user("hr_manager")
     staff_uid, staff_email, _ = await _create_portal_user("quantity_surveyor", pw)
 
@@ -3051,6 +3052,32 @@ async def test_hr_h_leave_ledger_self_approval_block_and_reversal() -> None:
         assert float(bal1_item["balance_days"]) == pytest.approx(12.0)
 
         decision_path = f"/api/v1/hr/leave/requests/{lr_id}/decision"
+        assert (await client.get(decision_path, headers=staff)).status_code == 403
+        decision_state = await client.get(decision_path, headers=_auth(hrm_tok))
+        assert decision_state.status_code == 200
+        assert decision_state.headers["cache-control"] == "no-store"
+        assert decision_state.json() == {
+            "id": lr_id,
+            "status": "approved",
+            "record_revision": req.json()["record_revision"] + 1,
+            "manager_recommendation": None,
+            "decided_by_id": str(hrm_uid),
+        }
+        queue = "/api/v1/hr/leave/requests"
+        page_params = {"employee_id": emp_id, "limit": 1}
+        first = await client.get(queue, headers=_auth(hrm_tok), params=page_params)
+        second = await client.get(
+            queue, headers=_auth(hrm_tok), params={**page_params, "offset": 1}
+        )
+        assert first.json()["total"] == second.json()["total"] == 2
+        assert [
+            first.json()["items"][0]["id"], second.json()["items"][0]["id"],
+        ] == [self_req.json()["id"], lr_id]
+        approved = await client.get(
+            queue, headers=_auth(hrm_tok), params={**page_params, "req_status": "approved"}
+        )
+        assert approved.json()["total"] == 1 and approved.json()["items"][0]["id"] == lr_id
+        assert (await client.get(queue, headers=staff, params=page_params)).status_code == 403
         assert (
             await client.post(decision_path, json={"decision": "cancelled"}, headers=_auth(hrm_tok))
         ).status_code == 422
@@ -4252,6 +4279,28 @@ async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> No
         assert periods[0]["rehire_change_id"] == winner["id"]
         assert periods[0]["started_on"] == start_on.isoformat() and periods[0]["ended_on"] is None
         assert periods[0]["onboarding_case_id"]
+        gaps_path = "/api/v1/hr/employment-periods/missing-start"
+        assert (await client.get(gaps_path, headers=admin)).status_code == 403
+        before_gaps = await client.get(gaps_path, headers=hr, params={"limit": 100})
+        assert before_gaps.status_code == 200
+        assert original["id"] not in {row["period_id"] for row in before_gaps.json()["items"]}
+        async with AsyncSessionLocal() as session:
+            historic = await session.get(HrEmploymentPeriod, UUID(original["id"]))
+            assert historic is not None
+            historic.started_on = None
+            await session.commit()
+        gaps = await client.get(gaps_path, headers=hr, params={"limit": 100})
+        assert gaps.status_code == 200 and gaps.headers["cache-control"] == "no-store"
+        assert gaps.json()["total"] == before_gaps.json()["total"] + 1
+        gap = next(row for row in gaps.json()["items"] if row["period_id"] == original["id"])
+        assert gap == {
+            "period_id": original["id"],
+            "employee_id": emp_id,
+            "employee_code": current["employee_code"],
+            "ended_on": original["ended_on"],
+            "separation_case_id": original["separation_case_id"],
+        }
+        assert (await client.get(gaps_path, headers=hr, params={"limit": 101})).status_code == 422
         to_activate = {
             "expected_revision": current["record_revision"],
             "status": "active",
@@ -4715,6 +4764,9 @@ async def test_hr_employment_change_independent_dated_and_applied_once(monkeypat
         assert (await client.get(queue, headers=viewer)).status_code == 403
         before_due = await client.get(queue, headers=reviewer)
         assert before_due.json()["as_of"] == first_day.isoformat()
+        changes = await client.get(path, headers=reviewer)
+        assert changes.json()["as_of"] == first_day.isoformat()
+        assert changes.json()["items"][0]["effective_date"] == due.isoformat()
         assert proposed["id"] not in {row["id"] for row in before_due.json()["items"]}
         assert (await client.post(decide, headers=reviewer, json=approve)).json() == accepted.json()
         unchanged = (await client.get(employee_path, headers=creator)).json()
@@ -4724,6 +4776,7 @@ async def test_hr_employment_change_independent_dated_and_applied_once(monkeypat
         assert (await client.post(apply, headers=creator)).status_code == 409
 
         current_day = due
+        assert (await client.get(path, headers=reviewer)).json()["as_of"] == due.isoformat()
         due_page = await client.get(queue, headers=reviewer, params={"limit": 50})
         assert due_page.status_code == 200 and due_page.headers["Cache-Control"] == "no-store"
         assert due_page.json()["as_of"] == due.isoformat()
@@ -6990,6 +7043,15 @@ async def test_hr_training_completion_binds_approved_evidence_and_prevents_dupli
         enrollment = opened.json()["id"]
         await require_state("enrolled")
         endpoint = f"{enrollments}/{enrollment}"
+        progress = {"status": "in_progress", "expected_status": "enrolled"}
+        assert (await client.patch(endpoint, headers=staff, json=progress)).status_code == 403
+        in_progress = await client.patch(endpoint, headers=hr, json=progress)
+        assert in_progress.status_code == 200
+        assert in_progress.json()["status"] == "in_progress"
+        stale_cancel = await client.patch(
+            endpoint, headers=reviewer, json={"status": "cancelled", "expected_status": "enrolled"}
+        )
+        assert stale_cancel.status_code == 409
         assert (
             await client.patch(endpoint, headers=hr, json={"status": "completed"})
         ).status_code == 409
@@ -7132,6 +7194,16 @@ async def test_hr_training_completion_binds_approved_evidence_and_prevents_dupli
         assert renewal.status_code == 200, renewal.text
         assert renewal.json()["certificate_id"] != receipt["certificate_id"]
         assert (await client.get(verify, headers=hr)).json() == receipt
+
+        extra = await client.post(enrollments, headers=hr, json=assignment)
+        assert extra.status_code == 201
+        extra_path = f"{enrollments}/{extra.json()['id']}"
+        cancelled = await client.patch(
+            extra_path, headers=hr, json={"status": "cancelled", "expected_status": "enrolled"}
+        )
+        assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+        assert (await client.patch(extra_path, headers=hr, json=progress)).status_code == 409
+        assert (await client.post(enrollments, headers=hr, json=assignment)).status_code == 201
 
         await require_state("met")
         for rule in (created_rule, position_rule, site_rule):

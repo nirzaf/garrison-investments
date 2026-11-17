@@ -513,7 +513,7 @@ export function HREmploymentChanges({
               <div className="flex flex-wrap items-end gap-2">
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || row.employee_revision !== employee.record_revision}
                   onClick={() => update.mutate({ id: row.id, action: 'approved' })}
                 >
                   Approve employment change
@@ -542,7 +542,11 @@ export function HREmploymentChanges({
                 The employee changed after this proposal. A new proposal is required to apply it.
               </p>
             )}
-          {row.status === 'approved' && row.employee_revision === employee.record_revision && (
+          {row.status === 'approved' && row.effective_date > changes.data.as_of && (
+            <p>Scheduled for {row.effective_date}.</p>
+          )}
+          {row.status === 'approved' && row.employee_revision === employee.record_revision &&
+            row.effective_date <= changes.data.as_of && (
             <button
               type="button"
               disabled={busy}
