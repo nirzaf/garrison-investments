@@ -152,6 +152,7 @@ export function HRWorkspacePage() {
   const [wbOverrides, setWbOverrides] = useState('{}');
   const [wbPreview, setWbPreview] = useState<WorkbookPreviewResponse | null>(null);
   const [wbApplyResult, setWbApplyResult] = useState<WorkbookApplyResponse | null>(null);
+  const [wbPending, setWbPending] = useState(false);
 
   const [requisitions, setRequisitions] = useState<RequisitionRecord[]>([]);
   const [documents, setDocuments] = useState<HrDocumentRecord[]>([]);
@@ -404,20 +405,25 @@ export function HRWorkspacePage() {
 
   async function handleWorkbookPreview(e: FormEvent) {
     e.preventDefault();
-    if (!wbFile) return;
+    if (!wbFile || wbPending) return;
+    setWbPending(true);
     setError(null);
     setNotice(null);
+    setWbPreview(null);
     setWbApplyResult(null);
     try {
       const parsed = JSON.parse(wbOverrides || '{}') as Record<string, string>;
       setWbPreview(await previewHrWorkbook(wbFile, parsed));
     } catch (err) {
       setError(errMsg(err, 'Workbook preview failed. Ensure valid CSV/XLSX and JSON overrides.'));
+    } finally {
+      setWbPending(false);
     }
   }
 
   async function handleWorkbookApply() {
-    if (!wbPreview) return;
+    if (!wbPreview || wbPending) return;
+    setWbPending(true);
     setError(null);
     setNotice(null);
     try {
@@ -443,6 +449,8 @@ export function HRWorkspacePage() {
       await loadCore();
     } catch (err) {
       setError(errMsg(err, 'Workbook apply failed.'));
+    } finally {
+      setWbPending(false);
     }
   }
 
@@ -1148,27 +1156,38 @@ export function HRWorkspacePage() {
             />
           )}
 
-          {hasPerm('hr:employees:read') && (
+          {hasPerm('hr:employees:manage') && (
             <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-4">
-              <h3 className="text-base font-semibold">7-Column Workbook Reconciliation</h3>
+              <h3 className="text-base font-semibold">Workbook Reconciliation</h3>
               <form className="space-y-3" onSubmit={(e) => void handleWorkbookPreview(e)}>
                 <input
                   accept=".csv,.xlsx"
-                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                    setWbFile(e.target.files?.[0] ?? null)
-                  }
+                  aria-label="Personnel workbook"
+                  disabled={wbPending}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                    setWbFile(e.target.files?.[0] ?? null);
+                    setWbPreview(null);
+                    setWbApplyResult(null);
+                  }}
                   required
                   type="file"
                 />
                 <textarea
+                  aria-label="Role mappings"
                   className="w-full rounded border border-theme-border bg-theme-input px-2.5 py-1.5 font-mono text-xs"
-                  onChange={(e) => setWbOverrides(e.target.value)}
+                  disabled={wbPending}
+                  onChange={(e) => {
+                    setWbOverrides(e.target.value);
+                    setWbPreview(null);
+                    setWbApplyResult(null);
+                  }}
                   placeholder='{"Quantity Surveyor": "quantity_surveyor"}'
                   rows={2}
                   value={wbOverrides}
                 />
                 <button
                   className="rounded bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  disabled={wbPending}
                   type="submit"
                 >
                   Preview workbook
@@ -1181,15 +1200,24 @@ export function HRWorkspacePage() {
                     Email: {wbPreview.blocked_missing_email_rows} · Unmapped Titles:{' '}
                     {wbPreview.unmapped_role_rows}
                   </p>
-                  {hasPerm('hr:employees:manage') && (
-                    <button
-                      className="rounded border border-brand-600 px-3 py-1.5 font-semibold text-brand-600"
-                      onClick={() => void handleWorkbookApply()}
-                      type="button"
-                    >
-                      Apply workbook reconciliation
-                    </button>
-                  )}
+                  <ul className="space-y-2" aria-label="Workbook issues">
+                    {wbPreview.rows.filter((row) => (row.issues?.length ?? 0) > 0).map((row) => (
+                      <li key={row.row_number}>
+                        <strong>{row.user_name || `Entry ${row.row_number}`}</strong>
+                        <ul className="ml-4 list-disc">
+                          {row.issues?.map((issue) => <li key={issue}>{issue}</li>)}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="rounded border border-brand-600 px-3 py-1.5 font-semibold text-brand-600"
+                    disabled={wbPending}
+                    onClick={() => void handleWorkbookApply()}
+                    type="button"
+                  >
+                    Apply workbook reconciliation
+                  </button>
                 </div>
               )}
               {wbApplyResult && (

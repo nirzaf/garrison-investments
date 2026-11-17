@@ -136,8 +136,12 @@ roster and evidence.
   completes it. Provisioning requires a verified work email, employee code,
   work phone, approved role, and securely issued temporary password. For an
   existing account, confirm its ID and matching work email before linking.
-- **Workbook.** Preview the seven-column CSV/XLSX in the restricted workspace.
-  Check missing emails, existing matches, and role mappings. Import applies only
+- **Workbook.** Preview the CSV/XLSX in the restricted workspace.
+  Check missing emails, existing matches, and role mappings. For rows requesting
+  a new portal account, the preview also flags missing Employee ID and Mobile
+  Number without displaying or storing the supplied values. Confirm the work
+  phone and employee code separately in the director's approved account handoff.
+  Import applies only
   to employee drafts and optionally the HR access queue. The queue still
   requires approval and director fulfillment. Do not store real workbook rows
   in this repository.

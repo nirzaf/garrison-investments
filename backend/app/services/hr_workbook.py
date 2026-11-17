@@ -35,6 +35,7 @@ MAX_XLSX_CELLS = 1_000_000
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MISSING_EMAIL_MARKERS = {"", "need email", "needs email", "tbd", "n/a", "none", "-"}
+_MISSING_CONTACT_MARKERS = {"", "tbd", "n/a", "none", "-"}
 
 _HEADER_ALIASES: dict[str, str] = {
     "user name (source)": "user_name",
@@ -45,6 +46,10 @@ _HEADER_ALIASES: dict[str, str] = {
     "email / sign-in": "email_source",
     "email": "email_source",
     "email_source": "email_source",
+    "employee id": "employee_code",
+    "employee code": "employee_code",
+    "mobile number": "mobile_number",
+    "work phone": "mobile_number",
     "portal access required?": "portal_access_required",
     "portal access required": "portal_access_required",
     "portal_access_required": "portal_access_required",
@@ -186,38 +191,46 @@ def _parse_xlsx_table(content: bytes) -> list[dict[str, str]]:
     ]
 
 
-def parse_workbook_bytes(content: bytes) -> list[WorkbookRowInput]:
+def _read_workbook_rows(content: bytes) -> list[dict[str, str]]:
     if not content:
         raise AppException("Uploaded workbook is empty.", status_code=422, error_code="EMPTY_FILE")
     if content.startswith(b"PK"):
-        raw_rows = _parse_xlsx_table(content)
-    else:
-        try:
-            text = content.decode("utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise AppException(
-                "CSV workbook must be UTF-8 encoded.",
-                status_code=422,
-                error_code="HR_WORKBOOK_INVALID_CSV",
-            ) from exc
-        reader = csv.DictReader(StringIO(text))
-        raw_rows = [
-            {_normalize_header(k or ""): (v or "").strip() for k, v in row.items()}
-            for row in reader
-            if any((v or "").strip() for v in row.values())
-        ]
+        return _parse_xlsx_table(content)
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise AppException(
+            "CSV workbook must be UTF-8 encoded.",
+            status_code=422,
+            error_code="HR_WORKBOOK_INVALID_CSV",
+        ) from exc
+    reader = csv.DictReader(StringIO(text))
     return [
-        WorkbookRowInput(
-            user_name=row.get("user_name", ""),
-            email_source=row.get("email_source", ""),
-            portal_access_required=row.get("portal_access_required", ""),
-            role_to_assign=row.get("role_to_assign", ""),
-            role_description_auto=row.get("role_description_auto", ""),
-            privileges_auto=row.get("privileges_auto", ""),
-            access_scope_auto=row.get("access_scope_auto", ""),
-        )
-        for row in raw_rows
+        {_normalize_header(key): (value or "").strip() for key, value in row.items() if key}
+        for row in reader
+        if any(value.strip() for value in row.values() if isinstance(value, str))
     ]
+
+
+async def preview_workbook_upload(
+    session: AsyncSession,
+    content: bytes,
+    *,
+    explicit_role_overrides: dict[str, str],
+) -> WorkbookPreviewResponse:
+    source = _read_workbook_rows(content)
+    preview = await preview_workbook(
+        session,
+        [WorkbookRowInput.model_validate(row) for row in source],
+        explicit_role_overrides=explicit_role_overrides,
+    )
+    for row, original in zip(preview.rows, source, strict=True):
+        if not row.portal_access_required or row.matched_user_id is not None:
+            continue
+        for field, label in (("employee_code", "Employee ID"), ("mobile_number", "Mobile Number")):
+            if original.get(field, "").casefold() in _MISSING_CONTACT_MARKERS:
+                row.issues.append(f"Missing {label} for account onboarding.")
+    return preview
 
 
 def _parse_bool_flag(raw: str) -> bool:

@@ -1825,3 +1825,17 @@ verified denied access for a Quantity Surveyor, owner-only export, refusal of
 plans from a different actor or stale request, assignment between two
 synthetic HR Managers, and completion with persisted notes. The CLI changes
 have not been activated in production.
+
+## Slice 89 · workbook onboarding field checks
+
+The restricted workbook preview flags missing Employee ID and Mobile Number
+for rows requesting a new portal account. It shows the affected entries in
+the HR workspace and reuses the existing per-row issues in the CLI report.
+The supplied values are omitted from the preview and are not imported.
+Changing the workbook or role mappings clears the previous preview.
+
+The PostgreSQL regression passed for the legacy and expanded CSV layouts,
+including the original idempotent draft apply. The focused Chrome regression
+verified visible per-person issues, omitted source values, and invalidation
+after a role-mapping edit. The frontend build and lint, backend Ruff and mypy,
+and the OpenAPI comparison passed. Only synthetic workbook data was used.

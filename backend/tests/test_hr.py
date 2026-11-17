@@ -938,6 +938,32 @@ async def test_hr_d_workbook_preview_and_idempotent_apply() -> None:
         assert p["total_rows"] == 10
         assert p["blocked_missing_email_rows"] >= 1
         assert p["unmapped_role_rows"] == 1
+        missing_id = "Missing Employee ID for account onboarding."
+        missing_phone = "Missing Mobile Number for account onboarding."
+        assert set(p["rows"][0]["issues"]) == {missing_id, missing_phone}
+        assert p["rows"][2]["issues"] == []
+
+        expanded_rows = [
+            f"{csv_rows[0]},Employee ID,Mobile Number",
+            f"{csv_rows[1]},00017,+94770000017",
+            f"{csv_rows[2]},00018,TBD",
+            f"{csv_rows[3]},,",
+            f"{csv_rows[4]},,0770000019",
+        ]
+        expanded = await client.post(
+            "/api/v1/hr/imports/workbook-preview",
+            files={"file": ("expanded.csv", "\n".join(expanded_rows).encode(), "text/csv")},
+            headers=_auth(tok),
+        )
+        assert expanded.status_code == 200
+        expanded_preview = expanded.json()["rows"]
+        assert expanded_preview[0]["issues"] == []
+        assert missing_id not in expanded_preview[1]["issues"]
+        assert missing_phone in expanded_preview[1]["issues"]
+        assert expanded_preview[2]["issues"] == []
+        assert missing_id in expanded_preview[3]["issues"]
+        assert missing_phone not in expanded_preview[3]["issues"]
+        assert "00017" not in expanded.text and "+94770000017" not in expanded.text
 
         # Re-preview with explicit role override resolves Custom Estimator cleanly
         preview2 = await client.post(

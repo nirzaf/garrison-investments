@@ -2479,6 +2479,39 @@ test('a linked employee manages their own leave and reopens a completed HR reque
   }
 });
 
+test('HR workbook preview shows missing account fields without displaying supplied values', async ({
+  page
+}) => {
+  await signIn(page, seedAccount('hr_manager'));
+  await page.getByRole('link', { name: 'HR & Workforce', exact: true }).click();
+  await page.getByRole('button', { name: 'Access & Workbook', exact: true }).click();
+  await page.getByLabel('Personnel workbook').setInputFiles({
+    name: 'synthetic-workbook.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      'User Name,Email,Portal Access Required,Role To Assign,Employee ID,Mobile Number\n' +
+      'Synthetic Missing Mobile,workbook-a@example.invalid,Yes,quantity_surveyor,00017,\n' +
+      'Synthetic Missing ID,workbook-b@example.invalid,Yes,quantity_surveyor,,+94770000017\n'
+    )
+  });
+  await page.getByRole('button', { name: 'Preview workbook' }).click();
+  const issues = page.getByRole('list', { name: 'Workbook issues' });
+  const rowWithMissingMobile = issues.getByRole('listitem').filter({
+    has: page.getByText('Synthetic Missing Mobile', { exact: true })
+  });
+  await expect(rowWithMissingMobile.getByText('Missing Mobile Number for account onboarding.'))
+    .toBeVisible();
+  const rowWithMissingId = issues.getByRole('listitem').filter({
+    has: page.getByText('Synthetic Missing ID', { exact: true })
+  });
+  await expect(rowWithMissingId.getByText('Missing Employee ID for account onboarding.'))
+    .toBeVisible();
+  await expect(issues).not.toContainText('00017');
+  await expect(page.getByRole('button', { name: 'Apply workbook reconciliation' })).toBeVisible();
+  await page.getByLabel('Role mappings').fill('{"Estimator":"quantity_surveyor"}');
+  await expect(page.getByRole('button', { name: 'Apply workbook reconciliation' })).toHaveCount(0);
+});
+
 test('HR closes offboarding and independently reviews rehire', async ({
   page,
   browser,

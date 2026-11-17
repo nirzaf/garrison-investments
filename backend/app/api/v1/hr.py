@@ -373,7 +373,7 @@ from app.services.hr_training_requirements import (
     list_rules,
     save_rule,
 )
-from app.services.hr_workbook import apply_workbook, parse_workbook_bytes, preview_workbook
+from app.services.hr_workbook import apply_workbook, preview_workbook_upload
 from app.utils.exceptions import (
     AppException,
     NotFoundException,
@@ -1268,8 +1268,7 @@ async def preview_hr_workbook(
                 status_code=422,
                 error_code="INVALID_ROLE_OVERRIDES_JSON",
             ) from exc
-    rows = parse_workbook_bytes(content)
-    res = await preview_workbook(session, rows, explicit_role_overrides=overrides)
+    res = await preview_workbook_upload(session, content, explicit_role_overrides=overrides)
     await AuditService(session).record(
         action="hr.workbook.previewed",
         user_id=actor.id,
