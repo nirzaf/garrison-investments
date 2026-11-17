@@ -4511,7 +4511,11 @@ test('HR independently reviews legacy leave work dates', async ({ page, browser,
         await panel.getByLabel('Legacy leave request ID').fill(seeded.request_id);
         await panel.getByRole('button', { name: 'Open historical work dates' }).click();
       }
-      await expect(panel.getByText(/Approved days 2.00/)).toBeVisible();
+      await expect(
+        panel.getByText('Approved range 2036-03-30 to 2036-04-03 · Approved days 2.00', {
+          exact: true
+        })
+      ).toBeVisible();
       return panel;
     }
 
