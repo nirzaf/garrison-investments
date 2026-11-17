@@ -3392,6 +3392,38 @@ async def test_hr_service_request_owner_can_reopen_with_current_version() -> Non
         assert reopened["resolved_at"] is None
         assert reopened["generated_document_id"] == doc_id
 
+        extra_ids = set()
+        for category in ("document_request", "data_correction", "leave_inquiry"):
+            inquiry = await client.post(
+                "/api/v1/hr/me/requests",
+                headers=owner,
+                json={"request_type": category, "subject": f"Synthetic {category}"},
+            )
+            assert inquiry.status_code == 201
+            assert inquiry.json()["request_type"] == category
+            assert inquiry.json()["employee_id"] == employee_id
+            extra_ids.add(inquiry.json()["id"])
+        own = await client.get("/api/v1/hr/me/requests", headers=owner)
+        foreign = await client.get("/api/v1/hr/me/requests", headers=other)
+        assert extra_ids <= {row["id"] for row in own.json()["items"]}
+        assert extra_ids.isdisjoint(row["id"] for row in foreign.json()["items"])
+        queue = "/api/v1/hr/requests"
+        filters: dict[str, str | int] = {
+            "employee_id": employee_id, "req_status": "open", "limit": 2
+        }
+        assert (await client.get(queue, headers=owner, params=filters)).status_code == 403
+        first = await client.get(queue, headers=hr, params=filters)
+        second = await client.get(queue, headers=hr, params={**filters, "offset": 2})
+        assert first.status_code == second.status_code == 200
+        assert first.json()["total"] == second.json()["total"] == 4
+        first_ids = {row["id"] for row in first.json()["items"]}
+        second_ids = {row["id"] for row in second.json()["items"]}
+        assert len(first_ids) == len(second_ids) == 2
+        assert first_ids.isdisjoint(second_ids)
+        assert first_ids | second_ids == extra_ids | {request_id}
+        empty = await client.get(queue, headers=hr, params={**filters, "req_status": "completed"})
+        assert empty.json() == {"items": [], "total": 0}
+
 
 @pytest.mark.asyncio
 async def test_hr_salary_confirmation_uses_current_approved_compensation(monkeypatch) -> None:

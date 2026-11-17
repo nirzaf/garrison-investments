@@ -8,6 +8,7 @@ import {
   getMyHrProfile,
   getMyLeaveBalances,
   getMyLeaveUnits,
+  hrServiceRequestTypes,
   listMyAttendance,
   listMyHrDocuments,
   listMyLeaveRequests,
@@ -23,6 +24,7 @@ import {
   type EmployeeSelfRecord,
   type HrDocumentRecord,
   type HrServiceRequestRecord,
+  type HrServiceRequestType,
   type LeaveBalanceItem,
   type LeaveRequestRecord,
   type LeaveTypeRecord
@@ -82,9 +84,7 @@ export function HRMePage() {
     retry: false
   });
 
-  const [reqType, setReqType] = useState<
-    'employment_letter' | 'address_change' | 'general_inquiry'
-  >('employment_letter');
+  const [reqType, setReqType] = useState<HrServiceRequestType>('employment_letter');
   const [reqSubject, setReqSubject] = useState('');
   const [reqDesc, setReqDesc] = useState('');
 
@@ -707,22 +707,21 @@ export function HRMePage() {
           <h3 className="text-base font-semibold text-theme-text-primary">HR Service Requests</h3>
           <form className="mt-3 space-y-3" onSubmit={(e) => void handleSubmitServiceReq(e)}>
             <select
+              aria-label="Request type"
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
-              onChange={(e) =>
-                setReqType(
-                  e.target.value as 'employment_letter' | 'address_change' | 'general_inquiry'
-                )
-              }
+              onChange={(e) => setReqType(e.target.value as HrServiceRequestType)}
               value={reqType}
             >
-              <option value="employment_letter">Employment Letter</option>
-              <option value="address_change">Address Change</option>
-              <option value="general_inquiry">General HR Inquiry</option>
+              {Object.entries(hrServiceRequestTypes).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
             <input
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setReqSubject(e.target.value)}
               placeholder="Subject"
+              minLength={2}
+              maxLength={200}
               required
               value={reqSubject}
             />
@@ -730,6 +729,7 @@ export function HRMePage() {
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setReqDesc(e.target.value)}
               placeholder="Details"
+              maxLength={2000}
               rows={2}
               value={reqDesc}
             />

@@ -604,6 +604,8 @@ For a `contract_renewal` proposal, `updates` contains
 available to the reviewing HR Managers, and the end date must match the
 renewal's vault expiry. Review the exact evidence before approving.
 
+Use `hr request list --status open --limit 25 --offset 0` to page through
+open requests. Add `--employee-id ID` to narrow the queue.
 Use `hr request assignees` to list eligible HR users. Run
 `hr request assign --request-id ID --assignee-id ID --reason "Shift handoff" --dry-run`
 before assigning or reassigning an active request. Confirm the preview using

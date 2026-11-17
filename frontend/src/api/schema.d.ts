@@ -8557,7 +8557,7 @@ export interface components {
              * Request Type
              * @enum {string}
              */
-            request_type: "employment_letter" | "address_change" | "emergency_contact_change" | "general_inquiry" | "policy_question" | "other";
+            request_type: "employment_letter" | "document_request" | "data_correction" | "address_change" | "emergency_contact_change" | "leave_inquiry" | "general_inquiry" | "policy_question" | "other";
             /** Subject */
             subject: string;
         };
@@ -23967,6 +23967,9 @@ export interface operations {
         parameters: {
             query?: {
                 employee_id?: string | null;
+                req_status?: ("open" | "in_review" | "approved" | "completed" | "rejected" | "cancelled") | null;
+                limit?: number | null;
+                offset?: number;
             };
             header?: never;
             path?: never;

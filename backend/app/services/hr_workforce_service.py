@@ -5324,13 +5324,21 @@ class HrWorkforceService:
         return req
 
     async def list_service_requests(
-        self, *, employee_id: UUID | None = None
+        self, *, employee_id: UUID | None = None, status: str | None = None,
+        limit: int | None = None, offset: int = 0,
     ) -> tuple[list[HrServiceRequest], int]:
         stmt = select(HrServiceRequest)
         if employee_id:
             stmt = stmt.where(HrServiceRequest.employee_id == employee_id)
-        rows = list(await self.session.scalars(stmt.order_by(HrServiceRequest.created_at.desc())))
-        return rows, len(rows)
+        if status is not None:
+            stmt = stmt.where(HrServiceRequest.status == status)
+        ordered = stmt.order_by(HrServiceRequest.created_at.desc(), HrServiceRequest.id.desc())
+        if limit is None and offset == 0:
+            rows = list(await self.session.scalars(ordered))
+            return rows, len(rows)
+        total = await self.session.scalar(select(func.count()).select_from(stmt.subquery()))
+        rows = list(await self.session.scalars(ordered.offset(offset).limit(limit)))
+        return rows, total or 0
 
     # --- Offboarding & Clearance (HR-017, HR-018) ---
 

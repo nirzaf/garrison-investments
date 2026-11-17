@@ -2381,6 +2381,8 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     expect(othersDirectory.status()).toBe(403);
 
     const subject = `Synthetic service request ${unique}`;
+    await workerPage.getByRole('combobox', { name: 'Request type', exact: true })
+      .selectOption('leave_inquiry');
     await workerPage.getByPlaceholder('Subject', { exact: true }).fill(subject);
     await workerPage.getByRole('button', { name: 'Submit request', exact: true }).click();
     await expect(
@@ -2389,6 +2391,7 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     await managerPage.reload();
     await managerPage.getByRole('button', { name: 'Policies & Requests' }).click();
     const reviewCard = managerPage.getByText(subject).locator('..');
+    await expect(reviewCard.getByText('Leave inquiry', { exact: true })).toBeVisible();
     await reviewCard.getByRole('button', { name: 'Start review' }).click();
     await expect(reviewCard).toContainText('(in_review)');
     await reviewCard.getByText('Reassign request', { exact: true }).click();
@@ -2402,6 +2405,13 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     const response = 'Your synthetic request has been reviewed.';
     await assignedCard.getByLabel('Response shared with the employee').fill(response);
     await assignedCard.getByRole('button', { name: 'Complete request' }).click();
+    await expect(assignedCard).toContainText('(completed)');
+    const requestStatus = reviewerPage.getByRole('combobox', {
+      name: 'Service request status', exact: true
+    });
+    await requestStatus.selectOption('open');
+    await expect(assignedCard).toHaveCount(0);
+    await requestStatus.selectOption('completed');
     await expect(assignedCard).toContainText('(completed)');
     await workerPage.reload();
     const myRequest = workerPage.getByText(subject).locator('..');
@@ -2418,7 +2428,9 @@ test('a linked employee manages their own leave and reopens a completed HR reque
     const reopened = (await requestList.json()).items.find(
       (row: { subject: string }) => row.subject === subject
     );
-    expect(reopened).toMatchObject({ status: 'open', assigned_to_id: null });
+    expect(reopened).toMatchObject({
+      status: 'open', assigned_to_id: null, request_type: 'leave_inquiry'
+    });
     const runAssignment = (...mode: string[]) =>
       JSON.parse(
         execFileSync(

@@ -407,7 +407,11 @@ without an approved account, source roster, field mapping and authorized owner.
   My HR. The company still needs to approve its production template and
   authorize its operators. Portal issuance creates no electronic signature
   or external delivery.
-- **Service requests.** In **Policies & Requests**, starting an unassigned
+- **Service requests.** In **My HR**, choose the request type before
+  submitting. Employees can request documents or corrections and ask about
+  leave or policies. HR sees the type on the request card.
+  In **Policies & Requests**, filter by service-request status and use the
+  page controls when more than 25 requests match. Starting an unassigned
   review claims it. Use **Assign request** or **Reassign request** to hand an
   open, in-review or approved request to an active HR user. Enter an operational
   reason without employee details. The audit saves the actor, previous and new

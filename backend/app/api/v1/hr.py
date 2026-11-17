@@ -2517,8 +2517,16 @@ async def list_service_requests(
     _: CanProcessRequests,
     session: DbSession,
     employee_id: Annotated[UUID | None, Query()] = None,
+    req_status: Annotated[
+        Literal["open", "in_review", "approved", "completed", "rejected", "cancelled"] | None,
+        Query(),
+    ] = None,
+    limit: Annotated[int | None, Query(ge=1, le=100)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> HrServiceRequestListResponse:
-    rows, total = await HrService(session).list_service_requests(employee_id=employee_id)
+    rows, total = await HrService(session).list_service_requests(
+        employee_id=employee_id, status=req_status, limit=limit, offset=offset
+    )
     return HrServiceRequestListResponse(
         items=[HrServiceRequestResponse.model_validate(r) for r in rows], total=total
     )

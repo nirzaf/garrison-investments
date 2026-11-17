@@ -2119,8 +2119,11 @@ class HrServiceRequestCreateRequest(BaseModel):
     employee_id: UUID | None = None
     request_type: Literal[
         "employment_letter",
+        "document_request",
+        "data_correction",
         "address_change",
         "emergency_contact_change",
+        "leave_inquiry",
         "general_inquiry",
         "policy_question",
         "other",

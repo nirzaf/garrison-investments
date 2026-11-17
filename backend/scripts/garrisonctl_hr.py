@@ -4810,6 +4810,21 @@ def register(registry: Registry) -> None:
         permission=PERM_REQUESTS_PROCESS,
     )
     p = registry.add(
+        "hr request list",
+        lambda a, c: c.request(
+            "GET", f"{HR}/requests", params=query(a, "employee_id", "req_status", "limit", "offset")
+        ),
+        permission=PERM_REQUESTS_PROCESS,
+    )
+    p.add_argument("--employee-id", type=uuid_arg)
+    p.add_argument(
+        "--status",
+        dest="req_status",
+        choices=("open", "in_review", "approved", "completed", "rejected", "cancelled"),
+    )
+    page(p)
+    p.set_defaults(limit=25)
+    p = registry.add(
         "hr request status",
         lambda a, c: _service_request_receipt(c.request("GET", f"{HR}/requests/{a.request_id}")),
         permission=PERM_REQUESTS_PROCESS,

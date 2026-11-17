@@ -18,6 +18,7 @@ import {
   getEmployeeHistory,
   getEmployeePrivate,
   getHrDocumentDownloadUrl,
+  hrServiceRequestTypes,
   listAccessRequests,
   listDepartments,
   listEmployees,
@@ -46,7 +47,7 @@ import {
   type EmployeeSensitiveRecord,
   type ExpiringComplianceResponse,
   type HrDocumentRecord,
-  type HrServiceRequestRecord,
+  type HrServiceRequestType,
   type HrSchemas,
   type LeaveTypeRecord,
   type OffboardingCaseRecord,
@@ -99,6 +100,8 @@ type HrTab =
 
 const LEAVE_PAGE_SIZE = 25;
 const LEAVE_REQUESTS_KEY = ['hr', 'leave-requests'];
+const SERVICE_REQUEST_PAGE_SIZE = 25;
+const SERVICE_REQUESTS_KEY = ['hr', 'service-requests'];
 
 function OrgBranch({ node }: { node: OrgChartNode }) {
   return (
@@ -165,10 +168,26 @@ export function HRWorkspacePage() {
     gcTime: 0
   });
   const [policies, setPolicies] = useState<PolicyDocumentRecord[]>([]);
-  const [serviceReqs, setServiceReqs] = useState<HrServiceRequestRecord[]>([]);
-  const [requestAssignees, setRequestAssignees] = useState<
-    Awaited<ReturnType<typeof listServiceRequestAssignees>>
-  >([]);
+  const [requestStatus, setRequestStatus] = useState('');
+  const [requestOffset, setRequestOffset] = useState(0);
+  const canLoadServiceRequests = tab === 'operations' && hasPerm('hr:requests:process');
+  const requestQueue = useQuery({
+    queryKey: [...SERVICE_REQUESTS_KEY, user?.id, requestStatus, requestOffset],
+    queryFn: ({ signal }) => listServiceRequests({
+      limit: SERVICE_REQUEST_PAGE_SIZE,
+      offset: requestOffset,
+      req_status: requestStatus || undefined
+    }, signal),
+    enabled: canLoadServiceRequests,
+    gcTime: 0
+  });
+  const assignees = useQuery({
+    queryKey: ['hr', 'service-request-assignees', user?.id],
+    queryFn: ({ signal }) => listServiceRequestAssignees(signal),
+    enabled: canLoadServiceRequests,
+    gcTime: 0
+  });
+  const requestAssignees = assignees.data ?? [];
   const [requestLetters, setRequestLetters] = useState<Record<string, string>>({});
   const [requestResponses, setRequestResponses] = useState<Record<string, string>>({});
   const [offboarding, setOffboarding] = useState<OffboardingCaseRecord[]>([]);
@@ -239,14 +258,6 @@ export function HRWorkspacePage() {
         setLeaveTypes((await listLeaveTypes()).items);
       }
       if (hasPerm('hr:employees:read')) setPolicies((await listPolicies()).items);
-      if (hasPerm('hr:requests:process')) {
-        const [requests, assignees] = await Promise.all([
-          listServiceRequests(),
-          listServiceRequestAssignees()
-        ]);
-        setServiceReqs(requests.items);
-        setRequestAssignees(assignees);
-      }
       if (hasPerm('hr:offboarding:manage')) {
         setOffboarding((await listOffboardingCases()).items);
       }
@@ -482,6 +493,13 @@ export function HRWorkspacePage() {
     await runChange(async () => {
       await decideLeaveRequest(requestId, payload);
       await queryClient.invalidateQueries({ queryKey: LEAVE_REQUESTS_KEY });
+    }, fallback, false);
+  }
+
+  async function runServiceRequestChange(action: () => Promise<unknown>, fallback: string) {
+    await runChange(async () => {
+      await action();
+      await queryClient.invalidateQueries({ queryKey: SERVICE_REQUESTS_KEY });
     }, fallback, false);
   }
 
@@ -1759,9 +1777,48 @@ export function HRWorkspacePage() {
 
           <div className="rounded-lg border border-theme-border bg-theme-card p-5 space-y-3">
             <h3 className="text-base font-semibold">
-              Service Requests ({serviceReqs.length}) · Offboarding ({offboarding.length})
+              Service Requests{requestQueue.data && ` (${requestQueue.data.total})`}
+              {' · '}Offboarding ({offboarding.length})
             </h3>
-            {serviceReqs.map((sr) => (
+            {canLoadServiceRequests && (
+              <>
+                <label className="block">
+                  Service request status
+                  <select
+                    className={hrInputClass}
+                    value={requestStatus}
+                    disabled={pending}
+                    onChange={(event) => {
+                      setRequestOffset(0);
+                      setRequestStatus(event.target.value);
+                    }}
+                  >
+                    <option value="">All statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_review">In review</option>
+                    <option value="approved">Approved</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </label>
+                {requestQueue.isPending && <p role="status">Loading service requests…</p>}
+                {requestQueue.isError && (
+                  <p role="alert">
+                    {errMsg(requestQueue.error, 'Could not load service requests.')}
+                    {' '}<button type="button" onClick={() => void requestQueue.refetch()}>Retry</button>
+                  </p>
+                )}
+                {assignees.isError && (
+                  <p role="alert">
+                    {errMsg(assignees.error, 'Could not load eligible assignees.')}
+                    {' '}<button type="button" onClick={() => void assignees.refetch()}>Retry</button>
+                  </p>
+                )}
+                {requestQueue.data?.items.length === 0 && <p>No matching requests on this page.</p>}
+              </>
+            )}
+            {canLoadServiceRequests && requestQueue.data?.items.map((sr) => (
               <div
                 className="space-y-2 rounded border border-theme-border p-2.5 text-xs"
                 key={sr.id}
@@ -1769,6 +1826,10 @@ export function HRWorkspacePage() {
                 <span>
                   {sr.request_code} — {sr.subject} ({sr.status})
                 </span>
+                <p>
+                  {hrServiceRequestTypes[sr.request_type as HrServiceRequestType] ??
+                    sr.request_type.replace(/_/g, ' ')}
+                </p>
                 {sr.generated_letter_id && (
                   <HRResponseLetter
                     key={sr.generated_letter_id}
@@ -1790,7 +1851,7 @@ export function HRWorkspacePage() {
                       request={sr}
                       assignees={requestAssignees}
                       pending={pending}
-                      onChange={runChange}
+                      onChange={runServiceRequestChange}
                     />
                   </>
                 )}
@@ -1800,7 +1861,7 @@ export function HRWorkspacePage() {
                       className="rounded bg-brand-600 px-2 py-1 text-white"
                       disabled={pending}
                       onClick={() =>
-                        void runChange(
+                        void runServiceRequestChange(
                           () =>
                             resolveServiceRequest(sr.id, {
                               status: 'in_review',
@@ -1823,7 +1884,7 @@ export function HRWorkspacePage() {
                         event.preventDefault();
                         const response = requestResponses[sr.id];
                         const letter = requestLetters[sr.id];
-                        void runChange(async () => {
+                        void runServiceRequestChange(async () => {
                           await resolveServiceRequest(sr.id, {
                             status: 'completed',
                             expected_updated_at: sr.updated_at,
@@ -1878,6 +1939,21 @@ export function HRWorkspacePage() {
                   )}
               </div>
             ))}
+            {canLoadServiceRequests &&
+              (requestOffset > 0 || (requestQueue.data?.total ?? 0) > SERVICE_REQUEST_PAGE_SIZE) && (
+              <nav className="flex gap-3" aria-label="Service request pages">
+                <button type="button" disabled={pending || requestOffset === 0}
+                  onClick={() => setRequestOffset(requestOffset - SERVICE_REQUEST_PAGE_SIZE)}>
+                  Previous requests
+                </button>
+                <button type="button"
+                  disabled={pending ||
+                    requestOffset + SERVICE_REQUEST_PAGE_SIZE >= (requestQueue.data?.total ?? 0)}
+                  onClick={() => setRequestOffset(requestOffset + SERVICE_REQUEST_PAGE_SIZE)}>
+                  Next requests
+                </button>
+              </nav>
+            )}
             {hasPerm('hr:offboarding:manage') && (
               <HROffboarding employees={employees} cases={offboarding} onChange={loadCore} />
             )}

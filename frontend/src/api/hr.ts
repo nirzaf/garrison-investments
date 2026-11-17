@@ -2,6 +2,19 @@ import { apiClient, EXPORT_TIMEOUT_MS } from './client';
 import type { components, paths } from './schema';
 
 export type HrSchemas = components['schemas'];
+export type HrServiceRequestType = HrSchemas['HrServiceRequestCreateRequest']['request_type'];
+
+export const hrServiceRequestTypes = {
+  employment_letter: 'Employment letter',
+  document_request: 'Document request',
+  data_correction: 'Personal data correction',
+  address_change: 'Address change',
+  emergency_contact_change: 'Emergency contact change',
+  leave_inquiry: 'Leave inquiry',
+  policy_question: 'Policy question',
+  general_inquiry: 'General HR inquiry',
+  other: 'Other'
+} satisfies Record<HrServiceRequestType, string>;
 
 export type DepartmentRecord = HrSchemas['DepartmentResponse'];
 export type PositionRecord = HrSchemas['PositionResponse'];
@@ -960,14 +973,19 @@ export async function renderLetter(payload: HrSchemas['LetterGenerateRequest']) 
   return data;
 }
 
-export async function listServiceRequests() {
-  const { data } = await apiClient.get<HrSchemas['HrServiceRequestListResponse']>('/hr/requests');
+export async function listServiceRequests(
+  params: { limit: number; offset: number; req_status?: string },
+  signal?: AbortSignal
+) {
+  const { data } = await apiClient.get<HrSchemas['HrServiceRequestListResponse']>('/hr/requests', {
+    params, signal
+  });
   return data;
 }
 
-export async function listServiceRequestAssignees() {
+export async function listServiceRequestAssignees(signal?: AbortSignal) {
   const { data } =
-    await apiClient.get<HrSchemas['HrServiceRequestAssignee'][]>('/hr/requests/assignees');
+    await apiClient.get<HrSchemas['HrServiceRequestAssignee'][]>('/hr/requests/assignees', { signal });
   return data;
 }
 
