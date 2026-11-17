@@ -80,8 +80,8 @@ export function SupportJobsPanel({ onExpired }: { onExpired: () => void }) {
             <option value="maintenance">Maintenance</option>
             <option value="backup">Backup</option>
             <option value="email">Email</option>
-            <option value="reports">Reports</option>
-            <option value="images">Images</option>
+            <option value="report">Reports</option>
+            <option value="image">Images</option>
           </select>
         </label>
         <button type="button" className={buttonClass} disabled={pending} onClick={() => void load()}>
@@ -93,18 +93,30 @@ export function SupportJobsPanel({ onExpired }: { onExpired: () => void }) {
         <div className="space-y-3 text-xs">
           <div className="flex flex-wrap gap-3 text-theme-text-secondary">
             <span>Broker: {statusLabel(data.broker_status)}</span>
+            <span>
+              Worker: {statusLabel(data.worker_status)}
+              {data.worker_heartbeat_age_seconds != null
+                ? ` (${data.worker_heartbeat_age_seconds}s ago)`
+                : ''}
+            </span>
             <span>Source: {statusLabel(data.source_status)}</span>
+            <span>Freshness: {statusLabel(data.freshness)}</span>
             <span>
               Observed: <time dateTime={data.observed_at}>{formatObserved(data.observed_at)}</time>
             </span>
           </div>
+          <p className="text-theme-text-secondary">{data.history_coverage}</p>
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="rounded border border-theme-border p-2">
               <p className="text-theme-text-secondary">Outbox queue</p>
               <p className="font-medium">
-                Pending {data.outbox_pending ?? 'Unavailable'} · Failed{' '}
+                Pending {data.outbox_pending ?? 'Unavailable'} · Dispatched{' '}
+                {data.outbox_dispatched ?? 'Unavailable'} · Failed{' '}
                 {data.outbox_failed ?? 'Unavailable'}
               </p>
+              {data.outbox_stale_dispatched != null && data.outbox_stale_dispatched > 0 && (
+                <p>Stale dispatched: {data.outbox_stale_dispatched}</p>
+              )}
               {data.outbox_oldest_age_seconds != null && (
                 <p>Oldest age: {data.outbox_oldest_age_seconds}s</p>
               )}

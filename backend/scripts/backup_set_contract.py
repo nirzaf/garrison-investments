@@ -263,6 +263,37 @@ class SignedScheduledAttemptReceipt(SignedReceipt):
     receipt: ScheduledAttemptReceipt
 
 
+class RestoreDrillReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backup_set_id: str = Field(pattern=SET_ID)
+    manifest_sha256: str = Field(pattern=HEX_SHA256)
+    source_sha: str = Field(pattern=SOURCE_SHA)
+    source_environment: str = Field(min_length=1, max_length=100)
+    policy_revision: str = Field(min_length=1, max_length=100)
+    policy_sha256: str = Field(pattern=HEX_SHA256)
+    covers_database: bool
+    covers_objects: bool
+    outcome: Literal["pass", "fail"]
+    rto_minutes: int = Field(ge=0, strict=True)
+    started_at_utc: AwareDatetime
+    verified_at_utc: AwareDatetime
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> Self:
+        if (
+            self.started_at_utc.utcoffset() != timedelta(0)
+            or self.verified_at_utc.utcoffset() != timedelta(0)
+            or self.verified_at_utc < self.started_at_utc
+        ):
+            raise ValueError("Restore drill requires ordered UTC timestamps.")
+        return self
+
+
+class SignedRestoreDrillReceipt(SignedReceipt):
+    receipt: RestoreDrillReceipt
+
+
 class RetentionCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -324,7 +355,7 @@ def sign_publication_receipt(receipt: PublicationReceipt, *, key: bytes, key_id:
 
 
 def verify_receipt_signature(
-    signed: SignedPublicationReceipt | SignedScheduledAttemptReceipt,
+    signed: SignedPublicationReceipt | SignedScheduledAttemptReceipt | SignedRestoreDrillReceipt,
     raw: bytes,
     *,
     key_file: Path,
@@ -365,6 +396,28 @@ def verify_scheduled_attempt(raw: bytes, *, key_file: Path, key_id: str) -> Sche
         raise BackupSetError("Scheduled backup attempt receipt has an invalid format.") from None
     verify_receipt_signature(
         signed, raw, key_file=key_file, key_id=key_id, domain="scheduled-attempt"
+    )
+    return signed.receipt
+
+
+def sign_restore_drill(receipt: RestoreDrillReceipt, *, key: bytes, key_id: str) -> bytes:
+    return canonical_bytes(
+        SignedRestoreDrillReceipt(
+            receipt=receipt,
+            key_id=key_id,
+            algorithm=AUTH_ALGORITHM,
+            signature=receipt_signature(receipt, key, "restore-drill"),
+        )
+    )
+
+
+def verify_restore_drill(raw: bytes, *, key_file: Path, key_id: str) -> RestoreDrillReceipt:
+    try:
+        signed = SignedRestoreDrillReceipt.model_validate_json(raw)
+    except ValueError:
+        raise BackupSetError("Restore drill receipt has an invalid format.") from None
+    verify_receipt_signature(
+        signed, raw, key_file=key_file, key_id=key_id, domain="restore-drill"
     )
     return signed.receipt
 

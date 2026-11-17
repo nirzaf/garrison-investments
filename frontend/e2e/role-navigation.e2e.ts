@@ -159,6 +159,7 @@ const cases: RoleCase[] = [
       'Analytics',
       'Launch readiness',
       'Users',
+      // Present only when playwright.config.ts starts browser_fixtures with --enable-fixture-hr-cases.
       'Employee relations',
       'HR & Workforce'
     ],

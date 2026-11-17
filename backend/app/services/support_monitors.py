@@ -23,6 +23,7 @@ from app.models.support_identity import SupportAuthEvent, SupportSession
 from app.models.support_oversight import SupportBackupReceipt
 from app.models.task_outbox import TaskOutbox
 from app.schemas.support_oversight import (
+    FreshnessState,
     OversightMetric,
     OversightScope,
     SourceStatus,
@@ -38,11 +39,13 @@ from app.schemas.support_oversight import (
 )
 from app.services.support_overview import execute_oversight_read
 from app.tasks.celery_app import celery_app
+from app.tasks.outbox import STALE_DISPATCH_TIMEOUT
+from app.tasks.worker_heartbeat import read_worker_heartbeats
 
-_TASK_QUEUE_ALLOWLIST: dict[str, str] = {
+_BEAT_TASK_ALLOWLIST: dict[str, str] = {
     "dispatch_task_outbox": "maintenance",
     "run_database_backup": "backup",
-    "check_late_reports": "reports",
+    "check_late_reports": "maintenance",
     "process_approval_reminders": "maintenance",
     "check_low_stock": "maintenance",
     "cleanup_old_notifications": "maintenance",
@@ -51,9 +54,26 @@ _TASK_QUEUE_ALLOWLIST: dict[str, str] = {
     "check_hr_credential_expiry": "maintenance",
     "check_hr_service_request_sla": "maintenance",
     "check_hr_probation_reviews": "maintenance",
-    "schedule_hr_leave_accrual": "maintenance",
+    "post_hr_leave_accruals": "maintenance",
     "dispatch_support_recovery_deliveries": "email",
 }
+
+_TASK_QUEUE_ALLOWLIST: dict[str, str] = {
+    **_BEAT_TASK_ALLOWLIST,
+    "run_import_async": "maintenance",
+    "generate_report_pdf": "report",
+    "generate_excel_export": "report",
+    "generate_management_export": "report",
+    "send_email_notification": "email",
+    "send_report_email": "email",
+    "generate_thumbnail": "image",
+    "compress_photo": "image",
+}
+
+_HISTORY_COVERAGE_NOTE = (
+    "Recent lifecycle events reflect persisted task failures and recorded activity_log "
+    "entries only; absence of events does not prove complete broker execution history."
+)
 
 _JOB_ACTION_MAP: dict[str, str] = {
     "celery.task_started": "started",
@@ -91,12 +111,21 @@ def _format_schedule(schedule: object) -> str:
     return str(schedule)
 
 
+def _normalize_queue(queue_filter: str | None) -> str | None:
+    if queue_filter == "reports":
+        return "report"
+    if queue_filter == "images":
+        return "image"
+    return queue_filter
+
+
 def _schedule_items(queue_filter: str | None) -> list[SupportJobScheduleItem]:
+    normalized = _normalize_queue(queue_filter)
     beat = celery_app.conf.beat_schedule or {}
     items: list[SupportJobScheduleItem] = []
     active_by_task = {entry.get("task"): (name, entry) for name, entry in beat.items()}
-    for task_name, queue in sorted(_TASK_QUEUE_ALLOWLIST.items()):
-        if queue_filter is not None and queue != queue_filter:
+    for task_name, queue in sorted(_BEAT_TASK_ALLOWLIST.items()):
+        if normalized is not None and queue != normalized:
             continue
         if task_name in active_by_task:
             job_name, entry = active_by_task[task_name]
@@ -126,21 +155,44 @@ async def read_jobs_monitor(
     session: AsyncSession, token: str | None, query: SupportJobsQuery, request_id: str
 ) -> SupportJobsMonitorRead:
     settings = get_settings()
+    normalized_queue = _normalize_queue(query.queue)
 
     async def run(
         db: AsyncSession, now: datetime, _scoped: list[UUID] | None
     ) -> SupportJobsMonitorRead:
         broker = await _ping_broker(settings)
+        worker_status, worker_age, _ = await read_worker_heartbeats(settings, now)
         cutoff = now - timedelta(hours=query.hours)
+        stale_dispatch_cutoff = now - STALE_DISPATCH_TIMEOUT
         allowed_tasks = [
             task
             for task, q in _TASK_QUEUE_ALLOWLIST.items()
-            if query.queue is None or q == query.queue
+            if normalized_queue is None or q == normalized_queue
         ]
 
         outbox_pending = int(
             await db.scalar(
                 select(func.count()).select_from(TaskOutbox).where(TaskOutbox.status == "pending")
+            )
+            or 0
+        )
+        outbox_dispatched = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(TaskOutbox)
+                .where(TaskOutbox.status == "dispatched")
+            )
+            or 0
+        )
+        outbox_stale_dispatched = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(TaskOutbox)
+                .where(
+                    TaskOutbox.status == "dispatched",
+                    TaskOutbox.dispatched_at.is_not(None),
+                    TaskOutbox.dispatched_at < stale_dispatch_cutoff,
+                )
             )
             or 0
         )
@@ -218,19 +270,45 @@ async def read_jobs_monitor(
                         occurred_at=row.created_at,
                     )
                 )
-        source_status: SourceStatus = "operational" if broker == "operational" else "degraded"
+        if broker != "operational":
+            source_status: SourceStatus = "degraded"
+            freshness: FreshnessState = "unknown"
+        elif (
+            worker_status == "unavailable"
+            or outbox_failed > 0
+            or outbox_stale_dispatched > 0
+            or rec_unknown > 0
+        ):
+            source_status = "degraded"
+            freshness = (
+                "stale"
+                if (outbox_stale_dispatched > 0 or worker_status == "unavailable")
+                else "current"
+            )
+        elif worker_status == "unknown":
+            source_status = "partial"
+            freshness = "unknown"
+        else:
+            source_status = "operational"
+            freshness = "current"
         return SupportJobsMonitorRead(
             observed_at=now,
             window_hours=query.hours,
             broker_status=broker,  # type: ignore[arg-type]
+            worker_status=worker_status,  # type: ignore[arg-type]
+            worker_heartbeat_age_seconds=worker_age,
             source_status=source_status,
+            freshness=freshness,
+            history_coverage=_HISTORY_COVERAGE_NOTE,
             outbox_pending=outbox_pending,
+            outbox_dispatched=outbox_dispatched,
+            outbox_stale_dispatched=outbox_stale_dispatched,
             outbox_failed=outbox_failed,
             outbox_oldest_age_seconds=oldest_age,
             recovery_pending=rec_pending,
             recovery_dispatching=rec_dispatching,
             recovery_unknown=rec_unknown,
-            schedules=_schedule_items(query.queue),
+            schedules=_schedule_items(normalized_queue),
             recent_events=recent_events,
             truncated=truncated,
         )
@@ -240,14 +318,20 @@ async def read_jobs_monitor(
             observed_at=now,
             window_hours=query.hours,
             broker_status="unknown",
+            worker_status="unknown",
+            worker_heartbeat_age_seconds=None,
             source_status="unavailable",
+            freshness="unknown",
+            history_coverage=_HISTORY_COVERAGE_NOTE,
             outbox_pending=None,
+            outbox_dispatched=None,
+            outbox_stale_dispatched=None,
             outbox_failed=None,
             outbox_oldest_age_seconds=None,
             recovery_pending=None,
             recovery_dispatching=None,
             recovery_unknown=None,
-            schedules=_schedule_items(query.queue),
+            schedules=_schedule_items(normalized_queue),
             recent_events=[],
             truncated=False,
         )

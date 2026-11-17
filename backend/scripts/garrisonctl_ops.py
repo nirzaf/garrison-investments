@@ -38,6 +38,7 @@ from scripts.garrisonctl_common import (
     Result,
     checked_plan,
     load_json,
+    mode,
     uuid_arg,
     write_private_bytes,
 )
@@ -490,6 +491,107 @@ def backup_verify(args: argparse.Namespace, _ctx: Context) -> dict[str, Any]:
     }
 
 
+def backup_ingest_receipt(args: argparse.Namespace, ctx: Context) -> Result:
+    import asyncio
+    from hashlib import sha256 as _sha256
+
+    from app.database import AsyncSessionLocal, engine
+    from app.services.backup_receipt_ingestion import (
+        BackupReceiptError,
+        ingest_publication_receipt,
+        ingest_restore_drill_receipt,
+        ingest_scheduled_attempt_receipt,
+    )
+
+    if not SHA256.fullmatch(args.policy_sha256):
+        raise CLIError("Supply the approved 64-character recovery policy SHA-256.")
+    try:
+        raw_receipt = args.receipt.read_bytes()
+    except OSError:
+        raise CLIError("The signed backup receipt file could not be read.") from None
+    receipt_sha256 = _sha256(raw_receipt).hexdigest()
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": "backup ingest-receipt",
+            "kind": args.kind,
+            "policy_sha256": args.policy_sha256,
+            "receipt_sha256": receipt_sha256,
+            "key_id": args.key_id,
+        },
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+
+    async def _run() -> dict[str, Any]:
+        try:
+            async with AsyncSessionLocal() as session:
+                if args.kind == "publication":
+                    row, created = await ingest_publication_receipt(
+                        session,
+                        raw_receipt,
+                        policy_path=args.policy,
+                        expected_policy_sha256=args.policy_sha256,
+                        key_file=args.key_file,
+                        key_id=args.key_id,
+                    )
+                elif args.kind == "attempt":
+                    row, created = await ingest_scheduled_attempt_receipt(
+                        session,
+                        raw_receipt,
+                        policy_path=args.policy,
+                        expected_policy_sha256=args.policy_sha256,
+                        key_file=args.key_file,
+                        key_id=args.key_id,
+                    )
+                else:
+                    row, created = await ingest_restore_drill_receipt(
+                        session,
+                        raw_receipt,
+                        policy_path=args.policy,
+                        expected_policy_sha256=args.policy_sha256,
+                        key_file=args.key_file,
+                        key_id=args.key_id,
+                    )
+                await session.commit()
+                return {
+                    "receipt_id": str(row.id),
+                    "receipt_kind": row.receipt_kind,
+                    "target_domain": row.target_domain,
+                    "outcome": row.outcome,
+                    "created": created,
+                    "backup_set_id": row.backup_set_id,
+                    "manifest_digest_prefix": row.manifest_sha256[:12]
+                    if row.manifest_sha256
+                    else None,
+                }
+        finally:
+            await engine.dispose()
+
+    try:
+        ingested = asyncio.run(_run())
+    except BackupReceiptError as exc:
+        raise CLIError(str(exc), CONFLICT, changed=False) from None
+    return Result(ingested, changed=bool(ingested["created"]))
+
+
+def inventory_reconcile(_: argparse.Namespace, _ctx: Context) -> dict[str, Any]:
+    import asyncio
+
+    from app.database import AsyncSessionLocal, engine
+    from scripts.report_inventory_reservation_drift import collect_stock_reconciliation
+
+    async def _run() -> dict[str, Any]:
+        try:
+            async with AsyncSessionLocal() as session:
+                return await collect_stock_reconciliation(session)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_run())
+
+
 def release_status(args: argparse.Namespace, _ctx: Context) -> dict[str, Any]:
     state = _host_state(args.host_state)
     try:
@@ -614,6 +716,31 @@ def register(registry: Registry) -> None:
     verify.add_argument("--directory", type=Path, required=True)
     verify.add_argument("--policy", type=Path)
     verify.add_argument("--require-authenticated", action="store_true")
+
+    ingest = registry.add(
+        "backup ingest-receipt",
+        backup_ingest_receipt,
+        permission="approved recovery policy, HMAC verification key, and support DB write access",
+        scope="host",
+        mutates=True,
+        preview=True,
+        help="Verify and append a signed backup or restore receipt into support_backup_receipts.",
+    )
+    ingest.add_argument("--kind", choices=("publication", "attempt", "restore"), required=True)
+    ingest.add_argument("--receipt", type=Path, required=True)
+    ingest.add_argument("--policy", type=Path, required=True)
+    ingest.add_argument("--policy-sha256", required=True)
+    ingest.add_argument("--key-file", type=Path, required=True)
+    ingest.add_argument("--key-id", required=True)
+    mode(ingest)
+
+    registry.add(
+        "inventory reconcile",
+        inventory_reconcile,
+        permission="read-only inventory reconciliation DB access",
+        scope="host",
+        help="Inspect stock, reservation, and movement balance drift without modifying rows.",
+    )
 
     release = registry.add(
         "release status",

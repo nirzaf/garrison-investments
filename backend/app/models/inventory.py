@@ -59,10 +59,8 @@ class InventoryItem(TimestampMixin, SoftDeleteMixin, Base):
 class InventoryLocationStock(TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "inventory_location_stock"
     __table_args__ = (
-        CheckConstraint("on_hand_qty >= 0", name="on_hand_nonnegative", postgresql_not_valid=True),
-        CheckConstraint(
-            "reserved_qty >= 0", name="reserved_nonnegative", postgresql_not_valid=True
-        ),
+        CheckConstraint("on_hand_qty >= 0", name="on_hand_nonnegative"),
+        CheckConstraint("reserved_qty >= 0", name="reserved_nonnegative"),
     )
 
     id: Mapped[UUID] = mapped_column(

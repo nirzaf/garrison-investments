@@ -142,7 +142,9 @@ class SupportPolicyExplainRead(_StrictModel):
 class SupportJobsQuery(_StrictModel):
     hours: int = Field(default=24, ge=1, le=168)
     limit: int = Field(default=25, ge=1, le=50)
-    queue: Literal["maintenance", "backup", "email", "reports", "images"] | None = None
+    queue: (
+        Literal["maintenance", "backup", "email", "report", "reports", "image", "images"] | None
+    ) = None
 
 
 class SupportJobScheduleItem(_StrictModel):
@@ -165,8 +167,14 @@ class SupportJobsMonitorRead(_StrictModel):
     observed_at: AwareDatetime
     window_hours: int
     broker_status: Literal["operational", "unavailable", "unknown"]
+    worker_status: Literal["operational", "unavailable", "unknown"]
+    worker_heartbeat_age_seconds: int | None
     source_status: SourceStatus
+    freshness: FreshnessState
+    history_coverage: str
     outbox_pending: int | None
+    outbox_dispatched: int | None
+    outbox_stale_dispatched: int | None
     outbox_failed: int | None
     outbox_oldest_age_seconds: int | None
     recovery_pending: int | None

@@ -373,3 +373,138 @@ def test_config_verify_checks_effective_policy(
         }
     else:
         assert result["data"]["verified"] is True
+
+
+def test_every_mutating_cli_command_requires_preview_and_expect() -> None:
+    session_or_custody_exempt = {
+        "auth login",
+        "auth logout",
+        "support auth login",
+        "support auth logout",
+        "support custody enrollment register",
+        "support views end",
+    }
+    code, envelope = cli("capabilities")
+    assert code == 0
+    mutating = [
+        item for item in envelope["data"]["commands"] if item["mutates"] is True
+    ]
+    assert len(mutating) >= 10
+    for item in mutating:
+        if item["command"] in session_or_custody_exempt:
+            assert item["supports_preview"] is True
+        elif item["command"] == "config apply":
+            assert item["supports_preview"] is True
+            assert any(arg["name"] == "--expect" for arg in item["arguments"])
+        elif item["supports_preview"]:
+            assert any(arg["name"] == "--expect" for arg in item["arguments"])
+            assert any(
+                "--dry-run" in choice["choose_one"] and "--apply" in choice["choose_one"]
+                for choice in item["argument_choices"]
+            )
+
+
+def test_backup_ingest_receipt_cli_dry_run_and_apply_guards(tmp_path: Path, monkeypatch) -> None:
+    import hashlib
+
+    from scripts.backup_set_contract import (
+        DestinationIdentity,
+        FailureDomains,
+        PublicationReceipt,
+        RecoveryPolicy,
+        RetentionRules,
+        canonical_bytes,
+        sign_publication_receipt,
+    )
+
+    now = ops.datetime.now(ops.UTC)
+    key = bytes(range(32))
+    key_file = tmp_path / "backup.key"
+    key_file.write_bytes(key)
+    key_file.chmod(0o600)
+    policy = RecoveryPolicy(
+        decision_id="D-29-RECOVERY",
+        policy_id="cli-policy",
+        revision="v1",
+        rpo_minutes=240,
+        rto_minutes=240,
+        backup_interval_minutes=60,
+        maximum_capture_pause_seconds=60,
+        maximum_publication_delay_minutes=30,
+        minimum_spool_free_bytes=1000,
+        retention_rules=RetentionRules(
+            daily_days=2, monthly_months=2, keep_last_good=1, held_set_ids=set()
+        ),
+        destination_identity=DestinationIdentity(
+            endpoint="localhost:9020", bucket="independent-cli", prefix="app/test", secure=False
+        ),
+        failure_domains=FailureDomains(source="primary", destination="recovery"),
+        key_custodians=["Custodian A", "Custodian B"],
+        operator="Op A",
+        substitute_operator="Op B",
+        exercise_interval="monthly",
+        required_artifact_categories={"application_database", "objects", "configuration"},
+        required_configuration_paths={"compose.yml"},
+        source_environment="test",
+        approval_ref="fixture",
+        approved_at=now,
+    )
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_bytes(canonical_bytes(policy))
+    policy_sha = hashlib.sha256(policy_path.read_bytes()).hexdigest()
+    receipt = PublicationReceipt(
+        backup_set_id="b" * 32,
+        manifest_sha256="c" * 64,
+        snapshot_at_utc=now,
+        remote_verified_at_utc=now,
+        source_sha="d" * 40,
+        source_environment="test",
+        policy_revision="v1",
+        policy_sha256=policy_sha,
+        configuration_sha256="e" * 64,
+        destination_identity=policy.destination_identity,
+        object_count=1,
+    )
+    receipt_path = tmp_path / "pub.json"
+    receipt_path.write_bytes(sign_publication_receipt(receipt, key=key, key_id="cli-key"))
+
+    code, preview = cli(
+        "backup",
+        "ingest-receipt",
+        "--kind",
+        "publication",
+        "--receipt",
+        str(receipt_path),
+        "--policy",
+        str(policy_path),
+        "--policy-sha256",
+        policy_sha,
+        "--key-file",
+        str(key_file),
+        "--key-id",
+        "cli-key",
+        "--dry-run",
+    )
+    assert code == 0 and preview["outcome"] == "preview" and preview["changed"] is False
+
+    # Stale/mismatched --expect refuses without hitting DB
+    code_stale, stale = cli(
+        "backup",
+        "ingest-receipt",
+        "--kind",
+        "publication",
+        "--receipt",
+        str(receipt_path),
+        "--policy",
+        str(policy_path),
+        "--policy-sha256",
+        policy_sha,
+        "--key-file",
+        str(key_file),
+        "--key-id",
+        "cli-key",
+        "--apply",
+        "--expect",
+        "0" * 64,
+    )
+    assert code_stale == CONFLICT and stale["changed"] is False

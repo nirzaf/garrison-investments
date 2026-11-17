@@ -16617,6 +16617,13 @@ export interface components {
              */
             broker_status: "operational" | "unavailable" | "unknown";
             /**
+             * Freshness
+             * @enum {string}
+             */
+            freshness: "current" | "stale" | "unknown";
+            /** History Coverage */
+            history_coverage: string;
+            /**
              * Metric Version
              * @default v1
              * @constant
@@ -16627,12 +16634,16 @@ export interface components {
              * Format: date-time
              */
             observed_at: string;
+            /** Outbox Dispatched */
+            outbox_dispatched: number | null;
             /** Outbox Failed */
             outbox_failed: number | null;
             /** Outbox Oldest Age Seconds */
             outbox_oldest_age_seconds: number | null;
             /** Outbox Pending */
             outbox_pending: number | null;
+            /** Outbox Stale Dispatched */
+            outbox_stale_dispatched: number | null;
             /** Recent Events */
             recent_events: components["schemas"]["SupportJobEventSummary"][];
             /** Recovery Dispatching */
@@ -16652,6 +16663,13 @@ export interface components {
             truncated: boolean;
             /** Window Hours */
             window_hours: number;
+            /** Worker Heartbeat Age Seconds */
+            worker_heartbeat_age_seconds: number | null;
+            /**
+             * Worker Status
+             * @enum {string}
+             */
+            worker_status: "operational" | "unavailable" | "unknown";
         };
         /** SupportLoginOptions */
         SupportLoginOptions: {
@@ -32510,7 +32528,7 @@ export interface operations {
             query?: {
                 hours?: number;
                 limit?: number;
-                queue?: ("maintenance" | "backup" | "email" | "reports" | "images") | null;
+                queue?: ("maintenance" | "backup" | "email" | "report" | "reports" | "image" | "images") | null;
             };
             header?: never;
             path?: never;

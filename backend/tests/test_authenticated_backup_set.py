@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import gzip
 import hashlib
 import json
@@ -705,3 +706,198 @@ def test_schedule_rejects_intervals_that_drift_at_midnight(recovery) -> None:
 
     with pytest.raises(BackupSetError, match="do not divide one day"):
         backup_set.render_timer(irregular)
+
+
+@pytest.mark.asyncio
+async def test_signed_receipt_ingestion_and_scheduled_backup_task_recording(
+    recovery, remote: FixtureStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.database import AsyncSessionLocal, check_database, engine
+    from app.services.backup_receipt_ingestion import (
+        BackupReceiptError,
+        ingest_publication_receipt,
+        ingest_restore_drill_receipt,
+        ingest_scheduled_attempt_receipt,
+    )
+    from app.tasks import backup as backup_task
+    from scripts.backup_set_contract import (
+        RestoreDrillReceipt,
+        sign_restore_drill,
+        verify_restore_drill,
+    )
+
+    if not await check_database():
+        pytest.skip("database is not available")
+
+    await engine.dispose()
+    directory, manifest, policy_data, policy_path, key_file = recovery
+    policy, policy_sha256 = policy_data
+    pub_receipt_path = tmp_path / "pub-receipt.json"
+    backup_set.publish(directory, policy_data, pub_receipt_path)
+    pub_bytes = pub_receipt_path.read_bytes()
+
+    now = datetime.now(UTC)
+    drill = RestoreDrillReceipt(
+        backup_set_id=manifest.backup_set_id,
+        manifest_sha256=hashlib.sha256((directory / backup_set.MANIFEST).read_bytes()).hexdigest(),
+        source_sha=manifest.source_sha,
+        source_environment="test",
+        policy_revision=policy.revision,
+        policy_sha256=policy_sha256,
+        covers_database=True,
+        covers_objects=True,
+        outcome="pass",
+        rto_minutes=12,
+        started_at_utc=now - timedelta(minutes=12),
+        verified_at_utc=now,
+    )
+    drill_bytes = sign_restore_drill(drill, key=TEST_KEY, key_id=KEY_ID)
+    assert verify_restore_drill(drill_bytes, key_file=key_file, key_id=KEY_ID) == drill
+    with pytest.raises(BackupSetError, match="authentication failed"):
+        verify_restore_drill(
+            drill_bytes.replace(b'"pass"', b'"fail"'),
+            key_file=key_file,
+            key_id=KEY_ID,
+        )
+
+    # Reject tampered bytes, wrong key_id, wrong policy digest, and non-independent domains.
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(BackupReceiptError, match="authentication failed"):
+            await ingest_publication_receipt(
+                session,
+                pub_bytes.replace(b'"test"', b'"prod"'),
+                policy_path=policy_path,
+                expected_policy_sha256=policy_sha256,
+                key_file=key_file,
+                key_id=KEY_ID,
+            )
+        with pytest.raises(BackupReceiptError, match="approved digest"):
+            await ingest_publication_receipt(
+                session,
+                pub_bytes,
+                policy_path=policy_path,
+                expected_policy_sha256="0" * 64,
+                key_file=key_file,
+                key_id=KEY_ID,
+            )
+        with pytest.raises(BackupReceiptError, match="Unknown backup authentication key"):
+            await ingest_restore_drill_receipt(
+                session,
+                drill_bytes,
+                policy_path=policy_path,
+                expected_policy_sha256=policy_sha256,
+                key_file=key_file,
+                key_id="wrong-key",
+            )
+
+        # Valid publication + restore receipts ingest once and replay idempotently.
+        unique_set = hashlib.sha256(str(now.timestamp()).encode()).hexdigest()[:32]
+        unique_manifest = manifest.model_copy(update={"backup_set_id": unique_set})
+        unique_dir = tmp_path / "unique-capture"
+        unique_dir.mkdir()
+        for f in directory.iterdir():
+            if f.name not in {backup_set.MANIFEST, backup_set.SIGNATURE}:
+                (unique_dir / f.name).write_bytes(f.read_bytes())
+        backup_set.write_authenticated_manifest(unique_dir, unique_manifest, TEST_KEY, KEY_ID)
+        unique_pub = tmp_path / "unique-pub.json"
+        backup_set.publish(unique_dir, policy_data, unique_pub)
+
+        row_pub, created_pub = await ingest_publication_receipt(
+            session,
+            unique_pub.read_bytes(),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha256,
+            key_file=key_file,
+            key_id=KEY_ID,
+        )
+        assert created_pub is True
+        row_pub_replay, created_replay = await ingest_publication_receipt(
+            session,
+            unique_pub.read_bytes(),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha256,
+            key_file=key_file,
+            key_id=KEY_ID,
+        )
+        assert created_replay is False and row_pub_replay.id == row_pub.id
+
+        # Conflicting manifest for the same backup_set_id must be rejected.
+        altered_pub = unique_pub.read_bytes()
+        altered_data = json.loads(altered_pub)
+        altered_data["receipt"]["manifest_sha256"] = "e" * 64
+        from scripts.backup_set_contract import PublicationReceipt, sign_publication_receipt
+
+        conflicting = sign_publication_receipt(
+            PublicationReceipt.model_validate(altered_data["receipt"]),
+            key=TEST_KEY,
+            key_id=KEY_ID,
+        )
+        with pytest.raises(BackupReceiptError, match="Conflicting"):
+            await ingest_publication_receipt(
+                session,
+                conflicting,
+                policy_path=policy_path,
+                expected_policy_sha256=policy_sha256,
+                key_file=key_file,
+                key_id=KEY_ID,
+            )
+
+        attempt_receipt = ScheduledAttemptReceipt(
+            source_sha=manifest.source_sha,
+            started_at_utc=now - timedelta(minutes=2),
+            completed_at_utc=now - timedelta(minutes=1),
+            phase="publication",
+            outcome="fail",
+            source_environment="test",
+            policy_revision=policy.revision,
+            policy_sha256=policy_sha256,
+            configuration_sha256=manifest.configuration_sha256,
+        )
+        att_row, att_created = await ingest_scheduled_attempt_receipt(
+            session,
+            sign_scheduled_attempt(attempt_receipt, key=TEST_KEY, key_id=KEY_ID),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha256,
+            key_file=key_file,
+            key_id=KEY_ID,
+        )
+        assert att_created is True and att_row.outcome == "fail"
+
+        unique_drill = drill.model_copy(
+            update={
+                "backup_set_id": unique_set,
+                "manifest_sha256": row_pub.manifest_sha256,
+            }
+        )
+        drill_row, drill_created = await ingest_restore_drill_receipt(
+            session,
+            sign_restore_drill(unique_drill, key=TEST_KEY, key_id=KEY_ID),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha256,
+            key_file=key_file,
+            key_id=KEY_ID,
+        )
+        assert drill_created is True and drill_row.target_domain == "isolated_restore"
+        await session.rollback()
+
+    # Exercise run_database_backup scheduled task success + failure recording.
+    recorded: list[str] = []
+
+    async def fake_persist(outcome: str) -> None:
+        recorded.append(outcome)
+
+    monkeypatch.setattr(backup_task, "_persist_local_backup_attempt", fake_persist)
+    monkeypatch.delenv("BACKUP_ENCRYPTION_PASSWORD", raising=False)
+    with pytest.raises(RuntimeError, match="BACKUP_ENCRYPTION_PASSWORD"):
+        await asyncio.to_thread(backup_task.run_database_backup, False)
+    assert recorded == ["fail"]
+
+    monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "fixture-password")
+    monkeypatch.setattr(
+        backup_task.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="Uploaded backup ok\n"),
+    )
+    assert await asyncio.to_thread(backup_task.run_database_backup, False) == "Uploaded backup ok"
+    assert recorded == ["fail", "pass"]
+    await engine.dispose()

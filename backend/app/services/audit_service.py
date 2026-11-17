@@ -15,6 +15,7 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    text,
     tuple_,
     update,
 )
@@ -347,6 +348,9 @@ class AuditService:
         if policy is None or policy.policy.mode != "scheduled_expiry":
             raise AuditRetentionPolicyError("retention_scheduled_expiry_policy_required")
         now = cutoff_at or utc_now()
+        await self.session.execute(
+            text("SELECT set_config('garrison.audit_retention_purge', 'allow', true)")
+        )
         candidates = (
             self._purge_candidates(policy, now, archive_retention_days)
             .with_only_columns(ActivityLog.id)

@@ -39,7 +39,7 @@ For automation, provide an already issued short-lived bearer through `GARRISON_A
 | Finance | `finance invoices list`, `show`, `finance budget show`, `finance reconcile` | Dataset-specific permissions, including `financial:view` and project scope |
 | Imports | `imports templates`, `preview`, `run`, `batches`, `status` | `users:manage` |
 | Diagnostics | `health check`, `logs search`, `logs tail`, `audit search` | Public readiness or `audit:view` |
-| Operations | `backup status`, `backup verify`, `release status` | Host-only, with existing file, policy and credential access |
+| Operations | `backup status`, `backup verify`, `backup ingest-receipt`, `inventory reconcile`, `release status` | Host-only, with existing file, policy, key, and DB access |
 
 Each command has `--help` and `--json`. Capabilities lists commands, argument requirements, permissions, execution scope, preview support and whether approval is required. Project membership labels are project context. Company permissions come from the user's account role.
 
@@ -895,10 +895,15 @@ python -m scripts.garrisonctl backup status --monitor-profile "$PROFILE" \
   --profile-sha256 "$PROFILE_SHA256" --json
 python -m scripts.garrisonctl backup verify --directory "$RECOVERY_SET" \
   --policy "$RECOVERY_POLICY" --require-authenticated --json
+python -m scripts.garrisonctl backup ingest-receipt --kind publication \
+  --receipt "$PUB_RECEIPT" --policy "$RECOVERY_POLICY" \
+  --policy-sha256 "$RECOVERY_POLICY_SHA256" --key-file "$KEY_FILE" \
+  --key-id "$KEY_ID" --dry-run --json
+python -m scripts.garrisonctl inventory reconcile --json
 python -m scripts.garrisonctl release status --host-state /opt/garrison-portal/deploy --json
 ```
 
-Backup status checks the independent backup receipts using the approved monitor profile. Verification checks artifacts without restoring them. Release status reads the current deployment receipt. Use readiness for live database connectivity and follow the incident and restore procedures for recovery. [Operations runbook](OPERATIONS_AND_DEPLOYMENT.md) · [Logging guide](LOGGING_AND_REMOTE_CLI.md).
+Backup status checks the independent backup receipts using the approved monitor profile. Verification checks artifacts without restoring them. `backup ingest-receipt` (`--kind publication|attempt|restore`) verifies HMAC-signed receipts against the pinned policy digest and key before appending to `support_backup_receipts` using the standard `--dry-run` / `--apply --expect` plan hash guard. `inventory reconcile` runs a `REPEATABLE READ, READ ONLY` SQL reconciliation check across stock, reservations, and movements without modifying balances or printing item costs. Release status reads the current deployment receipt. Use readiness for live database connectivity and follow the incident and restore procedures for recovery. [Operations runbook](OPERATIONS_AND_DEPLOYMENT.md) · [Logging guide](LOGGING_AND_REMOTE_CLI.md).
 
 ### Tasks handled by existing tools
 

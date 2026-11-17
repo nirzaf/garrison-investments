@@ -29209,6 +29209,19 @@
             "title": "Broker Status",
             "type": "string"
           },
+          "freshness": {
+            "enum": [
+              "current",
+              "stale",
+              "unknown"
+            ],
+            "title": "Freshness",
+            "type": "string"
+          },
+          "history_coverage": {
+            "title": "History Coverage",
+            "type": "string"
+          },
           "metric_version": {
             "const": "v1",
             "default": "v1",
@@ -29219,6 +29232,17 @@
             "format": "date-time",
             "title": "Observed At",
             "type": "string"
+          },
+          "outbox_dispatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Dispatched"
           },
           "outbox_failed": {
             "anyOf": [
@@ -29252,6 +29276,17 @@
               }
             ],
             "title": "Outbox Pending"
+          },
+          "outbox_stale_dispatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outbox Stale Dispatched"
           },
           "recent_events": {
             "items": {
@@ -29319,14 +29354,40 @@
           "window_hours": {
             "title": "Window Hours",
             "type": "integer"
+          },
+          "worker_heartbeat_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Heartbeat Age Seconds"
+          },
+          "worker_status": {
+            "enum": [
+              "operational",
+              "unavailable",
+              "unknown"
+            ],
+            "title": "Worker Status",
+            "type": "string"
           }
         },
         "required": [
           "observed_at",
           "window_hours",
           "broker_status",
+          "worker_status",
+          "worker_heartbeat_age_seconds",
           "source_status",
+          "freshness",
+          "history_coverage",
           "outbox_pending",
+          "outbox_dispatched",
+          "outbox_stale_dispatched",
           "outbox_failed",
           "outbox_oldest_age_seconds",
           "recovery_pending",
@@ -61630,7 +61691,9 @@
                     "maintenance",
                     "backup",
                     "email",
+                    "report",
                     "reports",
+                    "image",
                     "images"
                   ],
                   "type": "string"

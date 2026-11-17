@@ -51,6 +51,7 @@ from scripts.backup_set_contract import (
     CaptureInventoryIdentity,
     PublicationReceipt,
     RecoveryPolicy,
+    RestoreDrillReceipt,
     RetentionAuthorization,
     RetentionCandidate,
     RetentionPlan,
@@ -61,6 +62,7 @@ from scripts.backup_set_contract import (
     read_policy,
     require_relative_path,
     sign_publication_receipt,
+    sign_restore_drill,
     sign_scheduled_attempt,
 )
 from scripts.backup_set_storage import (
@@ -1270,6 +1272,7 @@ def main() -> None:
             action.add_argument("--receipt", type=Path, required=command == "publish")
         if command == "restore":
             action.add_argument("--configuration-destination", type=Path)
+            action.add_argument("--signed-receipt", type=Path)
         if command == "fetch":
             action.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
@@ -1320,6 +1323,12 @@ def main() -> None:
             manifest = load_verified_manifest(
                 source, policy=policy, require_authenticated=args.require_authenticated
             )
+            if args.signed_receipt and (
+                policy is None or not isinstance(manifest, AuthenticatedManifest)
+            ):
+                raise BackupSetError(
+                    "Signed restore receipts require --policy and an authenticated format 2 set."
+                )
             result = asyncio.run(
                 restore(
                     source,
@@ -1331,6 +1340,33 @@ def main() -> None:
             )
             if args.receipt:
                 write_receipt(args.receipt, json.dumps(result, sort_keys=True).encode())
+            if (
+                args.signed_receipt
+                and policy is not None
+                and isinstance(manifest, AuthenticatedManifest)
+            ):
+                key_file, key_id = key_settings()
+                secret = authentication_key(key_file, key_id)
+                started_at = datetime.fromisoformat(str(result["restore_started_at_utc"]))
+                verified_at = datetime.fromisoformat(str(result["objects_verified_at_utc"]))
+                rto_minutes = max(0, int((verified_at - started_at).total_seconds() // 60))
+                drill = RestoreDrillReceipt(
+                    backup_set_id=manifest.backup_set_id,
+                    manifest_sha256=str(result["manifest_sha256"]),
+                    source_sha=manifest.source_sha,
+                    source_environment=manifest.source_environment,
+                    policy_revision=policy[0].revision,
+                    policy_sha256=policy[1],
+                    covers_database=True,
+                    covers_objects="objects" in policy[0].required_artifact_categories,
+                    outcome="pass",
+                    rto_minutes=rto_minutes,
+                    started_at_utc=started_at,
+                    verified_at_utc=verified_at,
+                )
+                write_receipt(
+                    args.signed_receipt, sign_restore_drill(drill, key=secret, key_id=key_id)
+                )
     except BackupSetError as error:
         raise SystemExit(str(error)) from None
     except Exception as error:

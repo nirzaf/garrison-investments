@@ -3,8 +3,10 @@ from datetime import date
 from uuid import UUID
 
 import structlog
+from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.report_export_service import ReportExportService
@@ -31,8 +33,34 @@ def generate_report_pdf(
     logger.info("pdf_generating", report_id=report_id, actor_id=actor_id, email_after=email_after)
     export_id = run_async_task(_generate_report_pdf(report_id, actor_id))
     if email_after:
-        send_report_email.delay(export_id)
+        if run_async_task(_export_requires_email(export_id)):
+            send_report_email.delay(export_id)
+    run_async_task(_mark_report_outbox_completed(report_id))
     return export_id
+
+
+async def _export_requires_email(export_id: str) -> bool:
+    async with AsyncSessionLocal() as session:
+        from app.repositories.report_export_repository import ReportExportRepository
+
+        export = await ReportExportRepository(session).get_by_id(UUID(export_id))
+        return export is not None and export.email_status != "sent"
+
+
+async def _mark_report_outbox_completed(report_id: str) -> None:
+    dedupe_key = f"report-pdf:{report_id}"
+    async with AsyncSessionLocal() as session:
+        entry = await session.scalar(
+            select(TaskOutbox)
+            .where(
+                TaskOutbox.dedupe_key == dedupe_key,
+                TaskOutbox.status.in_(("pending", "dispatched")),
+            )
+            .with_for_update()
+        )
+        if entry is not None:
+            entry.status = "completed"
+            await session.commit()
 
 
 async def _generate_report_pdf(report_id: str, actor_id: str | None) -> str:

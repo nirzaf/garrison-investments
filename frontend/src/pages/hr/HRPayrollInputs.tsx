@@ -23,14 +23,55 @@ type Props = {
 };
 type Preview = PayrollInputPreviews[PayrollInputSource];
 
+function useCsvDownloads(fetchBlob: (source: PayrollInputSource, digest: string, signal: AbortSignal) => Promise<Blob>, fallbackError: string) {
+  const [pending, setPending] = useState<Partial<Record<PayrollInputSource, boolean>>>({});
+  const [error, setError] = useState('');
+  const controllers = useRef<Partial<Record<PayrollInputSource, AbortController>>>({});
+
+  useEffect(
+    () => () => {
+      Object.values(controllers.current).forEach((controller) => controller?.abort());
+    },
+    []
+  );
+
+  const anyPending = Boolean(pending.time || pending.leave);
+
+  async function start(source: PayrollInputSource, digest: string, fileName: string) {
+    if (controllers.current[source]) return;
+    const controller = new AbortController();
+    controllers.current[source] = controller;
+    setPending((current) => ({ ...current, [source]: true }));
+    setError('');
+    try {
+      const file = await fetchBlob(source, digest, controller.signal);
+      if (controller.signal.aborted) return;
+      saveCsvFile(file, fileName);
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        setError(formatApiError(failure, fallbackError));
+      }
+    } finally {
+      if (controllers.current[source] === controller) {
+        delete controllers.current[source];
+      }
+      if (!controller.signal.aborted) {
+        setPending((current) => ({ ...current, [source]: false }));
+      }
+    }
+  }
+
+  return { pending, anyPending, error, clearError: () => setError(''), start };
+}
+
 export function HRPayrollInputs({
   actorId, periodId, employeeIds, disabled, evidence, onEvidenceChange
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<PayrollInputSource>();
-  const [error, setError] = useState('');
-  const download = useRef<AbortController | null>(null);
-  useEffect(() => () => download.current?.abort(), []);
+  const downloads = useCsvDownloads(
+    (source, digest, signal) => downloadPayrollInputs(source, periodId, employeeIds, digest, signal),
+    'Unable to verify this file. Refresh the source review before retrying.'
+  );
 
   const queryKey = ['hr', 'payroll-source-preview', actorId, periodId, employeeIds];
   const time = useQuery({
@@ -53,31 +94,11 @@ export function HRPayrollInputs({
   const timeDigest = time.isSuccess ? time.data.csv_sha256 : undefined;
   const leaveDigest = leave.isSuccess ? leave.data.csv_sha256 : undefined;
 
-  async function saveCsv(source: PayrollInputSource, digest: string) {
-    if (download.current) return;
-    const controller = new AbortController();
-    download.current = controller;
-    setPending(source);
-    setError('');
-    try {
-      const file = await downloadPayrollInputs(source, periodId, employeeIds, digest, controller.signal);
-      if (controller.signal.aborted) return;
-      saveCsvFile(file, `payroll-${source}-${periodId}.csv`);
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        setError(formatApiError(failure, 'Unable to verify this file. Refresh the source review before retrying.'));
-      }
-    } finally {
-      download.current = null;
-      if (!controller.signal.aborted) setPending(undefined);
-    }
-  }
-
   return (
     <section aria-label="Time and leave source review" className="space-y-3 border-t border-theme-border pt-3">
-      <button className={hrButtonClass} type="button" disabled={disabled || fetching || Boolean(pending)}
+      <button className={hrButtonClass} type="button" disabled={disabled || fetching || downloads.anyPending}
         onClick={() => {
-          setError('');
+          downloads.clearError();
           onEvidenceChange();
           if (open) void Promise.all([time.refetch(), leave.refetch()]);
           else setOpen(true);
@@ -97,7 +118,8 @@ export function HRPayrollInputs({
               {query.isError && <p role="alert">{formatApiError(query.error, `Unable to review ${source} inputs.`)}</p>}
               {query.isSuccess && !query.isFetching && (
                 <PayrollInputResult data={query.data} title={source}
-                  disabled={disabled || Boolean(pending)} onDownload={(digest) => void saveCsv(source, digest)} />
+                  disabled={disabled || Boolean(downloads.pending[source])}
+                  onDownload={(digest) => void downloads.start(source, digest, `payroll-${source}-${periodId}.csv`)} />
               )}
             </article>
           ))}
@@ -110,15 +132,16 @@ export function HRPayrollInputs({
               Attach reviewed time and leave evidence to the snapshot
             </label>
           )}
-          {pending && <p role="status">Verifying {pending} CSV…</p>}
-          {error && <p role="alert">{error}</p>}
+          {downloads.pending.time && <p role="status">Verifying time CSV…</p>}
+          {downloads.pending.leave && <p role="status">Verifying leave CSV…</p>}
+          {downloads.error && <p role="alert">{downloads.error}</p>}
         </>
       )}
     </section>
   );
 }
 
-function PayrollInputResult({ data, title, disabled, onDownload }: {
+export function PayrollInputResult({ data, title, disabled, onDownload }: {
   data: Preview; title: PayrollInputSource; disabled: boolean; onDownload: (digest: string) => void;
 }) {
   const digest = data.csv_sha256;
@@ -173,29 +196,10 @@ function saveCsvFile(file: Blob, name: string) {
 export function FrozenPayrollInputs({ runId, evidence }: {
   runId: string; evidence: NonNullable<PayrollSnapshot['source_evidence']>;
 }) {
-  const download = useRef<AbortController | null>(null);
-  const [pending, setPending] = useState<PayrollInputSource>();
-  const [error, setError] = useState('');
-  useEffect(() => () => download.current?.abort(), []);
-
-  async function save(source: PayrollInputSource, digest: string) {
-    if (download.current) return;
-    const controller = new AbortController();
-    download.current = controller;
-    setPending(source);
-    setError('');
-    try {
-      const file = await downloadFrozenPayrollInput(runId, source, digest, controller.signal);
-      if (!controller.signal.aborted) saveCsvFile(file, `payroll-${source}-${runId}.csv`);
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        setError(formatApiError(failure, 'Unable to verify the frozen source file.'));
-      }
-    } finally {
-      download.current = null;
-      if (!controller.signal.aborted) setPending(undefined);
-    }
-  }
+  const downloads = useCsvDownloads(
+    (source, digest, signal) => downloadFrozenPayrollInput(runId, source, digest, signal),
+    'Unable to verify the frozen source file.'
+  );
 
   return (
     <section aria-label="Frozen time and leave evidence" className="space-y-2">
@@ -207,14 +211,15 @@ export function FrozenPayrollInputs({ runId, evidence }: {
           <p className="break-all text-sm">{source === 'time' ? 'Time' : 'Leave'} SHA-256{' '}
             <code>{evidence[`${source}_sha256`]}</code>
           </p>
-          <button className={hrButtonClass} type="button" disabled={Boolean(pending)}
-            onClick={() => void save(source, evidence[`${source}_sha256`])}>
+          <button className={hrButtonClass} type="button" disabled={Boolean(downloads.pending[source])}
+            onClick={() => void downloads.start(source, evidence[`${source}_sha256`], `payroll-${source}-${runId}.csv`)}>
             Download frozen {source} CSV
           </button>
         </div>
       ))}
-      {pending && <p role="status">Verifying frozen {pending} CSV…</p>}
-      {error && <p role="alert">{error}</p>}
+      {downloads.pending.time && <p role="status">Verifying frozen time CSV…</p>}
+      {downloads.pending.leave && <p role="status">Verifying frozen leave CSV…</p>}
+      {downloads.error && <p role="alert">{downloads.error}</p>}
     </section>
   );
 }

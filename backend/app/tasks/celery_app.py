@@ -3,11 +3,12 @@ from __future__ import annotations
 import structlog
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import setup_logging, task_failure, worker_ready
+from celery.signals import setup_logging, task_failure, worker_ready, worker_shutting_down
 
 from app.config import get_settings
 from app.observability import configure_logging
 from app.services.exception_reporter import report_celery_task_failure
+from app.tasks.worker_heartbeat import clear_worker_heartbeat, record_worker_heartbeat
 from app.utils.recovery_destination import is_recovery_issuance_enabled
 
 settings = get_settings()
@@ -116,10 +117,18 @@ def _configure_worker_logging(**_) -> None:
 
 @worker_ready.connect
 def _on_worker_ready(sender, **_):
+    hostname = getattr(sender, "hostname", "unknown")
+    record_worker_heartbeat(hostname, settings=settings)
     _logger.info(
         "worker_ready",
-        worker_hostname=getattr(sender, "hostname", "unknown"),
+        worker_hostname=hostname,
     )
+
+
+@worker_shutting_down.connect
+def _on_worker_shutting_down(sender=None, **_):
+    hostname = getattr(sender, "hostname", None) if sender is not None else None
+    clear_worker_heartbeat(hostname, settings=settings)
 
 
 @task_failure.connect

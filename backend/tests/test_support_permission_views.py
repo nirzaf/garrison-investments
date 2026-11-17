@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, text, update
 
 from app.database import AsyncSessionLocal
 from app.models.activity_log import ActivityLog
@@ -215,7 +215,15 @@ async def test_support_view_requires_live_review_and_the_requesters_session(kind
             async with AsyncSessionLocal() as db:
                 source = await db.get(ActivityLog, event_id)
                 assert source is not None
-                source.deleted_at = utc_now()
+                archived_at = utc_now()
+                source.storage_tier = "archive"
+                source.archived_at = archived_at
+                source.retention_until = archived_at - timedelta(seconds=1)
+                await db.flush()
+                await db.execute(
+                    text("SELECT set_config('garrison.audit_retention_purge', 'allow', true)")
+                )
+                await db.execute(delete(ActivityLog).where(ActivityLog.id == event_id))
                 await db.commit()
             assert (await maker.get(projection)).status_code == 404
         else:

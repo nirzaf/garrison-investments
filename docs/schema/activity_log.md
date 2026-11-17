@@ -61,6 +61,10 @@ Audit and operational events with actor, request, context, and retention metadat
 | `ix_activity_log_storage_tier` | `btree` | `storage_tier` | No | — |
 | `ix_activity_log_user_action` | `btree` | `user_id, action` | No | — |
 
+## Immutability and retention triggers
+
+[Revision 094](../../backend/alembic/versions/202605310094_activity_log_immutability.py) installs `prevent_activity_log_mutation()` (`BEFORE UPDATE OR DELETE` and `BEFORE TRUNCATE`) on `activity_log`. Core event columns (`id`, `user_id`, `event_type`, `severity`, `action`, `entity_type`, `entity_id`, request/session/network metadata, `comments`, `context_payload`, `old_values`, `new_values`, `created_at`, `deleted_at`) are immutable. Only `hot -> archive` tier transitions (`storage_tier`, `archived_at`) and non-decreasing `retention_until` extensions are permitted on `UPDATE`. `DELETE` requires both an archived row with a `retention_until` deadline and the transaction-local retention purge guard set only by `AuditService.purge_logs()` when `LOG_PURGE_ENABLED=true` with a verified `scheduled_expiry` policy; `TRUNCATE` is unconditionally blocked.
+
 ## Business audit streams
 
 [Revision 092](../../backend/alembic/versions/202605310092_business_log_streams.py)

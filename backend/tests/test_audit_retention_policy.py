@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, insert, select, text
+from sqlalchemy import delete, insert, select, text, update
 from structlog.testing import capture_logs
 
 from app.config import Settings, get_settings
@@ -258,6 +258,14 @@ async def test_retention_inventory_can_resume_at_the_original_cutoff(
         ]
     finally:
         async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                update(ActivityLog)
+                .where(ActivityLog.id.in_(ids))
+                .values(storage_tier="archive", archived_at=cutoff, retention_until=cutoff)
+            )
+            await session.execute(
+                text("SELECT set_config('garrison.audit_retention_purge', 'allow', true)")
+            )
             await session.execute(delete(ActivityLog).where(ActivityLog.id.in_(ids)))
 
 

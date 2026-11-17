@@ -194,3 +194,15 @@ def test_every_feature_permission_denial_is_explicit_for_each_role() -> None:
         actor = User(role=role)
         for permission in ALL_PERMISSIONS | HR_PERMISSIONS:
             assert has_permission(actor, permission) is (permission in grants)
+
+
+def test_production_roles_keep_policy_gated_payroll_and_hr_cases_disabled() -> None:
+    gated = {
+        "hr:payroll:prepare",
+        "hr:payroll:approve",
+        "hr:payroll:sensitive",
+        "hr:cases:restricted",
+    }
+    for role in VALID_ROLES:
+        assert gated.isdisjoint(ROLE_PERMISSIONS[role])
+        assert navigation_visibility(role)["employee-relations"] is False

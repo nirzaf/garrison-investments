@@ -75,6 +75,8 @@ describe('support oversight UI helpers and gating', () => {
     expect(html).toContain('Check configuration posture');
     expect(html).toContain('Load incident summary');
     expect(html).toContain('Explain policy rule');
+    expect(html).toContain('value="report"');
+    expect(html).toContain('value="image"');
     expect(html).not.toContain('Restore backup');
     expect(html).not.toContain('Retry job');
     expect(html).not.toContain('Save config');

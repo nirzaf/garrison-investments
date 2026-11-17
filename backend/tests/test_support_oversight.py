@@ -12,7 +12,7 @@ from pydantic import SecretStr
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import DBAPIError
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.database import AsyncSessionLocal
 from app.models.activity_log import ActivityLog
 from app.models.approval import Approval
@@ -724,6 +724,135 @@ async def test_backup_provenance_distinguishes_db_only_offhost_and_restore_drill
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_backup_monitor_reads_ingested_signed_receipts_end_to_end(tmp_path) -> None:
+    await skip_if_database_unavailable()
+    import hashlib
+    from pathlib import Path
+
+    from app.services.backup_receipt_ingestion import (
+        ingest_publication_receipt,
+        ingest_restore_drill_receipt,
+        record_local_scheduled_db_attempt,
+    )
+    from scripts.backup_set_contract import (
+        DestinationIdentity,
+        FailureDomains,
+        PublicationReceipt,
+        RecoveryPolicy,
+        RestoreDrillReceipt,
+        RetentionRules,
+        canonical_bytes,
+        sign_publication_receipt,
+        sign_restore_drill,
+    )
+
+    now = utc_now()
+    key = bytes(range(32))
+    key_file = Path(tmp_path) / "key"
+    key_file.write_bytes(key)
+    key_file.chmod(0o600)
+    policy = RecoveryPolicy(
+        decision_id="D-29-RECOVERY",
+        policy_id="e2e-policy",
+        revision="v1",
+        rpo_minutes=120,
+        rto_minutes=120,
+        backup_interval_minutes=30,
+        maximum_capture_pause_seconds=60,
+        maximum_publication_delay_minutes=15,
+        minimum_spool_free_bytes=1024,
+        retention_rules=RetentionRules(
+            daily_days=2, monthly_months=2, keep_last_good=1, held_set_ids=set()
+        ),
+        destination_identity=DestinationIdentity(
+            endpoint="localhost:9020", bucket="independent-e2e", prefix="app/test", secure=False
+        ),
+        failure_domains=FailureDomains(source="primary", destination="offhost"),
+        key_custodians=["Custodian 1", "Custodian 2"],
+        operator="Op 1",
+        substitute_operator="Op 2",
+        exercise_interval="monthly",
+        required_artifact_categories={"application_database", "objects", "configuration"},
+        required_configuration_paths={"compose.yml"},
+        source_environment="test",
+        approval_ref="test-approval",
+        approved_at=now - timedelta(days=1),
+    )
+    policy_path = Path(tmp_path) / "policy.json"
+    policy_path.write_bytes(canonical_bytes(policy))
+    policy_sha = hashlib.sha256(policy_path.read_bytes()).hexdigest()
+    set_id = hashlib.sha256(str(now.timestamp()).encode()).hexdigest()[:32]
+    manifest_sha = "f" * 64
+
+    async with AsyncSessionLocal() as session:
+        await record_local_scheduled_db_attempt(
+            session, outcome="pass", captured_at=now - timedelta(seconds=5)
+        )
+        await ingest_publication_receipt(
+            session,
+            sign_publication_receipt(
+                PublicationReceipt(
+                    backup_set_id=set_id,
+                    manifest_sha256=manifest_sha,
+                    snapshot_at_utc=now - timedelta(seconds=4),
+                    remote_verified_at_utc=now - timedelta(seconds=3),
+                    source_sha="a" * 40,
+                    source_environment="test",
+                    policy_revision="v1",
+                    policy_sha256=policy_sha,
+                    configuration_sha256="b" * 64,
+                    destination_identity=policy.destination_identity,
+                    object_count=2,
+                ),
+                key=key,
+                key_id="k1",
+            ),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha,
+            key_file=key_file,
+            key_id="k1",
+        )
+        await ingest_restore_drill_receipt(
+            session,
+            sign_restore_drill(
+                RestoreDrillReceipt(
+                    backup_set_id=set_id,
+                    manifest_sha256=manifest_sha,
+                    source_sha="a" * 40,
+                    source_environment="test",
+                    policy_revision="v1",
+                    policy_sha256=policy_sha,
+                    covers_database=True,
+                    covers_objects=True,
+                    outcome="pass",
+                    rto_minutes=9,
+                    started_at_utc=now - timedelta(seconds=2),
+                    verified_at_utc=now - timedelta(seconds=1),
+                ),
+                key=key,
+                key_id="k1",
+            ),
+            policy_path=policy_path,
+            expected_policy_sha256=policy_sha,
+            key_file=key_file,
+            key_id="k1",
+        )
+        await session.commit()
+
+    async with client() as actor:
+        operator_id, _, _ = await login(actor, custodian=False)
+        await _grant(operator_id, "backups.read")
+        res = await actor.get(f"{API}/monitor/backups")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["overall_recovery_posture"] == "complete_verified"
+        assert body["authenticated_backup_set_status"] == "verified"
+        assert body["isolated_restore_status"] == "verified"
+        assert body["database_backup_status"] == "current"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
 async def test_production_recovery_delivery_gate_and_nonsecret_outcome_notices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1065,3 +1194,97 @@ def test_support_cli_oversight_commands_and_guardrails(
         stderr=io.StringIO(),
     )
     assert rc_bad != 0 and not bad_out.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_jobs_monitor_exposes_worker_heartbeat_stale_outbox_and_honest_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from app.models.task_outbox import TaskOutbox
+    from app.tasks.worker_heartbeat import read_worker_heartbeats
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            delete(TaskOutbox).where(TaskOutbox.status.in_(["failed", "dispatched"]))
+        )
+        await session.execute(
+            delete(SupportRecoveryDelivery).where(SupportRecoveryDelivery.status == "unknown")
+        )
+        await session.commit()
+
+    stale_key = f"report-pdf:{uuid4()}"
+    try:
+        async with client() as actor:
+            operator_id, _, _ = await login(actor, custodian=False)
+            await _grant(operator_id, "jobs.read")
+
+            # 1. Healthy broker without worker heartbeat must stay partial / freshness unknown.
+            async def ok_broker(_: object) -> str:
+                return "operational"
+
+            async def missing_worker(
+                _settings: object, _now: object
+            ) -> tuple[str, int | None, int]:
+                return "unknown", None, 0
+
+            monkeypatch.setattr("app.services.support_monitors._ping_broker", ok_broker)
+            monkeypatch.setattr(
+                "app.services.support_monitors.read_worker_heartbeats", missing_worker
+            )
+            res = await actor.get(f"{API}/monitor/jobs")
+            assert res.status_code == 200
+            body = res.json()
+            assert body["broker_status"] == "operational"
+            assert body["worker_status"] == "unknown"
+            assert body["source_status"] == "partial"
+            assert body["freshness"] == "unknown"
+            assert "activity_log" in body["history_coverage"]
+            assert any(item["task_name"] == "post_hr_leave_accruals" for item in body["schedules"])
+            assert any(
+                item["task_name"] == "check_late_reports" and item["queue"] == "maintenance"
+                for item in body["schedules"]
+            )
+
+            # 2. Active worker heartbeat + no failed/stale outbox -> operational / current
+            async def live_worker(_settings: object, _now: object) -> tuple[str, int | None, int]:
+                return "operational", 4, 1
+
+            monkeypatch.setattr("app.services.support_monitors.read_worker_heartbeats", live_worker)
+            ok_res = await actor.get(f"{API}/monitor/jobs")
+            assert ok_res.status_code == 200
+            ok_body = ok_res.json()
+            assert ok_body["worker_status"] == "operational"
+            assert ok_body["worker_heartbeat_age_seconds"] == 4
+            assert ok_body["source_status"] == "operational"
+            assert ok_body["freshness"] == "current"
+
+            # 3. Stale dispatched outbox entry -> degraded / stale
+            async with AsyncSessionLocal() as session:
+                session.add(
+                    TaskOutbox(
+                        dedupe_key=stale_key,
+                        task_name="generate_report_pdf",
+                        args_json=[str(uuid4()), None],
+                        kwargs_json={"email_after": False},
+                        status="dispatched",
+                        attempts=1,
+                        dispatched_at=utc_now() - timedelta(minutes=15),
+                    )
+                )
+                await session.commit()
+
+            stale_res = await actor.get(f"{API}/monitor/jobs")
+            assert stale_res.status_code == 200
+            stale_body = stale_res.json()
+            assert stale_body["outbox_stale_dispatched"] >= 1
+            assert stale_body["source_status"] == "degraded"
+            assert stale_body["freshness"] == "stale"
+
+            # 4. Also exercise real read_worker_heartbeats against configured Redis safely
+            _ = await read_worker_heartbeats(get_settings(), utc_now())
+    finally:
+        async with AsyncSessionLocal() as session:
+            await session.execute(delete(TaskOutbox).where(TaskOutbox.dedupe_key == stale_key))
+            await session.commit()

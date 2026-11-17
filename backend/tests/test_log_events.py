@@ -11,7 +11,8 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 import uvicorn
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.exc import DBAPIError
 
 from app.database import AsyncSessionLocal, check_database, engine
 from app.main import create_app
@@ -333,31 +334,31 @@ async def test_log_stream_has_a_server_deadline(monkeypatch: pytest.MonkeyPatch)
 
 async def test_unconfigured_log_retention_archives_without_purging_old_logs() -> None:
     await skip_if_database_unavailable()
+    action = f"system.old_log.{uuid4().hex}"
     async with AsyncSessionLocal() as session:
-        await AuditService(session).record(
-            action="system.old_log",
-            event_type="system_event",
-            severity="INFO",
-            comments="Old hot log",
+        session.add(
+            ActivityLog(
+                action=action,
+                event_type="system_event",
+                severity="INFO",
+                comments="Old hot log",
+                created_at=utc_now() - timedelta(days=450),
+            )
         )
         await session.commit()
-        logs, _ = await AuditService(session).list_logs(action="system.old_log")
-        assert logs
-        log = logs[0]
-        log.created_at = utc_now() - timedelta(days=400)
-        await session.commit()
 
-        archived = await AuditService(session).archive_logs(hot_retention_days=30)
+        archived = await AuditService(session).archive_logs(
+            hot_retention_days=30,
+            cutoff_at=utc_now() - timedelta(days=400),
+        )
         assert archived >= 1
         await session.commit()
 
         logs, _ = await AuditService(session).list_logs(
-            action="system.old_log",
+            action=action,
             storage_tier="archive",
         )
-        assert logs
-        logs[0].archived_at = utc_now() - timedelta(days=400)
-        await session.commit()
+        assert len(logs) == 1
 
         log = logs[0]
         log.retention_until = utc_now() - timedelta(seconds=1)
@@ -369,6 +370,75 @@ async def test_unconfigured_log_retention_archives_without_purging_old_logs() ->
         with pytest.raises(AuditRetentionPolicyError, match="scheduled_expiry_policy_required"):
             await audit.purge_logs(archive_retention_days=365)
         assert await session.get(ActivityLog, log.id) is not None
+
+
+async def test_activity_log_trigger_blocks_unauthorized_mutations_and_deletes() -> None:
+    await skip_if_database_unavailable()
+    log_id = uuid4()
+    initial_deadline = utc_now() + timedelta(days=30)
+    async with AsyncSessionLocal() as session:
+        session.add(
+            ActivityLog(
+                id=log_id,
+                action=f"audit.immutable.{uuid4().hex}",
+                event_type="user_action",
+                severity="INFO",
+                comments="Original event",
+                new_values={"status": "submitted"},
+                retention_until=initial_deadline,
+            )
+        )
+        await session.commit()
+
+    for statement in (
+        update(ActivityLog).where(ActivityLog.id == log_id).values(action="audit.forged"),
+        update(ActivityLog).where(ActivityLog.id == log_id).values(comments="Rewritten"),
+        update(ActivityLog).where(ActivityLog.id == log_id).values(new_values={"status": "forged"}),
+        update(ActivityLog)
+        .where(ActivityLog.id == log_id)
+        .values(created_at=utc_now() - timedelta(days=10)),
+        update(ActivityLog).where(ActivityLog.id == log_id).values(deleted_at=utc_now()),
+        update(ActivityLog)
+        .where(ActivityLog.id == log_id)
+        .values(retention_until=initial_deadline - timedelta(days=5)),
+        update(ActivityLog).where(ActivityLog.id == log_id).values(retention_until=None),
+        delete(ActivityLog).where(ActivityLog.id == log_id),
+    ):
+        async with AsyncSessionLocal() as session:
+            with pytest.raises(DBAPIError):
+                await session.execute(statement)
+            await session.rollback()
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('garrison.audit_retention_purge', 'allow', true)")
+        )
+        with pytest.raises(DBAPIError):
+            await session.execute(delete(ActivityLog).where(ActivityLog.id == log_id))
+        await session.rollback()
+
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(DBAPIError):
+            await session.execute(text("TRUNCATE TABLE activity_log"))
+        await session.rollback()
+
+    # Valid monotonic retention extension and archive transition remain permitted.
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(ActivityLog)
+            .where(ActivityLog.id == log_id)
+            .values(
+                storage_tier="archive",
+                archived_at=utc_now(),
+                retention_until=initial_deadline + timedelta(days=30),
+            )
+        )
+        await session.commit()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                update(ActivityLog).where(ActivityLog.id == log_id).values(storage_tier="hot")
+            )
+        await session.rollback()
 
 
 @asynccontextmanager

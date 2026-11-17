@@ -12,7 +12,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import func, select
 
-from app.database import engine
+from app.database import AsyncSessionLocal, engine
 from app.models.document import DocumentVersion
 from app.models.user import User
 from app.services.document_service import DocumentService
@@ -582,3 +582,39 @@ async def test_concurrent_document_approvals_activate_exactly_one_version() -> N
             )
         )
     assert active == 1
+
+
+async def test_disabled_account_and_midflight_access_revision_revocation_deny_access() -> None:
+    await require_database()
+    async with create_test_client() as client:
+        team_a, team_b = await two_teams(client)
+        doc = await upload_document(client, team_a)
+        doc_id = doc["id"]
+
+        # Same role (quantity_surveyor / site_supervisor), other project cannot read document.
+        cross_doc = await client.get(
+            f"/api/v1/documents/{doc_id}",
+            headers=auth(team_b["supervisor_token"]),
+        )
+        assert cross_doc.status_code in {403, 404}
+
+        # Disabled account is denied even with an unexpired bearer token.
+        me = (await client.get("/api/v1/auth/me", headers=auth(team_a["op_token"]))).json()
+        async with AsyncSessionLocal() as session:
+            user = await session.get(User, UUID(me["id"]))
+            assert user is not None
+            user.is_active = False
+            await session.commit()
+        denied_disabled = await client.get("/api/v1/projects", headers=auth(team_a["op_token"]))
+        assert denied_disabled.status_code == 401
+
+        # Mid-flight access_revision bump / role downgrade invalidates existing bearer token.
+        me_b = (await client.get("/api/v1/auth/me", headers=auth(team_b["op_token"]))).json()
+        async with AsyncSessionLocal() as session:
+            user_b = await session.get(User, UUID(me_b["id"]))
+            assert user_b is not None
+            user_b.role = "site_supervisor"
+            user_b.access_revision += 1
+            await session.commit()
+        denied_revoked = await client.get("/api/v1/projects", headers=auth(team_b["op_token"]))
+        assert denied_revoked.status_code == 401

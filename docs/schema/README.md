@@ -72,7 +72,7 @@ A dash in the default column means the database has no server default. Applicati
 | [`approvals`](approvals.md) | Approval inbox items with submitter, approver, delegation, escalation, and decision state. |
 | [`notifications`](notifications.md) | User notifications with read, mute, and email delivery state. |
 | [`import_batches`](import_batches.md) | Spreadsheet import status, row counts, validation errors, and results. |
-| [`activity_log`](activity_log.md) | Audit and operational events with actor, request, context, and retention metadata. |
+| [`activity_log`](activity_log.md) | Audit and operational events with actor, request, context, retention metadata, and [immutability trigger](../../backend/alembic/versions/202605310094_activity_log_immutability.py). |
 | [`business_log_streams`](activity_log.md#business-audit-streams) | Open and close timestamps for bounded business audit streams. |
 | [`idempotency_records`](idempotency_records.md) | Request keys and resource references used to deduplicate retried writes. |
 | [`task_outbox`](task_outbox.md) | Background work recorded in the same database transaction as the operation that schedules it. |

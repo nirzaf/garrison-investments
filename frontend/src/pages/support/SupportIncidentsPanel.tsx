@@ -97,6 +97,7 @@ export function SupportIncidentsPanel({ onExpired }: { onExpired: () => void }) 
           <div className="flex flex-wrap gap-3 text-theme-text-secondary">
             <span>Scope: {statusLabel(data.scope.kind)}</span>
             <span>Source: {statusLabel(data.source_status)}</span>
+            <span>Freshness: {statusLabel(data.freshness)}</span>
             <span>
               Observed: <time dateTime={data.observed_at}>{formatObserved(data.observed_at)}</time>
             </span>

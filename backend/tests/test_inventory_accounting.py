@@ -824,3 +824,38 @@ async def test_item_responses_mask_price_by_role() -> None:
         assert masked_detail.json()["unit_cost"] is None
 
     assert await read_unit_cost(fx.item.id) == Decimal("12.50")
+
+
+async def test_stock_reconciliation_report_detects_drift_read_only_without_prices() -> None:
+    await skip_if_database_unavailable()
+    from scripts.report_inventory_reservation_drift import collect_stock_reconciliation
+
+    fx = await seed(
+        on_hand=Decimal("2"),
+        quantity=Decimal("5"),
+        status="reserved",
+        line_reserved=Decimal("5"),
+        stock_reserved=Decimal("5"),
+    )
+    async with AsyncSessionLocal() as session:
+        report = await collect_stock_reconciliation(session)
+        assert report["read_only"] is True
+        assert len(report["report_sha256"]) == 64
+        drift_items = {
+            (row["item_id"], row["location_id"]): row
+            for row in report["findings"]["stock_reservation_drift"]
+        }
+        assert (str(fx.item.id), str(fx.location.id)) in drift_items
+        movement_items = {
+            (row["item_id"], row["location_id"]): row
+            for row in report["findings"]["movement_balance_drift"]
+        }
+        assert (str(fx.item.id), str(fx.location.id)) in movement_items
+        # Private pricing and supplier identifiers must never appear in reconciliation output.
+        serialized = str(report)
+        assert "12.50" not in serialized
+        assert "unit_cost" not in serialized
+        assert "supplier_id" not in serialized
+
+    stock = await read_stock(fx.item.id, fx.location.id)
+    assert (stock.on_hand_qty, stock.reserved_qty) == (Decimal("2"), Decimal("5"))

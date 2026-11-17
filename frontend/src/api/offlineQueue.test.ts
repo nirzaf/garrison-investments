@@ -125,3 +125,109 @@ describe('queued report file rules shared with the worker', () => {
     expect(fileRules.uploadRetry(4, true, 1000)).toEqual({ attempts: 1, retryAfter: 3000 });
   });
 });
+
+const draftSyncUrl = new URL('../../public/report-draft-sync.js', import.meta.url).href;
+const draftSync = (await import(
+  /* @vite-ignore */ draftSyncUrl
+)) as typeof import('../../public/report-draft-sync.js');
+
+describe('queued report draft sync invariants shared with the worker', () => {
+  const validPayload = {
+    project_id: '11111111-1111-1111-1111-111111111111',
+    report_date: '2026-11-17',
+    work_location: 'Block A',
+    work_completed: 'Slab pour',
+    next_day_plan: 'Curing',
+    progress_percentage: 45,
+    inspection_status: 'passed',
+    manpower_total: 0,
+    overtime_hours: 0,
+    safety_incidents: 0,
+    wir_status: 'not_required',
+    supervisor_update_ids: [],
+    photo_refs: [],
+    attachment_refs: [],
+    extra_fields: {
+      weather_condition: 'Clear',
+      site_visitors: 'None',
+      subcontractors: 'None',
+      wir_number: 'WIR-101'
+    },
+    manpower_entries: [],
+    equipment_entries: [],
+    material_consumption: []
+  };
+
+  it('retains pendingCreate across retries and suspends cleanly on 401 sign-out mid-sync', async () => {
+    const remembered: unknown[] = [];
+    const createdPayloads: unknown[] = [];
+    const outcome = await draftSync.persistOwnedDraft(
+      {
+        localDraftId: 'draft-1',
+        localRevision: 2,
+        lastSyncedLocalRevision: 0,
+        pendingCreate: { revision: 1, payload: validPayload },
+        payload: { ...validPayload, work_completed: 'Local edit 2' }
+      },
+      {
+        rememberCreate: async (pending) => {
+          remembered.push(pending);
+          return true;
+        },
+        create: async (payload) => {
+          createdPayloads.push(payload);
+          throw { status: 401 };
+        },
+        update: async () => {
+          throw new Error('unexpected update');
+        },
+        acknowledge: async () => {
+          throw new Error('unexpected acknowledge');
+        },
+        status: (error) => (error as { status?: number })?.status,
+        cancelled: () => false
+      }
+    );
+    expect(outcome).toBe('suspended');
+    expect(remembered).toEqual([{ revision: 1, payload: validPayload }]);
+    expect(createdPayloads).toEqual([validPayload]);
+  });
+
+  it('preserves local draft as conflict on 409 revision mismatch and retries on 503', async () => {
+    const baseDraft = {
+      localDraftId: 'draft-2',
+      localRevision: 3,
+      lastSyncedLocalRevision: 1,
+      baseServerRevision: 1,
+      serverReport: { id: 'rep-1', engineerId: 'eng-1' },
+      payload: validPayload
+    };
+    const conflictOutcome = await draftSync.persistOwnedDraft(baseDraft, {
+      rememberCreate: async () => true,
+      create: async () => {
+        throw new Error('unexpected create');
+      },
+      update: async () => {
+        throw { status: 409 };
+      },
+      acknowledge: async () => {},
+      status: (error) => (error as { status?: number })?.status,
+      cancelled: () => false
+    });
+    expect(conflictOutcome).toBe('conflict');
+
+    const retryOutcome = await draftSync.persistOwnedDraft(baseDraft, {
+      rememberCreate: async () => true,
+      create: async () => {
+        throw new Error('unexpected create');
+      },
+      update: async () => {
+        throw { status: 503 };
+      },
+      acknowledge: async () => {},
+      status: (error) => (error as { status?: number })?.status,
+      cancelled: () => false
+    });
+    expect(retryOutcome).toBe('retry');
+  });
+});

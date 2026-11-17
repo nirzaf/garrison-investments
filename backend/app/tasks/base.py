@@ -7,6 +7,7 @@ import structlog
 from celery import Task
 
 from app.observability import bind_log_context, clear_log_context
+from app.tasks.worker_heartbeat import record_worker_heartbeat, task_hostname
 
 logger = structlog.get_logger("celery.task")
 
@@ -20,6 +21,7 @@ class LoggedTask(Task):
     def before_start(self, task_id: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
         self._start_time = time.monotonic()
         bind_log_context(source_service="celery", instance_id=None)
+        record_worker_heartbeat(task_hostname(self))
         logger.info(
             "task_started",
             task_name=self.name,
@@ -36,6 +38,7 @@ class LoggedTask(Task):
         kwargs: dict[str, Any],
     ) -> None:
         duration = _elapsed(self._start_time)
+        record_worker_heartbeat(task_hostname(self))
         try:
             logger.info(
                 "task_succeeded",
@@ -55,6 +58,7 @@ class LoggedTask(Task):
         einfo: Any,
     ) -> None:
         duration = _elapsed(self._start_time)
+        record_worker_heartbeat(task_hostname(self))
         try:
             logger.error(
                 "task_failed",
@@ -77,6 +81,7 @@ class LoggedTask(Task):
         einfo: Any,
     ) -> None:
         duration = _elapsed(self._start_time)
+        record_worker_heartbeat(task_hostname(self))
         try:
             logger.warning(
                 "task_retried",

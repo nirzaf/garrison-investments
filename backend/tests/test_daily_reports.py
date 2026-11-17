@@ -845,3 +845,109 @@ async def test_report_revision_rejects_stale_edit_and_requires_reload_for_legacy
         submitted = await client.post(f"{path}/submit", headers=headers)
         assert submitted.status_code == 200
         assert submitted.json()["revision"] == 3
+
+
+async def test_outbox_recovers_stale_dispatch_caps_retries_and_completes_idempotently(
+    monkeypatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from datetime import timedelta
+
+    from app.tasks import outbox as outbox_module
+    from app.tasks import report as report_task
+    from app.utils.security import utc_now
+
+    async with create_test_client() as client:
+        setup = await setup_project_team(client)
+        created = await client.post(
+            "/api/v1/reports",
+            json=report_payload(setup["project_id"], setup["supervisor_update_id"]),
+            headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+        )
+        assert created.status_code == 201
+        report_id = created.json()["id"]
+        assert (
+            await client.post(
+                f"/api/v1/reports/{report_id}/submit",
+                headers={"Authorization": f"Bearer {setup['engineer_token']}"},
+            )
+        ).status_code == 200
+        assert (
+            await client.post(
+                f"/api/v1/reports/{report_id}/approve",
+                json={"comments": "Approved for stale recovery.", "target_covered": True},
+                headers={"Authorization": f"Bearer {setup['manager_token']}"},
+            )
+        ).status_code == 200
+
+    dedupe_key = f"report-pdf:{report_id}"
+    dispatched_ids: list[str] = []
+
+    def send_task(name, *, args, kwargs, task_id, **options):
+        dispatched_ids.append(task_id)
+
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", send_task)
+
+    # Simulate initial dispatch followed by worker crash before PDF export commits.
+    async with AsyncSessionLocal() as guard:
+        await guard.execute(
+            select(TaskOutbox.id).where(TaskOutbox.dedupe_key != dedupe_key).with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 1
+        async with AsyncSessionLocal() as session:
+            entry = await session.scalar(
+                select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+            )
+            assert entry is not None and entry.status == "dispatched" and entry.attempts == 1
+            entry.dispatched_at = utc_now() - timedelta(minutes=10)
+            await session.commit()
+
+        # Stale dispatch must be re-dispatched with a distinct retry task_id.
+        assert await _dispatch_task_outbox() == 1
+        assert len(dispatched_ids) == 2 and dispatched_ids[1].endswith(":retry:2")
+
+        # Worker executes twice concurrently with email_after=True; only one export & email.
+        email_calls: list[str] = []
+        monkeypatch.setattr(report_task.send_report_email, "delay", email_calls.append)
+        first_export = await asyncio.to_thread(
+            report_task.generate_report_pdf, report_id, None, email_after=True
+        )
+        assert len(email_calls) == 1
+        async with AsyncSessionLocal() as session:
+            export = await session.get(ReportExport, UUID(first_export))
+            assert export is not None
+            export.email_status = "sent"
+            await session.commit()
+        second_export = await asyncio.to_thread(
+            report_task.generate_report_pdf, report_id, None, email_after=True
+        )
+        assert first_export == second_export
+        assert len(email_calls) == 1
+
+        async with AsyncSessionLocal() as session:
+            completed_entry = await session.scalar(
+                select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+            )
+            assert completed_entry is not None and completed_entry.status == "completed"
+
+        # Exhausted stale dispatched entry transitions cleanly to failed.
+        exhausted_key = f"report-pdf:{uuid4()}"
+        async with AsyncSessionLocal() as session:
+            session.add(
+                TaskOutbox(
+                    dedupe_key=exhausted_key,
+                    task_name="generate_report_pdf",
+                    args_json=[str(uuid4()), None],
+                    kwargs_json={"email_after": False},
+                    status="dispatched",
+                    attempts=outbox_module.MAX_OUTBOX_ATTEMPTS,
+                    dispatched_at=utc_now() - timedelta(minutes=10),
+                )
+            )
+            await session.commit()
+        assert await _dispatch_task_outbox() == 0
+        async with AsyncSessionLocal() as session:
+            failed_entry = await session.scalar(
+                select(TaskOutbox).where(TaskOutbox.dedupe_key == exhausted_key)
+            )
+            assert failed_entry is not None and failed_entry.status == "failed"
