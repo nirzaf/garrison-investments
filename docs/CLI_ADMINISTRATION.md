@@ -69,6 +69,7 @@ subcommand's `--help`.
 | `hr company-policy` | `list`, `publish` | Publish an edition and pin the current approved company policy file when applicable. |
 | `hr my-policy` | `list`, `show`, `download`, `acknowledge` | Read and acknowledge editions visible to the linked employee. |
 | `hr leave` | `policy show`, `policy propose`, `policy decide`, `requests list`, `requests submit`, `requests decide`, `balances` | Leave management, leave approval or policy management, depending on the command. |
+| `hr requests` | `list`, `show`, `assignees`, `assign`, `resolve` | HR service request processing. Approval and rejection also require sensitive employee access. |
 | `hr offers` | `list`, `status`, `draft`, `decide`, `reissue`, `convert` | Follow offer status and version history. Conversion requires an accepted offer and an open requisition with capacity. |
 | `hr requisitions` | `list`, `status`, `create`, `decide` | Find requisitions, record requested headcount, and move a requisition through its approval and hiring states. |
 | `hr candidates` | `list`, `status`, `create` | Find or register candidates and inspect their details in an owner-only file. |
@@ -83,6 +84,19 @@ subcommand's `--help`.
 Use `hr reports sites` to page through primary site IDs and
 `hr reports summary --project-id ID --department-id ID --date-from YYYY-MM-DD --date-to YYYY-MM-DD`
 to filter the report. Both dates are required when applying a date range.
+
+Use `hr requests list --status in_review --limit 20 --offset 0` to page through
+the HR service queue. `hr requests show --request-id ID` shows status and
+assignment. Add `--output PRIVATE.json` to save the full request, including
+private text, to a new owner-only file.
+
+For a handoff, obtain the user ID from `hr requests assignees` and put
+`assigned_to_id` and `reason` in a private JSON file. For a decision, supply
+`status` and any applicable `resolution_notes` or `generated_letter_id`.
+Run `hr requests assign --request-id ID --file PRIVATE.json --dry-run`
+or substitute `resolve` for a decision. Repeat with `--apply --expect HASH`
+to submit the actor-bound plan. Run a fresh dry run if the request changes.
+The API enforces the assignee, workflow state, and letter eligibility.
 
 Use `hr documents list --candidate-id ID --document-type candidate_cv` to
 find a candidate's vault record. The first upload uses

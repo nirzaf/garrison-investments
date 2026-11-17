@@ -30,6 +30,8 @@ from app.schemas.hr import (
     EmployeeAdvancePayment,
     EmployeeAdvanceRequest,
     EmployeeAdvanceResponse,
+    HrServiceRequestAssignmentRequest,
+    HrServiceRequestResolveRequest,
     InterviewCreateRequest,
     InterviewUpdateRequest,
     LeaveDateEvidenceCreate,
@@ -96,6 +98,7 @@ MAX_DOCUMENT_BYTES = 60 * 1024 * 1024
 PERM_READ = "hr:employees:read"
 PERM_MANAGE = "hr:employees:manage"
 PERM_SENSITIVE = "hr:employees:sensitive"
+PERM_REQUESTS = "hr:requests:process"
 PERM_LEAVE_APPROVE = "hr:leave:approve"
 PERM_LEAVE_MANAGE = "hr:leave:manage"
 PERM_POLICY_MANAGE = "hr:policy:manage"
@@ -4116,7 +4119,125 @@ def _download_my_company_policy(args: argparse.Namespace, ctx: Context) -> dict[
     return {"policy_id": args.policy_id, "version": policy["version"], "sha256": expected}
 
 
+def _service_request_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        field: row[field]
+        for field in (
+            "id",
+            "request_code",
+            "employee_id",
+            "request_type",
+            "status",
+            "assigned_to_id",
+            "generated_document_id",
+            "generated_letter_id",
+            "updated_at",
+        )
+    }
+
+
+def _list_service_requests(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
+    result = ctx.request(
+        "GET", f"{HR}/requests", params=query(args, "employee_id", "req_status", "limit", "offset")
+    )
+    return {
+        "items": [_service_request_summary(row) for row in result["items"]],
+        "total": result["total"],
+    }
+
+
+def _show_service_request(args: argparse.Namespace, ctx: Context) -> dict[str, Any]:
+    row = ctx.request("GET", f"{HR}/requests/{args.request_id}")
+    if args.output is not None:
+        try:
+            write_private_bytes(args.output, (json.dumps(row, ensure_ascii=False) + "\n").encode())
+        except OSError:
+            raise CLIError("Could not write a new private HR request file.") from None
+    return _service_request_summary(row)
+
+
+def _process_service_request(args: argparse.Namespace, ctx: Context) -> Result:
+    require_preview_permission(ctx, PERM_REQUESTS)
+    path = f"{HR}/requests/{args.request_id}"
+    current = _service_request_summary(ctx.request("GET", path))
+    action = args.request_action
+    schema = (
+        HrServiceRequestAssignmentRequest if action == "assign" else HrServiceRequestResolveRequest
+    )
+    try:
+        body = json.loads(read_private_bytes(args.file, max_bytes=8192))
+        if not isinstance(body, dict) or "expected_updated_at" in body:
+            raise ValueError
+        payload = schema.model_validate(
+            {**body, "expected_updated_at": current["updated_at"]}, extra="forbid"
+        ).model_dump(mode="json", exclude_unset=True)
+    except ValueError:
+        raise CLIError("Supply valid private HR request JSON.") from None
+    if payload.get("status") in {"approved", "rejected"}:
+        require_preview_permission(ctx, PERM_SENSITIVE)
+    plan = checked_plan(
+        args,
+        ctx,
+        {
+            "operation": args.command_name,
+            "request": current,
+            "change": {key: payload[key] for key in ("assigned_to_id", "status") if key in payload},
+            "input_sha256": sha256_json(payload),
+        },
+        bind_actor=True,
+    )
+    if args.dry_run:
+        return Result(plan, outcome="preview")
+    ctx.request("POST", f"{path}/{action}", json=payload, write=True)
+    expected = {
+        key: value
+        for key, value in payload.items()
+        if key in {"assigned_to_id", "status", "resolution_notes", "generated_document_id"}
+        or (key == "generated_letter_id" and value is not None)
+    }
+    result = verified(
+        ctx,
+        lambda: ctx.request("GET", path),
+        lambda saved: (
+            saved["id"] == current["id"]
+            and all(saved.get(key) == value for key, value in expected.items())
+        ),
+    )
+    return Result(
+        _service_request_summary(result.data),
+        changed=action != "assign" or current["assigned_to_id"] != payload["assigned_to_id"],
+    )
+
+
 def register(registry: Registry) -> None:
+    parser = registry.add("hr requests list", _list_service_requests, permission=PERM_REQUESTS)
+    parser.add_argument("--employee-id", type=uuid_arg)
+    parser.add_argument(
+        "--status",
+        dest="req_status",
+        choices=("open", "in_review", "approved", "completed", "rejected", "cancelled"),
+    )
+    page(parser)
+    parser = registry.add("hr requests show", _show_service_request, permission=PERM_REQUESTS)
+    parser.add_argument("--request-id", required=True, type=uuid_arg)
+    parser.add_argument("--output", type=Path)
+    registry.add(
+        "hr requests assignees",
+        lambda _args, ctx: ctx.request("GET", f"{HR}/requests/assignees"),
+        permission=PERM_REQUESTS,
+    )
+    for action in ("assign", "resolve"):
+        parser = registry.add(
+            f"hr requests {action}",
+            _process_service_request,
+            permission=PERM_REQUESTS,
+            mutates=True,
+            preview=True,
+        )
+        parser.add_argument("--request-id", required=True, type=uuid_arg)
+        parser.add_argument("--file", required=True, type=Path)
+        parser.set_defaults(request_action=action)
+        mode(parser)
     p = registry.add("hr roster list", _roster_list, permission=PERM_ATTENDANCE)
     p.add_argument("--date-from", required=True)
     p.add_argument("--date-to", required=True)

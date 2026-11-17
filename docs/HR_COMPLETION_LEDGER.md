@@ -1771,3 +1771,57 @@ backend Ruff and mypy and the OpenAPI and generated TypeScript checks passed.
 
 These results cover the local application and test data. Live HR acceptance,
 account onboarding and payroll operating approval remain open.
+
+## Slice 86 · verify the HR-only release candidate on self-hosted CI
+
+The verification branch tested `c06d18196f89d2ab2f4193de8def951532793b4c`
+through a manual self-hosted [CI run](https://github.com/nirzaf/garrison-investments/actions/runs/44016668981).
+All seven jobs passed, including 942 backend cases across both shards and
+68 Chrome cases. This candidate bundles the isolated training, leave,
+employment and CLI changes with the service-request categories and queue.
+It carries no Alembic, production Compose or deployment workflow changes
+relative to the deployed `06c0f9d` release. The manual verification run did
+not deploy the candidate.
+
+CI elapsed time was 800 seconds and summed job time was 1,528 seconds.
+The Chrome test steps took 428 and 413 seconds. Dependency and storage setup
+took 10 and 12 seconds for those jobs. The prior successful main run took
+815 seconds. Both runs used the same workflow settings, so this sample does
+not establish a pipeline speedup.
+
+## Slice 87 · production rollout of the HR candidate
+
+Main CI for `c06d181` stopped deployment because a Chrome assertion matched
+both a search result and the selected historical leave request. Commit
+`fa73693` scopes the assertion to the selected request. It passed three
+consecutive isolated Chrome repetitions and all seven jobs in the exact
+main CI, which took 804 seconds.
+[`c06d181` main CI](https://github.com/nirzaf/garrison-investments/actions/runs/44018706490) ·
+[`fa73693` main CI](https://github.com/nirzaf/garrison-investments/actions/runs/44020386126)
+
+Production deployment `44021927486` activated `fa73693` at schema
+`202605310061`. No migration ran. The standard pre-activation backup completed
+and was not omitted. The host receipt and database readback agreed, the public
+readiness endpoint reported `ready`, the unauthenticated HR queue returned
+401, and no running business role had a payroll grant. HR onboarding and
+authenticated HR acceptance remain pending.
+[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44021927486)
+
+## Slice 88 · HR service request queue in garrisonctl
+
+The CLI now pages and inspects the existing HR request queue and discovers
+eligible assignees. Assignment and resolution use an actor-bound dry run,
+the current request timestamp and API readback. Free-text fields stay out
+of terminal output. Full request detail can be saved to a new owner-only file.
+See the [CLI guide](CLI_ADMINISTRATION.md#workforce-administration).
+
+All 48 CLI tests passed, including a synthetic request paging, private-file,
+assignment, permission and resolution scenario against an HTTP mock. Ruff and
+mypy passed for the changed Python files.
+
+An isolated HTTP smoke test used the deployed source baseline at revision
+202605310061 plus the CLI changes and a fresh PostgreSQL 18 database. It
+verified denied access for a Quantity Surveyor, owner-only export, refusal of
+plans from a different actor or stale request, assignment between two
+synthetic HR Managers, and completion with persisted notes. The CLI changes
+have not been activated in production.

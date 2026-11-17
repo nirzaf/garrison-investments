@@ -30,12 +30,12 @@ where relevant, approved policy values, and the workflow's own checks.
 | --- | --- | --- |
 | Organization and employee directory | CODED | HR workspace departments, positions, reporting lines, work locations, primary membership status, employment history and project assignment requests. Approval remains with an authorized project manager or director. |
 | Sensitive records | CODED | HR Manager private profile and category-gated documents. Encrypted fields require a dedicated `HR_ENCRYPTION_KEY` and approved key custody. |
-| Recruitment and onboarding | CODED | HR workspace requisitions (including requested headcount and persisted HR-authorized rejection reasons), applications, interviews, offers (with optional validity deadlines, `expired` transitions, and immutable versioned terms on reissue), candidate CVs, onboarding checklists and probation decisions. Pending migration `202605310014` adds the rejection-reason and offer expiry/versioning schema columns (not yet deployed to production). |
+| Recruitment and onboarding | CODED | HR workspace requisitions (including requested headcount and persisted HR-authorized rejection reasons), applications, interviews, offers (with optional validity deadlines, `expired` transitions, and immutable versioned terms on reissue), candidate CVs, onboarding checklists and probation decisions. Production account onboarding remains pending. |
 | Portal access handoff | CODED | HR request and independent HR review followed by fulfillment through an authorized director account. |
 | Personnel workbook | CODED; MAPPING REQUIRED | HR workspace and CLI preview and reconcile employee drafts. Sign-in identity, verified work emails, job-title mappings and account approval require separate verification. |
 | Personnel documents | CODED | HR upload, review, version history and authorized download. Linked employees can download ordinary active versions shared with them. |
 | Calendars and shifts | CODED | HR workspace review and publication before assignment. Existing approved calendars determine scheduled days and timezones. |
-| Workforce roster | CODED LOCALLY | In Attendance, HR can plan one published workday or shift per employee and allocate it to a project. The roster retains cancellations and rejects overlaps, including overnight shifts. Revision 037 is pending production activation. |
+| Workforce roster | CODED | In Attendance, HR can plan one published workday or shift per employee and allocate it to a project. The roster retains cancellations and rejects overlaps, including overnight shifts. |
 | Attendance | CODED | HR entry and CSV import, employee correction requests, HR review and period locks. |
 | Timesheets and overtime | PARTIAL | HR entry and decisions are available. Employee submission and advisory manager review require the corresponding settings. Payroll processing has no active role grant. |
 | Leave and self-service | CODED | HR catalog, policy and ledger functions. Linked employees can view balances, submit requests and use authorized cancellation. |
@@ -62,15 +62,12 @@ reissue via `POST /api/v1/hr/offers/{offer_id}/reissue`) are implemented in
 code alongside Alembic revision
 [`202605310014`](../backend/alembic/versions/202605310014_hr_recruitment_followups.py),
 [`HRHiringPanel`](../frontend/src/pages/hr/HRHiringPanel.tsx), and
-[`HRWorkspacePage`](../frontend/src/pages/hr/HRWorkspacePage.tsx). They await
-deployment under the
-[production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
-and post-release acceptance verification (production remains on SHA `be61f5b`
-/ revision `202605310013` until deployed).
+[`HRWorkspacePage`](../frontend/src/pages/hr/HRWorkspacePage.tsx). These
+workflows are included in production and await authenticated acceptance.
 
 ### Production deployment and available access
 
-The production deployment was verified on 2026-11-15 at SHA
+The first HR production deployment was verified on 2026-11-15 at SHA
 `be61f5b74ce9701ba83f70261b03fe6219bd2d72`, with Alembic head
 `202605310013`. The exact candidate passed [self-hosted CI](https://github.com/nirzaf/garrison-investments/actions/runs/43708858463)
 and [production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/43717032813).
@@ -78,12 +75,18 @@ Readiness returned `ready` with PostgreSQL connected; sign-in and the service
 worker returned HTTP 200. Anonymous HR directory and assignment requests
 returned HTTP 401, confirming the authentication boundary only.
 
-The post-deployment read-only count showed zero active HR Manager accounts and
-zero `hr_employees` rows. As a result, HR Manager workflows have no provisioned
-production operator yet, and employee self-service has no employee records or
-linked accounts to exercise. This is not authenticated HR UAT or business
-acceptance. Do not create production identities or import employee information
-without an approved account, source roster, field mapping and authorized owner.
+The latest verified HR deployment is `fa73693c955241c116f3ab542ee1b54cbff9d474`.
+On 2026-11-17, the live release receipt and a read-only PostgreSQL query both
+reported Alembic `202605310061`. Public readiness returned `ready` with the
+database `connected` and the unauthenticated HR request queue returned 401.
+The running application granted payroll access to zero roles.
+[Production deployment](https://github.com/nirzaf/garrison-investments/actions/runs/44021927486)
+
+The read-only count taken with the first HR deployment showed zero active HR
+Manager accounts and zero `hr_employees` rows. Authenticated production
+acceptance still requires authorized HR and employee test accounts and an
+approved source roster and field mapping. Use restricted references for the
+roster and evidence.
 
 ### Operational workflow guidance
 
@@ -804,8 +807,7 @@ adds `hr_requisitions.rejection_reason`, offer validity and versioning columns
 `superseded_at`), self-referential offer foreign keys, and
 `ck_hr_offers_version_positive`.
 Use the [production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
-to prepare and apply approved revisions. The last recorded production
-schema was `202605310013`. The current local HR candidate adds revisions through
+to prepare and apply approved revisions. Production HR release `fa73693` uses
 [`202605310061`](../backend/alembic/versions/202605310061_hr_payroll_policy_record.py).
 Check the live revision before choosing the migration range in the
 maintenance plan. Retain the existing schema and HR records on an
@@ -871,7 +873,7 @@ Key custody and recovery remain separate evidence requirements.
   retention and clearance owners, and the relevant letter templates.
 - Approve key custody and an off-host database/object recovery exercise; retain
   the existing isolated synthetic rehearsal as rehearsal evidence only.
-- Use the [production maintenance procedure](OPERATIONS_AND_DEPLOYMENT.md#production-maintenance)
-  to apply the pending revisions through the selected release candidate's
-  Alembic head. Repeat focused authenticated HR acceptance checks after
-  deploying that candidate.
+- Run focused authenticated HR acceptance checks against `fa73693` when
+  authorized HR and employee accounts are available. The exact main commit
+  passed self-hosted CI and deployed without a migration.
+  [Main CI run](https://github.com/nirzaf/garrison-investments/actions/runs/44020386126)
