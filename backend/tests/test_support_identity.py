@@ -50,10 +50,9 @@ def encoded(data: bytes) -> str:
 
 @pytest.fixture
 def enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.api.v1.support.get_settings",
-        lambda: Settings(app_env="test", support_portal_enabled=True),
-    )
+    settings = Settings(app_env="test", support_portal_enabled=True)
+    monkeypatch.setattr("app.api.v1.support.get_settings", lambda: settings)
+    monkeypatch.setattr("app.services.support_identity.get_settings", lambda: settings)
 
 
 async def seed_operator() -> tuple[UUID, bytes, ec.EllipticCurvePrivateKey]:
