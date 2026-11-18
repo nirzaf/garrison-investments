@@ -672,7 +672,6 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
     from datetime import timedelta
 
     import httpx
-    from sqlalchemy import delete
 
     from app.main import app
     from app.models.activity_log import ActivityLog
@@ -687,9 +686,6 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
     suffix = uuid4().hex[:8]
     auth_session_id = uuid4()
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            delete(TaskOutbox).where(TaskOutbox.task_name == "run_import_async")
-        )
         session.add(
             AuthSession(
                 id=auth_session_id,
@@ -769,7 +765,11 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
         )
 
     monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", capture_send_task)
-    assert await _dispatch_task_outbox() == 1
+    async with AsyncSessionLocal() as guard:
+        await guard.execute(
+            select(TaskOutbox.id).where(TaskOutbox.dedupe_key != dedupe_key).with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 1
     assert len(published) == 1
     assert published[0]["name"] == "run_import_async"
     assert published[0]["queue"] == "maintenance"
@@ -807,6 +807,7 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
 
         # Exhausted outbox entry marks a stranded queued batch as failed.
         exhausted_id = uuid4()
+        exhausted_key = import_outbox_dedupe_key(exhausted_id)
         session.add(
             ImportBatch(
                 id=exhausted_id,
@@ -818,7 +819,7 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
         )
         session.add(
             TaskOutbox(
-                dedupe_key=import_outbox_dedupe_key(exhausted_id),
+                dedupe_key=exhausted_key,
                 task_name="run_import_async",
                 args_json=[str(exhausted_id), str(actor.id)],
                 kwargs_json={
@@ -833,7 +834,11 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
         )
         await session.commit()
 
-    assert await _dispatch_task_outbox() == 0
+    async with AsyncSessionLocal() as guard:
+        await guard.execute(
+            select(TaskOutbox.id).where(TaskOutbox.dedupe_key != exhausted_key).with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 0
     async with AsyncSessionLocal() as session:
         exhausted_batch = await session.get(ImportBatch, exhausted_id)
         assert exhausted_batch is not None and exhausted_batch.status == "failed"
