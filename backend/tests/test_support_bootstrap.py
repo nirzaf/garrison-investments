@@ -25,13 +25,17 @@ from app.models.support_identity import (
     SupportOperator,
     SupportSession,
 )
+from app.models.support_oversight import ALL_SUPPORT_CAPABILITIES
 from app.models.support_registration import (
     SupportBootstrap,
     SupportBootstrapEvent,
     SupportRegistration,
 )
-from app.services.support_bootstrap import issue_first_custodian_invitations
-from app.services.support_identity import SUPPORT_ORIGIN
+from app.services.support_bootstrap import (
+    finish_first_custodian_registration,
+    issue_first_custodian_invitations,
+)
+from app.services.support_identity import SUPPORT_ORIGIN, SupportIdentity
 from scripts import bootstrap_support
 from scripts.bootstrap_support import (
     CustodyApproval,
@@ -235,3 +239,115 @@ async def test_both_first_custodians_stay_pending_until_all_devices_are_enrolled
         async with engine.begin() as connection:
             await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         await engine.dispose()
+
+
+def test_single_owner_approval_rejects_other_people_and_review_fields(tmp_path: Path) -> None:
+    path = tmp_path / "approval.json"
+    custodian = {"person_reference": str(uuid4()), "mailbox": "owner@example.com"}
+    data = {
+        "version": 2,
+        "purpose": "initial_single_owner_custody",
+        "owner_approval_reference": str(uuid4()),
+        "custodians": [custodian],
+    }
+    path.write_text(json.dumps(data))
+    path.chmod(0o600)
+    approval, _ = read_approval(path, SecretStr(sha256(path.read_bytes()).hexdigest()))
+    assert isinstance(approval, bootstrap_support.SingleOwnerApproval)
+    for malformed in (
+        {**data, "reviewer_reference": str(uuid4())},
+        {**data, "custodians": [custodian, custodian]},
+    ):
+        path.write_text(json.dumps(malformed))
+        with pytest.raises(ValueError, match="record is invalid"):
+            read_approval(path, SecretStr(sha256(path.read_bytes()).hexdigest()))
+
+
+@pytest.mark.asyncio
+async def test_single_owner_issue_is_serialized(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from sqlalchemy import func
+
+    await skip_if_database_unavailable()
+    schema = "single_owner_test_" + uuid4().hex
+    isolated = create_async_engine(
+        engine.url, connect_args={"server_settings": {"search_path": schema}}
+    )
+    sessions = async_sessionmaker(isolated, expire_on_commit=False)
+    tables = [
+        Base.metadata.tables[model.__tablename__] for model in (
+            SupportOperator, SupportCredential, SupportOperatorGrant,
+            SupportCustodyAction, SupportRegistration,
+            SupportBootstrap, SupportBootstrapEvent,
+        )
+    ]
+
+    async def create() -> int:
+        async with sessions() as session:
+            tokens = await issue_first_custodian_invitations(
+                session, approval_digest="a" * 64, reissue=False, single_owner=True
+            )
+            await session.commit()
+            assert len(tokens) == 1
+            return len(next(iter(tokens.values())))
+
+    try:
+        async with isolated.begin() as connection:
+            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+            await connection.run_sync(
+                lambda sync: Base.metadata.create_all(sync, tables=tables, checkfirst=False)
+            )
+        outcomes = await asyncio.gather(create(), create(), return_exceptions=True)
+        assert outcomes.count(2) == 1
+        assert sum(isinstance(outcome, ValueError) for outcome in outcomes) == 1
+        async with sessions() as session:
+            entry = await session.get(SupportBootstrap, 1)
+            assert entry is not None
+            assert entry.custody_mode == "single_owner"
+            assert entry.second_id is None and entry.activated_at is None
+            assert await session.scalar(select(func.count()).select_from(SupportOperator)) == 1
+            with pytest.raises(ValueError, match="already exists"):
+                await issue_first_custodian_invitations(
+                    session, approval_digest="a" * 64, reissue=True
+                )
+            identifier = entry.first_id
+            for device in (1, 2):
+                session.add(SupportCredential(
+                    id=uuid4(),
+                    operator_id=identifier,
+                    credential_hash=str(device) * 64,
+                    public_key=bytes([device]),
+                    sign_count=0,
+                ))
+                await session.flush()
+                activated, _ = await finish_first_custodian_registration(
+                    session, entry, identifier, str(uuid4())
+                )
+                assert activated == (device == 2)
+            await session.flush()
+            assert set(await session.scalars(select(SupportOperatorGrant.capability))) == set(
+                ALL_SUPPORT_CAPABILITIES
+            )
+            with pytest.raises(ValueError, match="already exists"):
+                await issue_first_custodian_invitations(
+                    session, approval_digest="a" * 64, reissue=True
+                )
+            settings = Settings(
+                support_custody_mode="single_owner",
+                support_email_otp_key=SecretStr("x" * 32),
+                support_email_otp_recipients={identifier: "owner@example.com"},
+            )
+            monkeypatch.setattr("app.services.support_identity.get_settings", lambda: settings)
+            identity = SupportIdentity(session)
+            assert await identity._otp_destination(identifier) is not None
+            assert await identity._otp_destination(uuid4()) is None
+            settings.support_custody_mode = "paired"
+            assert await identity._otp_destination(identifier) is None
+            settings.support_custody_mode = "single_owner"
+            settings.support_email_otp_recipients[uuid4()] = "other@example.com"
+            assert await identity._otp_destination(identifier) is None
+    finally:
+        async with isolated.begin() as connection:
+            await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await isolated.dispose()

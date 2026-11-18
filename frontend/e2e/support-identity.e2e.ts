@@ -371,7 +371,7 @@ print(json.dumps(asyncio.run(seed())))
     const proposeAction = async (kind: string, field?: string, value?: string) => {
       await details.getByRole('combobox', { name: 'Case action', exact: true }).selectOption(kind);
       if (field && value) await details.getByLabel(field).fill(value);
-      await details.getByRole('button', { name: 'Request independent review' }).click();
+      await details.getByRole('button', { name: 'Prepare case decision' }).click();
       return (await details.getByLabel('Case proposal ID').innerText()).trim();
     };
     const approveAction = async (page: Page, id: string, expected: string) => {
@@ -762,4 +762,133 @@ print(json.dumps({
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Enterprise oversight' })).toHaveCount(0);
+});
+
+test('single owner confirms a protected account action only in the proposing session', async ({ browser }) => {
+  test.skip(env.SUPPORT_CUSTODY_MODE !== 'single_owner', 'Run against a dedicated single-owner browser database.');
+  const [first, second, caseId, subject] = JSON.parse(execFileSync(
+    env.BROWSER_TEST_PYTHON ?? 'python',
+    ['-c', `
+from tests.browser_fixtures import configure
+configure()
+import asyncio
+import cbor2
+import json
+from datetime import timedelta
+from base64 import b64encode
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from hashlib import sha256
+from uuid import uuid4
+from app.database import AsyncSessionLocal
+from app.models.support_cases import SupportCase, SupportCaseMember, SupportOperatorGrant
+from app.models.support_directory import SupportCaseSubject
+from app.models.support_identity import SupportCredential
+from app.models.support_registration import SupportBootstrap
+from app.models.user import User
+from app.utils.permissions import ROLE_MANAGING_DIRECTOR
+from app.utils.security import utc_now
+from tests.test_support_identity import seed_operator
+
+async def seed():
+    owner, credential, key = await seed_operator()
+    other_credential, other_key = uuid4().bytes, ec.generate_private_key(ec.SECP256R1())
+    numbers = other_key.public_key().public_numbers()
+    case, subject = uuid4(), uuid4()
+    async with AsyncSessionLocal() as session:
+        session.add(SupportCredential(
+            id=uuid4(), operator_id=owner, credential_hash=sha256(other_credential).hexdigest(),
+            public_key=cbor2.dumps({
+                1: 2, 3: -7, -1: 1, -2: numbers.x.to_bytes(32), -3: numbers.y.to_bytes(32),
+            }), sign_count=0,
+        ))
+        session.add(SupportBootstrap(
+            id=1, first_id=owner, custody_mode="single_owner", approval_digest="a" * 64,
+            started_at=utc_now(), activated_at=utc_now(),
+        ))
+        session.add(SupportCase(
+            id=case, owner_id=owner, status="open", severity="medium",
+            external_ref=f"chrome-owner-{case}", reason_code="access",
+        ))
+        session.add(User(
+            id=subject, email="director-fixture@example.test", full_name="Synthetic Director",
+            role=ROLE_MANAGING_DIRECTOR, is_active=True, failed_login_attempts=3,
+            locked_until=utc_now() + timedelta(minutes=10),
+        ))
+        await session.flush()
+        session.add(SupportCaseSubject(case_id=case, user_id=subject))
+        session.add(SupportCaseMember(case_id=case, operator_id=owner))
+        for capability in ("cases.manage", "directory.read", "account.request"):
+            session.add(SupportOperatorGrant(operator_id=owner, capability=capability))
+        await session.commit()
+    fixtures = [{
+        "operator": str(owner), "credential": b64encode(identifier).decode(),
+        "handle": b64encode(owner.bytes).decode(),
+        "key": b64encode(private_key.private_bytes(
+            serialization.Encoding.DER, serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )).decode(),
+    } for identifier, private_key in ((credential, key), (other_credential, other_key))]
+    return [*fixtures, str(case), str(subject)]
+
+print(json.dumps(asyncio.run(seed())))
+`],
+    { cwd: backend, encoding: 'utf8' }
+  )) as [OperatorFixture, OperatorFixture, string, string];
+  const [ownerPage, otherPage] = await Promise.all([browser.newPage(), browser.newPage()]);
+  try {
+    await setupOperator(ownerPage, first);
+    await signIn(ownerPage, first.operator);
+    const directory = ownerPage.getByRole('region', { name: 'Case account' });
+    await directory.getByLabel('Case ID for account lookup').fill(caseId);
+    await directory.getByLabel('Match approved account by').selectOption('reference');
+    await directory.getByLabel('Approved account reference (optional)').fill(subject);
+    await directory.getByRole('button', { name: 'Look up case account' }).click();
+    const account = directory.getByRole('region', { name: 'Masked account details' });
+    await expect(account.getByText('Sign-in locked')).toBeVisible();
+    const propose = async (kind: 'disable' | 'unlock') => {
+      const response = ownerPage.waitForResponse((reply) =>
+        reply.url().endsWith('/account-actions') && reply.request().method() === 'POST');
+      await account.getByLabel('Business account action').selectOption(kind);
+      await account.getByLabel('Operational reason').fill('Synthetic director account access incident.');
+      await account.getByRole('button', { name: 'Request reviewed account action' }).click();
+      const proposal = await response;
+      expect(proposal.status()).toBe(201);
+      const receipt = await proposal.json() as { id: string; authorization_mode: string };
+      expect(receipt.authorization_mode).toBe('single_owner');
+      return receipt.id;
+    };
+    const load = async (page: Page, action: string, status: number) => {
+      const section = page.getByRole('region', { name: 'Review account action' });
+      await section.getByLabel('Case ID for account action').fill(caseId);
+      await section.getByLabel('Account action reference', { exact: true }).fill(action);
+      await section.getByLabel('Account action stage').selectOption('execute');
+      const reply = page.waitForResponse((response) => response.url().endsWith('/execute/options'));
+      await section.getByRole('button', { name: 'Load account action' }).click();
+      expect((await reply).status()).toBe(status);
+      return section;
+    };
+    const disable = await propose('disable');
+    await setupOperator(otherPage, second);
+    await signIn(otherPage, second.operator);
+    await expect((await load(otherPage, disable, 403)).getByRole('alert')).toBeVisible();
+
+    const section = await load(ownerPage, disable, 200);
+    await expect(section.getByText(/in the session that proposed it/)).toBeVisible();
+    const execute = section.getByRole('button', { name: 'Execute account action with passkey' });
+    const reply = ownerPage.waitForResponse((response) => response.url().endsWith('/execute'));
+    await execute.click();
+    const blocked = await reply;
+    expect(blocked.status()).toBe(409);
+    await expect(section.getByRole('alert')).toBeVisible();
+
+    await load(ownerPage, await propose('unlock'), 200);
+    await execute.click();
+    await expect(section.getByText('Account action applied.')).toBeVisible();
+    await directory.getByRole('button', { name: 'Look up case account' }).click();
+    await expect(account.getByRole('heading', { name: 'Synthetic Director' })).toBeVisible();
+    await expect(account.getByText('Sign-in locked')).toHaveCount(0);
+  } finally {
+    await Promise.all([ownerPage.close(), otherPage.close()]);
+  }
 });

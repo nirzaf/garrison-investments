@@ -979,6 +979,49 @@ generated OTP key in the protected runtime configuration. Run
 backend to confirm both bindings before operator sign-in. The check
 reports success or failure without printing either mailbox or key.
 
+For a reviewed single-owner deployment, use a version `2` private record with
+purpose `initial_single_owner_custody`, an `owner_approval_reference`, and
+exactly one `custodians` entry. This mode still requires two device-bound
+passkeys. Set `SUPPORT_CUSTODY_MODE=single_owner` with the sole approved OTP
+recipient. Runtime sign-in verifies the configured owner against the immutable
+bootstrap registry. Paired deployments keep their existing OTP requirements.
+
+Case actions and evidence export receipts record the authorization mode.
+In single-owner mode, the owner confirms the action or export using a fresh,
+action-bound passkey. The receipt leaves reviewer identity empty. Evidence
+downloads still require their own proof and stay bound to the originating
+session. A single owner cannot add a second case operator through case actions.
+Eligible business-account commands require a fresh passkey in the session
+that created the proposal. Protected-account session revocation, unlock,
+disable and reactivation use the same owner confirmation, and disable still
+protects the last usable director. Protected-account password recovery
+requires independent offline verification of the target's identity and remains
+unavailable in single-owner mode. For eligible accounts, recovery email dispatch
+rechecks the originating session and verified business-account destination.
+
+If the only operator loses both passkeys, keep technical access locked.
+Bootstrap reissue is available only before initial activation. Email OTP
+cannot recover the operator on its own. An authorized recovery ceremony
+requires independent verification of the owner's identity and a separately
+reviewed recovery procedure before any credentials can be re-enrolled.
+
+Treat revisions `094`–`097` as one reviewed forward migration chain. Before
+maintenance, verify the source head, independent database-and-object recovery,
+and an isolated restore. Confirm that initial custody is uninitialized before
+selecting single-owner mode. An existing paired bootstrap stays paired and needs
+a separately designed transition. The business user removal API deactivates
+the account and revokes its sessions while retaining its identity and audit
+references. Review database maintenance and imports for hard deletes, truncation
+or rewrites of audit history before applying `094`.
+
+After upgrading, verify the schema head and business portal before enabling
+technical ingress. If validation fails, keep technical ingress disabled and
+preserve the migrated database and audit evidence. Roll back application images
+only after checking compatibility against the actual schema and custody state.
+Revision `094` blocks downgrade, and later revisions protect recorded custody
+and authorization evidence. Use a forward fix or the separately authorized
+isolated recovery procedure rather than dropping columns or bypassing triggers.
+
 Use `--reissue` with the same approval before activation to replace unused
 invitations if the ten-minute lifetime elapses while configuring ingress.
 Reissue keeps the approved operator references. Both operators remain

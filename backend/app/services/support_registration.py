@@ -65,8 +65,9 @@ class SupportRegistrationService:
         if invitation.bootstrap_operator_id is not None:
             entry = await self.session.get(SupportBootstrap, BOOTSTRAP_ID, with_for_update=True)
             if (
-                entry is None or (entry.activated_at is not None and not consumed)
-                or invitation.bootstrap_operator_id not in {entry.first_id, entry.second_id}
+                entry is None
+                or (entry.activated_at is not None and not consumed)
+                or invitation.bootstrap_operator_id not in entry.operator_ids
             ):
                 raise _denied()
             operator = await self.session.get(
@@ -74,7 +75,8 @@ class SupportRegistrationService:
             )
             expected_status = "active" if entry.activated_at is not None else "pending"
             if (
-                operator is None or operator.status != expected_status
+                operator is None
+                or operator.status != expected_status
                 or operator.grant_epoch != invitation.grant_epoch
             ):
                 raise _denied()
@@ -201,8 +203,7 @@ class SupportRegistrationService:
                 raise _denied()
             public_key = cbor2.dumps(cbor2.loads(verified.credential_public_key), canonical=True)
             operator_ids = (
-                (proposal.first_id, proposal.second_id)
-                if isinstance(proposal, SupportBootstrap) else (operator.id,)
+                proposal.operator_ids if isinstance(proposal, SupportBootstrap) else (operator.id,)
             )
             prior_keys = await self.session.scalars(
                 select(SupportCredential.public_key).where(

@@ -47,6 +47,7 @@ class CaseActionCreate(BaseModel):
 class CaseActionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    authorization_mode: Literal["paired", "single_owner"] = "paired"
     id: UUID
     case_id: UUID
     kind: CaseActionKind

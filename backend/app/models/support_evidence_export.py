@@ -27,11 +27,14 @@ class SupportEvidenceExport(UUIDPrimaryKeyMixin, Base):
         CheckConstraint("reason IN ('incident_review', 'audit_review')", name="reason"),
         CheckConstraint("reviewer_id IS NULL OR reviewer_id <> requester_id", name="independent"),
         CheckConstraint(
-            "(approved_at IS NULL) = (reviewer_id IS NULL) AND "
-            "(approved_at IS NULL) = (reviewer_epoch IS NULL) AND "
-            "(approved_at IS NULL) = (review_request_id IS NULL) AND "
-            "(downloaded_at IS NULL) = (download_request_id IS NULL) AND "
-            "(downloaded_at IS NULL OR approved_at IS NOT NULL)",
+            (
+                "(approved_at IS NULL) = (review_request_id IS NULL) AND (downloaded_at IS "
+                "NULL) = (download_request_id IS NULL) AND (downloaded_at IS NULL OR "
+                "approved_at IS NOT NULL) AND ((authorization_mode = 'paired' AND "
+                "(approved_at IS NULL) = (reviewer_id IS NULL) AND (approved_at IS NULL) = "
+                "(reviewer_epoch IS NULL)) OR (authorization_mode = 'single_owner' AND "
+                "reviewer_id IS NULL AND reviewer_epoch IS NULL))"
+            ),
             name="decision",
         ),
     )
@@ -43,6 +46,7 @@ class SupportEvidenceExport(UUIDPrimaryKeyMixin, Base):
     requester_session_id: Mapped[UUID] = mapped_column(
         ForeignKey("support_sessions.id", ondelete="RESTRICT")
     )
+    authorization_mode: Mapped[str] = mapped_column(String(20), server_default="paired")
     reviewer_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("support_operators.id", ondelete="RESTRICT")
     )

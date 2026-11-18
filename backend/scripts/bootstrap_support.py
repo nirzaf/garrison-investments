@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal, TextIO
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, SecretStr, TypeAdapter, model_validator
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal, engine
@@ -51,7 +51,18 @@ class CustodyApproval(BaseModel):
         return self
 
 
-def read_approval(path: Path, expected_digest: SecretStr) -> tuple[CustodyApproval, str]:
+class SingleOwnerApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: Literal[2]
+    purpose: Literal["initial_single_owner_custody"]
+    owner_approval_reference: UUID
+    custodians: tuple[ApprovedCustodian]
+
+
+BootstrapApproval = CustodyApproval | SingleOwnerApproval
+
+
+def read_approval(path: Path, expected_digest: SecretStr) -> tuple[BootstrapApproval, str]:
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as handle:
         info = os.fstat(handle.fileno())
         if (
@@ -71,7 +82,7 @@ def read_approval(path: Path, expected_digest: SecretStr) -> tuple[CustodyApprov
     ):
         raise ValueError("The approved custody record digest did not match.")
     try:
-        approval = CustodyApproval.model_validate_json(body)
+        approval = TypeAdapter(BootstrapApproval).validate_json(body)
     except ValueError:
         raise ValueError("The approved custody record is invalid.") from None
     return approval, digest
@@ -107,14 +118,17 @@ def sync_output(handle: TextIO, directory_fd: int) -> None:
 
 
 async def issue(
-    approval: CustodyApproval, digest: str, destination: Path, *, reissue: bool
+    approval: BootstrapApproval, digest: str, destination: Path, *, reissue: bool
 ) -> None:
     if get_settings().app_env not in {"production", "test"}:
         raise ValueError("Use the isolated test environment or the reviewed production host.")
     with private_output(destination) as (handle, directory_fd):
         async with AsyncSessionLocal() as session:
             result = await issue_first_custodian_invitations(
-                session, approval_digest=digest, reissue=reissue
+                session,
+                approval_digest=digest,
+                reissue=reissue,
+                single_owner=isinstance(approval, SingleOwnerApproval),
             )
             json.dump(
                 [
@@ -135,7 +149,7 @@ async def issue(
             await session.commit()
 
 
-async def approved_otp_bindings(approval: CustodyApproval, digest: str) -> dict[UUID, str]:
+async def approved_otp_bindings(approval: BootstrapApproval, digest: str) -> dict[UUID, str]:
     async with AsyncSessionLocal() as session:
         bootstrap = await session.get(SupportBootstrap, BOOTSTRAP_ID)
         if bootstrap is None or not compare_digest(bootstrap.approval_digest, digest):
@@ -143,25 +157,31 @@ async def approved_otp_bindings(approval: CustodyApproval, digest: str) -> dict[
         return {
             reference: custodian.mailbox
             for reference, custodian in zip(
-                (bootstrap.first_id, bootstrap.second_id), approval.custodians, strict=True
+                bootstrap.operator_ids, approval.custodians, strict=True
             )
         }
 
 
-def write_otp_config(path: Path, bindings: dict[UUID, str]) -> None:
+def write_otp_config(path: Path, bindings: dict[UUID, str], *, single_owner: bool = False) -> None:
     # Keep the JSON literal intact across dotenv interpolation and its single quotes.
     payload = json.dumps({str(reference): address for reference, address in bindings.items()})
     payload = payload.replace("$", r"\u0024").replace("'", r"\u0027")
     with private_output(path) as (handle, directory_fd):
+        if single_owner:
+            handle.write("SUPPORT_CUSTODY_MODE=single_owner\n")
         handle.write(f"SUPPORT_EMAIL_OTP_RECIPIENTS='{payload}'\n")
         sync_output(handle, directory_fd)
 
 
-def verify_otp_config(bindings: dict[UUID, str]) -> None:
+def verify_otp_config(bindings: dict[UUID, str], *, single_owner: bool = False) -> None:
     settings = get_settings()
     key = settings.support_email_otp_key
     if key is None or len(key.get_secret_value().strip().encode()) < 32:
         raise ValueError("The runtime has no usable support email OTP key.")
+    if single_owner != (settings.support_custody_mode == "single_owner") or (
+        single_owner and set(settings.support_email_otp_recipients) != set(bindings)
+    ):
+        raise ValueError("Runtime OTP custody mode does not match the approved custody record.")
     if any(
         settings.support_email_otp_recipients.get(reference) != mailbox
         for reference, mailbox in bindings.items()
@@ -180,9 +200,13 @@ async def apply(args: argparse.Namespace) -> None:
         else:
             bindings = await approved_otp_bindings(approval, digest)
             if args.write_otp_config:
-                write_otp_config(args.write_otp_config, bindings)
+                write_otp_config(
+                    args.write_otp_config,
+                    bindings,
+                    single_owner=isinstance(approval, SingleOwnerApproval),
+                )
             else:
-                verify_otp_config(bindings)
+                verify_otp_config(bindings, single_owner=isinstance(approval, SingleOwnerApproval))
     finally:
         await engine.dispose()
 
@@ -200,8 +224,11 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if not (args.apply or args.write_otp_config or args.verify_otp_config):
-            read_approval(args.approval, SecretStr(args.approval_sha256))
-            print("Verified the private approval record for two distinct custodians.")
+            approval, _ = read_approval(args.approval, SecretStr(args.approval_sha256))
+            scope = (
+                "single owner" if isinstance(approval, SingleOwnerApproval) else "paired custody"
+            )
+            print(f"Verified the private approval record for {scope}.")
             return
         if args.apply and args.output is None:
             parser.error("--apply requires --output in a private directory")

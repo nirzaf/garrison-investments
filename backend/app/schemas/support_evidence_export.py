@@ -23,6 +23,7 @@ class SupportEvidenceExportCreate(BaseModel, extra="forbid"):
 
 
 class SupportEvidenceExportRead(BaseModel):
+    authorization_mode: Literal["paired", "single_owner"] = "paired"
     id: UUID
     case_id: UUID
     filters: SupportEvidenceFilters

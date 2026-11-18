@@ -357,3 +357,58 @@ async def test_cli_sealed_proof_is_session_bound_and_redeemed_once() -> None:
         async with AsyncSessionLocal() as db:
             stored = await db.get(SupportCliProof, UUID(reference))
             assert stored and stored.taken_at and stored.sealed is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_single_owner_confirms_case_action_without_reviewer_and_only_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    async with client() as owner, client() as other:
+        owner_key = await login(owner)
+        other_key = await login(other)
+        async with AsyncSessionLocal() as db:
+            db.add_all(
+                SupportOperatorGrant(operator_id=owner_key[0], capability=capability)
+                for capability in ("cases.manage", "logs.runtime")
+            )
+            evidence = uuid4()
+            db.add(ActivityLog(
+                id=evidence, request_id=uuid4().hex, entity_type="request",
+                action="http.request", http_method="GET", status_code=200, created_at=utc_now(),
+            ))
+            await db.commit()
+
+        async def is_owner(_identity, actor_id):
+            return actor_id == owner_key[0]
+
+        monkeypatch.setattr(
+            "app.services.support_identity.SupportIdentity.is_single_owner", is_owner
+        )
+        created = await owner.post(
+            CASES, json={"external_ref": f"owner-{uuid4()}", "severity": "high",
+                         "reason_code": "functional"},
+        )
+        assert created.status_code == 201, created.text
+        root = f"{CASES}/{created.json()['id']}/actions"
+        rejected = await owner.post(
+            root, headers={"If-Match": '"1"'},
+            json={"kind": "member_add", "member_id": str(other_key[0])},
+        )
+        assert rejected.status_code == 403
+        proposed = await owner.post(
+            root, headers={"If-Match": '"1"'},
+            json={"kind": "evidence_link", "source_event_id": str(evidence)},
+        )
+        assert proposed.status_code == 201, proposed.text
+        assert proposed.json()["authorization_mode"] == "single_owner"
+        path = f"{root}/{proposed.json()['id']}"
+        assert (await other.post(path + "/options")).status_code in {403, 404}
+        options = await owner.post(path + "/options")
+        assert options.status_code == 200, options.text
+        proof = sign(options.json(), *owner_key, counter=2)
+        results = await asyncio.gather(*(owner.post(path + "/apply", json=proof) for _ in range(2)))
+        assert sorted(result.status_code for result in results) == [200, 409]
+        decision = next(result.json() for result in results if result.is_success)
+        assert decision["applied_at"] and decision["reviewer_id"] is None

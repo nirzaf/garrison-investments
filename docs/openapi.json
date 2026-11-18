@@ -3918,6 +3918,15 @@
             ],
             "title": "Applied At"
           },
+          "authorization_mode": {
+            "default": "paired",
+            "enum": [
+              "paired",
+              "single_owner"
+            ],
+            "title": "Authorization Mode",
+            "type": "string"
+          },
           "case_id": {
             "format": "uuid",
             "title": "Case Id",
@@ -4592,6 +4601,15 @@
               }
             ],
             "title": "Applied At"
+          },
+          "authorization_mode": {
+            "default": "paired",
+            "enum": [
+              "paired",
+              "single_owner"
+            ],
+            "title": "Authorization Mode",
+            "type": "string"
           },
           "case_id": {
             "format": "uuid",
@@ -28735,6 +28753,15 @@
               }
             ],
             "title": "Approved At"
+          },
+          "authorization_mode": {
+            "default": "paired",
+            "enum": [
+              "paired",
+              "single_owner"
+            ],
+            "title": "Authorization Mode",
+            "type": "string"
           },
           "case_id": {
             "format": "uuid",

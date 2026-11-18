@@ -677,11 +677,14 @@ def _decision_plan(family: str, stage: str, raw: str) -> tuple[str, str, str, di
             {
                 "id": str(case.id),
                 "kind": case.kind,
+                "authorization_mode": case.authorization_mode,
                 "case_revision": case.case_revision,
             },
         )
     if family == "account":
         account = BusinessActionRead.model_validate_json(raw)
+        if account.authorization_mode == "single_owner" and stage != "execute":
+            raise CLIError("Confirm this owner-authorized action at the execute stage.", CONFLICT)
         root = f"{_API}/cases/{account.case_id}/account-actions/{account.id}/{stage}"
         return (
             root,
@@ -691,6 +694,7 @@ def _decision_plan(family: str, stage: str, raw: str) -> tuple[str, str, str, di
                 "id": str(account.id),
                 "kind": account.kind,
                 "digest": account.digest,
+                "authorization_mode": account.authorization_mode,
                 "case_revision": account.case_revision,
                 "user_revision": account.user_revision,
             },
@@ -749,7 +753,8 @@ def _decide(args: argparse.Namespace, ctx: Context, *, family: str, stage: str) 
         raise CLIError("The API did not return a support passkey challenge.", AUTH)
     live = options.get("proposal") if family in {"case", "account"} else options
     if not isinstance(live, dict) or not all(
-        live.get(name) == value for name, value in expected.items()
+        live.get(name, "paired" if name == "authorization_mode" else None) == value
+        for name, value in expected.items()
     ):
         raise CLIError("The live support proposal no longer matches the private receipt.", CONFLICT)
     if family == "account" and options.get("contact_ref") != contact:
@@ -760,15 +765,24 @@ def _decide(args: argparse.Namespace, ctx: Context, *, family: str, stage: str) 
     _private_output(submitted, {"plan_sha256": plan["plan_sha256"]})
     reply = ctx.request("POST", path, auth=False, write=True, headers=headers, json=proof)
     try:
-        if family == "case" and (
-            CaseActionRead.model_validate(reply).applied_at is None or reply["id"] != action
-        ):
-            raise ValueError
+        if family == "case":
+            case_decision = CaseActionRead.model_validate(reply)
+            if (
+                case_decision.applied_at is None
+                or reply["id"] != action
+                or case_decision.authorization_mode != expected["authorization_mode"]
+                or (
+                    case_decision.authorization_mode == "single_owner"
+                    and case_decision.reviewer_id is not None
+                )
+            ):
+                raise ValueError
         if family == "account":
             readback = BusinessActionRead.model_validate(reply)
             if (
                 str(readback.id) != action
                 or readback.digest != expected["digest"]
+                or readback.authorization_mode != expected["authorization_mode"]
                 or ((readback.applied_at is not None) != (stage == "execute"))
             ):
                 raise ValueError

@@ -518,7 +518,12 @@ async def read_config_status(
             else ""
         )
         otp_configured = (
-            len(otp_key.encode("utf-8")) >= 32 and len(settings.support_email_otp_recipients) >= 2
+            len(otp_key.encode("utf-8")) >= 32
+            and (
+                len(settings.support_email_otp_recipients) == 1
+                if settings.support_custody_mode == "single_owner"
+                else len(settings.support_email_otp_recipients) >= 2
+            )
         )
         mail_configured = bool(
             settings.smtp_host.strip()

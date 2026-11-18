@@ -90,11 +90,14 @@ export function SupportCaseProposal({ selected, onExpired, disabled, canReadDire
               className="block w-full rounded border p-2" pattern={uuidPattern} required />
           </label>
         )}
-        <button type="submit" disabled={disabled || pending}>Request independent review</button>
+        <button type="submit" disabled={disabled || pending}>Prepare case decision</button>
       </form>
       {message && <p role="alert">{message}</p>}
       {proposal && <p role="status" className="break-all">
-        Share case {proposal.case_id} and proposal <code aria-label="Case proposal ID">{proposal.id}</code> with the reviewer.
+        Case {proposal.case_id}, proposal <code aria-label="Case proposal ID">{proposal.id}</code>.
+        {proposal.authorization_mode === 'single_owner'
+          ? ' Confirm this action with your registered passkey.'
+          : ' Share these references with the independent case reviewer.'}
       </p>}
     </section>
   );
@@ -183,7 +186,10 @@ export function SupportCaseReview({ onExpired }: { onExpired: () => void }) {
               Request {review.proposal.source_request_id} · HTTP {review.proposal.source_status ?? 'Unknown'}
             </p>
           )}
-          <button type="button" disabled={pending} onClick={() => void apply()}>Approve case action with passkey</button>
+          <button type="button" disabled={pending} onClick={() => void apply()}>
+            {review.proposal.authorization_mode === 'single_owner'
+              ? 'Confirm case action as owner' : 'Approve case action with passkey'}
+          </button>
         </section>
       )}
       {message && <p role="alert">{message}</p>}

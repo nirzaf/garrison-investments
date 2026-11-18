@@ -33,7 +33,13 @@ class SupportCaseAction(UUIDPrimaryKeyMixin, Base):
             " AND source_event_id IS NULL AND subject_user_id IS NULL AND project_id IS NOT NULL)",
             name="payload",
         ),
-        CheckConstraint("(applied_at IS NULL) = (reviewer_id IS NULL)", name="decision"),
+        CheckConstraint(
+            (
+                "(authorization_mode = 'paired' AND (applied_at IS NULL) = (reviewer_id IS "
+                "NULL)) OR (authorization_mode = 'single_owner' AND reviewer_id IS NULL)"
+            ),
+            name="decision",
+        ),
         CheckConstraint("reviewer_id IS NULL OR reviewer_id <> requester_id", name="independent"),
     )
 
@@ -41,6 +47,7 @@ class SupportCaseAction(UUIDPrimaryKeyMixin, Base):
     requester_id: Mapped[UUID] = mapped_column(
         ForeignKey("support_operators.id", ondelete="RESTRICT")
     )
+    authorization_mode: Mapped[str] = mapped_column(String(20), server_default="paired")
     reviewer_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("support_operators.id", ondelete="RESTRICT")
     )

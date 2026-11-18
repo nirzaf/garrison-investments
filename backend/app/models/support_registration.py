@@ -39,12 +39,25 @@ class SupportRegistration(UUIDPrimaryKeyMixin, Base):
 class SupportBootstrap(Base):
     __tablename__ = "support_bootstrap"
     __table_args__ = (
-        CheckConstraint("id = 1 AND first_id <> second_id", name="singleton_pair"),
+        CheckConstraint(
+            "id = 1 AND ((custody_mode = 'paired' AND second_id IS NOT NULL "
+            "AND first_id <> second_id) OR "
+            "(custody_mode = 'single_owner' AND second_id IS NULL))",
+            name="singleton_custody",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     first_id: Mapped[UUID] = mapped_column(ForeignKey("support_operators.id", ondelete="RESTRICT"))
-    second_id: Mapped[UUID] = mapped_column(ForeignKey("support_operators.id", ondelete="RESTRICT"))
+    second_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("support_operators.id", ondelete="RESTRICT")
+    )
+    custody_mode: Mapped[str] = mapped_column(String(20), server_default="paired")
+
+    @property
+    def operator_ids(self) -> tuple[UUID, ...]:
+        return (self.first_id,) if self.second_id is None else (self.first_id, self.second_id)
+
     approval_digest: Mapped[str] = mapped_column(String(64))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

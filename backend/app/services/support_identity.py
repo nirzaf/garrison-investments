@@ -27,6 +27,7 @@ from app.models.support_identity import (
     SupportOperator,
     SupportSession,
 )
+from app.models.support_registration import SupportBootstrap
 from app.services.email_service import EmailDeliveryError, EmailService
 from app.utils.exceptions import AppException
 from app.utils.security import utc_now
@@ -82,6 +83,32 @@ def support_session_deadline(active: SupportSession) -> datetime:
 class SupportIdentity:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def is_single_owner(self, operator_id: UUID) -> bool:
+        if get_settings().support_custody_mode != "single_owner":
+            return False
+        bootstrap = await self.session.get(SupportBootstrap, 1)
+        return (
+            bootstrap is not None
+            and bootstrap.custody_mode == "single_owner"
+            and bootstrap.activated_at is not None
+            and bootstrap.first_id == operator_id
+        )
+
+    async def _otp_destination(self, operator_id: UUID) -> tuple[bytes, str] | None:
+        settings = get_settings()
+        bootstrap = await self.session.get(SupportBootstrap, 1)
+        single_owner = bootstrap is not None and bootstrap.custody_mode == "single_owner"
+        if single_owner != (settings.support_custody_mode == "single_owner"):
+            return None
+        if single_owner and (
+            bootstrap is None
+            or bootstrap.activated_at is None
+            or bootstrap.first_id != operator_id
+            or set(settings.support_email_otp_recipients) != {operator_id}
+        ):
+            return None
+        return _otp_destination(operator_id)
 
     def _record(self, operator_id: UUID, request_id: str, action: str, now: datetime) -> None:
         self.session.add(
@@ -198,7 +225,7 @@ class SupportIdentity:
     async def _send_otp(
         self, operator_id: UUID, challenge_id: UUID, request_id: str, now: datetime
     ) -> PendingSupportOtp:
-        destination = _otp_destination(operator_id)
+        destination = await self._otp_destination(operator_id)
         if destination is None:
             self._record(operator_id, request_id, "login_denied", now)
             await self.session.commit()
@@ -256,7 +283,7 @@ class SupportIdentity:
         )
         otp = await self.session.get(SupportEmailOtp, reference, with_for_update=True)
         now = utc_now()
-        destination = _otp_destination(operator_id)
+        destination = await self._otp_destination(operator_id)
         if (
             operator is None
             or operator.status != "active"

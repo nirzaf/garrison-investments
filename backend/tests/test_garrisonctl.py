@@ -623,6 +623,44 @@ def test_support_account_proposal_retries_same_intent_with_existing_api_key(tmp_
     assert keys[0] == keys[1] and keys[2] == keys[3] and keys[0] != keys[2]
 
 
+def test_support_single_owner_account_cli_uses_execute_only(tmp_path: Path) -> None:
+    flags = _technical_session(tmp_path)
+    receipt = {
+        "authorization_mode": "single_owner",
+        "id": BATCH,
+        "case_id": PROJECT,
+        "user_id": USER,
+        "user_revision": 1,
+        "case_revision": 2,
+        "kind": "unlock",
+        "reason_code": "failed_sign_in",
+        "permission_key": None,
+        "source_event_id": None,
+        "project_id": None,
+        "reason": "Synthetic recovery",
+        "digest": "a" * 64,
+        "expires_at": "2026-11-17T00:15:00Z",
+        "applied_at": None,
+    }
+    source = _support_file(tmp_path / "owner-action.json", receipt)
+
+    def profile(req: httpx.Request) -> httpx.Response:
+        assert req.method == "GET" and req.url.path.endswith("/me")
+        return response({"operator_id": ACTOR})
+
+    def preview(stage: str):
+        return invoke([
+            "support", "accounts", "action", stage, *flags, "--input", source,
+            "--dry-run", "--output", str(tmp_path / f"{stage}-plan.json"),
+        ], profile)
+
+    assert preview("review")[0] != 0
+    assert not (tmp_path / "review-plan.json").exists()
+    assert preview("execute")[0] == 0
+    plan = json.loads((tmp_path / "execute-plan.json").read_text())
+    assert "single_owner" in json.dumps(plan)
+
+
 def test_support_custody_proposal_records_attempt_before_unkeyed_write(tmp_path: Path) -> None:
     flags = _technical_session(tmp_path)
     cmd = ["support", "custody", "grant", "propose", *flags, "--input",

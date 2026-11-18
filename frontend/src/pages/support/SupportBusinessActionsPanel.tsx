@@ -206,7 +206,7 @@ export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
           Account action stage
           <select name="business_stage" className="block rounded border p-2">
             <option value="review">Independently review</option>
-            <option value="execute">Execute approved action</option>
+            <option value="execute">Execute approved or owner-authorized action</option>
           </select>
         </label>
         {canRecordContact && <label className="block">
@@ -231,7 +231,9 @@ export function SupportBusinessActionReview({ onExpired, canRecordContact }: {
             <p className="break-all">Approved case project {preview.proof.proposal.project_id}</p>
           )}
           <p>{preview.proof.proposal.reason}</p>
-          <p>Required independent reviews {preview.proof.required_reviews}</p>
+          {preview.proof.proposal.authorization_mode === 'single_owner'
+            ? <p>Confirm this action with your passkey in the session that proposed it.</p>
+            : <p>Required independent reviews {preview.proof.required_reviews}</p>}
           {preview.proof.contact_ref && (
             <p className="break-all">
               Your approval attests that you verified offline owner contact under reference{' '}

@@ -36,7 +36,13 @@ def validate_support_email_otp_config(environment: Mapping[str, str]) -> None:
             environment.get("SUPPORT_EMAIL_OTP_RECIPIENTS", ""),
             object_pairs_hook=_unique_json_object,
         )
-        if not isinstance(recipients, dict) or len(recipients) < 2:
+        mode = environment.get("SUPPORT_CUSTODY_MODE", "paired")
+        if (
+            not isinstance(recipients, dict)
+            or mode not in {"paired", "single_owner"}
+            or (mode == "paired" and len(recipients) < 2)
+            or (mode == "single_owner" and len(recipients) != 1)
+        ):
             raise ValueError
         operator_ids: set[UUID] = set()
         mailboxes: set[str] = set()

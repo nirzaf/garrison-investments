@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.support_cases import SupportOperatorGrant
 from app.models.support_identity import SupportCredential, SupportOperator
+from app.models.support_oversight import ALL_SUPPORT_CAPABILITIES
 from app.models.support_registration import (
     SupportBootstrap,
     SupportBootstrapEvent,
@@ -50,7 +51,7 @@ async def _device_count(session: AsyncSession, operator_id: UUID) -> int:
 
 
 async def issue_first_custodian_invitations(
-    session: AsyncSession, *, approval_digest: str, reissue: bool
+    session: AsyncSession, *, approval_digest: str, reissue: bool, single_owner: bool = False
 ) -> dict[UUID, list[str]]:
     """Issue or replace pending invitations under the same reviewed ceremony."""
     await session.execute(select(func.pg_advisory_xact_lock(_CUSTODY_LOCK)))
@@ -61,22 +62,27 @@ async def issue_first_custodian_invitations(
         existing = await session.scalar(select(SupportOperator.id).limit(1))
         if reissue or existing is not None:
             raise ValueError("Initial enrollment requires an empty technical operator registry.")
-        first, second = uuid4(), uuid4()
-        session.add_all(
-            [
-                SupportOperator(
-                    id=first, display_label="First custodian", status="pending", grant_epoch=1
-                ),
+        first, second = uuid4(), None if single_owner else uuid4()
+        session.add(
+            SupportOperator(
+                id=first,
+                display_label="Sole owner" if single_owner else "First custodian",
+                status="pending",
+                grant_epoch=1,
+            )
+        )
+        if second is not None:
+            session.add(
                 SupportOperator(
                     id=second, display_label="Second custodian", status="pending", grant_epoch=1
-                ),
-            ]
-        )
+                )
+            )
         await session.flush()
         entry = SupportBootstrap(
             id=BOOTSTRAP_ID,
             first_id=first,
             second_id=second,
+            custody_mode="single_owner" if single_owner else "paired",
             approval_digest=approval_digest,
             started_at=now,
         )
@@ -85,13 +91,14 @@ async def issue_first_custodian_invitations(
         record_bootstrap_event(session, "started", request_id)
     elif (
         not reissue
+        or (entry.custody_mode == "single_owner") != single_owner
         or entry.activated_at
         or not compare_digest(entry.approval_digest, approval_digest)
     ):
         raise ValueError("The initial custody ceremony already exists or has completed.")
 
     result = {}
-    for operator_id in (entry.first_id, entry.second_id):
+    for operator_id in entry.operator_ids:
         operator = await session.get(SupportOperator, operator_id, with_for_update=True)
         if operator is None or operator.status != "pending":
             raise ValueError("The approved custodian registry changed.")
@@ -128,7 +135,7 @@ async def finish_first_custodian_registration(
     session: AsyncSession, entry: SupportBootstrap, operator_id: UUID, request_id: str
 ) -> tuple[bool, bool]:
     record_bootstrap_event(session, "passkey_added", request_id, operator_id)
-    ids = (entry.first_id, entry.second_id)
+    ids = entry.operator_ids
     counts = {identity: await _device_count(session, identity) for identity in ids}
     if set(counts.values()) != {_DEVICES_PER_CUSTODIAN}:
         return False, counts[operator_id] == _DEVICES_PER_CUSTODIAN
@@ -137,7 +144,15 @@ async def finish_first_custodian_registration(
         if operator is None or operator.status != "pending":
             raise ValueError("The approved custodian registry changed.")
         operator.status = "active"
-        session.add(SupportOperatorGrant(operator_id=identity, capability="operator.manage"))
+        capabilities = (
+            ALL_SUPPORT_CAPABILITIES
+            if entry.custody_mode == "single_owner"
+            else ("operator.manage",)
+        )
+        session.add_all(
+            SupportOperatorGrant(operator_id=identity, capability=capability)
+            for capability in capabilities
+        )
         record_bootstrap_event(session, "activated", request_id, identity)
     entry.activated_at = utc_now()
     return True, False

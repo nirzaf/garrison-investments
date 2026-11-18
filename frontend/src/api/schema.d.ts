@@ -7703,6 +7703,12 @@ export interface components {
             /** Applied At */
             applied_at: string | null;
             /**
+             * Authorization Mode
+             * @default paired
+             * @enum {string}
+             */
+            authorization_mode: "paired" | "single_owner";
+            /**
              * Case Id
              * Format: uuid
              */
@@ -7946,6 +7952,12 @@ export interface components {
         CaseActionRead: {
             /** Applied At */
             applied_at: string | null;
+            /**
+             * Authorization Mode
+             * @default paired
+             * @enum {string}
+             */
+            authorization_mode: "paired" | "single_owner";
             /**
              * Case Id
              * Format: uuid
@@ -16375,6 +16387,12 @@ export interface components {
         SupportEvidenceExportRead: {
             /** Approved At */
             approved_at: string | null;
+            /**
+             * Authorization Mode
+             * @default paired
+             * @enum {string}
+             */
+            authorization_mode: "paired" | "single_owner";
             /**
              * Case Id
              * Format: uuid

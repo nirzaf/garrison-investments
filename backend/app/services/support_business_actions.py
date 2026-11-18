@@ -254,6 +254,15 @@ class SupportBusinessActions:
             body["project_scope_digest"] = project_scope_digest
         if recovery_binding is not None:
             body["recovery_destination_digest"] = recovery_binding
+        owner_session_id = (
+            existing.owner_session_id if existing is not None
+            else active.id if await self.identity.is_single_owner(actor.id)
+            else None
+        )
+        if owner_session_id is not None:
+            if owner_session_id != active.id:
+                raise _denied()
+            body["owner_session_id"] = str(owner_session_id)
         digest = _digest(
             json.dumps(
                 {
@@ -286,6 +295,7 @@ class SupportBusinessActions:
             kind=payload.kind,
             reason_code=payload.reason_code,
             reason=reason,
+            owner_session_id=owner_session_id,
             permission_key=payload.permission_key,
             permission_session_id=active.id if payload.kind in _VIEW_KINDS else None,
             source_event_id=payload.source_event_id,
@@ -360,6 +370,7 @@ class SupportBusinessActions:
         action_id: UUID,
         actor: SupportOperator,
         stage: BusinessActionStage,
+        session_id: UUID,
     ) -> tuple[SupportBusinessAction, User, int]:
         case, subject = await self._case(case_id, actor)
         action = await self.session.get(SupportBusinessAction, action_id, with_for_update=True)
@@ -398,6 +409,15 @@ class SupportBusinessActions:
         ):
             raise _stale()
         protected = action.kind not in _VIEW_KINDS and target.role in PROTECTED_USER_ROLES
+        if action.owner_session_id is not None:
+            if (
+                stage != "execute"
+                or (protected and action.kind == "recover")
+                or action.owner_session_id != session_id
+                or not await self.identity.is_single_owner(actor.id)
+            ):
+                raise _denied()
+            return action, target, 0
         if stage == "review":
             if await self.session.get(SupportBusinessApproval, (action.id, actor.id)) is not None:
                 raise _stale()
@@ -408,6 +428,20 @@ class SupportBusinessActions:
     async def _has_live_approvals(
         self, action: SupportBusinessAction, capability: str, protected: bool
     ) -> bool:
+        if action.owner_session_id is not None:
+            owner_session = await self.session.get(SupportSession, action.owner_session_id)
+            return (
+                not protected
+                and owner_session is not None
+                and owner_session.operator_id == action.requester_id
+                and owner_session.grant_epoch == action.requester_epoch
+                and owner_session.revoked_at is None
+                and support_session_deadline(owner_session) > utc_now()
+                and await self._assigned(
+                    action.case_id, action.requester_id, action.requester_epoch, capability
+                )
+                and await self.identity.is_single_owner(action.requester_id)
+            )
         approvals = await self.session.scalars(
             select(SupportBusinessApproval)
             .where(SupportBusinessApproval.action_id == action.id)
@@ -557,7 +591,7 @@ class SupportBusinessActions:
         contact_ref: UUID | None = None,
     ) -> tuple[UUID, str, BusinessActionRead, int]:
         actor, active = await self._actor(token, csrf)
-        action, _, reviews = await self._intent(case_id, action_id, actor, stage)
+        action, _, reviews = await self._intent(case_id, action_id, actor, stage, active.id)
         if contact_ref is not None:
             await self._check_contact_attestation(action, actor, stage, reviews, contact_ref)
         if (
@@ -605,7 +639,7 @@ class SupportBusinessActions:
         contact_ref: UUID | None = None,
     ) -> BusinessActionRead:
         actor, active = await self._actor(token, csrf)
-        action, target, reviews = await self._intent(case_id, action_id, actor, stage)
+        action, target, reviews = await self._intent(case_id, action_id, actor, stage, active.id)
         if (
             stage == "execute"
             and action.kind in _VIEW_KINDS
@@ -696,7 +730,11 @@ class SupportBusinessActions:
             action.applied_at = now
             self._audit(action, actor, "applied", request_id)
         else:
-            if target.role in PROTECTED_USER_ROLES and not await self._protected_contact(action):
+            if (
+                action.owner_session_id is None
+                and target.role in PROTECTED_USER_ROLES
+                and not await self._protected_contact(action)
+            ):
                 raise _stale()
             if action.kind == "unlock":
                 if target.failed_login_attempts == 0 and target.locked_until is None:

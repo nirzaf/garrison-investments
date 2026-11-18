@@ -54,6 +54,7 @@ class BusinessActionRead(BaseModel):
     project_id: UUID | None
     reason: str
     digest: ActionDigest
+    authorization_mode: Literal["paired", "single_owner"] = "paired"
     expires_at: datetime
     applied_at: datetime | None
 

@@ -60,6 +60,12 @@ class SupportBusinessAction(UUIDPrimaryKeyMixin, Base):
     case_revision: Mapped[int]
     command_key: Mapped[UUID] = mapped_column(Uuid())
     kind: Mapped[str] = mapped_column(String(16))
+    owner_session_id: Mapped[UUID | None] = mapped_column(ForeignKey("support_sessions.id"))
+
+    @property
+    def authorization_mode(self) -> str:
+        return "paired" if self.owner_session_id is None else "single_owner"
+
     permission_session_id: Mapped[UUID | None] = mapped_column(ForeignKey("support_sessions.id"))
     permission_key: Mapped[str | None] = mapped_column(String(64))
     source_event_id: Mapped[UUID | None] = mapped_column(Uuid())

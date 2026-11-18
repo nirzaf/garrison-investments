@@ -7,10 +7,15 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy import delete, func, select
 
+from app.api.v1.support import CSRF_COOKIE
 from app.config import Settings
 from app.database import AsyncSessionLocal
 from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
-from app.models.support_business_actions import SupportBusinessContact, SupportRecoveryDelivery
+from app.models.support_business_actions import (
+    SupportBusinessApproval,
+    SupportBusinessContact,
+    SupportRecoveryDelivery,
+)
 from app.models.support_case_audit import SupportCaseAuditRead
 from app.models.support_cases import SupportCase, SupportCaseMember, SupportOperatorGrant
 from app.models.support_directory import SupportCaseSubject
@@ -26,10 +31,12 @@ from tests.test_support_custody import login
 from tests.test_support_identity import API, client, sign
 from tests.test_support_identity import enabled as enabled
 from tests.test_support_identity import isolated_engine_pool as isolated_engine_pool
+from tests.test_support_identity import options as login_options
 
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+@pytest.mark.parametrize("single_owner", [False, True])
 @pytest.mark.parametrize(
     ("protected", "kind", "delivery_status"),
     [
@@ -47,6 +54,7 @@ from tests.test_support_identity import isolated_engine_pool as isolated_engine_
 )
 async def test_business_session_revocation_with_live_review_and_protected_receipt(
     protected: bool,
+    single_owner: bool,
     kind: str,
     delivery_status: str | None,
     monkeypatch: pytest.MonkeyPatch,
@@ -63,6 +71,14 @@ async def test_business_session_revocation_with_live_review_and_protected_receip
     monkeypatch.setattr("app.tasks.support_recovery.get_settings", lambda: settings)
     async with client() as maker, client() as first, client() as second, client() as outsider:
         a = await login(maker, custodian=False)
+        if single_owner:
+
+            async def is_single_owner(self, operator_id: UUID) -> bool:
+                return operator_id == a[0]
+
+            monkeypatch.setattr(
+                "app.services.support_identity.SupportIdentity.is_single_owner", is_single_owner
+            )
         b = await login(first)
         c = await login(second, custodian=False)
         d = await login(outsider, custodian=False)
@@ -174,6 +190,74 @@ async def test_business_session_revocation_with_live_review_and_protected_receip
         else:
             assert (await maker.get(status_path)).status_code == 404
         assert (await maker.post(f"{path}/review/options")).status_code == 403
+        async def verify_last_director_guard(proof: dict) -> None:
+            existing_check = UserRepository.has_other_usable_director
+
+            async def no_other_director(_: UserRepository, target_id: UUID) -> bool:
+                assert target_id == target
+                return False
+
+            monkeypatch.setattr(UserRepository, "has_other_usable_director", no_other_director)
+            blocked = await maker.post(f"{path}/execute", json=proof)
+            assert blocked.status_code == 409, blocked.text
+            assert blocked.json()["error_code"] == "LAST_ACCESS_MANAGER_REQUIRED"
+            async with AsyncSessionLocal() as session:
+                unchanged = await session.get(User, target)
+                auth_session_before = await session.get(AuthSession, auth)
+                assert unchanged is not None and unchanged.is_active
+                assert unchanged.access_revision == 0
+                assert auth_session_before is not None and auth_session_before.revoked_at is None
+            monkeypatch.setattr(UserRepository, "has_other_usable_director", existing_check)
+
+        if single_owner:
+            assert action["authorization_mode"] == "single_owner"
+            challenge = await maker.post(f"{path}/execute/options")
+            if protected and kind == "recover":
+                assert challenge.status_code == 403
+                return
+            assert challenge.status_code == 200, challenge.text
+            assert challenge.json()["required_reviews"] == 0
+            proof = {
+                **sign(challenge.json(), *a, counter=2),
+                "expected_digest": action["digest"],
+            }
+            if kind == "revoke_sessions":
+                second_login = sign(await login_options(first, a[0]), *a, counter=2)
+                authenticated = await first.post(f"{API}/auth/verify", json=second_login)
+                assert authenticated.status_code == 200
+                first.headers["x-support-csrf"] = first.cookies[CSRF_COOKIE]
+                assert (await first.post(f"{path}/execute/options")).status_code == 403
+                proof = {
+                    **sign(challenge.json(), *a, counter=3),
+                    "expected_digest": action["digest"],
+                }
+                assert (await first.post(f"{path}/execute", json=proof)).status_code == 403
+            if protected and kind == "disable":
+                await verify_last_director_guard(proof)
+            results = await asyncio.gather(
+                maker.post(f"{path}/execute", json=proof),
+                maker.post(f"{path}/execute", json=proof),
+            )
+            accepted, replay = sorted(results, key=lambda response: response.status_code)
+            assert accepted.status_code == 200, accepted.text
+            assert accepted.json()["applied_at"] is not None
+            assert replay.status_code == 409
+            async with AsyncSessionLocal() as session:
+                assert not await session.scalar(
+                    select(func.count()).select_from(SupportBusinessApproval).where(
+                        SupportBusinessApproval.action_id == UUID(action["id"])
+                    )
+                )
+            if kind == "recover":
+                def accept_synthetic_delivery(*args, **kwargs) -> int:
+                    return 1
+
+                monkeypatch.setattr(
+                    "app.tasks.support_recovery.EmailService.send", accept_synthetic_delivery
+                )
+                assert await dispatch_recovery_deliveries() == 1
+                assert (await maker.get(status_path)).json()["delivery_state"] == "accepted"
+            return
         assert (await maker.post(f"{path}/execute/options")).status_code == 409
 
         contact_ref = str(uuid4())
@@ -238,23 +322,7 @@ async def test_business_session_revocation_with_live_review_and_protected_receip
             "expected_digest": action["digest"],
         }
         if protected and kind == "disable":
-            existing_check = UserRepository.has_other_usable_director
-
-            async def no_other_director(_: UserRepository, target_id: UUID) -> bool:
-                assert target_id == target
-                return False
-
-            monkeypatch.setattr(UserRepository, "has_other_usable_director", no_other_director)
-            blocked = await maker.post(f"{path}/execute", json=proof)
-            assert blocked.status_code == 409, blocked.text
-            assert blocked.json()["error_code"] == "LAST_ACCESS_MANAGER_REQUIRED"
-            async with AsyncSessionLocal() as session:
-                unchanged = await session.get(User, target)
-                auth_session_before = await session.get(AuthSession, auth)
-                assert unchanged is not None and unchanged.is_active
-                assert unchanged.access_revision == 0
-                assert auth_session_before is not None and auth_session_before.revoked_at is None
-            monkeypatch.setattr(UserRepository, "has_other_usable_director", existing_check)
+            await verify_last_director_guard(proof)
         first_result, replay = await asyncio.gather(
             maker.post(f"{path}/execute", json=proof),
             maker.post(f"{path}/execute", json=proof),

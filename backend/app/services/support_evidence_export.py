@@ -164,6 +164,7 @@ class SupportEvidenceExports:
         return SupportEvidenceExportRead.model_validate(
             {
                 "id": record.id,
+                "authorization_mode": record.authorization_mode,
                 "case_id": record.case_id,
                 "filters": {
                     "request_id": record.source_request_id,
@@ -226,6 +227,9 @@ class SupportEvidenceExports:
             id=uuid4(),
             case_id=case_id,
             requester_id=actor.id,
+            authorization_mode=(
+                "single_owner" if await self.identity.is_single_owner(actor.id) else "paired"
+            ),
             requester_session_id=active.id,
             reason=payload.reason,
             source_request_id=filters.request_id,
@@ -257,7 +261,15 @@ class SupportEvidenceExports:
         if record is None or record.case_id != case_id:
             raise NotFoundException("Support evidence export")
         await self._scope(actor.id, case_id, record.source_request_id)
-        if (stage == "review" and actor.id == record.requester_id) or (
+        single_owner = record.authorization_mode == "single_owner"
+        if single_owner:
+            if (
+                actor.id != record.requester_id
+                or active.id != record.requester_session_id
+                or not await self.identity.is_single_owner(actor.id)
+            ):
+                raise _denied()
+        elif (stage == "review" and actor.id == record.requester_id) or (
             stage == "download" and active.id != record.requester_session_id
         ):
             raise _denied()
@@ -274,6 +286,9 @@ class SupportEvidenceExports:
             raise _stale()
         if stage == "review":
             if record.approved_at is not None:
+                raise _stale()
+        elif single_owner:
+            if record.approved_at is None:
                 raise _stale()
         elif (
             record.reviewer_id is None
@@ -362,8 +377,9 @@ class SupportEvidenceExports:
         ) <= now or not compare_digest(record.sha256, sha256(content).hexdigest()):
             raise _stale()
         if stage == "review":
-            record.approved_at, record.reviewer_id = now, actor.id
-            record.reviewer_epoch, record.review_request_id = actor.grant_epoch, request_id
+            record.approved_at, record.review_request_id = now, request_id
+            if record.authorization_mode == "paired":
+                record.reviewer_id, record.reviewer_epoch = actor.id, actor.grant_epoch
         else:
             record.downloaded_at, record.download_request_id = now, request_id
         receipt = self._receipt(record)

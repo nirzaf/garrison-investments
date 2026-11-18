@@ -226,3 +226,57 @@ async def test_evidence_export_rejects_new_rows_after_review() -> None:
         async with AsyncSessionLocal() as db:
             record = await db.get(SupportEvidenceExport, UUID(receipt["id"]))
             assert record and record.approved_at and record.downloaded_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_single_owner_export_records_own_confirmation_and_rejects_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    async with client() as owner, client() as other:
+        requester, _, case, filters = await setup_export(owner, other)
+
+        async def is_owner(_identity, actor_id):
+            return actor_id == requester[0]
+
+        monkeypatch.setattr(
+            "app.services.support_identity.SupportIdentity.is_single_owner", is_owner
+        )
+        root = f"{CASES}/{case}/exports"
+        created = await owner.post(root, json={"filters": filters, "reason": "incident_review"})
+        assert created.status_code == 201, created.text
+        manifest = created.json()
+        assert manifest["authorization_mode"] == "single_owner"
+        path = f"{root}/{manifest['id']}"
+        assert (await other.post(path + "/review/options")).status_code == 403
+        assert (await owner.post(path + "/download/options")).status_code == 409
+        ready = await owner.post(path + "/review/options")
+        assert ready.status_code == 200, ready.text
+        proof = {**sign(ready.json(), *requester, counter=2), "expected_sha256": manifest["sha256"]}
+        results = await asyncio.gather(
+            *(owner.post(path + "/review", json=proof) for _ in range(2))
+        )
+        assert sorted(result.status_code for result in results) == [200, 409]
+        download = await owner.post(path + "/download/options")
+        assert download.status_code == 200, download.text
+        response = await owner.post(
+            path + "/download",
+            json={
+                **sign(download.json(), *requester, counter=3),
+                "expected_sha256": manifest["sha256"],
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert hashlib.sha256(response.content).hexdigest() == manifest["sha256"]
+        async with AsyncSessionLocal() as db:
+            record = await db.get(SupportEvidenceExport, UUID(manifest["id"]))
+            assert record and record.approved_at and record.downloaded_at
+            assert record.reviewer_id is None and record.reviewer_epoch is None
+            with pytest.raises(DBAPIError):
+                await db.execute(
+                    update(SupportEvidenceExport)
+                    .where(SupportEvidenceExport.id == record.id)
+                    .values(authorization_mode="paired")
+                )
+            await db.rollback()

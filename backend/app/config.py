@@ -18,6 +18,7 @@ class Settings(BaseSettings, BusinessPolicy):
     super_admin_enabled: bool = False
     super_admin_otp_key: SecretStr | None = None
     support_portal_enabled: bool = False
+    support_custody_mode: Literal["paired", "single_owner"] = "paired"
     support_ingress_peer: IPvAnyAddress | None = None
     support_recovery_key: SecretStr | None = None
     support_recovery_delivery_enabled: bool = False

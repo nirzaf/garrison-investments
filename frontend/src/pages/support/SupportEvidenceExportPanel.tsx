@@ -100,8 +100,11 @@ export function SupportEvidenceExportPanel({ onExpired }: { onExpired: () => voi
         reason: fields.get('reason')
       }, { signal });
       if (!accepted(response) || signal.aborted) return;
-      setReceipt(await response.json() as Receipt);
-      setNotice('Export requested. Provide its reference to an independent case reviewer.');
+      const created = await response.json() as Receipt;
+      setReceipt(created);
+      setNotice(created.authorization_mode === 'single_owner'
+        ? 'Export requested. Confirm it with your registered passkey.'
+        : 'Export requested. Provide its reference to an independent case reviewer.');
     });
   }
 
@@ -199,7 +202,10 @@ export function SupportEvidenceExportPanel({ onExpired }: { onExpired: () => voi
       {receipt && <ExportReceipt item={receipt} />}
       {prepared && (
         <button type="button" disabled={pending} onClick={() => void decide()}>
-          {prepared.stage === 'review' ? 'Approve export with passkey' : 'Download once with passkey'}
+          {prepared.stage === 'review'
+            ? (receipt?.authorization_mode === 'single_owner'
+              ? 'Confirm export as owner' : 'Approve export with passkey')
+            : 'Download once with passkey'}
         </button>
       )}
       {pending && <p role="status">Checking evidence export…</p>}

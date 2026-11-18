@@ -140,6 +140,9 @@ class SupportCaseActions:
         owner_membership = await self.session.get(SupportCaseMember, (case_id, actor.id))
         if case.owner_id != actor.id or owner_membership is None:
             raise NotFoundException("Support case")
+        single_owner = await self.identity.is_single_owner(actor.id)
+        if single_owner and payload.kind in MEMBERSHIP_ACTIONS:
+            raise _denied()
         if payload.member_id == actor.id:
             raise _denied()
         if payload.member_id is not None:
@@ -164,6 +167,7 @@ class SupportCaseActions:
             id=uuid4(),
             case_id=case.id,
             kind=payload.kind,
+            authorization_mode="single_owner" if single_owner else "paired",
             requester_id=actor.id,
             requester_epoch=actor.grant_epoch,
             member_id=payload.member_id,
@@ -189,7 +193,10 @@ class SupportCaseActions:
         action = await self.session.get(SupportCaseAction, action_id, with_for_update=True)
         if action is None or action.case_id != case.id:
             raise NotFoundException("Support case action")
-        if actor.id in {action.requester_id, action.member_id}:
+        if action.authorization_mode == "single_owner":
+            if actor.id != action.requester_id or not await self.identity.is_single_owner(actor.id):
+                raise _denied()
+        elif actor.id in {action.requester_id, action.member_id}:
             raise _denied()
         if action.kind in MEMBERSHIP_ACTIONS:
             if (
@@ -217,7 +224,9 @@ class SupportCaseActions:
                     .order_by(SupportCaseEvent.revision.desc())
                     .limit(1)
                 )
-                if mitigator is None or mitigator == actor.id:
+                if mitigator is None or (
+                    mitigator == actor.id and action.authorization_mode == "paired"
+                ):
                     raise _denied()
         requester = await self.session.get(SupportOperator, action.requester_id)
         if (
@@ -487,7 +496,8 @@ class SupportCaseActions:
         case.revision += 1
         case.updated_at = now
         action.applied_at = now
-        action.reviewer_id = actor.id
+        if action.authorization_mode == "paired":
+            action.reviewer_id = actor.id
         self._audit(action, actor, "applied", request_id)
         receipt = CaseActionRead.model_validate(action)
         await self.session.commit()
