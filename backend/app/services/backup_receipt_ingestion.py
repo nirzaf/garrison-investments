@@ -16,6 +16,8 @@ from app.utils.security import utc_now
 from scripts.backup_set_contract import (
     LOOPBACK,
     BackupSetError,
+    RecoveryPolicy,
+    RestoreDrillReceipt,
     read_policy,
     verify_publication_receipt,
     verify_restore_drill,
@@ -171,6 +173,12 @@ async def ingest_scheduled_attempt_receipt(
     return row, True
 
 
+def restore_drill_satisfies_policy(drill: RestoreDrillReceipt, policy: RecoveryPolicy) -> bool:
+    needs_db = "application_database" in policy.required_artifact_categories
+    needs_objects = "objects" in policy.required_artifact_categories
+    return (not needs_db or drill.covers_database) and (not needs_objects or drill.covers_objects)
+
+
 async def ingest_restore_drill_receipt(
     session: AsyncSession,
     raw_bytes: bytes,
@@ -180,6 +188,7 @@ async def ingest_restore_drill_receipt(
     key_file: Path,
     key_id: str,
     recorded_by: str = "backup_receipt_ingestion",
+    require_full_policy_coverage: bool = False,
 ) -> tuple[SupportBackupReceipt, bool]:
     policy, policy_sha = _validate_policy_scope(policy_path, expected_policy_sha256)
     try:
@@ -192,6 +201,15 @@ async def ingest_restore_drill_receipt(
         or drill.policy_sha256 != policy_sha
     ):
         raise BackupReceiptError("Restore drill receipt does not match the approved policy.")
+    if (
+        require_full_policy_coverage
+        and drill.outcome == "pass"
+        and not restore_drill_satisfies_policy(drill, policy)  # type: ignore[arg-type]
+    ):
+        raise BackupReceiptError(
+            "Restore drill receipt does not cover all artifact categories "
+            "required by recovery policy."
+        )
 
     await _lock_receipts(session)
     existing = await session.scalar(

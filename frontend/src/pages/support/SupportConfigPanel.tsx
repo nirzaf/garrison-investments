@@ -60,6 +60,7 @@ export function SupportConfigPanel({ onExpired }: { onExpired: () => void }) {
             <div><dt className="text-theme-text-secondary">Audit purge disabled</dt><dd>{data.audit_purge_disabled ? 'Enforced' : 'Disabled'}</dd></div>
             <div><dt className="text-theme-text-secondary">Mail transport</dt><dd>{data.mail_configured ? 'Configured' : 'Not configured'}</dd></div>
             <div><dt className="text-theme-text-secondary">Support recovery delivery</dt><dd>{data.support_recovery_delivery_enabled ? 'Enabled' : 'Disabled'}</dd></div>
+            <div><dt className="text-theme-text-secondary">Support custody mode</dt><dd>{data.support_custody_mode === 'single_owner' ? 'Single-owner' : data.support_custody_mode === 'paired' ? 'Paired custodian' : 'Unknown'}</dd></div>
             <div><dt className="text-theme-text-secondary">Technical OTP config</dt><dd>{data.support_email_otp_configured ? `Ready (${data.support_otp_recipient_count} recipients)` : 'Unconfigured'}</dd></div>
             <div><dt className="text-theme-text-secondary">TLS certificate</dt><dd>{statusLabel(data.tls_status)}{data.tls_not_after ? ` (expires ${formatObserved(data.tls_not_after)})` : ''}</dd></div>
           </dl>

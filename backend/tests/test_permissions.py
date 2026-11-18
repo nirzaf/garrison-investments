@@ -10,8 +10,17 @@ from app.utils.permissions import (
     ALL_PERMISSIONS,
     BUSINESS_ROLES,
     HR_PERMISSIONS,
+    PERMISSION_HR_CASES_RESTRICTED,
+    PERMISSION_HR_EMPLOYEES_READ,
+    PERMISSION_HR_EMPLOYEES_SENSITIVE,
+    PERMISSION_HR_PAYROLL_APPROVE,
+    PERMISSION_HR_PAYROLL_SENSITIVE,
+    PERMISSION_HR_REQUESTS_PROCESS,
     PERMISSION_PLATFORM_ACCESS,
     PERMISSION_PLATFORM_OVERVIEW_READ,
+    PERMISSION_USERS_READ,
+    ROLE_HR_EXECUTIVE,
+    ROLE_HR_MANAGER,
     ROLE_LABELS,
     ROLE_PERMISSIONS,
     ROLE_SUPER_ADMIN,
@@ -206,3 +215,53 @@ def test_production_roles_keep_policy_gated_payroll_and_hr_cases_disabled() -> N
     for role in VALID_ROLES:
         assert gated.isdisjoint(ROLE_PERMISSIONS[role])
         assert navigation_visibility(role)["employee-relations"] is False
+
+
+def test_exact_ten_person_roster_sensitive_hr_and_monetary_duty_coverage() -> None:
+    roster = {
+        "NANDANA": "managing_director",
+        "SUDESH": "operations_director",
+        "CHAMARA": "group_project_manager",
+        "NISHSHANKA": "mep_project_manager",
+        "MADEESHA": "quantity_surveyor",
+        "DILSHAN": "senior_site_supervisor",
+        "LAHIRU": "site_supervisor",
+        "SAFIYA": ROLE_HR_MANAGER,
+        "SHAMEERA": ROLE_HR_EXECUTIVE,
+        "GAYANI": "administrative_executive",
+    }
+    assert len(roster) == 10
+    assert set(roster.values()) == BUSINESS_ROLES
+
+    sensitive_reviewers = {
+        name
+        for name, role in roster.items()
+        if has_permission(User(role=role), PERMISSION_HR_EMPLOYEES_SENSITIVE)
+    }
+    assert sensitive_reviewers == {"SAFIYA"}
+    assert {
+        name
+        for name, role in roster.items()
+        if has_permission(User(role=role), PERMISSION_HR_REQUESTS_PROCESS)
+    } == {"SAFIYA"}
+    assert has_permission(User(role=roster["SHAMEERA"]), PERMISSION_USERS_READ)
+    assert not has_permission(User(role=roster["SHAMEERA"]), PERMISSION_HR_EMPLOYEES_READ)
+    assert not has_permission(User(role=roster["SHAMEERA"]), PERMISSION_HR_EMPLOYEES_SENSITIVE)
+    assert not has_permission(User(role=roster["SHAMEERA"]), PERMISSION_HR_REQUESTS_PROCESS)
+
+    # When SAFIYA proposes or is subject to a sensitive HR change requiring an independent
+    # reviewer (reviewer != proposer and reviewer != subject), no second eligible reviewer exists.
+    independent_for_safiya = {
+        name for name in sensitive_reviewers if name != "SAFIYA"
+    }
+    assert independent_for_safiya == set()
+
+    # Policy-gated payroll and restricted HR cases remain unassigned across the 10-person roster.
+    for perm in (
+        PERMISSION_HR_PAYROLL_SENSITIVE,
+        PERMISSION_HR_PAYROLL_APPROVE,
+        PERMISSION_HR_CASES_RESTRICTED,
+    ):
+        assert {
+            name for name, role in roster.items() if has_permission(User(role=role), perm)
+        } == set()

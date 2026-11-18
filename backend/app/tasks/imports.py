@@ -1,14 +1,21 @@
+from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
 import structlog
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models.import_batch import ImportBatch
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
-from app.services.import_service import ImportService
+from app.services.import_service import (
+    ImportService,
+    InvalidToken,
+    decrypt_import_payload,
+    import_outbox_dedupe_key,
+)
 from app.tasks.async_utils import run_async_task
 from app.tasks.base import LoggedTask
 from app.tasks.celery_app import celery_app
@@ -54,7 +61,7 @@ def run_import_async(
     *,
     template_type: str,
     file_name: str,
-    content: bytes,
+    content: bytes | None = None,
     actor_id: str,
     batch_id: str | None = None,
 ) -> str:
@@ -64,7 +71,7 @@ def run_import_async(
         file_name=file_name,
         actor_id=actor_id,
         batch_id=batch_id,
-        content_size=len(content),
+        content_size=len(content) if content is not None else None,
     )
     return run_async_task(
         _run_import_async(
@@ -77,11 +84,65 @@ def run_import_async(
     )
 
 
+async def _finalize_import_outbox(
+    session: AsyncSession, batch_id: UUID | None, *, completed: bool
+) -> None:
+    if batch_id is None:
+        return
+    entry = await session.scalar(
+        select(TaskOutbox)
+        .where(TaskOutbox.dedupe_key == import_outbox_dedupe_key(batch_id))
+        .with_for_update()
+    )
+    if entry is None:
+        return
+    entry.status = "completed" if completed else "failed"
+    if isinstance(entry.kwargs_json, dict) and "content_ciphertext" in entry.kwargs_json:
+        entry.kwargs_json = {
+            key: value for key, value in entry.kwargs_json.items() if key != "content_ciphertext"
+        }
+
+
+async def _load_outbox_import_payload(session: AsyncSession, batch_id: UUID) -> bytes:
+    entry = await session.scalar(
+        select(TaskOutbox).where(TaskOutbox.dedupe_key == import_outbox_dedupe_key(batch_id))
+    )
+    if entry is None or not isinstance(entry.kwargs_json, dict):
+        raise AppException(
+            "Queued import payload could not be located.",
+            status_code=422,
+            error_code="IMPORT_PAYLOAD_UNAVAILABLE",
+        )
+    ciphertext = entry.kwargs_json.get("content_ciphertext")
+    expected_sha256 = entry.kwargs_json.get("content_sha256")
+    if not isinstance(ciphertext, str) or not ciphertext or not isinstance(expected_sha256, str):
+        raise AppException(
+            "Queued import payload metadata is incomplete.",
+            status_code=422,
+            error_code="IMPORT_PAYLOAD_UNAVAILABLE",
+        )
+    try:
+        content = decrypt_import_payload(ciphertext)
+    except (InvalidToken, ValueError, OSError):
+        raise AppException(
+            "Queued import payload could not be decrypted.",
+            status_code=422,
+            error_code="IMPORT_PAYLOAD_UNAVAILABLE",
+        ) from None
+    if sha256(content).hexdigest() != expected_sha256:
+        raise AppException(
+            "Queued import payload checksum verification failed.",
+            status_code=422,
+            error_code="IMPORT_PAYLOAD_CHECKSUM_MISMATCH",
+        )
+    return content
+
+
 async def _run_import_async(
     *,
     template_type: str,
     file_name: str,
-    content: bytes,
+    content: bytes | None = None,
     actor_id: str,
     batch_id: str | None = None,
 ) -> str:
@@ -94,6 +155,7 @@ async def _run_import_async(
             return f"import failed: user {actor_id} not found"
         try:
             ImportService.ensure_template_access(actor, template_type)
+            batch: ImportBatch | None = None
             if batch_uuid:
                 batch = await session.get(ImportBatch, batch_uuid, with_for_update=True)
                 if (
@@ -107,7 +169,21 @@ async def _run_import_async(
                         status_code=409,
                         error_code="IMPORT_BATCH_NOT_ELIGIBLE",
                     )
-                if batch.status == "queued":
+                if batch.status == "completed":
+                    await _finalize_import_outbox(session, batch_uuid, completed=True)
+                    await session.commit()
+                    return f"import {batch.id} completed: {batch.status}"
+            payload_bytes = content
+            if payload_bytes is None:
+                if batch_uuid is None:
+                    raise AppException(
+                        "Missing async import batch identity.",
+                        status_code=422,
+                        error_code="IMPORT_PAYLOAD_UNAVAILABLE",
+                    )
+                payload_bytes = await _load_outbox_import_payload(session, batch_uuid)
+            if batch_uuid:
+                if batch is not None and batch.status == "queued":
                     await session.execute(
                         update(ImportBatch)
                         .where(
@@ -124,10 +200,15 @@ async def _run_import_async(
             result = await ImportService(session).run_import(
                 template_type=template_type,
                 file_name=file_name,
-                content=content,
+                content=payload_bytes,
                 actor=actor,
                 batch_id=batch_uuid,
             )
+            if batch_uuid:
+                await _finalize_import_outbox(
+                    session, batch_uuid, completed=(result.status == "completed")
+                )
+                await session.commit()
         except AppException as exc:
             await session.rollback()
             if exc.status_code < 500:
@@ -160,10 +241,17 @@ async def _mark_batch_failed(session: AsyncSession, batch_id: UUID | None, error
     if not batch_id:
         return
     batch = await session.get(ImportBatch, batch_id, with_for_update=True)
-    if not batch or batch.status == "completed":
+    if batch is None:
+        await _finalize_import_outbox(session, batch_id, completed=False)
+        await session.commit()
+        return
+    if batch.status == "completed":
+        await _finalize_import_outbox(session, batch_id, completed=True)
+        await session.commit()
         return
     batch.status = "failed"
     batch.summary = {"error_code": error_code}
+    await _finalize_import_outbox(session, batch_id, completed=False)
     await session.commit()
 
 

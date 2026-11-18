@@ -1,7 +1,9 @@
+import base64
 import csv
 import posixpath
 import re
 import zipfile
+import zlib
 from datetime import date
 from decimal import Decimal
 from hashlib import sha256
@@ -10,11 +12,13 @@ from pathlib import Path
 from uuid import UUID
 from xml.etree import ElementTree
 
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import String, any_, literal, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.config import get_settings
 from app.models.boq_item import BoqItem
 from app.models.document import Document
 from app.models.idempotency_record import IdempotencyRecord
@@ -22,6 +26,7 @@ from app.models.import_batch import ImportBatch
 from app.models.inventory import InventoryItem, InventoryMovement, StorageLocation
 from app.models.project import Project
 from app.models.supplier import Supplier
+from app.models.task_outbox import TaskOutbox
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.imports import ImportErrorItem, ImportPreviewResponse, ImportRunResponse
@@ -50,6 +55,42 @@ MAX_XLSX_EXPANDED_BYTES = 200 * 1024 * 1024
 MAX_XLSX_COLUMNS = 16_384
 MAX_XLSX_CELLS = 1_000_000
 IMPORT_SUBMISSION_ROUTE = "imports.submit"
+
+
+def import_outbox_dedupe_key(batch_id: UUID) -> str:
+    return f"import-batch:{batch_id}"
+
+
+def _import_outbox_fernet() -> Fernet:
+    settings = get_settings()
+    if settings.hr_encryption_key is not None and settings.hr_encryption_key.get_secret_value():
+        seed = settings.hr_encryption_key.get_secret_value()
+    elif settings.backup_encryption_password:
+        seed = settings.backup_encryption_password
+    else:
+        seed = f"{settings.database_url}:{settings.minio_root_password}:garrisons-import-outbox-v1"
+    derived = base64.urlsafe_b64encode(sha256(seed.encode("utf-8")).digest())
+    return Fernet(derived)
+
+
+def encrypt_import_payload(content: bytes) -> str:
+    compressed = zlib.compress(content, level=6)
+    return _import_outbox_fernet().encrypt(compressed).decode("ascii")
+
+
+def decrypt_import_payload(token: str) -> bytes:
+    compressed = _import_outbox_fernet().decrypt(token.encode("ascii"))
+    return zlib.decompress(compressed)
+
+
+__all__ = [
+    "ImportService",
+    "TEMPLATE_COLUMNS",
+    "InvalidToken",
+    "decrypt_import_payload",
+    "encrypt_import_payload",
+    "import_outbox_dedupe_key",
+]
 
 TEMPLATE_COLUMNS = {
     "users": [
@@ -264,6 +305,21 @@ class ImportService:
         )
         self.session.add(batch)
         await self.session.flush()
+        safe_file_name = Path(file_name or "import.csv").name[:255] or "import.csv"
+        self.session.add(
+            TaskOutbox(
+                dedupe_key=import_outbox_dedupe_key(batch.id),
+                task_name="run_import_async",
+                args_json=[str(batch.id), str(actor.id)],
+                kwargs_json={
+                    "template_type": template_type,
+                    "file_name": safe_file_name,
+                    "content_sha256": sha256(content).hexdigest(),
+                    "content_ciphertext": encrypt_import_payload(content),
+                },
+                status="pending",
+            )
+        )
         if submission is not None:
             submission.resource_type = "import_batch"
             submission.resource_id = batch.id

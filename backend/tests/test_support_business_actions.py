@@ -482,3 +482,108 @@ async def test_business_session_revocation_with_live_review_and_protected_receip
             assert (
                 completed.json()["reset_state"] == "completed" and completed.json()["completed_at"]
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_single_owner_proposal_rejects_custody_mode_flip_or_grant_revocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    mode_state = {"custody_mode": "single_owner"}
+    settings = Settings(
+        app_env="test",
+        support_portal_enabled=True,
+        support_custody_mode="single_owner",
+        support_recovery_key=SecretStr("disposable-support-issuance-key-for-testing"),
+        frontend_base_url="https://portal.example.test",
+    )
+
+    def _current_settings() -> Settings:
+        settings.support_custody_mode = mode_state["custody_mode"]  # type: ignore[assignment]
+        return settings
+
+    monkeypatch.setattr("app.services.support_business_actions.get_settings", _current_settings)
+    monkeypatch.setattr("app.services.support_monitors.get_settings", _current_settings)
+    async with client() as maker:
+        a = await login(maker, custodian=False)
+
+        async def is_single_owner(self, operator_id: UUID) -> bool:
+            return mode_state["custody_mode"] == "single_owner" and operator_id == a[0]
+
+        monkeypatch.setattr(
+            "app.services.support_identity.SupportIdentity.is_single_owner", is_single_owner
+        )
+        target, case = uuid4(), uuid4()
+        async with AsyncSessionLocal() as session:
+            session.add(
+                User(
+                    id=target,
+                    full_name="Custody Flip Target",
+                    email=f"{target}@example.com",
+                    role=ROLE_SITE_SUPERVISOR,
+                    password_hash="synthetic-original-hash",
+                    is_active=True,
+                )
+            )
+            session.add(
+                SupportCase(
+                    id=case,
+                    status="open",
+                    severity="medium",
+                    owner_id=a[0],
+                    external_ref=f"case-{case}",
+                    reason_code="access",
+                )
+            )
+            await session.flush()
+            session.add(SupportCaseSubject(case_id=case, user_id=target))
+            session.add(SupportCaseMember(case_id=case, operator_id=a[0]))
+            session.add(SupportOperatorGrant(operator_id=a[0], capability="account.request"))
+            session.add(SupportOperatorGrant(operator_id=a[0], capability="config.read"))
+            await session.commit()
+
+        cfg = await maker.get(f"{API}/config/status")
+        assert cfg.status_code == 200
+        assert cfg.json()["support_custody_mode"] == "single_owner"
+
+        draft = await maker.post(
+            f"{API}/cases/{case}/account-actions",
+            json={
+                "user_id": str(target),
+                "user_revision": 0,
+                "case_revision": 1,
+                "kind": "disable",
+                "reason_code": "suspected_access",
+                "reason": "Synthetic custody mode test proposal.",
+            },
+            headers={"Idempotency-Key": str(uuid4())},
+        )
+        assert draft.status_code == 201, draft.text
+        action = draft.json()
+        assert action["authorization_mode"] == "single_owner"
+        action_path = f"{API}/cases/{case}/account-actions/{action['id']}"
+
+        # Obtain step-up challenge while single_owner is active.
+        challenge = await maker.post(f"{action_path}/execute/options")
+        assert challenge.status_code == 200
+        proof = {**sign(challenge.json(), *a, counter=2), "expected_digest": action["digest"]}
+
+        # Switching to paired mode after proposal blocks both execute/options and execute.
+        mode_state["custody_mode"] = "paired"
+        assert (await maker.get(f"{API}/config/status")).json()["support_custody_mode"] == "paired"
+        assert (await maker.post(f"{action_path}/execute/options")).status_code == 403
+        assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 403
+
+        # Restoring mode while revoking operator grant fails closed as well.
+        mode_state["custody_mode"] = "single_owner"
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(SupportOperatorGrant).where(
+                    SupportOperatorGrant.operator_id == a[0],
+                    SupportOperatorGrant.capability == "account.request",
+                )
+            )
+            await session.commit()
+        assert (await maker.post(f"{action_path}/execute/options")).status_code == 403
+        assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 403

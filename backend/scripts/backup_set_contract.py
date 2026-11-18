@@ -96,7 +96,7 @@ class RetentionRules(BaseModel):
 class RecoveryPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    decision_id: Literal["D-29-RECOVERY"]
+    decision_id: Literal["D-29-RECOVERY", "SAME-HOST-LOCAL-BACKUP"]
     policy_id: str = Field(min_length=1)
     revision: str = Field(min_length=1)
     rpo_minutes: int = Field(gt=0, strict=True)
@@ -120,11 +120,19 @@ class RecoveryPolicy(BaseModel):
     approval_ref: str = Field(min_length=1)
     approved_at: AwareDatetime
 
+    @property
+    def local_only(self) -> bool:
+        return self.decision_id == "SAME-HOST-LOCAL-BACKUP"
+
+    @property
+    def backup_scope(self) -> Literal["same-host-local"] | None:
+        return "same-host-local" if self.local_only else None
+
     @model_validator(mode="after")
     def validate_objectives(self) -> Self:
         if (
             self.backup_interval_minutes + self.maximum_publication_delay_minutes > self.rpo_minutes
-            or self.failure_domains.source == self.failure_domains.destination
+            or (self.failure_domains.source == self.failure_domains.destination) != self.local_only
             or len({item.strip() for item in self.key_custodians if item.strip()}) < 2
             or self.operator == self.substitute_operator
             or not {"application_database", "objects", "configuration"}
@@ -179,6 +187,9 @@ class AuthenticationRecord(BaseModel):
 class PublicationReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    backup_scope: Literal["same-host-local"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     backup_set_id: str = Field(pattern=SET_ID)
     manifest_sha256: str = Field(pattern=HEX_SHA256)
     snapshot_at_utc: AwareDatetime
@@ -266,6 +277,9 @@ class SignedScheduledAttemptReceipt(SignedReceipt):
 class RestoreDrillReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    backup_scope: Literal["same-host-local"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     backup_set_id: str = Field(pattern=SET_ID)
     manifest_sha256: str = Field(pattern=HEX_SHA256)
     source_sha: str = Field(pattern=SOURCE_SHA)
@@ -369,12 +383,16 @@ def verify_receipt_signature(
         raise BackupSetError(f"Backup {domain} receipt authentication failed.")
 
 
-def verify_publication_receipt(raw: bytes, *, key_file: Path, key_id: str) -> PublicationReceipt:
+def verify_publication_receipt(
+    raw: bytes, *, key_file: Path, key_id: str, local_only: bool = False
+) -> PublicationReceipt:
     try:
         signed = SignedPublicationReceipt.model_validate_json(raw)
     except ValueError:
         raise BackupSetError("Backup publication receipt has an invalid format.") from None
     verify_receipt_signature(signed, raw, key_file=key_file, key_id=key_id, domain="publication")
+    if (signed.receipt.backup_scope == "same-host-local") != local_only:
+        raise BackupSetError("Backup receipt does not match the requested recovery scope.")
     return signed.receipt
 
 
@@ -411,22 +429,27 @@ def sign_restore_drill(receipt: RestoreDrillReceipt, *, key: bytes, key_id: str)
     )
 
 
-def verify_restore_drill(raw: bytes, *, key_file: Path, key_id: str) -> RestoreDrillReceipt:
+def verify_restore_drill(
+    raw: bytes, *, key_file: Path, key_id: str, local_only: bool = False
+) -> RestoreDrillReceipt:
     try:
         signed = SignedRestoreDrillReceipt.model_validate_json(raw)
     except ValueError:
         raise BackupSetError("Restore drill receipt has an invalid format.") from None
-    verify_receipt_signature(
-        signed, raw, key_file=key_file, key_id=key_id, domain="restore-drill"
-    )
+    verify_receipt_signature(signed, raw, key_file=key_file, key_id=key_id, domain="restore-drill")
+    if (signed.receipt.backup_scope == "same-host-local") != local_only:
+        raise BackupSetError("Backup receipt does not match the requested recovery scope.")
     return signed.receipt
 
 
-def read_policy(path: Path) -> tuple[RecoveryPolicy, str]:
+def read_policy(path: Path, *, local_only: bool = False) -> tuple[RecoveryPolicy, str]:
     if path.is_symlink():
         raise BackupSetError("Recovery policy must be a regular operator-provided file.")
     try:
         raw = path.read_bytes()
-        return RecoveryPolicy.model_validate_json(raw), hashlib.sha256(raw).hexdigest()
+        policy = RecoveryPolicy.model_validate_json(raw)
+        if policy.local_only != local_only:
+            raise BackupSetError("Backup policy does not match the requested recovery scope.")
+        return policy, hashlib.sha256(raw).hexdigest()
     except (OSError, ValueError):
         raise BackupSetError("Approved recovery policy could not be validated.") from None

@@ -126,6 +126,9 @@ class AuthenticatedManifest(ManifestBody):
     model_config = ConfigDict(extra="forbid")
 
     format_version: Literal[2] = 2
+    backup_scope: Literal["same-host-local"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     backup_set_id: str = Field(pattern=SET_ID)
     policy_revision: str = Field(min_length=1)
     policy_sha256: str = Field(pattern=HEX_SHA256)
@@ -407,7 +410,9 @@ async def capture(args: argparse.Namespace, password: str) -> None:
     start = datetime.now(UTC)
     grafana_url = os.getenv("BACKUP_GRAFANA_DATABASE_URL")
     if policy_path and receipt_path:
-        policy, policy_sha256 = read_policy(policy_path)
+        policy, policy_sha256 = read_policy(
+            policy_path, local_only=getattr(args, "local_only", False)
+        )
         evidence = read_capture_evidence(receipt_path, args.source_sha, policy)
         key_file, key_id = key_settings()
         key = authentication_key(key_file, key_id)
@@ -500,6 +505,7 @@ async def capture(args: argparse.Namespace, password: str) -> None:
                 **base.model_dump(),
                 backup_set_id=uuid4().hex,
                 policy_revision=policy.revision,
+                backup_scope=policy.backup_scope,
                 policy_sha256=policy_sha256,
                 snapshot_at_utc=snapshot_at,
                 source_environment=policy.source_environment,
@@ -561,7 +567,7 @@ def decode_manifest(
         if type(version) is not int or version not in {1, 2}:
             raise BackupSetError("Unsupported recovery manifest format.")
         if version == 1:
-            if require_authenticated or signature is not None:
+            if require_authenticated or signature is not None or (policy and policy[0].local_only):
                 raise BackupSetError("An authenticated format-2 backup manifest is required.")
             legacy = Manifest.model_validate_json(raw)
             validate_inventory(legacy)
@@ -581,6 +587,7 @@ def decode_manifest(
         approved, policy_sha256 = policy
         if (
             canonical_bytes(manifest) != raw
+            or manifest.backup_scope != approved.backup_scope
             or manifest.policy_revision != approved.revision
             or manifest.policy_sha256 != policy_sha256
             or manifest.source_environment != approved.source_environment
@@ -719,6 +726,7 @@ def publish(source: Path, policy_data: tuple[RecoveryPolicy, str], receipt_path:
         ):
             raise BackupSetError("Independent backup exceeded its approved publication delay.")
         receipt = PublicationReceipt(
+            backup_scope=policy.backup_scope,
             backup_set_id=set_id,
             manifest_sha256=digest,
             snapshot_at_utc=manifest.snapshot_at_utc,
@@ -742,7 +750,10 @@ def publish(source: Path, policy_data: tuple[RecoveryPolicy, str], receipt_path:
     if raw_marker != sign_publication_receipt(existing, key=secret, key_id=key_id):
         raise BackupSetError("Independent backup receipt changed during verification.")
     write_receipt(receipt_path, raw_marker)
-    print(f"Published and independently verified backup set {set_id}.")
+    if policy.local_only:
+        print(f"Published and verified same-host local backup set {set_id}.")
+    else:
+        print(f"Published and independently verified backup set {set_id}.")
 
 
 def publish_attempt(
@@ -817,7 +828,8 @@ def fetch(set_id: str, policy_data: tuple[RecoveryPolicy, str], destination: Pat
     except BaseException:
         shutil.rmtree(destination)
         raise
-    print(f"Fetched and authenticated independent backup set {set_id}.")
+    scope = "same-host local" if policy.local_only else "independent"
+    print(f"Fetched and authenticated {scope} backup set {set_id}.")
 
 
 def read_retention_candidates(
@@ -1237,6 +1249,9 @@ async def restore(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--local-only", action="store_true", help="Use same-host local backup policy"
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
     capture_args = subcommands.add_parser("capture")
     capture_args.add_argument("--destination", type=Path, required=True)
@@ -1278,7 +1293,24 @@ def main() -> None:
     args = parser.parse_args()
     os.umask(0o077)
     try:
-        policy = read_policy(args.policy) if args.policy else None
+        if args.local_only and (
+            not args.policy
+            or args.command
+            not in {
+                "capture",
+                "verify",
+                "publish",
+                "fetch",
+                "restore",
+                "policy-check",
+                "retention-preview",
+                "retention-apply",
+            }
+        ):
+            raise BackupSetError(
+                "Local-only backups require an explicit policy and a manual operation."
+            )
+        policy = read_policy(args.policy, local_only=args.local_only) if args.policy else None
         if args.command == "policy-check" and policy:
             print(
                 policy[0].maximum_capture_pause_seconds, policy[0].maximum_publication_delay_minutes
@@ -1302,7 +1334,11 @@ def main() -> None:
                 if isinstance(manifest, AuthenticatedManifest)
                 else "legacy checksum-only format 1"
             )
-            print(f"Verified {assurance} encrypted artifacts for {len(manifest.objects)} objects.")
+            scope = "same-host local " if args.local_only else ""
+            print(
+                f"Verified {scope}{assurance} encrypted artifacts "
+                f"for {len(manifest.objects)} objects."
+            )
             return
         if args.command == "publish" and policy:
             publish(args.source, policy, args.receipt)
@@ -1351,6 +1387,7 @@ def main() -> None:
                 verified_at = datetime.fromisoformat(str(result["objects_verified_at_utc"]))
                 rto_minutes = max(0, int((verified_at - started_at).total_seconds() // 60))
                 drill = RestoreDrillReceipt(
+                    backup_scope=policy[0].backup_scope,
                     backup_set_id=manifest.backup_set_id,
                     manifest_sha256=str(result["manifest_sha256"]),
                     source_sha=manifest.source_sha,

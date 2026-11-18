@@ -27946,12 +27946,51 @@
           "isolated_restore_status": {
             "enum": [
               "verified",
+              "partial",
               "stale",
               "failed",
-              "unverified"
+              "unverified",
+              "unavailable"
             ],
             "title": "Isolated Restore Status",
             "type": "string"
+          },
+          "latest_backup_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Backup Set Id"
+          },
+          "latest_restore_backup_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Restore Backup Set Id"
+          },
+          "latest_restore_covers_database": {
+            "default": false,
+            "title": "Latest Restore Covers Database",
+            "type": "boolean"
+          },
+          "latest_restore_covers_objects": {
+            "default": false,
+            "title": "Latest Restore Covers Objects",
+            "type": "boolean"
+          },
+          "latest_restore_matches_latest_set": {
+            "default": false,
+            "title": "Latest Restore Matches Latest Set",
+            "type": "boolean"
           },
           "latest_scheduled_db_task_at": {
             "anyOf": [
@@ -27979,9 +28018,12 @@
           "overall_recovery_posture": {
             "enum": [
               "complete_verified",
+              "partial_restore_coverage",
               "partial_db_only",
               "stale",
-              "unverified"
+              "degraded",
+              "unverified",
+              "unavailable"
             ],
             "title": "Overall Recovery Posture",
             "type": "string"
@@ -28562,6 +28604,16 @@
               "unavailable"
             ],
             "title": "Source Status",
+            "type": "string"
+          },
+          "support_custody_mode": {
+            "default": "paired",
+            "enum": [
+              "paired",
+              "single_owner",
+              "unknown"
+            ],
+            "title": "Support Custody Mode",
             "type": "string"
           },
           "support_email_otp_configured": {

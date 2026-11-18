@@ -18,7 +18,7 @@ from app.schemas.imports import (
 )
 from app.services.idempotency import validate_key
 from app.services.import_service import TEMPLATE_COLUMNS, ImportService
-from app.tasks.imports import run_import_async
+from app.tasks.outbox import dispatch_import_outbox_for_batch
 from app.utils.permissions import COMPANY_RESOURCE_ROLES, PERMISSION_USERS_MANAGE
 
 router = APIRouter(prefix="/imports", tags=["Imports"])
@@ -137,18 +137,9 @@ async def run_import_async_endpoint(
         actor=current_user,
         idempotency_key=validate_key(idempotency_key),
     )
-    task_id = str(batch.batch_id)
+    task_id = f"import-batch-{batch.batch_id}"
     if batch.status == "queued":
-        # A retry can publish again if the original broker acknowledgement was lost.
-        # Every delivery processes the same database batch under its existing lock.
-        run_import_async.apply_async(
-            kwargs={
-                "template_type": template_type,
-                "file_name": file.filename or "import.csv",
-                "content": content,
-                "actor_id": str(current_user.id),
-                "batch_id": task_id,
-            },
-            task_id=task_id,
-        )
+        # Persist the batch and TaskOutbox payload atomically before publishing,
+        # then attempt immediate handoff with periodic outbox recovery if deferred.
+        await dispatch_import_outbox_for_batch(batch.batch_id)
     return ImportQueueResponse(**batch.model_dump(), task_id=task_id)

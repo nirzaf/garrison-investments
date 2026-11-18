@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 
 import {
@@ -15,7 +15,24 @@ import {
 } from '../../api/imports';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 
+function batchStatusTone(status: string): 'success' | 'warning' | 'danger' {
+  if (status === 'completed') return 'success';
+  if (status === 'failed') return 'danger';
+  return 'warning';
+}
+
+function resultBannerClass(status: string): string {
+  if (status === 'completed') {
+    return 'alert-success rounded-lg border border-[var(--status-success-border)] p-4 text-sm';
+  }
+  if (status === 'failed') {
+    return 'alert-error rounded-lg border border-[var(--status-error-border)] p-4 text-sm';
+  }
+  return 'rounded-lg border border-theme-border bg-theme-card p-4 text-sm text-theme-text-primary';
+}
+
 export function ImportPage() {
+  const queryClient = useQueryClient();
   const [template, setTemplate] = useState(importTemplates[0]);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -28,6 +45,31 @@ export function ImportPage() {
     queryKey: ['import-batches'],
     queryFn: () => listImportBatches()
   });
+
+  useEffect(() => {
+    if (!batchId || !result || (result.status !== 'queued' && result.status !== 'processing')) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const next = await getImportBatchStatus(batchId);
+          if (cancelled) return;
+          setResult(next);
+          if (next.status !== 'queued' && next.status !== 'processing') {
+            void queryClient.invalidateQueries({ queryKey: ['import-batches'] });
+          }
+        } catch {
+          // Leave existing state intact so the operator can retry Refresh status.
+        }
+      })();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [batchId, queryClient, result]);
 
   async function previewSelected() {
     if (!file || busy) return;
@@ -222,14 +264,14 @@ export function ImportPage() {
       ) : null}
 
       {result ? (
-        <div className="alert-success rounded-lg border border-[var(--status-success-border)] p-4 text-sm">
+        <div className={resultBannerClass(result.status)}>
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <span>
               Import {result.status}: {result.row_count} rows, {result.error_count} errors.
             </span>
             {batchId ? (
               <button
-                className="rounded-md border border-[var(--status-success-border)] px-3 py-1.5 text-xs font-semibold"
+                className="rounded-md border border-current/30 px-3 py-1.5 text-xs font-semibold"
                 disabled={busy}
                 onClick={() => void refreshBatch()}
                 type="button"
@@ -261,7 +303,7 @@ export function ImportPage() {
                     {batch.error_count} errors
                   </p>
                 </div>
-                <StatusBadge tone={batch.status === 'completed' ? 'success' : 'warning'}>
+                <StatusBadge tone={batchStatusTone(batch.status)}>
                   {batch.status}
                 </StatusBadge>
                 <span className="self-center text-xs text-theme-text-muted">

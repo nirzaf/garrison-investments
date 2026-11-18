@@ -311,6 +311,22 @@ python scripts/restore_dry_run.py \
 
 Check for `Restore status: executed` in the evidence. With no restore database URL, the receipt is `validated-only`. Include the backup object name, timestamp, operator, target isolation, and verified results with the receipt.
 
+### Same-host local backups
+
+For a separate private RustFS service on the Garrisons VPS, prepare an approved
+policy with `decision_id: SAME-HOST-LOCAL-BACKUP` and the same real failure-domain
+name for source and destination. The local destination still needs its own bucket,
+TLS endpoint, restricted identities, capacity and retention rules. Run manual
+backup-set operations with `python -m scripts.backup_set --local-only <operation>`
+and that policy. Capture still requires verified writer quiescence and the capture
+receipt. Use the same policy and option when verifying, fetching or restoring.
+Authenticated local manifests, publication receipts and restore receipts carry a
+signed `same-host-local` scope. Independent readers reject that scope.
+
+The host scheduler remains for the independent policy. Same-host backups cover
+local recovery scenarios and share the VPS failure domain. They do not satisfy
+D-29 independent recovery evidence.
+
 ### Independent database and file recovery drill
 
 Agree on the backup destination, key custodian, retained evidence, recovery point and recovery time targets before accepting a release. Use a destination that remains accessible if the portal host and its object storage are unavailable. Keep the manifest private because it includes object identifiers. Store deployment configuration and keys through the approved recovery procedure.

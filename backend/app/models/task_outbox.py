@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import DateTime, Index, Integer, String, func, text
@@ -26,7 +27,7 @@ class TaskOutbox(Base):
     dedupe_key: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     task_name: Mapped[str] = mapped_column(String(100), nullable=False)
     args_json: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
-    kwargs_json: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False)
+    kwargs_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'pending'")
     )

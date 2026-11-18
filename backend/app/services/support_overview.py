@@ -69,6 +69,16 @@ from app.utils.time import business_today
 _WORKFORCE_SUPPRESSION_THRESHOLD = 5
 _OVERSIGHT_RATE_LIMIT = 30
 _QUERY_TIMEOUT_SECONDS = 5.0
+OPEN_MATERIAL_REQUEST_STATUSES: tuple[str, ...] = (
+    "requested",
+    "submitted",
+    "approved",
+    "partially_reserved",
+    "reserved",
+    "partially_issued",
+    "partially_fulfilled",
+)
+ACTIONABLE_PENDING_APPROVAL_STATUSES: tuple[str, ...] = ("pending", "delegated")
 
 
 def _unavailable_metric(
@@ -287,7 +297,10 @@ async def read_company_overview(
             await db.scalar(
                 select(func.count())
                 .select_from(Approval)
-                .where(Approval.status == "pending", Approval.deleted_at.is_(None))
+                .where(
+                    Approval.status.in_(ACTIONABLE_PENDING_APPROVAL_STATUSES),
+                    Approval.deleted_at.is_(None),
+                )
             )
             or 0
         )
@@ -296,7 +309,7 @@ async def read_company_overview(
                 select(func.count())
                 .select_from(Approval)
                 .where(
-                    Approval.status == "pending",
+                    Approval.status.in_(ACTIONABLE_PENDING_APPROVAL_STATUSES),
                     Approval.due_at < now,
                     Approval.deleted_at.is_(None),
                 )
@@ -308,7 +321,7 @@ async def read_company_overview(
                 select(func.count())
                 .select_from(MaterialRequest)
                 .where(
-                    MaterialRequest.status.in_(("requested", "partially_fulfilled")),
+                    MaterialRequest.status.in_(OPEN_MATERIAL_REQUEST_STATUSES),
                     MaterialRequest.deleted_at.is_(None),
                 )
             )
@@ -758,7 +771,7 @@ async def read_inventory_overview(
                 .select_from(MaterialRequest)
                 .where(
                     *req_filter,
-                    MaterialRequest.status.in_(("requested", "partially_fulfilled")),
+                    MaterialRequest.status.in_(OPEN_MATERIAL_REQUEST_STATUSES),
                 )
             )
             or 0
@@ -769,7 +782,7 @@ async def read_inventory_overview(
                 .select_from(MaterialRequest)
                 .where(
                     *req_filter,
-                    MaterialRequest.status.in_(("requested", "partially_fulfilled")),
+                    MaterialRequest.status.in_(OPEN_MATERIAL_REQUEST_STATUSES),
                     MaterialRequest.created_at < now - timedelta(days=7),
                 )
             )
@@ -1164,11 +1177,16 @@ async def read_approvals_overview(
                     Approval.status,
                     func.count().label("cnt"),
                     func.count()
-                    .filter(Approval.status == "pending", Approval.due_at < now)
+                    .filter(
+                        Approval.status.in_(
+                            (*ACTIONABLE_PENDING_APPROVAL_STATUSES, "escalated")
+                        ),
+                        Approval.due_at < now,
+                    )
                     .label("overdue_cnt"),
                     func.count()
                     .filter(
-                        Approval.status == "pending",
+                        Approval.status.in_(ACTIONABLE_PENDING_APPROVAL_STATUSES),
                         or_(Approval.escalated_at.is_not(None), Approval.status == "escalated"),
                     )
                     .label("escalated_cnt"),
@@ -1184,7 +1202,7 @@ async def read_approvals_overview(
             bucket = grouped.setdefault(
                 row.request_type, {"pending": 0, "overdue": 0, "escalated": 0, "rejected": 0}
             )
-            if row.status == "pending":
+            if row.status in ACTIONABLE_PENDING_APPROVAL_STATUSES:
                 bucket["pending"] += int(row.cnt)
                 bucket["overdue"] += int(row.overdue_cnt)
                 bucket["escalated"] += int(row.escalated_cnt)
@@ -1192,6 +1210,7 @@ async def read_approvals_overview(
                 bucket["rejected"] += int(row.cnt)
             elif row.status == "escalated":
                 bucket["escalated"] += int(row.cnt)
+                bucket["overdue"] += int(row.overdue_cnt)
 
         total_pending = sum(item["pending"] for item in grouped.values())
         total_overdue = sum(item["overdue"] for item in grouped.values())
@@ -1205,7 +1224,16 @@ async def read_approvals_overview(
             freshness="current",
             truncated=len(grouped) > 25,
             metrics=[
-                _metric("pending_approvals", "Pending approvals", total_pending, "approvals"),
+                _metric(
+                    "pending_approvals",
+                    "Pending approvals",
+                    total_pending,
+                    "approvals",
+                    note=(
+                        "Counts pending and delegated approvals; "
+                        "escalated approvals are tracked separately."
+                    ),
+                ),
                 _metric("overdue_approvals", "Overdue approvals", total_overdue, "approvals"),
                 _metric("escalated_approvals", "Escalated approvals", total_escalated, "approvals"),
                 _metric("rejected_approvals", "Rejected approvals", total_rejected, "approvals"),

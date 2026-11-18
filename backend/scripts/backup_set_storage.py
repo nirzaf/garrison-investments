@@ -201,7 +201,9 @@ def complete_receipt(
     data = store.read(key, CHUNK)
     if data is None:
         raise BackupSetError("Independent backup set has no complete receipt.")
-    receipt = verify_publication_receipt(data, key_file=key_file, key_id=key_id)
+    receipt = verify_publication_receipt(
+        data, key_file=key_file, key_id=key_id, local_only=policy.local_only
+    )
     if (
         receipt.destination_identity != policy.destination_identity
         or receipt.source_environment != policy.source_environment

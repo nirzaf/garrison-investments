@@ -25,6 +25,7 @@ from scripts.backup_set_contract import (
     RetentionRules,
     ScheduledAttemptReceipt,
     canonical_bytes,
+    read_policy,
     sign_scheduled_attempt,
     verify_publication_receipt,
 )
@@ -760,6 +761,26 @@ async def test_signed_receipt_ingestion_and_scheduled_backup_task_recording(
             key_id=KEY_ID,
         )
 
+    local_drill = drill.model_copy(update={"backup_scope": "same-host-local"})
+    local_bytes = sign_restore_drill(local_drill, key=TEST_KEY, key_id=KEY_ID)
+    assert (
+        verify_restore_drill(local_bytes, key_file=key_file, key_id=KEY_ID, local_only=True)
+        == local_drill
+    )
+    with pytest.raises(BackupSetError, match="requested recovery scope"):
+        verify_restore_drill(local_bytes, key_file=key_file, key_id=KEY_ID)
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(BackupReceiptError, match="requested recovery scope"):
+            await ingest_restore_drill_receipt(
+                session,
+                local_bytes,
+                policy_path=policy_path,
+                expected_policy_sha256=policy_sha256,
+                key_file=key_file,
+                key_id=KEY_ID,
+            )
+        # The valid signature and otherwise matching policy evidence cannot bypass scope.
+
     # Reject tampered bytes, wrong key_id, wrong policy digest, and non-independent domains.
     async with AsyncSessionLocal() as session:
         with pytest.raises(BackupReceiptError, match="authentication failed"):
@@ -900,4 +921,163 @@ async def test_signed_receipt_ingestion_and_scheduled_backup_task_recording(
     )
     assert await asyncio.to_thread(backup_task.run_database_backup, False) == "Uploaded backup ok"
     assert recorded == ["fail", "pass"]
+    await engine.dispose()
+
+
+def test_local_backup_round_trip_and_scope_separation(
+    recovery, remote, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    directory, manifest, independent, independent_path, key_file = recovery
+    policy_type = type(independent[0])
+    policy_data = independent[0].model_dump(mode="json")
+    policy_data["failure_domains"]["destination"] = policy_data["failure_domains"]["source"]
+    local_path = tmp_path / "local-policy.json"
+    local_path.write_text(json.dumps(policy_data))
+
+    with pytest.raises(BackupSetError):
+        read_policy(local_path)
+    policy_data["decision_id"] = "SAME-HOST-LOCAL-BACKUP"
+    local_path.write_bytes(canonical_bytes(policy_type.model_validate(policy_data)))
+    local = read_policy(local_path, local_only=True)
+    with pytest.raises(BackupSetError, match="scope"):
+        read_policy(local_path)
+    with pytest.raises(BackupSetError, match="scope"):
+        read_policy(independent_path, local_only=True)
+
+    local_manifest = manifest.model_copy(
+        update={"backup_scope": "same-host-local", "policy_sha256": local[1]}
+    )
+    backup_set.write_authenticated_manifest(directory, local_manifest, TEST_KEY, KEY_ID)
+    with pytest.raises(BackupSetError, match="scope"):
+        backup_set.load_verified_manifest(directory, policy=independent)
+
+    receipt_file = tmp_path / "local-success.json"
+    backup_set.publish(directory, local, receipt_file)
+    receipt = receipt_file.read_bytes()
+    with pytest.raises(BackupSetError, match="scope"):
+        verify_publication_receipt(receipt, key_file=key_file, key_id=KEY_ID)
+    assert (
+        verify_publication_receipt(
+            receipt, key_file=key_file, key_id=KEY_ID, local_only=True
+        ).backup_scope
+        == "same-host-local"
+    )
+    tampered = json.loads(receipt)
+    del tampered["receipt"]["backup_scope"]
+    with pytest.raises(BackupSetError):
+        verify_publication_receipt(json.dumps(tampered).encode(), key_file=key_file, key_id=KEY_ID)
+    backup_set.fetch(manifest.backup_set_id, local, tmp_path / "local-fetch")
+    assert "Fetched and authenticated same-host local backup set" in capsys.readouterr().out
+
+
+def test_local_cli_requires_authenticated_manual_operations(
+    recovery, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _, independent, _, _ = recovery
+    draft = independent[0].model_dump(mode="json")
+    draft["decision_id"] = "SAME-HOST-LOCAL-BACKUP"
+    draft["failure_domains"]["destination"] = draft["failure_domains"]["source"]
+    policy_path = tmp_path / "local.json"
+    policy_path.write_text(json.dumps(draft))
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / backup_set.MANIFEST).write_text('{"format_version": 1}')
+    monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "synthetic-only")
+    cases = [
+        (
+            ["schedule", "--policy", str(policy_path), "--output", str(tmp_path / "timer")],
+            "manual operation",
+        ),
+        (
+            [
+                "capture",
+                "--destination",
+                str(tmp_path / "set"),
+                "--source-sha",
+                "a" * 40,
+                "--consistency-note",
+                "fixture",
+            ],
+            "explicit policy",
+        ),
+        (
+            [
+                "capture",
+                "--destination",
+                str(tmp_path / "set"),
+                "--source-sha",
+                "a" * 40,
+                "--consistency-note",
+                "fixture",
+                "--policy",
+                str(policy_path),
+            ],
+            "capture evidence",
+        ),
+        (["restore", str(legacy), "--policy", str(policy_path)], "authenticated format-2"),
+    ]
+    for arguments, expected in cases:
+        monkeypatch.setattr(sys, "argv", ["backup_set", "--local-only", *arguments])
+        with pytest.raises(SystemExit) as error:
+            backup_set.main()
+        assert error.value.code != 0
+        assert expected in str(error.value.code)
+    assert not (tmp_path / "timer").exists()
+    assert not (tmp_path / "set").exists()
+
+
+@pytest.mark.asyncio
+async def test_restore_drill_coverage_check_against_approved_policy(
+    recovery, tmp_path: Path
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.database import AsyncSessionLocal, check_database, engine
+    from app.services.backup_receipt_ingestion import (
+        BackupReceiptError,
+        ingest_restore_drill_receipt,
+        restore_drill_satisfies_policy,
+    )
+    from scripts.backup_set_contract import RestoreDrillReceipt, sign_restore_drill
+
+    if not await check_database():
+        pytest.skip("database is not available")
+
+    await engine.dispose()
+    directory, manifest, policy_data, policy_path, key_file = recovery
+    policy, policy_sha256 = policy_data
+    now = datetime.now(UTC)
+
+    db_only_drill = RestoreDrillReceipt(
+        backup_set_id=manifest.backup_set_id,
+        manifest_sha256=hashlib.sha256((directory / backup_set.MANIFEST).read_bytes()).hexdigest(),
+        source_sha=manifest.source_sha,
+        source_environment="test",
+        policy_revision=policy.revision,
+        policy_sha256=policy_sha256,
+        covers_database=True,
+        covers_objects=False,
+        outcome="pass",
+        rto_minutes=5,
+        started_at_utc=now - timedelta(minutes=5),
+        verified_at_utc=now,
+    )
+    assert restore_drill_satisfies_policy(db_only_drill, policy) is False
+    full_drill = db_only_drill.model_copy(update={"covers_objects": True})
+    assert restore_drill_satisfies_policy(full_drill, policy) is True
+
+    db_only_bytes = sign_restore_drill(db_only_drill, key=TEST_KEY, key_id=KEY_ID)
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(
+            BackupReceiptError, match="artifact categories required by recovery policy"
+        ):
+            await ingest_restore_drill_receipt(
+                session,
+                db_only_bytes,
+                policy_path=policy_path,
+                expected_policy_sha256=policy_sha256,
+                key_file=key_file,
+                key_id=KEY_ID,
+                require_full_policy_coverage=True,
+            )
     await engine.dispose()

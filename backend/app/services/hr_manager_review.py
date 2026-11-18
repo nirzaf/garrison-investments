@@ -93,8 +93,17 @@ async def require_manager_recommendation(
     actor: User,
     expected_revision: int | None,
 ) -> None:
-    if record.manager_recommendation is not None and record.manager_recommended_by_id == actor.id:
-        raise PermissionDeniedException("make the final HR decision after your own recommendation")
+    if record.manager_recommendation is not None:
+        if record.manager_recommended_by_id == actor.id:
+            raise PermissionDeniedException(
+                "make the final HR decision after your own recommendation"
+            )
+        if expected_revision is None:
+            raise AppException(
+                "Reload the recommended request before making a final decision.",
+                status_code=409,
+                error_code="REVISION_REQUIRED",
+            )
     if (
         not record.requires_manager_recommendation
         or not get_settings().hr_line_manager_review_enabled

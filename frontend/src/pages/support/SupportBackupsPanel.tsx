@@ -69,6 +69,20 @@ export function SupportBackupsPanel({ onExpired }: { onExpired: () => void }) {
             <div className="rounded border border-theme-border p-2">
               <p className="text-theme-text-secondary">Isolated restore drill</p>
               <p className="font-medium">{statusLabel(data.isolated_restore_status)}</p>
+              <p className="text-[11px] text-theme-text-secondary">
+                {data.latest_restore_covers_database && data.latest_restore_covers_objects
+                  ? 'Coverage: Database + objects'
+                  : data.latest_restore_covers_database
+                    ? 'Coverage: Database only'
+                    : data.latest_restore_covers_objects
+                      ? 'Coverage: Objects only'
+                      : 'Coverage: No verified drill'}
+                {data.latest_restore_backup_set_id
+                  ? data.latest_restore_matches_latest_set
+                    ? ' · Matches latest set'
+                    : ' · Periodic drill / different set'
+                  : ''}
+              </p>
             </div>
           </div>
           <p className="text-theme-text-secondary">

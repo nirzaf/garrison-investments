@@ -16019,7 +16019,26 @@ export interface components {
              * Isolated Restore Status
              * @enum {string}
              */
-            isolated_restore_status: "verified" | "stale" | "failed" | "unverified";
+            isolated_restore_status: "verified" | "partial" | "stale" | "failed" | "unverified" | "unavailable";
+            /** Latest Backup Set Id */
+            latest_backup_set_id?: string | null;
+            /** Latest Restore Backup Set Id */
+            latest_restore_backup_set_id?: string | null;
+            /**
+             * Latest Restore Covers Database
+             * @default false
+             */
+            latest_restore_covers_database: boolean;
+            /**
+             * Latest Restore Covers Objects
+             * @default false
+             */
+            latest_restore_covers_objects: boolean;
+            /**
+             * Latest Restore Matches Latest Set
+             * @default false
+             */
+            latest_restore_matches_latest_set: boolean;
             /** Latest Scheduled Db Task At */
             latest_scheduled_db_task_at: string | null;
             /**
@@ -16037,7 +16056,7 @@ export interface components {
              * Overall Recovery Posture
              * @enum {string}
              */
-            overall_recovery_posture: "complete_verified" | "partial_db_only" | "stale" | "unverified";
+            overall_recovery_posture: "complete_verified" | "partial_restore_coverage" | "partial_db_only" | "stale" | "degraded" | "unverified" | "unavailable";
             /** Receipts */
             receipts: components["schemas"]["SupportBackupReceiptSummary"][];
             /**
@@ -16309,6 +16328,12 @@ export interface components {
              * @enum {string}
              */
             source_status: "operational" | "degraded" | "partial" | "unverified" | "unknown" | "unavailable";
+            /**
+             * Support Custody Mode
+             * @default paired
+             * @enum {string}
+             */
+            support_custody_mode: "paired" | "single_owner" | "unknown";
             /** Support Email Otp Configured */
             support_email_otp_configured: boolean;
             /** Support Otp Recipient Count */

@@ -205,10 +205,25 @@ class SupportBackupsMonitorRead(_StrictModel):
     metric_version: Literal["v1"] = "v1"
     observed_at: AwareDatetime
     source_status: SourceStatus
-    overall_recovery_posture: Literal["complete_verified", "partial_db_only", "stale", "unverified"]
+    overall_recovery_posture: Literal[
+        "complete_verified",
+        "partial_restore_coverage",
+        "partial_db_only",
+        "stale",
+        "degraded",
+        "unverified",
+        "unavailable",
+    ]
     database_backup_status: Literal["current", "stale", "failed", "unverified"]
     authenticated_backup_set_status: Literal["verified", "stale", "failed", "unverified"]
-    isolated_restore_status: Literal["verified", "stale", "failed", "unverified"]
+    isolated_restore_status: Literal[
+        "verified", "partial", "stale", "failed", "unverified", "unavailable"
+    ]
+    latest_restore_covers_database: bool = False
+    latest_restore_covers_objects: bool = False
+    latest_restore_matches_latest_set: bool = False
+    latest_backup_set_id: str | None = None
+    latest_restore_backup_set_id: str | None = None
     escalation_reference: str
     latest_scheduled_db_task_at: AwareDatetime | None
     receipts: list[SupportBackupReceiptSummary]
@@ -225,6 +240,7 @@ class SupportConfigStatusRead(_StrictModel):
     audit_purge_disabled: bool
     mail_configured: bool
     support_portal_enabled: bool
+    support_custody_mode: Literal["paired", "single_owner", "unknown"] = "paired"
     support_recovery_delivery_enabled: bool
     support_email_otp_configured: bool
     support_otp_recipient_count: int

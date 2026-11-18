@@ -1,13 +1,22 @@
 import asyncio
 from datetime import timedelta
+from hashlib import sha256
+from typing import Any
 from uuid import UUID
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
+from app.models.import_batch import ImportBatch
 from app.models.task_outbox import TaskOutbox
 from app.repositories.report_export_repository import ReportExportRepository
+from app.services.import_service import (
+    InvalidToken,
+    decrypt_import_payload,
+    import_outbox_dedupe_key,
+)
 from app.tasks.async_utils import run_async_task
 from app.tasks.celery_app import celery_app
 from app.utils.security import utc_now
@@ -34,26 +43,168 @@ def _parse_report_pdf_payload(entry: TaskOutbox) -> tuple[UUID, bool] | None:
     return report_id, email_after
 
 
+def _parse_import_async_payload(entry: TaskOutbox) -> dict[str, Any] | None:
+    if entry.task_name != "run_import_async" or len(entry.args_json or []) != 2:
+        return None
+    try:
+        batch_id = UUID(str(entry.args_json[0]))
+        actor_id = UUID(str(entry.args_json[1]))
+    except (ValueError, TypeError):
+        return None
+    kwargs = entry.kwargs_json or {}
+    if not isinstance(kwargs, dict):
+        return None
+    template_type = kwargs.get("template_type")
+    file_name = kwargs.get("file_name")
+    content_sha256 = kwargs.get("content_sha256")
+    content_ciphertext = kwargs.get("content_ciphertext")
+    if not all(
+        isinstance(item, str) and bool(item)
+        for item in (template_type, file_name, content_sha256, content_ciphertext)
+    ):
+        return None
+    try:
+        content = decrypt_import_payload(str(content_ciphertext))
+    except (InvalidToken, ValueError, OSError):
+        return None
+    if sha256(content).hexdigest() != content_sha256:
+        return None
+    return {
+        "template_type": template_type,
+        "file_name": file_name,
+        "actor_id": str(actor_id),
+        "batch_id": str(batch_id),
+    }
+
+
+def _scrub_outbox_ciphertext(entry: TaskOutbox) -> None:
+    if isinstance(entry.kwargs_json, dict) and "content_ciphertext" in entry.kwargs_json:
+        entry.kwargs_json = {
+            key: value for key, value in entry.kwargs_json.items() if key != "content_ciphertext"
+        }
+
+
+async def _reconcile_import_outbox_before_dispatch(
+    session: AsyncSession, entry: TaskOutbox
+) -> bool:
+    if entry.task_name != "run_import_async" or not entry.args_json:
+        return False
+    try:
+        batch_id = UUID(str(entry.args_json[0]))
+    except (ValueError, TypeError):
+        return False
+    batch = await session.get(ImportBatch, batch_id)
+    if batch is not None and batch.status in {"completed", "failed"}:
+        entry.status = "completed" if batch.status == "completed" else "failed"
+        _scrub_outbox_ciphertext(entry)
+        return True
+    return False
+
+
+async def _mark_import_batch_dispatch_failed(session: AsyncSession, entry: TaskOutbox) -> None:
+    if entry.task_name != "run_import_async":
+        return
+    _scrub_outbox_ciphertext(entry)
+    if not entry.args_json:
+        return
+    try:
+        batch_id = UUID(str(entry.args_json[0]))
+    except (ValueError, TypeError):
+        return
+    batch = await session.get(ImportBatch, batch_id, with_for_update=True)
+    if batch is not None and batch.status == "queued":
+        batch.status = "failed"
+        batch.error_count = 1
+        batch.summary = {"error_code": "IMPORT_DISPATCH_FAILED"}
+
+
+def _build_dispatch_spec(entry: TaskOutbox) -> tuple[list[Any], dict[str, Any], str] | None:
+    if entry.task_name == "generate_report_pdf":
+        if _parse_report_pdf_payload(entry) is None:
+            return None
+        return list(entry.args_json), dict(entry.kwargs_json or {}), "report"
+    if entry.task_name == "run_import_async":
+        import_kwargs = _parse_import_async_payload(entry)
+        if import_kwargs is None:
+            return None
+        return [], import_kwargs, "maintenance"
+    return None
+
+
+def _entry_task_id(entry: TaskOutbox, *, attempt: int | None = None) -> str:
+    if entry.task_name == "run_import_async" and entry.args_json:
+        base = f"import-batch-{entry.args_json[0]}"
+        return base if attempt is None else f"{base}-retry-{attempt}"
+    return str(entry.id) if attempt is None else f"{entry.id}:retry:{attempt}"
+
+
 async def _dispatch_entry(entry: TaskOutbox, *, task_id: str) -> bool:
+    spec = _build_dispatch_spec(entry)
+    if spec is None:
+        return False
+    args, kwargs, queue = spec
     try:
         await asyncio.to_thread(
             celery_app.send_task,
             entry.task_name,
-            args=entry.args_json,
-            kwargs=entry.kwargs_json,
+            args=args,
+            kwargs=kwargs,
             task_id=task_id,
-            queue="report",
+            queue=queue,
             retry=False,
         )
     except Exception as exc:
         logger.warning(
             "outbox_dispatch_failed",
             outbox_id=str(entry.id),
+            task_name=entry.task_name,
             attempts=entry.attempts,
             error_type=type(exc).__name__,
         )
         return False
     return True
+
+
+async def dispatch_import_outbox_for_batch(batch_id: UUID) -> bool:
+    async with AsyncSessionLocal() as session:
+        entry = await session.scalar(
+            select(TaskOutbox)
+            .where(
+                TaskOutbox.dedupe_key == import_outbox_dedupe_key(batch_id),
+                TaskOutbox.status == "pending",
+            )
+            .with_for_update(skip_locked=True)
+        )
+        if entry is None:
+            return False
+        if await _reconcile_import_outbox_before_dispatch(session, entry):
+            await session.commit()
+            return True
+        if _build_dispatch_spec(entry) is None:
+            entry.attempts += 1
+            entry.status = "failed"
+            await _mark_import_batch_dispatch_failed(session, entry)
+            logger.error("outbox_invalid_import_payload", outbox_id=str(entry.id))
+            await session.commit()
+            return False
+        entry.attempts += 1
+        if await _dispatch_entry(entry, task_id=_entry_task_id(entry)):
+            entry.status = "dispatched"
+            entry.dispatched_at = utc_now()
+            await session.commit()
+            return True
+        if entry.attempts >= MAX_OUTBOX_ATTEMPTS:
+            entry.status = "failed"
+            await _mark_import_batch_dispatch_failed(session, entry)
+        else:
+            logger.warning(
+                "import_outbox_immediate_dispatch_deferred",
+                outbox_id=str(entry.id),
+                batch_id=str(batch_id),
+                attempts=entry.attempts,
+            )
+        await session.commit()
+        return False
 
 
 async def _dispatch_task_outbox() -> int:
@@ -72,14 +223,17 @@ async def _dispatch_task_outbox() -> int:
             )
         )
         for entry in pending_entries:
-            parsed = _parse_report_pdf_payload(entry)
-            if parsed is None:
+            if await _reconcile_import_outbox_before_dispatch(session, entry):
+                continue
+            if _build_dispatch_spec(entry) is None:
                 entry.attempts += 1
                 entry.status = "failed"
+                await _mark_import_batch_dispatch_failed(session, entry)
                 logger.error("outbox_unknown_task", outbox_id=str(entry.id))
                 continue
             if entry.attempts >= MAX_OUTBOX_ATTEMPTS:
                 entry.status = "failed"
+                await _mark_import_batch_dispatch_failed(session, entry)
                 logger.error(
                     "outbox_dispatch_exhausted",
                     outbox_id=str(entry.id),
@@ -87,9 +241,10 @@ async def _dispatch_task_outbox() -> int:
                 )
                 continue
             entry.attempts += 1
-            if not await _dispatch_entry(entry, task_id=str(entry.id)):
+            if not await _dispatch_entry(entry, task_id=_entry_task_id(entry)):
                 if entry.attempts >= MAX_OUTBOX_ATTEMPTS:
                     entry.status = "failed"
+                    await _mark_import_batch_dispatch_failed(session, entry)
                     logger.error(
                         "outbox_dispatch_exhausted",
                         outbox_id=str(entry.id),
@@ -114,23 +269,33 @@ async def _dispatch_task_outbox() -> int:
             )
         )
         for entry in stale_entries:
-            parsed = _parse_report_pdf_payload(entry)
-            if parsed is None:
-                entry.status = "failed"
-                logger.error("outbox_unknown_task", outbox_id=str(entry.id))
-                continue
-            report_id, email_after = parsed
-            existing = await exports.latest_for_report(report_id)
-            if existing is not None and (not email_after or existing.email_status == "sent"):
-                entry.status = "completed"
+            if await _reconcile_import_outbox_before_dispatch(session, entry):
                 logger.info(
                     "outbox_reconciled_completed",
                     outbox_id=str(entry.id),
-                    report_id=str(report_id),
+                    task_name=entry.task_name,
                 )
                 continue
+            if _build_dispatch_spec(entry) is None:
+                entry.status = "failed"
+                await _mark_import_batch_dispatch_failed(session, entry)
+                logger.error("outbox_unknown_task", outbox_id=str(entry.id))
+                continue
+            report_parsed = _parse_report_pdf_payload(entry)
+            if report_parsed is not None:
+                report_id, email_after = report_parsed
+                existing = await exports.latest_for_report(report_id)
+                if existing is not None and (not email_after or existing.email_status == "sent"):
+                    entry.status = "completed"
+                    logger.info(
+                        "outbox_reconciled_completed",
+                        outbox_id=str(entry.id),
+                        report_id=str(report_id),
+                    )
+                    continue
             if entry.attempts >= MAX_OUTBOX_ATTEMPTS:
                 entry.status = "failed"
+                await _mark_import_batch_dispatch_failed(session, entry)
                 logger.error(
                     "outbox_dispatch_exhausted",
                     outbox_id=str(entry.id),
@@ -139,10 +304,11 @@ async def _dispatch_task_outbox() -> int:
                 continue
             next_attempt = entry.attempts + 1
             entry.attempts = next_attempt
-            retry_task_id = f"{entry.id}:retry:{next_attempt}"
+            retry_task_id = _entry_task_id(entry, attempt=next_attempt)
             if not await _dispatch_entry(entry, task_id=retry_task_id):
                 if entry.attempts >= MAX_OUTBOX_ATTEMPTS:
                     entry.status = "failed"
+                    await _mark_import_batch_dispatch_failed(session, entry)
                 break
             entry.dispatched_at = now
             dispatched += 1

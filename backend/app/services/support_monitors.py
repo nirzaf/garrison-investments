@@ -355,21 +355,38 @@ async def read_backups_monitor(
     async def run(
         db: AsyncSession, now: datetime, _scoped: list[UUID] | None
     ) -> SupportBackupsMonitorRead:
-        rows = list(
+        async def _latest_receipt(receipt_kind: str) -> SupportBackupReceipt | None:
+            return await db.scalar(
+                select(SupportBackupReceipt)
+                .where(SupportBackupReceipt.receipt_kind == receipt_kind)
+                .order_by(
+                    SupportBackupReceipt.captured_at.desc(), SupportBackupReceipt.id.desc()
+                )
+                .limit(1)
+            )
+
+        # Query per-kind latest receipts independently so high-frequency scheduled DB attempts
+        # never push authenticated set or restore-drill evidence out of evaluation.
+        latest_db_receipt = await _latest_receipt("scheduled_db_attempt")
+        latest_set_receipt = await _latest_receipt("authenticated_backup_set")
+        latest_restore = await _latest_receipt("restore_drill")
+
+        recent_rows = list(
             await db.scalars(
                 select(SupportBackupReceipt)
                 .order_by(SupportBackupReceipt.captured_at.desc(), SupportBackupReceipt.id.desc())
                 .limit(20)
             )
         )
-        # Note any scheduled DB backup task failure separately from verified receipts.
-        latest_db_receipt = next(
-            (r for r in rows if r.receipt_kind == "scheduled_db_attempt"), None
+        by_id = {row.id: row for row in recent_rows}
+        for latest in (latest_db_receipt, latest_set_receipt, latest_restore):
+            if latest is not None:
+                by_id.setdefault(latest.id, latest)
+        rows = sorted(
+            by_id.values(),
+            key=lambda row: (row.captured_at, row.id),
+            reverse=True,
         )
-        latest_set_receipt = next(
-            (r for r in rows if r.receipt_kind == "authenticated_backup_set"), None
-        )
-        latest_restore = next((r for r in rows if r.receipt_kind == "restore_drill"), None)
 
         db_status = "unverified"
         if latest_db_receipt is not None:
@@ -401,27 +418,45 @@ async def read_backups_monitor(
             drill_time = latest_restore.verified_at or latest_restore.captured_at
             if latest_restore.outcome == "fail":
                 restore_status = "failed"
-            elif (
-                latest_restore.outcome == "pass"
-                and latest_restore.target_domain == "isolated_restore"
-                and latest_restore.verified_at is not None
-            ):
-                restore_status = (
-                    "verified" if now - drill_time <= _RESTORE_DRILL_MAX_AGE else "stale"
-                )
+            elif latest_restore.outcome == "pass":
+                if (
+                    latest_restore.target_domain != "isolated_restore"
+                    or latest_restore.verified_at is None
+                ):
+                    restore_status = "failed"
+                elif now - drill_time > _RESTORE_DRILL_MAX_AGE:
+                    restore_status = "stale"
+                elif not (latest_restore.covers_database and latest_restore.covers_objects):
+                    restore_status = "partial"
+                else:
+                    restore_status = "verified"
+
+        matches_latest_set = bool(
+            latest_set_receipt is not None
+            and latest_restore is not None
+            and latest_set_receipt.backup_set_id is not None
+            and latest_set_receipt.backup_set_id == latest_restore.backup_set_id
+            and latest_set_receipt.manifest_sha256 is not None
+            and latest_set_receipt.manifest_sha256 == latest_restore.manifest_sha256
+        )
 
         if set_status == "verified" and restore_status == "verified":
             overall = "complete_verified"
             source_status: SourceStatus = "operational"
-        elif "stale" in {db_status, set_status, restore_status} and "failed" not in {
-            db_status,
-            set_status,
-            restore_status,
-        }:
+        elif "failed" in {db_status, set_status, restore_status}:
+            overall = "degraded"
+            source_status = "degraded"
+        elif "stale" in {db_status, set_status, restore_status}:
             overall = "stale"
             source_status = "degraded"
+        elif restore_status == "partial":
+            overall = "partial_restore_coverage"
+            source_status = "partial"
         elif db_status == "current":
             overall = "partial_db_only"
+            source_status = "partial"
+        elif set_status == "verified":
+            overall = "degraded"
             source_status = "partial"
         else:
             overall = "unverified"
@@ -452,6 +487,19 @@ async def read_backups_monitor(
             database_backup_status=db_status,  # type: ignore[arg-type]
             authenticated_backup_set_status=set_status,  # type: ignore[arg-type]
             isolated_restore_status=restore_status,  # type: ignore[arg-type]
+            latest_restore_covers_database=(
+                latest_restore.covers_database if latest_restore is not None else False
+            ),
+            latest_restore_covers_objects=(
+                latest_restore.covers_objects if latest_restore is not None else False
+            ),
+            latest_restore_matches_latest_set=matches_latest_set,
+            latest_backup_set_id=(
+                latest_set_receipt.backup_set_id if latest_set_receipt is not None else None
+            ),
+            latest_restore_backup_set_id=(
+                latest_restore.backup_set_id if latest_restore is not None else None
+            ),
             escalation_reference=escalation_ref,
             latest_scheduled_db_task_at=latest_db_receipt.captured_at
             if latest_db_receipt is not None
@@ -467,6 +515,11 @@ async def read_backups_monitor(
             database_backup_status="unverified",
             authenticated_backup_set_status="unverified",
             isolated_restore_status="unverified",
+            latest_restore_covers_database=False,
+            latest_restore_covers_objects=False,
+            latest_restore_matches_latest_set=False,
+            latest_backup_set_id=None,
+            latest_restore_backup_set_id=None,
             escalation_reference=escalation_ref,
             latest_scheduled_db_task_at=None,
             receipts=[],
@@ -549,6 +602,7 @@ async def read_config_status(
             audit_purge_disabled=not settings.log_purge_enabled,
             mail_configured=mail_configured,
             support_portal_enabled=settings.support_portal_enabled,
+            support_custody_mode=settings.support_custody_mode,
             support_recovery_delivery_enabled=settings.support_recovery_delivery_enabled,
             support_email_otp_configured=otp_configured,
             support_otp_recipient_count=len(settings.support_email_otp_recipients),
@@ -571,6 +625,7 @@ async def read_config_status(
             audit_purge_disabled=True,
             mail_configured=False,
             support_portal_enabled=False,
+            support_custody_mode="unknown",
             support_recovery_delivery_enabled=False,
             support_email_otp_configured=False,
             support_otp_recipient_count=0,

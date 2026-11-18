@@ -2780,6 +2780,13 @@ async def test_manager_recommendations_are_scoped_advisory_and_revision_checked(
                 )
             ).all()
         assert (await client.post(final_leave, headers=hr, json=decision)).status_code == 409
+        missing_revision = await client.post(
+            final_leave, headers=hr, json={"decision": "approved"}
+        )
+        assert (
+            missing_revision.status_code == 409
+            and missing_revision.json()["error_code"] == "REVISION_REQUIRED"
+        )
         rejected = await client.post(
             final_leave,
             headers=hr,

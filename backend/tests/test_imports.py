@@ -663,3 +663,178 @@ async def test_user_import_takes_shared_access_lock_before_actor_row(
     )
 
     assert events == ["access-lock", "actor-row-lock", "transaction-commit"]
+
+
+async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplicates_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from datetime import timedelta
+
+    import httpx
+    from sqlalchemy import delete
+
+    from app.main import app
+    from app.models.activity_log import ActivityLog
+    from app.models.auth import AuthSession
+    from app.models.task_outbox import TaskOutbox
+    from app.services.import_service import import_outbox_dedupe_key
+    from app.tasks import outbox as outbox_module
+    from app.tasks.outbox import _dispatch_task_outbox
+    from app.utils.security import create_access_token, utc_now
+
+    actor = await create_admin()
+    suffix = uuid4().hex[:8]
+    auth_session_id = uuid4()
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            delete(TaskOutbox).where(TaskOutbox.task_name == "run_import_async")
+        )
+        session.add(
+            AuthSession(
+                id=auth_session_id,
+                user_id=actor.id,
+                expires_at=utc_now() + timedelta(hours=1),
+            )
+        )
+        item = InventoryItem(
+            name=f"Outbox Item {suffix}",
+            item_code=f"ITEM-OBX-{suffix}",
+            category="Civil",
+            item_type="material",
+            unit="Nos",
+        )
+        location = StorageLocation(
+            name=f"Outbox Loc {suffix}",
+            code=f"LOC-OBX-{suffix}",
+            location_type="warehouse",
+        )
+        session.add_all([item, location])
+        await session.commit()
+        item_id, location_id = item.id, location.id
+
+    csv_payload = csv_bytes(
+        "item_code,location_code,quantity,notes",
+        f"ITEM-OBX-{suffix},LOC-OBX-{suffix},6.5,Sensitive-Marker-{suffix}",
+    )
+
+    # Simulate broker outage during initial API request -> durable outbox remains pending.
+    def fail_broker(*_args: Any, **_kwargs: Any) -> None:
+        raise ConnectionError("redis unreachable")
+
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", fail_broker)
+    token, _ = create_access_token(actor.id, actor.role, auth_session_id=auth_session_id)
+    key = str(uuid4())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        resp = await client.post(
+            "/api/v1/imports/opening_stock/run-async",
+            headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+            files={"file": ("opening_stock.csv", csv_payload, "text/csv")},
+        )
+    assert resp.status_code == 202, resp.text
+    queued = resp.json()
+    assert queued["status"] == "queued"
+    batch_id = UUID(queued["batch_id"])
+    dedupe_key = import_outbox_dedupe_key(batch_id)
+
+    async with AsyncSessionLocal() as session:
+        entry = await session.scalar(select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key))
+        assert entry is not None
+        assert entry.status == "pending"
+        assert entry.attempts == 1
+        assert f"Sensitive-Marker-{suffix}" not in json.dumps(entry.kwargs_json)
+        logs = (
+            await session.scalars(
+                select(ActivityLog).where(ActivityLog.entity_id == batch_id)
+            )
+        ).all()
+        assert all(f"Sensitive-Marker-{suffix}" not in repr(log.new_values) for log in logs)
+
+    # Broker recovers -> outbox dispatcher publishes without requiring client retry.
+    published: list[dict[str, Any]] = []
+
+    def capture_send_task(
+        name: str,
+        *,
+        args: list[Any],
+        kwargs: dict[str, Any],
+        task_id: str,
+        queue: str,
+        **_opts: Any,
+    ) -> None:
+        published.append(
+            {"name": name, "args": args, "kwargs": kwargs, "task_id": task_id, "queue": queue}
+        )
+
+    monkeypatch.setattr("app.tasks.outbox.celery_app.send_task", capture_send_task)
+    assert await _dispatch_task_outbox() == 1
+    assert len(published) == 1
+    assert published[0]["name"] == "run_import_async"
+    assert published[0]["queue"] == "maintenance"
+    assert published[0]["task_id"] == f"import-batch-{batch_id}"
+    assert "content_ciphertext" not in published[0]["kwargs"]
+    assert f"Sensitive-Marker-{suffix}" not in json.dumps(published[0]["kwargs"])
+
+    # Worker loads encrypted payload from TaskOutbox; duplicate delivery executes only once.
+    first_result, second_result = await asyncio.gather(
+        _run_import_async(**published[0]["kwargs"]),
+        _run_import_async(**published[0]["kwargs"]),
+    )
+    assert "completed: completed" in first_result
+    assert "completed: completed" in second_result
+
+    async with AsyncSessionLocal() as session:
+        completed_batch = await session.get(ImportBatch, batch_id)
+        completed_outbox = await session.scalar(
+            select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+        )
+        stock = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == item_id,
+                InventoryLocationStock.location_id == location_id,
+            )
+        )
+        assert completed_batch is not None and completed_batch.status == "completed"
+        assert completed_outbox is not None and completed_outbox.status == "completed"
+        assert "content_ciphertext" not in completed_outbox.kwargs_json
+        assert stock is not None and stock.on_hand_qty == Decimal("6.500")
+
+        # Duplicate redelivery after ciphertext scrub also returns cleanly without failure.
+        third_result = await _run_import_async(**published[0]["kwargs"])
+        assert "completed: completed" in third_result
+
+        # Exhausted outbox entry marks a stranded queued batch as failed.
+        exhausted_id = uuid4()
+        session.add(
+            ImportBatch(
+                id=exhausted_id,
+                template_type="opening_stock",
+                file_name="exhausted.csv",
+                status="queued",
+                created_by=actor.id,
+            )
+        )
+        session.add(
+            TaskOutbox(
+                dedupe_key=import_outbox_dedupe_key(exhausted_id),
+                task_name="run_import_async",
+                args_json=[str(exhausted_id), str(actor.id)],
+                kwargs_json={
+                    "template_type": "opening_stock",
+                    "file_name": "exhausted.csv",
+                    "content_sha256": "0" * 64,
+                    "content_ciphertext": "invalid",
+                },
+                status="pending",
+                attempts=outbox_module.MAX_OUTBOX_ATTEMPTS,
+            )
+        )
+        await session.commit()
+
+    assert await _dispatch_task_outbox() == 0
+    async with AsyncSessionLocal() as session:
+        exhausted_batch = await session.get(ImportBatch, exhausted_id)
+        assert exhausted_batch is not None and exhausted_batch.status == "failed"
+        assert exhausted_batch.summary == {"error_code": "IMPORT_DISPATCH_FAILED"}

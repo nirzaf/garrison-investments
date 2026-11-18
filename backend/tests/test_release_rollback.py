@@ -1179,3 +1179,47 @@ def test_pinned_exception_rejects_other_candidate_before_host_access() -> None:
     )
     assert result.returncode != 0
     assert "authorized candidate and CI run" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("ci_run_id", "release_sha", "event_name"),
+    [
+        ("44269495244", "392d499882c70e989deabc9891a578662bdece84", "workflow_dispatch"),
+        ("44163196512", "0d581001bd294f79a47021c7e30f75a1bf291d2a", "workflow_run"),
+    ],
+)
+def test_deploy_workflow_never_applies_pinned_exception_to_current_candidate(
+    ci_run_id: str, release_sha: str, event_name: str
+) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
+    assert "release_mode=technical-checks-v1" in deploy_source
+    assert "0d581001bd294f79a47021c7e30f75a1bf291d2a" in deploy_source
+    assert "44163196512" in deploy_source
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            ci_run_id,
+            release_sha,
+            "rollback-v2",
+            "pinned-no-backup-093",
+        ],
+        input="",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if event_name == "workflow_dispatch":
+        assert result.returncode != 0
+        assert "authorized candidate and CI run" in result.stderr
+    else:
+        assert "workflow_dispatch" in deploy_source
+
+    # Current Alembic head 202605310097 must also fail the pinned 061->093 schema guard.
+    script_text = SCRIPT.read_text()
+    expected_guard = (
+        '[[ "$current" == 202605310061 && "$heads" == 202605310093 && "$runtime_changed" == 1 ]]'
+    )
+    assert expected_guard in script_text

@@ -853,6 +853,117 @@ async def test_backup_monitor_reads_ingested_signed_receipts_end_to_end(tmp_path
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_backup_monitor_selects_per_kind_latest_and_flags_partial_restore() -> None:
+    await skip_if_database_unavailable()
+    async with client() as actor:
+        operator_id, _, _ = await login(actor, custodian=False)
+        await _grant(operator_id, "backups.read")
+
+        base = utc_now()
+        set_older = f"set-old-{uuid4().hex[:8]}"
+        set_latest = f"set-new-{uuid4().hex[:8]}"
+        async with AsyncSessionLocal() as session:
+            # Record an off-host full set + partial DB-only restore, buried under 25 DB attempts.
+            session.add(
+                SupportBackupReceipt(
+                    id=uuid4(),
+                    receipt_kind="authenticated_backup_set",
+                    backup_set_id=set_latest,
+                    manifest_sha256="b" * 64,
+                    target_domain="independent_offhost",
+                    covers_database=True,
+                    covers_objects=True,
+                    outcome="pass",
+                    rpo_minutes=60,
+                    captured_at=base + timedelta(seconds=1),
+                    signer_key_id="k1",
+                    recorded_by="offhost-test",
+                    created_at=base + timedelta(seconds=1),
+                )
+            )
+            session.add(
+                SupportBackupReceipt(
+                    id=uuid4(),
+                    receipt_kind="restore_drill",
+                    backup_set_id=set_latest,
+                    manifest_sha256="b" * 64,
+                    target_domain="isolated_restore",
+                    covers_database=True,
+                    covers_objects=False,
+                    outcome="pass",
+                    rto_minutes=12,
+                    captured_at=base + timedelta(seconds=2),
+                    verified_at=base + timedelta(seconds=2),
+                    signer_key_id="k1",
+                    recorded_by="partial-restore-test",
+                    created_at=base + timedelta(seconds=2),
+                )
+            )
+            for idx in range(25):
+                ts = base + timedelta(seconds=10 + idx)
+                session.add(
+                    SupportBackupReceipt(
+                        id=uuid4(),
+                        receipt_kind="scheduled_db_attempt",
+                        target_domain="local_host",
+                        covers_database=True,
+                        covers_objects=False,
+                        outcome="pass",
+                        captured_at=ts,
+                        recorded_by="scheduled-backup-task",
+                        created_at=ts,
+                    )
+                )
+            await session.commit()
+
+        partial = await actor.get(f"{API}/monitor/backups")
+        assert partial.status_code == 200
+        p_body = partial.json()
+        assert p_body["authenticated_backup_set_status"] == "verified"
+        assert p_body["isolated_restore_status"] == "partial"
+        assert p_body["overall_recovery_posture"] == "partial_restore_coverage"
+        assert p_body["latest_restore_covers_database"] is True
+        assert p_body["latest_restore_covers_objects"] is False
+        assert p_body["latest_backup_set_id"] == set_latest
+
+        # Periodic full DB+objects restore against an older set verifies coverage without
+        # falsely matching the newer set.
+        async with AsyncSessionLocal() as session:
+            ts_periodic = base + timedelta(seconds=40)
+            session.add(
+                SupportBackupReceipt(
+                    id=uuid4(),
+                    receipt_kind="restore_drill",
+                    backup_set_id=set_older,
+                    manifest_sha256="c" * 64,
+                    target_domain="isolated_restore",
+                    covers_database=True,
+                    covers_objects=True,
+                    outcome="pass",
+                    rto_minutes=15,
+                    captured_at=ts_periodic,
+                    verified_at=ts_periodic,
+                    signer_key_id="k1",
+                    recorded_by="full-periodic-drill",
+                    created_at=ts_periodic,
+                )
+            )
+            await session.commit()
+
+        verified = await actor.get(f"{API}/monitor/backups")
+        assert verified.status_code == 200
+        v_body = verified.json()
+        assert v_body["isolated_restore_status"] == "verified"
+        assert v_body["overall_recovery_posture"] == "complete_verified"
+        assert v_body["latest_restore_covers_database"] is True
+        assert v_body["latest_restore_covers_objects"] is True
+        assert v_body["latest_restore_matches_latest_set"] is False
+        assert v_body["latest_backup_set_id"] == set_latest
+        assert v_body["latest_restore_backup_set_id"] == set_older
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
 async def test_production_recovery_delivery_gate_and_nonsecret_outcome_notices(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1288,3 +1399,159 @@ async def test_jobs_monitor_exposes_worker_heartbeat_stale_outbox_and_honest_sta
         async with AsyncSessionLocal() as session:
             await session.execute(delete(TaskOutbox).where(TaskOutbox.dedupe_key == stale_key))
             await session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_material_request_and_approval_oversight_reconciliation() -> None:
+    await skip_if_database_unavailable()
+    async with client() as actor:
+        operator_id, _, _ = await login(actor, custodian=False)
+        await _grant(
+            operator_id,
+            "overview.company.read",
+            "overview.inventory.read",
+            "overview.approvals.read",
+        )
+
+        # Measure shared-DB baseline counts first.
+        company_before = {
+            m["key"]: m["value"] for m in (await actor.get(f"{API}/overview")).json()["metrics"]
+        }
+        inv_before = {
+            m["key"]: m["value"]
+            for m in (await actor.get(f"{API}/overview/inventory")).json()["metrics"]
+        }
+        appr_before = {
+            row["request_type"]: row
+            for row in (await actor.get(f"{API}/overview/approvals")).json()["by_workflow"]
+        }
+
+        now = utc_now()
+        today = date.today()
+        suffix = uuid4().hex[:6]
+        async with AsyncSessionLocal() as session:
+            requester = User(
+                email=f"mr-req-{suffix}@example.com",
+                full_name="MR Oversight User",
+                role="quantity_surveyor",
+                password_hash="synthetic-hash",
+            )
+            proj = Project(
+                name=f"Oversight MR Proj {suffix}",
+                code=f"OMP-{suffix}",
+                status="active",
+                scope_of_work="Works",
+                target_end_date=today + timedelta(days=30),
+            )
+            session.add_all([requester, proj])
+            await session.flush()
+            loc = StorageLocation(
+                name=f"MR Store {suffix}",
+                code=f"MRS-{suffix}",
+                location_type="site",
+                project_id=proj.id,
+                is_active=True,
+            )
+            session.add(loc)
+            await session.flush()
+
+            # 5 open modern/active statuses + 2 legacy open + 2 closed terminal (issued, cancelled)
+            for idx, (status_val, age_days) in enumerate(
+                [
+                    ("submitted", 10),
+                    ("approved", 8),
+                    ("partially_reserved", 2),
+                    ("reserved", 9),
+                    ("partially_issued", 1),
+                    ("requested", 12),
+                    ("partially_fulfilled", 0),
+                    ("issued", 15),
+                    ("cancelled", 20),
+                ]
+            ):
+                session.add(
+                    MaterialRequest(
+                        request_number=f"MR-REC-{suffix}-{idx}",
+                        project_id=proj.id,
+                        requester_id=requester.id,
+                        from_location_id=loc.id,
+                        status=status_val,
+                        total_estimated_cost=Decimal("10.00"),
+                        created_at=now - timedelta(days=age_days),
+                    )
+                )
+
+            # Approvals: 1 pending + 1 delegated overdue + 1 escalated overdue
+            session.add_all(
+                [
+                    Approval(
+                        request_type="material_request",
+                        request_id=uuid4(),
+                        project_id=proj.id,
+                        submitter_id=requester.id,
+                        approver_id=requester.id,
+                        status="pending",
+                        title=f"Pending {suffix}",
+                        submitted_at=now - timedelta(hours=2),
+                        due_at=now + timedelta(hours=22),
+                    ),
+                    Approval(
+                        request_type="material_request",
+                        request_id=uuid4(),
+                        project_id=proj.id,
+                        submitter_id=requester.id,
+                        approver_id=requester.id,
+                        delegated_to_id=requester.id,
+                        status="delegated",
+                        title=f"Delegated {suffix}",
+                        submitted_at=now - timedelta(days=2),
+                        due_at=now - timedelta(hours=3),
+                    ),
+                    Approval(
+                        request_type="material_request",
+                        request_id=uuid4(),
+                        project_id=proj.id,
+                        submitter_id=requester.id,
+                        approver_id=requester.id,
+                        status="escalated",
+                        title=f"Escalated {suffix}",
+                        submitted_at=now - timedelta(days=3),
+                        due_at=now - timedelta(hours=5),
+                        escalated_at=now - timedelta(hours=1),
+                    ),
+                ]
+            )
+            await session.commit()
+
+        company_after = {
+            m["key"]: m["value"] for m in (await actor.get(f"{API}/overview")).json()["metrics"]
+        }
+        inv_after = {
+            m["key"]: m["value"]
+            for m in (await actor.get(f"{API}/overview/inventory")).json()["metrics"]
+        }
+        appr_after = {
+            row["request_type"]: row
+            for row in (await actor.get(f"{API}/overview/approvals")).json()["by_workflow"]
+        }
+
+        assert (
+            company_after["open_material_requests"]
+            == company_before["open_material_requests"] + 7
+        )
+        assert inv_after["open_material_requests"] == inv_before["open_material_requests"] + 7
+        assert (
+            inv_after["overdue_material_requests"]
+            == inv_before["overdue_material_requests"] + 4
+        )
+
+        mr_before = appr_before.get(
+            "material_request", {"pending": 0, "overdue": 0, "escalated": 0, "rejected": 0}
+        )
+        mr_after = appr_after["material_request"]
+        assert mr_after["pending"] == mr_before["pending"] + 2
+        assert mr_after["overdue"] == mr_before["overdue"] + 2
+        assert mr_after["escalated"] == mr_before["escalated"] + 1
+        assert company_after["open_approvals"] == company_before["open_approvals"] + 2
+        assert company_after["overdue_approvals"] == company_before["overdue_approvals"] + 1
