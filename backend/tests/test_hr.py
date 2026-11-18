@@ -3966,6 +3966,7 @@ async def test_hr_i_policies_letters_requests_and_offboarding(monkeypatch) -> No
             json={
                 "employee_id": emp_id,
                 "separation_type": "resignation",
+                "notice_date": "2026-07-01",
                 "last_working_date": "2026-07-31",
             },
             headers=_auth(hrm_tok),
