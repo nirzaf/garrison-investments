@@ -330,7 +330,7 @@ def test_active_deployment_run_status_allows_api_propagation_delay(
 ) -> None:
     source = SCRIPT.read_text()
     start = source.index("\nverify_deploy_run() {\n")
-    end = source.index("\nverify_deploy_run\n", start)
+    end = source.index("\nif (( pinned )); then\n  consume_pinned_exception", start)
     sha = "a" * 40
     repository = "nirzaf/garrison-investments"
     run = json.dumps({
@@ -350,6 +350,8 @@ deploy_run_id=456
 deploy_attempt=1
 repository={repository}
 sha={sha}
+expected_main={sha}
+pinned=0
 github() {{
   case "$1" in
     actions/runs/456/attempts/1) printf '%s\\n' {shlex.quote(run)} ;;
@@ -532,6 +534,7 @@ candidate={shlex.quote(str(candidate))}
 generation=1
 previous_generation={shlex.quote(previous_generation)}
 current=current-head
+pinned=0
 sha=synthetic-commit
 run_id=123
 ci_attempt=2
@@ -1104,3 +1107,75 @@ def test_audit_purge_defaults_disabled_and_env_example_documents_it(
     assert Settings.model_fields["log_purge_enabled"].default is False
     assert Settings().log_purge_enabled is False
     assert "LOG_PURGE_ENABLED=false" in (repo_root / ".env.example").read_text().splitlines()
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["valid", "expired", "future", "too-long", "wrong-run", "wrong-attempt", "bad-sha", "replay"],
+)
+def test_pinned_no_backup_permit(scenario: str, tmp_path: Path) -> None:
+    source = SCRIPT.read_text()
+    start = source.index("consume_pinned_exception() {")
+    end = source.index("github() {", start)
+    permit = tmp_path / "pinned-no-backup-093.permit"
+    used = tmp_path / "pinned-no-backup-093.used"
+    start_time, end_time = 1_800_000_000, 1_800_000_300
+    run, attempt, main_sha = "34", "1", "a" * 40
+    if scenario == "expired":
+        end_time = 1_800_000_100
+    elif scenario == "future":
+        start_time = 1_800_000_200
+    elif scenario == "too-long":
+        end_time = 1_800_003_000
+    elif scenario == "wrong-run":
+        run = "35"
+    elif scenario == "wrong-attempt":
+        attempt = "2"
+    elif scenario == "bad-sha":
+        main_sha = "not-a-full-sha"
+    elif scenario == "replay":
+        used.touch()
+    permit.write_text(f"{run} {attempt} {main_sha} {start_time} {end_time}\n")
+    permit.chmod(0o600)
+    result = subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-c",
+            """
+die() { echo "$1" >&2; exit 1; }
+date() { echo 1800000100; }
+stat() { echo 600; }
+mv() { shift 2; command mv "$@"; }
+state=$1
+deploy_run_id=34
+deploy_attempt=1
+"""
+            + source[start:end]
+            + """
+consume_pinned_exception
+assert_pinned_window
+[[ "$expected_main" == aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]]
+""",
+            "permit-test",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == (scenario == "valid"), result.stderr
+    assert permit.exists() == (scenario != "valid")
+    assert used.exists() == (scenario in {"valid", "replay"})
+
+
+def test_pinned_exception_rejects_other_candidate_before_host_access() -> None:
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "44163196512", "a" * 40, "rollback-v2", "pinned-no-backup-093"],
+        input="",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "authorized candidate and CI run" in result.stderr

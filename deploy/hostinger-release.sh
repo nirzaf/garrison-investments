@@ -20,10 +20,18 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && "$4" == technical-checks-v1 ]] ||
+   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 ) ]] ||
   die 'Expected a CI run ID, full SHA, rollback-v2 and technical-checks-v1.'
 run_id=$1
 sha=$2
+release_mode=$4
+expected_main=$sha
+pinned=0
+if [[ "$release_mode" == pinned-no-backup-093 ]]; then
+  pinned=1
+  [[ "$sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a && "$run_id" == 44163196512 ]] ||
+    die "Pinned exception does not match the authorized candidate and CI run."
+fi
 IFS= read -r token || die 'A GitHub Actions token is required on stdin.'
 [[ "$token" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'Invalid GitHub Actions token format.'
 IFS= read -r deploy_run_id || die 'A deployment workflow run ID is required on stdin.'
@@ -51,6 +59,28 @@ mode=$(stat -c '%a' "$state/production.env")
 exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
 
+consume_pinned_exception() {
+  local permit=$state/pinned-no-backup-093.permit consumed=$state/pinned-no-backup-093.used
+  local bound_run bound_attempt bound_main start end extra now
+  [[ -f "$permit" && ! -L "$permit" && -O "$permit" &&
+     ! -e "$consumed" && ! -L "$consumed" && "$(stat -c '%a' "$permit")" == 600 ]] ||
+    die 'Pinned exception permit is unavailable, unsafe, or already consumed.'
+  read -r bound_run bound_attempt bound_main start end extra < "$permit" ||
+    die 'Pinned exception permit is invalid.'
+  now=$(date -u +%s)
+  [[ "$bound_run" == "$deploy_run_id" && "$bound_attempt" == "$deploy_attempt" &&
+     -z "$extra" && "$bound_main" =~ ^[a-f0-9]{40}$ && "$start" =~ ^[1-9][0-9]{9}$ && "$end" =~ ^[1-9][0-9]{9}$ ]] &&
+    (( start <= now && now < end && end - start <= 1800 )) ||
+    die 'Pinned exception run, attempt or window does not match.'
+  mv -T -- "$permit" "$consumed"
+  pinned_end=$end
+  expected_main=$bound_main
+}
+
+assert_pinned_window() {
+  (( $(date -u +%s) < pinned_end )) || die 'Pinned exception window expired.'
+}
+
 github() {
   printf 'header = "Authorization: Bearer %s"\n' "$token" |
     curl --config - --fail --silent --show-error --location --retry 2 --max-time 90 \
@@ -62,7 +92,7 @@ verify_main() {
 import json, sys
 if json.load(sys.stdin)["object"]["sha"] != sys.argv[1]:
     sys.exit("The candidate is no longer the tip of main.")
-' "$sha"
+' "$expected_main"
 }
 
 verify_ci() {
@@ -131,12 +161,19 @@ if not (
     and run.get("status") in {"queued", "in_progress"}
     and run.get("head_branch") == "main"
     and (run.get("head_repository") or {}).get("full_name") == sys.argv[3]
-    and (run.get("event") == "workflow_run"
-         or (run.get("event") == "workflow_dispatch" and run.get("head_sha") == sys.argv[4]))
+    and (
+        (sys.argv[5] == "1" and run.get("event") == "workflow_dispatch"
+         and run.get("head_sha") == sys.argv[4])
+        or (sys.argv[5] == "0" and (run.get("event") == "workflow_run"
+             or (run.get("event") == "workflow_dispatch" and run.get("head_sha") == sys.argv[4])))
+    )
 ):
     sys.exit("The production deployment run does not match this invocation.")
-  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$sha"
+  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" "$pinned"
 }
+if (( pinned )); then
+  consume_pinned_exception
+fi
 verify_deploy_run
 verify_main
 
@@ -152,6 +189,10 @@ if json.load(sys.stdin) != {"status": "ready", "database": "connected"}:
 previous=$(readlink -f "$state/current")
 [[ "$previous" == "$base/releases/"* && -f "$previous/.env" ]] ||
   die 'The active production release has not been initialized.'
+if (( pinned )); then
+  [[ "$(cat "$previous/SOURCE_COMMIT")" == 21750a2a425f91b4d5811e8ac77f0e3ddec9deb8 ]] ||
+    die 'Pinned exception requires the reviewed previous production release.'
+fi
 if [[ "$(cat "$previous/SOURCE_COMMIT")" == "$sha" ]]; then
   curl --fail --silent --show-error --max-time 10 "$portal/health/readiness" | check_readiness
   printf '\nCommit %s is already deployed.\n' "$sha"
@@ -236,7 +277,7 @@ phase_started=$SECONDS
 # Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
 candidate_compose_file=$(mktemp)
 if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
-   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" <<'PY'; then
+   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$pinned" <<'PY'; then
 import json
 import os
 import stat
@@ -337,6 +378,8 @@ for subdir in ("nginx", "observability"):
                 raise SystemExit(f"{mapped_item} must not be empty")
 
 env_values = parse_env(cand_env_bytes)
+if sys.argv[5] == "1" and env_values.get("SUPPORT_PORTAL_ENABLED", "false").lower() != "false":
+    raise SystemExit("Super Admin ingress must remain disabled during the pinned rollout.")
 if env_values.get("LOG_PURGE_ENABLED", "").strip().lower() not in false_tokens:
     raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
 
@@ -511,8 +554,13 @@ frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
 heads=$(image_heads "$backend_image")
 current=$(docker exec "$project-postgres-1" sh -ec \
   'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
-[[ -n "$heads" && "$heads" == "$current" ]] ||
-  die 'Pending database migrations require the reviewed maintenance procedure.'
+if (( pinned )); then
+  [[ "$current" == 202605310061 && "$heads" == 202605310093 && "$runtime_changed" == 1 ]] ||
+    die 'Pinned exception requires the exact 061 to 093 migration and runtime switch.'
+else
+  [[ -n "$heads" && "$heads" == "$current" ]] ||
+    die 'Pending database migrations require the reviewed maintenance procedure.'
+fi
 
 verify_main
 
@@ -565,7 +613,7 @@ apply_runtime() {
 }
 
 rollback_compatible=0
-if [[ "$generation" == "$previous_generation" ]]; then
+if (( ! pinned )) && [[ "$generation" == "$previous_generation" ]]; then
   old_backend=$(sed -n 's/^GARRISON_BACKEND_IMAGE=//p' "$previous/.images.env")
   old_frontend=$(sed -n 's/^GARRISON_FRONTEND_IMAGE=//p' "$previous/.images.env")
   if [[ -n "$old_backend" && -n "$old_frontend" ]] &&
@@ -605,12 +653,37 @@ trap rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 phase_started=$SECONDS
-compose "$candidate" run --rm --no-deps --pull never -T backend \
-  python scripts/backup.py --target all --skip-retention
-report_duration 'Pre-activation backup' "$phase_started"
+if (( pinned )); then
+  assert_pinned_window
+  verify_main
+  running=$(docker ps --filter "label=com.docker.compose.project=$project" \
+    --format '{{.Label "com.docker.compose.service"}}')
+  if [[ "$running" =~ (^|[[:space:]])(nginx|backend|celery_worker|celery_beat)([[:space:]]|$) ]]; then
+    die 'Pinned migration requires stopped ingress and application writers.'
+  fi
+  remaining_clients=$(docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = '\''client backend'\''"')
+  [[ "$remaining_clients" == 0 ]] ||
+    die 'Pinned migration requires all application database client sessions to be drained.'
+  assert_pinned_window
+  printf '%s\n' 'Owner-approved pinned release without a secured backup. Independent recovery pending.' \
+    > "$candidate/RECOVERY_EXCEPTION"
+  runtime_attempted=1
+  compose "$candidate" run --rm --no-deps --pull never -T backend alembic upgrade 202605310093
+  current=$(docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
+  [[ "$current" == "$heads" ]] || die 'Pinned production migration did not reach the authorized head.'
+else
+  compose "$candidate" run --rm --no-deps --pull never -T backend \
+    python scripts/backup.py --target all --skip-retention
+  report_duration 'Pre-activation backup' "$phase_started"
+fi
 verify_main
 unset token
 phase_started=$SECONDS
+if (( pinned )); then
+  assert_pinned_window
+fi
 if (( runtime_changed )); then
   runtime_attempted=1
   apply_runtime "$candidate"

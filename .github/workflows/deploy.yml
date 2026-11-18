@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      pinned_no_backup_093:
+        description: Use the one-use host permit for the approved pinned 093 release
+        type: boolean
+        default: false
       ci_run_id:
         description: Successful CI run for the current main commit
         type: string
@@ -42,9 +46,16 @@ jobs:
     steps:
       - name: Deploy the tested commit
         env:
+          PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: |
+          release_mode=technical-checks-v1
+          if [[ "$PINNED_NO_BACKUP_093" == true ]]; then
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 ]] || exit 1
+            RELEASE_SHA=0d581001bd294f79a47021c7e30f75a1bf291d2a
+            release_mode=pinned-no-backup-093
+          fi
           printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" |
-            sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 technical-checks-v1
+            sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 "$release_mode"
