@@ -1073,3 +1073,244 @@ revision. Production rollout still requires a committed candidate, passing
 self-hosted CI for the candidate SHA, the approved maintenance procedure and
 a verified restricted DNS/TLS and proxy configuration. Verify production
 denials on both hostnames before opening an authenticated support session.
+
+
+### One-time forward-only 093–097 preparation (not enrolled)
+
+The owner-approved local preparation accepts permanent data loss for this exact
+exception; it must not add backup, restore or independent-destination requirements
+to this exception. Existing backups/audit remain retained. A fresh designated
+owner codeword is required before commit/push, privileged installation, live permit,
+migration or deployment. The modified candidate needs a NEW exact-main CI run:
+CI44463432841 validates only d8e147c, not these local edits.
+
+The manual workflow selector and host event check are prepared, but the host rejects
+this mode before source staging/activation. Do not remove that refusal until the
+operator-controlled maintenance ingress block, writer and database-session drain,
+read-only smoke activation, failure containment and receipt sequence are implemented
+and reviewed together. Current apply_runtime starts worker/beat with ingress, so
+using it unchanged violates this exception's smoke-before-writes requirement.
+
+forward_release_contract.py validates a root-controlled private permit bound to SHA,
+CI run, deployment run/attempt, installed entrypoint digest,093/097 and a maximum
+30-minute window. A separate atomic non-overwriting consumed marker prevents replay;
+its parent directories must be operator-owned and non-writable by runner/others.
+This helper does not issue permits or establish owner approval. It is not yet called
+by the fail-closed execution path. No real permit has been created or consumed.
+
+Next implementation: retain existing provenance/configuration guards; require the
+independent maintenance write block; verify zero incompatible writers and client
+sessions; recheck live093 and complete candidate097 chain/data constraints; consume
+the exact permit under lock immediately before irreversible work; migrate forward;
+on any error keep ingress/writers stopped and retain errors without old-image
+rollback. Start only what is necessary for read-only smoke behind the write block,
+verify actual schema/constraints/runtime/assets/business authorization, then resume
+workers/beat and reopen writes. Record FORWARD-ONLY RELEASE — BACKUP/RECOVERY WAIVED
+BY OWNER with exact identities and maintenance times. No Super Admin changes.
+The original pinned061–093 and normal backup/migration guards remain unchanged.
+
+
+#### Verified local maintenance mechanism (still unenrolled)
+
+maintenance_ingress.py produces a business-vhost guard allowing only GET/HEAD for
+static login/assets/service-worker and exact readiness paths. It denies ALL business,
+authentication, object and support APIs, including their GET routes. This avoids
+assuming every GET is read-only. A disposable network-disabled Nginx1.25 test verified
+actual503 responses for those routes and POST/readiness, and successful static/readiness
+GET probes. The production readiness handler is excluded from audit middleware and
+checks database connectivity. The synthetic Nginx backend is not a production application.
+
+forward_maintenance_sequence.py specifies and tests stop/drain → zero clients →
+source/data checks → consume exact permit → migrate → verify097 → backend plus guarded
+Nginx only → read-only smoke → workers verified → business ingress reopening → receipt.
+Every failed phase preserves containment; no old-image rollback/backup requirement is
+introduced for this exact exception. It is an unenrolled operator boundary, not shell
+execution. The host refusal remains. No guard was installed/reloaded on production.
+
+Before enrollment, prove the actual Compose/TLS topology applies the guard at every
+business ingress with no direct backend reachability or surviving writer; verify drain
+against actual client roles and one-off jobs; check backend startup does not run writes;
+run exact-candidate full-stack smoke and failure containment. A generic callback test
+cannot prove those properties. Login and business APIs intentionally stay blocked during
+read-only smoke; their authenticated workflow tests require a separately controlled
+post-reopen verification stage, not a false claim they ran under this block.
+
+#### Disposable actual API/TLS/worker boundary verification
+
+`RUN_FORWARD097_STACK=1` enables `test_forward097_stack.py`. This uses exact candidate
+backend source mounted read-only, a locally built requirements-matched dependency image,
+a new internal Docker network, synthetic PostgreSQL and Redis, and generated fixture-only
+TLS/JWT keys. It migrates synthetic schema 093 to 097, starts the real production-mode
+API, and verifies lifecycle audit appends remain enabled. Guarded TLS ingress permits
+readiness but refuses business/auth/support/object requests; smoke requests do not append
+audit records. No backend/database host port is published. A real Celery worker on an
+empty fixture queue starts after smoke while ingress stays blocked. Only then is fixture
+business ingress reopened, yielding the expected unauthenticated rejection. Worker/API
+shutdown leaves zero other database clients. All owned containers/volumes/network are
+removed. Beat, real queued work, object storage, monitoring, live TLS/proxy configuration,
+production peer networks and actual production data are not qualified by this fixture.
+
+This adds tests, not production runtime wiring. The host mode still intentionally refuses
+before staging. Enrollment still requires a reviewed concrete operator adapter binding
+protected permit validation/consumption, authoritative running-service inventory, ingress
+configuration and reload, in-flight job drain (without forced task loss), actual database
+session drain/data validation, exact candidate startup, guarded smoke, controlled worker/
+beat reopening and durable failure containment. Expected system lifecycle audit writes are
+not domain/scheduler traffic. The existing business nginx generator and abstract sequence
+must not be treated as an installed write block or an executable host release protocol.
+
+#### Durable adapter attempt journal (local-only)
+
+`forward_adapter_journal.py` exercises statically supplied trusted operator boundaries
+with an operator-owned, exclusive-create `forward097.attempt` marker. Each phase intent
+and completion is fsynced; the marker is never automatically deleted, overwritten or
+resumed, even after success. A process loss after intent therefore blocks retry pending
+operator diagnosis. Every callback failure attempts containment; containment failure is
+explicitly recorded as unknown, never as safe. Phase records contain no secrets or raw
+exception output. This journal is NOT a qualification receipt or proof of stopped writers.
+It does not issue or replace the separate byte-bound permit and does not authorize actions.
+
+Production integration must live in the reviewed root-installed entrypoint, not a dynamic
+module loaded from a candidate archive. Trusted functions must verify the effective Compose
+services/networks/binds against the installed policy and discover unexpected containers,
+external DB clients and host schedulers before stopping anything. A maintenance marker
+must be honored on process restart by the operator-controlled ingress/runtime path, not
+merely by this Python process. Tested local journaling alone cannot stop a Docker restart
+policy from reviving a writer. The concrete host adapter, startup persistence mechanism,
+beat/in-flight job draining and post-crash operator recovery remain unenrolled. The existing
+host refusal is intentionally unchanged; no codeword is appropriate for this nonrunnable
+candidate. No backup prerequisite is reintroduced for the specifically approved exception.
+
+#### Concrete isolated Compose commands
+
+`compose_maintenance.py` now executes real Docker inventory, Celery active/reserved/
+scheduled inspection, TERM-only warm stops and guarded backend/nginx-before-worker
+restart against a frozen, explicitly labeled fixture inventory. Unknown containers,
+replaced IDs, published ports, automatic restart policy, absent/ambiguous worker replies
+or busy work refuse progression. Warm-stop timeout never escalates to forced kill.
+The actual API/TLS/PostgreSQL test exercises these commands and verifies zero sessions
+after drain and worker-off state during smoke. Eight negative tests cover topology and
+worker-state refusals. This adapter intentionally supports only the isolated three-service
+application fixture; it refuses production ports and cannot serve as a production command.
+
+Before host enrollment, extend the reviewed installed adapter to the actual complete
+Compose inventory, stop beat before worker drain, account for queued/delayed/outbox work,
+verify all producers cannot reconnect, apply the reviewed real ingress-port policy and
+bind the existing exact-source/permit/journal functions. Independent review must assess
+failure containment during partial stop/start and the restart-persistent operator path.
+Do not remove the host refusal or run this fixture adapter against production.
+
+**Latest scheduler qualification failure:** Adding real Celery beat to the disposable
+stack allowed initial drain and guarded restart, but a subsequent warm-stop of the
+just-restarted beat did not finish within30seconds. The adapter correctly raised
+`Warm stop incomplete; never force-kill`. Result:1failed/8passed66.09seconds.
+Therefore the optional beat extension is experimental/unqualified, not a passing release
+path. Fixture cleanup removed only its own synthetic resources. The next precise test
+work is to establish observable beat startup readiness and graceful shutdown behavior
+across restart, without timing-only assumptions or production force termination. Earlier
+168-test and worker-only results do not establish scheduler readiness.
+
+**Bounded scheduler retry:** The fixture now records beat lifecycle output and waits for
+the second actual `beat: Starting...` event before its post-restart shutdown. This retry
+passed in40.82seconds, including warm stop and final zero DB-session check. This supports
+a startup-readiness race as a cause, but does not prove all scheduler/job states are safe.
+The production adapter is still unenrolled: observable readiness must be a concrete trusted
+runtime prerequisite, not a test-only wait or stale log count. Keep the failed run as evidence.
+
+**Adapter startup prerequisite:** The concrete isolated adapter now waits for structured
+`celery.beat` startup output from Docker logs scoped to the exact current container
+`StartedAt`, and rejects exit/restart during that wait. The fixture-only external wait
+was removed. Missing startup invokes containment; if one warm stop fails, remaining
+services are still attempted and incomplete containment is raised explicitly. Actual
+synthetic stack plus negative checks:11passed40.31seconds. Startup announcement is a
+bounded lifecycle prerequisite, not proof every scheduled business job is safe. Production
+qualification/permit wiring and host enrollment remain absent; host refusal is unchanged.
+
+**Unknown-producer integration evidence:** A real extra container carrying the same
+Compose project label now causes the concrete drain operation to refuse before stopping
+nginx/backend. After removing only that disposable producer, the isolated positive path
+still passes. Actual stack plus negative tests:11passed41.85seconds.
+
+**Software not yet written (not an installation-only gate):** The host-specific dispatcher
+must replace the unconditional refusal with concrete reviewed code that validates the
+installed module/permit file ownership and bytes, reuses exact main/CI/deploy identity,
+creates its durable attempt under the host lock, freezes the complete existing Compose
+inventory, applies and verifies guarded real TLS ingress, drains beat/worker/API and DB
+sessions, consumes the exact permit, runs only093→097, starts guarded candidate backend,
+verifies served frontend hashes/readiness and unchanged Super Admin denial, then reopens
+writers/ingress and records the real deployed receipt. Failure containment must attach
+before the first stop and must never select old-image rollback after migration. These
+functions have not yet been assembled/tested as a single host-specific implementation.
+Root installation alone would NOT fix this gap; do not request codeword for current patch.
+
+#### Assembled executable isolated dispatcher
+
+`python deploy/forward097_isolated_dispatch.py --fixture-policy PATH --fixture-state DIR`
+now performs an actual cohesive synthetic release: private fixed-input policy, exact-image
+and full application inventory checks, internal-network/no-published-port refusal, durable
+attempt before stopping writers, real Celery drain and zero PostgreSQL clients, exact
+single-use permit consumption, fixed Alembic093→097 command, target-schema check, guarded
+TLS/API smoke, worker/beat startup, controlled ingress reload and truthful synthetic journal.
+It accepts only the disposable fixture database credential and project naming convention;
+it is NOT a production mode or a replacement for actual GitHub CI verification. The policy
+contains synthetic run identity in tests, never a forged production approval/receipt.
+
+The permit now binds CI run AND CI attempt independently from deployment run/attempt.
+The local host script also refuses every entry mode when a durable `forward097.attempt`
+exists, before ordinary schema-equality or already-deployed paths. No automatic marker
+reset exists. Production forward-mode refusal remains; this marker change is not installed.
+
+The remaining production-specific software work is to replace fixture-only settings with
+the reviewed root-installed byte-bound policy and actual GitHub evidence, reuse the host's
+validated effective Compose/TLS/secret/retention configuration, handle immutable exact
+candidate image creation and real frontend hashes, and link completed/failure journal
+state to the real deployment pointer. This is not merely an installation approval gap.
+No additional backup/restore gate is imposed on the owner's exact093→097 exception.
+
+#### Production-intended wiring now written locally (not installed or release-ready)
+
+The latest local preparation supersedes earlier 'software not written' checkpoints:
+`hostinger-release.sh` now connects manual forward mode to the fixed root-installed
+`forward097-runtime.sh`, `consume-forward097.py` and `forward_release_contract.py`.
+The entrypoint embeds helper hashes and validates root ownership, protected parent paths
+and exact bytes before staging. The existing effective-Compose, TLS/JWT/secret/retention,
+main and exact-CI validators remain in use. Forward mode prevalidates its permit before
+stopping writers, consumes it only after source/data/session checks, migrates only093→097,
+publishes/starts under the guarded overlay, verifies served frontend hashes and readiness,
+then starts workers/beat and restores the existing ingress configuration. The normal
+backup/compatible-rollback path is unchanged; only forward mode uses its specific exception.
+Any durable attempt blocks every later entry mode pending operator reconciliation.
+
+Evidence:133focused shell/config/normal-release regression tests passed4.41seconds.
+These use stubbed host command boundaries for production shell sequencing. The separate
+assembled synthetic dispatcher passed3real Docker/Postgres/TLS positive/failure cases.
+These are complementary, NOT a full actual-production-Compose execution of this new shell
+extension. Independent review, lint cleanup/hash resealing and shadow-topology qualification
+remain outstanding. Do not install these files or request an execution codeword yet.
+
+### Prepared forward097 durable serving commit (local review candidate)
+
+The mode keeps ingress guarded through migration, exact catalog validation,
+backend smoke, durable current-pointer checkpoint, and writer identity/running
+verification. Immediately before unguarded ingress it exclusively creates and
+fsyncs `forward097.reopen-commit`, bound to candidate/SHA, CI run/attempt and
+manual deploy run/attempt. This is the serving authorization commit point, not
+proof of observed deployment success. A process loss after this point may leave
+verified serving active with `FORWARD_ACTIVATION_PENDING`; never label that a
+completed release until independently observing current pointer, image IDs,
+schema097, ingress state and readiness. Before this commit point, ingress remains
+closed/guarded. Keep the all-mode `forward097.attempt` interlock in either case.
+
+Reconciliation is deliberately operator-controlled: collect the attempt,
+serving commit, candidate/pointer and live verification; contain writers/ingress
+if those disagree. Never rerun the consumed migration permit or downgrade.
+Retire/archive the marker only under separately reviewed host operations after
+reconciling the exact attempt; no automatic marker deletion exists. `DEPLOYED`
+is finalized only after post-reopen observation. The exception waives secured
+backup/restore only for this exact mode; it is not backup evidence.
+
+Local tests include a SIGKILL of the actual shell reopening function after a
+stubbed ingress recreate: durable serving commit survived and completed receipt
+remained absent. This proves shell sequencing and persistence only, not actual
+Docker/TLS/host crash behavior. Production topology interruption validation and
+independent review remain prerequisites to claiming the candidate qualified.

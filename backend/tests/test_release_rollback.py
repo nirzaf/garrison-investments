@@ -277,6 +277,7 @@ def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
         ["bash", "-c", f"""
 set -euo pipefail
 run_id=123
+forward097=0
 sha={sha}
 repository={repository}
 candidate={shlex.quote(str(tmp_path))}
@@ -352,6 +353,8 @@ repository={repository}
 sha={sha}
 expected_main={sha}
 pinned=0
+forward097=0
+forward097=0
 github() {{
   case "$1" in
     actions/runs/456/attempts/1) printf '%s\\n' {shlex.quote(run)} ;;
@@ -535,6 +538,7 @@ generation=1
 previous_generation={shlex.quote(previous_generation)}
 current=current-head
 pinned=0
+forward097=0
 sha=synthetic-commit
 run_id=123
 ci_attempt=2

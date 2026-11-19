@@ -20,13 +20,15 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 ) ]] ||
+   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 ) ]] ||
   die 'Expected a CI run ID, full SHA, rollback-v2 and technical-checks-v1.'
 run_id=$1
 sha=$2
 release_mode=$4
 expected_main=$sha
 pinned=0
+forward097=0
+[[ "$release_mode" != forward-only-093-to-097 ]] || forward097=1
 if [[ "$release_mode" == pinned-no-backup-093 ]]; then
   pinned=1
   [[ "$sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a && "$run_id" == 44163196512 ]] ||
@@ -58,6 +60,14 @@ mode=$(stat -c '%a' "$state/production.env")
 
 exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
+
+assert_forward_maintenance_clear() {
+  # All modes stop before schema equality/idempotence can reopen an interrupted attempt.
+  # Only a separately reviewed operator reconciliation may retire this durable marker.
+  [[ ! -e "$state/forward097.attempt" && ! -L "$state/forward097.attempt" ]] ||
+    die 'A forward097 attempt requires operator reconciliation; every release mode is blocked.'
+}
+assert_forward_maintenance_clear
 
 consume_pinned_exception() {
   local permit=$state/pinned-no-backup-093.permit consumed=$state/pinned-no-backup-093.used
@@ -169,13 +179,32 @@ if not (
     )
 ):
     sys.exit("The production deployment run does not match this invocation.")
-  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" "$pinned"
+  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" "$((pinned || forward097))"
 }
 if (( pinned )); then
   consume_pinned_exception
 fi
 verify_deploy_run
 verify_main
+if (( forward097 )); then
+  # Fixed protected installation, never execute privileged helper code from candidate.
+  python3 - <<'PYFORWARD'
+import hashlib,pathlib,stat
+base=pathlib.Path('/usr/local/lib/garrison-release')
+for path in (base.parent.parent,base.parent,base):
+ info=path.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
+  raise SystemExit('Forward runtime installation is not protected')
+expected={'forward097-runtime.sh': '7f62934d332afb869c4b13c5250b9b6d9a62d6df35dc4bc58c1b1366bda6ca46', 'forward_release_contract.py': '318e661a5ced681fbe26c9a5dbc59c314bf26dfc1edb8c929306460440ee516d', 'consume-forward097.py': '0596e6125d70affe3ccf76b2f5e14213c158ced632cecb87ce9f3e1f9e802e93', 'forward097-schema.sql': 'b7bc5ea00f38bdd9e2a4dbd62646b5ec48a3d8b49c2ed9a2892eaf4f00342978', 'forward097-schema.json': '3aac1590deb8b6aafc68149b8acae60a675d1a0a4ca06827c03d6de006d36732'}
+for name,digest in expected.items():
+ path=base/name;info=path.lstat()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
+  raise SystemExit('Forward helper is not root-controlled')
+ if hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
+  raise SystemExit('Forward helper bytes differ from reviewed entrypoint')
+PYFORWARD
+  source /usr/local/lib/garrison-release/forward097-runtime.sh
+fi
 
 check_readiness() {
   python3 -c '
@@ -202,7 +231,7 @@ fi
 phase_started=$SECONDS
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json; do
+for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json FORWARD_NGINX.conf FORWARD_COMPOSE.json; do
   [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
     die 'The source archive contains a reserved release file.'
 done
@@ -277,7 +306,7 @@ phase_started=$SECONDS
 # Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
 candidate_compose_file=$(mktemp)
 if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
-   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$pinned" <<'PY'; then
+   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$((pinned || forward097))" <<'PY'; then
 import json
 import os
 import stat
@@ -554,7 +583,10 @@ frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
 heads=$(image_heads "$backend_image")
 current=$(docker exec "$project-postgres-1" sh -ec \
   'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
-if (( pinned )); then
+if (( forward097 )); then
+  [[ "$current" == 202605310093 && "$heads" == 202605310097 && "$runtime_changed" == 1 ]] ||
+    die 'Forward exception requires exact093 to097 and candidate runtime.'
+elif (( pinned )); then
   [[ "$current" == 202605310061 && "$heads" == 202605310093 && "$runtime_changed" == 1 ]] ||
     die 'Pinned exception requires the exact 061 to 093 migration and runtime switch.'
 else
@@ -613,7 +645,7 @@ apply_runtime() {
 }
 
 rollback_compatible=0
-if (( ! pinned )) && [[ "$generation" == "$previous_generation" ]]; then
+if (( ! pinned && ! forward097 )) && [[ "$generation" == "$previous_generation" ]]; then
   old_backend=$(sed -n 's/^GARRISON_BACKEND_IMAGE=//p' "$previous/.images.env")
   old_frontend=$(sed -n 's/^GARRISON_FRONTEND_IMAGE=//p' "$previous/.images.env")
   if [[ -n "$old_backend" && -n "$old_frontend" ]] &&
@@ -629,7 +661,9 @@ rollback() {
   local result=$?
   if (( result && (runtime_attempted || frontend_attempted) )); then
     set +e
-    if (( rollback_compatible )); then
+    if (( forward097 )); then
+      forward_contain || printf 'Forward containment incomplete; operator intervention required.\n' >&2
+    elif (( rollback_compatible )); then
       printf 'Activation failed. Restoring the previous compatible application release.\n' >&2
       if (( runtime_attempted )); then
         apply_runtime "$previous" || printf 'Application rollback failed. Check the production services.\n' >&2
@@ -653,7 +687,9 @@ trap rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 phase_started=$SECONDS
-if (( pinned )); then
+if (( forward097 )); then
+  forward_release
+elif (( pinned )); then
   assert_pinned_window
   verify_main
   running=$(docker ps --filter "label=com.docker.compose.project=$project" \
@@ -684,16 +720,20 @@ phase_started=$SECONDS
 if (( pinned )); then
   assert_pinned_window
 fi
-if (( runtime_changed )); then
+if (( runtime_changed && ! forward097 )); then
   runtime_attempted=1
   apply_runtime "$candidate"
 fi
-frontend_attempted=1
-publish_frontend "$frontend_image"
+if (( ! forward097 )); then
+  frontend_attempted=1
+  publish_frontend "$frontend_image"
+fi
 report_duration 'Activation' "$phase_started"
 
 phase_started=$SECONDS
-for service in backend celery_worker celery_beat; do
+verification_services="backend celery_worker celery_beat"
+if (( forward097 )); then verification_services=backend; fi
+for service in $verification_services; do
   container=$(compose "$candidate" ps -q "$service")
   [[ -n "$container" && "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] ||
     die "The active $service image differs from the candidate backend build."
@@ -713,7 +753,30 @@ printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\n
   "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
+if (( forward097 )); then mv "$candidate/DEPLOYED" "$candidate/FORWARD_ACTIVATION_PENDING"; fi
 ln -sfn "$candidate" "$state/.current-next"
 mv -Tf "$state/.current-next" "$state/current"
+if (( forward097 )); then
+  printf 'Mode: forward-only-093-to-097\nSecured backup/restore: waived for exact owner-authorized release; not verified\n' >> "$candidate/FORWARD_ACTIVATION_PENDING"
+  python3 - "$candidate" "$state" <<'PYFS'
+import os,sys
+from pathlib import Path
+candidate,state=map(Path,sys.argv[1:])
+with (candidate/'FORWARD_VERIFIED').open('x') as f:
+    f.write('Guarded image/schema/readiness verified; current pointer committed.\n')
+    f.flush();os.fsync(f.fileno())
+for path in (candidate/'FORWARD_ACTIVATION_PENDING',candidate,state):
+    fd=os.open(path,os.O_RDONLY);os.fsync(fd);os.close(fd)
+PYFS
+  forward_mark deployed_pointer_verified
+  forward_reopen
+  for service in celery_worker celery_beat; do
+    container=$(compose "$candidate" ps -q "$service")
+    [[ "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] || die 'Reopened writer image mismatch.'
+  done
+  curl --fail --silent --show-error --max-time 12 "$portal/health/readiness" | check_readiness
+  forward_mark reopened_verified
+  mv "$candidate/FORWARD_ACTIVATION_PENDING" "$candidate/DEPLOYED"
+fi
 trap - EXIT INT TERM
 printf '\nDeployed %s from CI run %s. Frontend asset %s verified.\n' "$sha" "$run_id" "$asset"

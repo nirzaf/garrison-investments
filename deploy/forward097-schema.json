@@ -1,0 +1,90 @@
+{
+  "columns": [
+    [
+      "support_bootstrap",
+      "custody_mode",
+      "character varying",
+      "NO",
+      "'paired'::character varying"
+    ],
+    [
+      "support_bootstrap",
+      "second_id",
+      "uuid",
+      "YES",
+      null
+    ],
+    [
+      "support_business_actions",
+      "owner_session_id",
+      "uuid",
+      "YES",
+      null
+    ],
+    [
+      "support_case_actions",
+      "authorization_mode",
+      "character varying",
+      "NO",
+      "'paired'::character varying"
+    ],
+    [
+      "support_evidence_exports",
+      "authorization_mode",
+      "character varying",
+      "NO",
+      "'paired'::character varying"
+    ]
+  ],
+  "constraints": [
+    [
+      "support_bootstrap",
+      "ck_support_bootstrap_singleton_custody",
+      "c",
+      true,
+      "CHECK (((id = 1) AND ((((custody_mode)::text = 'paired'::text) AND (second_id IS NOT NULL) AND (first_id <> second_id)) OR (((custody_mode)::text = 'single_owner'::text) AND (second_id IS NULL)))))"
+    ],
+    [
+      "support_business_actions",
+      "fk_support_business_actions_owner_session_id_support_sessions",
+      "f",
+      true,
+      "FOREIGN KEY (owner_session_id) REFERENCES support_sessions(id)"
+    ],
+    [
+      "support_case_actions",
+      "ck_support_case_actions_decision",
+      "c",
+      true,
+      "CHECK (((((authorization_mode)::text = 'paired'::text) AND ((applied_at IS NULL) = (reviewer_id IS NULL))) OR (((authorization_mode)::text = 'single_owner'::text) AND (reviewer_id IS NULL))))"
+    ],
+    [
+      "support_evidence_exports",
+      "ck_support_evidence_exports_decision",
+      "c",
+      true,
+      "CHECK ((((approved_at IS NULL) = (review_request_id IS NULL)) AND ((downloaded_at IS NULL) = (download_request_id IS NULL)) AND ((downloaded_at IS NULL) OR (approved_at IS NOT NULL)) AND ((((authorization_mode)::text = 'paired'::text) AND ((approved_at IS NULL) = (reviewer_id IS NULL)) AND ((approved_at IS NULL) = (reviewer_epoch IS NULL))) OR (((authorization_mode)::text = 'single_owner'::text) AND (reviewer_id IS NULL) AND (reviewer_epoch IS NULL)))))"
+    ]
+  ],
+  "function": [
+    "\n        BEGIN\n            IF TG_OP = 'TRUNCATE' THEN\n                RAISE EXCEPTION 'Business audit ledger is append-only and cannot be truncated';\n            END IF;\n\n            IF TG_OP = 'DELETE' THEN\n                IF current_setting('garrison.audit_retention_purge', true) = 'allow'\n                    AND OLD.storage_tier = 'archive'\n                    AND OLD.retention_until IS NOT NULL\n                    AND OLD.deleted_at IS NULL\n                THEN\n                    RETURN OLD;\n                END IF;\n                RAISE EXCEPTION 'Business audit ledger deletions require an approved archive purge';\n            END IF;\n\n            IF TG_OP = 'UPDATE' THEN\n                IF NEW.id IS DISTINCT FROM OLD.id\n                    OR NEW.user_id IS DISTINCT FROM OLD.user_id\n                    OR NEW.event_type IS DISTINCT FROM OLD.event_type\n                    OR NEW.severity IS DISTINCT FROM OLD.severity\n                    OR NEW.action IS DISTINCT FROM OLD.action\n                    OR NEW.entity_type IS DISTINCT FROM OLD.entity_type\n                    OR NEW.entity_id IS DISTINCT FROM OLD.entity_id\n                    OR NEW.request_id IS DISTINCT FROM OLD.request_id\n                    OR NEW.session_id IS DISTINCT FROM OLD.session_id\n                    OR NEW.ip_address IS DISTINCT FROM OLD.ip_address\n                    OR NEW.endpoint IS DISTINCT FROM OLD.endpoint\n                    OR NEW.http_method IS DISTINCT FROM OLD.http_method\n                    OR NEW.status_code IS DISTINCT FROM OLD.status_code\n                    OR NEW.source_service IS DISTINCT FROM OLD.source_service\n                    OR NEW.instance_id IS DISTINCT FROM OLD.instance_id\n                    OR NEW.user_agent IS DISTINCT FROM OLD.user_agent\n                    OR NEW.comments IS DISTINCT FROM OLD.comments\n                    OR NEW.context_payload IS DISTINCT FROM OLD.context_payload\n                    OR NEW.old_values IS DISTINCT FROM OLD.old_values\n                    OR NEW.new_values IS DISTINCT FROM OLD.new_values\n                    OR NEW.created_at IS DISTINCT FROM OLD.created_at\n                    OR NEW.deleted_at IS DISTINCT FROM OLD.deleted_at\n                THEN\n                    RAISE EXCEPTION 'Business audit ledger event fields are immutable';\n                END IF;\n\n                IF NOT (\n                    NEW.storage_tier = OLD.storage_tier\n                    OR (OLD.storage_tier = 'hot' AND NEW.storage_tier = 'archive')\n                ) THEN\n                    RAISE EXCEPTION 'Invalid audit storage tier transition';\n                END IF;\n\n                IF OLD.storage_tier = 'hot'\n                    AND NEW.storage_tier = 'archive'\n                    AND NEW.archived_at IS NULL\n                THEN\n                    RAISE EXCEPTION 'Archived audit rows require archived_at';\n                END IF;\n\n                IF OLD.archived_at IS NOT NULL\n                    AND NEW.archived_at IS DISTINCT FROM OLD.archived_at\n                THEN\n                    RAISE EXCEPTION 'Audit archived_at timestamp is immutable once set';\n                END IF;\n\n                IF OLD.retention_until IS NOT NULL AND (\n                    NEW.retention_until IS NULL OR NEW.retention_until < OLD.retention_until\n                ) THEN\n                    RAISE EXCEPTION 'Audit retention_until deadline cannot be cleared or shortened';\n                END IF;\n\n                RETURN NEW;\n            END IF;\n\n            RETURN NULL;\n        END;\n        ",
+    "plpgsql",
+    false,
+    "v"
+  ],
+  "schema": "202605310097",
+  "triggers": [
+    [
+      "activity_log_append_only",
+      "O",
+      27,
+      "CREATE TRIGGER activity_log_append_only BEFORE DELETE OR UPDATE ON public.activity_log FOR EACH ROW EXECUTE FUNCTION prevent_activity_log_mutation()"
+    ],
+    [
+      "activity_log_no_truncate",
+      "O",
+      34,
+      "CREATE TRIGGER activity_log_no_truncate BEFORE TRUNCATE ON public.activity_log FOR EACH STATEMENT EXECUTE FUNCTION prevent_activity_log_mutation()"
+    ]
+  ]
+}

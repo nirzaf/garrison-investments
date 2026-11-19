@@ -1,0 +1,8 @@
+BEGIN READ ONLY;
+SELECT jsonb_build_object(
+ 'schema',(SELECT version_num FROM alembic_version),
+ 'triggers',(SELECT jsonb_agg(jsonb_build_array(tgname,tgenabled,tgtype,pg_get_triggerdef(oid)) ORDER BY tgname) FROM pg_trigger WHERE tgrelid='public.activity_log'::regclass AND NOT tgisinternal),
+ 'function',(SELECT jsonb_build_array(prosrc,(SELECT lanname FROM pg_language WHERE oid=prolang),prosecdef,provolatile) FROM pg_proc WHERE oid='public.prevent_activity_log_mutation()'::regprocedure),
+ 'constraints',(SELECT jsonb_agg(jsonb_build_array(conrelid::regclass::text,conname,contype,convalidated,pg_get_constraintdef(oid)) ORDER BY conrelid::regclass::text,conname) FROM pg_constraint WHERE (conrelid='public.support_bootstrap'::regclass AND conname='ck_support_bootstrap_singleton_custody') OR (conrelid IN ('public.support_case_actions'::regclass,'public.support_evidence_exports'::regclass) AND conname IN ('ck_support_case_actions_decision','ck_support_evidence_exports_decision')) OR (conrelid='public.support_business_actions'::regclass AND contype='f' AND conkey=ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid='public.support_business_actions'::regclass AND attname='owner_session_id')]::smallint[])),
+ 'columns',(SELECT jsonb_agg(jsonb_build_array(table_name,column_name,data_type,is_nullable,column_default) ORDER BY table_name,column_name) FROM information_schema.columns WHERE table_schema='public' AND (table_name='support_bootstrap' AND column_name IN ('custody_mode','second_id') OR table_name IN ('support_case_actions','support_evidence_exports') AND column_name='authorization_mode' OR table_name='support_business_actions' AND column_name='owner_session_id')));
+COMMIT;
