@@ -40,6 +40,7 @@ from app.utils.permissions import (
     PERMISSION_PROJECTS_READ,
     PERMISSION_REPORTS_SUBMIT,
     PERMISSION_REPORTS_VIEW,
+    ROLE_MEP_PROJECT_MANAGER,
     ensure_permission,
     has_permission,
 )
@@ -117,8 +118,11 @@ class ProjectService:
 
     async def create_project(self, payload: ProjectCreateRequest, actor: User) -> Project:
         ensure_permission(actor, PERMISSION_PROJECTS_MANAGE)
-        if actor.role not in COMPANY_RESOURCE_ROLES:
+        if actor.role not in COMPANY_RESOURCE_ROLES and actor.role != ROLE_MEP_PROJECT_MANAGER:
             raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
+        if actor.role == ROLE_MEP_PROJECT_MANAGER:
+            if payload.status != "planning":
+                raise PermissionDeniedException(PERMISSION_PROJECTS_MANAGE)
         self._validate_status(payload.status)
         self._validate_dates(payload.start_date, payload.target_end_date, "target_end_date")
         amounts = self._validate_setup(payload)

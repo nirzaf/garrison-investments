@@ -15,7 +15,11 @@ export function ProjectListPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const canManage = user?.permissions?.includes('projects:manage') ?? false;
-  const canCreate = ['managing_director', 'operations_director'].includes(user?.role ?? '');
+  const canCreate = ['managing_director', 'operations_director', 'mep_project_manager'].includes(
+    user?.role ?? ''
+  );
+  const isMepCreator = user?.role === 'mep_project_manager';
+  const [createdNotice, setCreatedNotice] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -46,14 +50,21 @@ export function ProjectListPage() {
       </div>
       {canCreate && creating && (
         <ProjectCreateForm
+          planningOnly={isMepCreator}
           onCancel={() => setCreating(false)}
           onCreated={(project) => {
             setCreating(false);
-            setProjectId(project.id);
+            setProjectId(isMepCreator ? '' : project.id);
+            setCreatedNotice(
+              isMepCreator
+                ? `Project ${project.code} created. A director must assign your project access.`
+                : ''
+            );
             void queryClient.invalidateQueries({ queryKey: ['projects'] });
           }}
         />
       )}
+      {createdNotice && <p role="status">{createdNotice}</p>}
       <section className="overflow-hidden rounded-lg border border-theme-border bg-theme-card">
         <div className="grid gap-3 border-b border-theme-border p-4 sm:grid-cols-2">
           <ProjectInput

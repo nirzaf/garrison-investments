@@ -40,6 +40,12 @@ write authority. Browser sessions use a host-only cookie and a separate
 server-side session. The [activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
 describes operator enrollment, ingress, oversight bounds, and production verification.
 
+## Project creation boundary
+
+MEP Project Managers may create Planning projects with budgets and priced BOQ items using the existing validated decimal fields and audit behavior. The server rejects any initial status other than planning. This creation-only capability does not grant downstream financial visibility, budget or BOQ update authority, approvals, or assignment rights; their existing checks and redaction remain unchanged. Creation does not grant membership or company-wide visibility. A director must assign project access through the existing membership workflow before the creator can read or manage the project. Existing scoped edit/assignment rights are unchanged; Group Project Managers remain unable to create projects. Directors retain their existing priced project creation flow. No account role or database schema changes are required.
+
+Rollback: revert the creation boundary and matching frontend change together using the supported tested release process. Existing project records and director-managed memberships must be retained.
+
 ## Permission matrix
 
 | Permission | MD | OD | Group PM | MEP PM | QS | Senior Site Supervisor | Site Supervisor | HR Manager | Administrative Executive | HR Executive |

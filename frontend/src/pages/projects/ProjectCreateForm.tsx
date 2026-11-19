@@ -49,10 +49,12 @@ function initialDraft(): ProjectSetupDraft {
 
 export function ProjectCreateForm({
   onCreated,
-  onCancel
+  onCancel,
+  planningOnly = false
 }: {
   onCreated: (project: ProjectRecord) => void;
   onCancel: () => void;
+  planningOnly?: boolean;
 }) {
   const [draft, setDraft] = useState(initialDraft);
   const [issues, setIssues] = useState<ReturnType<typeof projectSetupIssues>>([]);
@@ -116,7 +118,7 @@ export function ProjectCreateForm({
     setError('');
     setIssues([]);
     try {
-      const project = await createProject(draft);
+      const project = await createProject(planningOnly ? { ...draft, status: 'planning' } : draft);
       setDraft(initialDraft());
       onCreated(project);
     } catch (failure) {
@@ -200,6 +202,7 @@ export function ProjectCreateForm({
           </div>
           <ProjectSelect
             label="Initial status"
+            disabled={planningOnly}
             value={draft.status}
             onChange={(e) => setField('status', e.target.value)}
           >

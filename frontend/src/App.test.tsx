@@ -172,6 +172,13 @@ describe('App route smoke tests', () => {
     expect(projectManager).toContain('Projects');
     expect(projectManager).not.toContain('New project');
 
+    const mep = renderApp({
+      route: '/projects',
+      role: 'mep_project_manager',
+      permissions: ['projects:manage', 'projects:read']
+    });
+    expect(mep).toContain('New project');
+
     const director = renderApp({
       route: '/projects',
       role: 'managing_director',
