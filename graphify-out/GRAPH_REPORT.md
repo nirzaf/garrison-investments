@@ -1,16 +1,16 @@
 # Graph Report - garrison-investments  (2026-11-19)
 
 ## Corpus Check
-- 737 files · ~877,668 words
+- 737 files · ~877,682 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 8983 nodes · 116834 edges · 369 communities (350 shown, 19 thin omitted)
+- 8983 nodes · 116834 edges · 368 communities (349 shown, 19 thin omitted)
 - Extraction: 19% EXTRACTED · 81% INFERRED · 0% AMBIGUOUS · INFERRED: 94562 edges (avg confidence: 0.51)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3925a5af`
+- Built from commit: `67f21c0e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -75,7 +75,6 @@
 - [[_COMMUNITY_test_session_revocation.py cluster|test_session_revocation.py cluster]]
 - [[_COMMUNITY_inventory.py cluster|inventory.py cluster]]
 - [[_COMMUNITY_projects.py cluster|projects.py cluster]]
-- [[_COMMUNITY_test_audit_retention_policy.py cluster|test_audit_retention_policy.py cluster]]
 - [[_COMMUNITY_Community 64|Community 64]]
 - [[_COMMUNITY_Community 65|Community 65]]
 - [[_COMMUNITY_Community 66|Community 66]]
@@ -307,7 +306,7 @@
 - **Derived reservation balance spans request lines, movements, and location stock** — schema_material_request_lines, schema_inventory_movements, schema_inventory_location_stock [INFERRED 0.85]
 - **Offline queued report batch: idempotency replay, one report, photo attachments** — schema_idempotency_records, schema_daily_reports, schema_photos, doc_readme__implemented_features [INFERRED 0.80]
 
-## Communities (369 total, 19 thin omitted)
+## Communities (368 total, 19 thin omitted)
 
 ### Community 0 - "Authenticated Backup Set"
 Cohesion: 0.06
@@ -450,8 +449,8 @@ Cohesion: 0.09
 Nodes (23): approveBenefitType(), assignEmployeeBenefit(), confirmAdvanceDisbursement(), decideEmployeeAdvance(), EmployeeAdvance, getEmployeeAdvance(), isApprovedBenefitPolicy(), listBenefitTypes() (+15 more)
 
 ### Community 35 - "Daily Report Endpoint Tests"
-Cohesion: 0.12
-Nodes (18): MonkeyPatch, Path, FixtureStore, recovery(), remote(), scheduled_attempt(), test_cli_publishes_authenticated_status_without_changing_last_good(), test_corrupt_publication_cannot_refresh_success() (+10 more)
+Cohesion: 0.13
+Nodes (15): MonkeyPatch, Path, FixtureStore, remote(), scheduled_attempt(), test_cli_publishes_authenticated_status_without_changing_last_good(), test_corrupt_publication_cannot_refresh_success(), test_independent_reader_rejects_invalid_scheduled_attempt() (+7 more)
 
 ### Community 36 - "Finance Service Logic"
 Cohesion: 0.05
@@ -549,10 +548,6 @@ Nodes (17): Case, Kind, labels, Proposal, SupportCaseProposal(), SupportCaseRevi
 Cohesion: 0.10
 Nodes (3): error_messages(), test_import_validation_rejects_malformed_numbers_dates_and_quantities(), test_import_validation_reports_missing_columns_and_required_values()
 
-### Community 62 - "test_audit_retention_policy.py cluster"
-Cohesion: 0.17
-Nodes (22): ReportExport, UUID, AsyncSession, Any, AsyncSession, UUID, ReportExportRepository, TaskOutbox (+14 more)
-
 ### Community 64 - "Community 64"
 Cohesion: 0.13
 Nodes (16): LoginOptions, Session, SupportLoginPage(), supportRequest(), Audit, SupportCaseAuditPanel(), componentsToShow, Health (+8 more)
@@ -610,8 +605,8 @@ Cohesion: 0.26
 Nodes (22): AsyncSession, HrEmployee, HrReview, HrReviewCycle, PerformanceReviewActionRequest, PerformanceReviewDetail, PerformanceReviewQueue, User (+14 more)
 
 ### Community 79 - "Community 79"
-Cohesion: 0.06
-Nodes (85): alias, DbSession, File, Header, ImportPreviewResponse, ImportRunResponse, Response, UploadFile (+77 more)
+Cohesion: 0.05
+Nodes (107): alias, DbSession, File, Header, ImportPreviewResponse, ImportRunResponse, Response, UploadFile (+99 more)
 
 ### Community 80 - "Community 80"
 Cohesion: 0.08
@@ -774,8 +769,8 @@ Cohesion: 0.43
 Nodes (13): AsyncSession, HrPayrollPeriod, PayrollLeaveInputPreview, PayrollTimeInputPreview, User, UUID, lock_payroll_input_roster(), payroll_leave_inputs() (+5 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.24
-Nodes (22): Any, MonkeyPatch, Path, FailureDomains, RetentionRules, cli(), host_state(), private_proposal() (+14 more)
+Cohesion: 0.22
+Nodes (23): Any, MonkeyPatch, Path, FailureDomains, RetentionRules, recovery(), cli(), host_state() (+15 more)
 
 ### Community 124 - "Community 124"
 Cohesion: 0.60
@@ -967,7 +962,7 @@ Nodes (18): ApprovalCreateRequest, ApprovalDecisionRequest, ApprovalDelegateList
 
 ### Community 265 - "Community 265"
 Cohesion: 0.10
-Nodes (32): Path, BinaryIO, datetime, Path, PublicationReceipt, RecoveryPolicy, ScheduledAttemptReceipt, canonical_bytes() (+24 more)
+Nodes (33): Path, BinaryIO, datetime, Path, PublicationReceipt, RecoveryPolicy, ScheduledAttemptReceipt, canonical_bytes() (+25 more)
 
 ### Community 266 - "Community 266"
 Cohesion: 0.29
@@ -1038,8 +1033,8 @@ Cohesion: 0.60
 Nodes (3): Column, _reference(), upgrade()
 
 ### Community 304 - "Community 304"
-Cohesion: 0.27
-Nodes (17): AsyncSession, datetime, Path, RecoveryPolicy, Exception, RestoreDrillReceipt, BackupReceiptError, ingest_publication_receipt() (+9 more)
+Cohesion: 0.25
+Nodes (18): AsyncSession, datetime, Path, RecoveryPolicy, Exception, RestoreDrillReceipt, BackupReceiptError, ingest_publication_receipt() (+10 more)
 
 ### Community 306 - "Community 306"
 Cohesion: 0.40
@@ -1193,9 +1188,9 @@ Nodes (3): SuperAdminChallenge, SuperAdminOverview, SuperAdminToken
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `AppException` connect `Community 42` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Community 130`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Community 264`, `Bulk CSV Import Pipeline`, `Document Control API and Service`, `Frontend Auth Session`, `File Magic Validation`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Community 283`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Service Worker Sync Scripts`, `Finance Service Logic`, `test_inventory_accounting.py cluster`, `test_delegation_guards.py cluster`, `audit_retention_policy.py cluster`, `Community 304`, `Community 51`, `test_session_revocation.py cluster`, `test_audit_retention_policy.py cluster`, `Community 198`, `Community 71`, `Community 73`, `Community 205`, `Community 78`, `Community 79`, `Community 216`, `Community 94`, `Community 98`, `Community 101`, `Community 106`, `Community 121`?**
+- **Why does `AppException` connect `Community 42` to `Authenticated Backup Set`, `Auth Dependencies and User API`, `Community 130`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Community 264`, `Bulk CSV Import Pipeline`, `Document Control API and Service`, `Frontend Auth Session`, `File Magic Validation`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Community 283`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Service Worker Sync Scripts`, `Finance Service Logic`, `test_inventory_accounting.py cluster`, `test_delegation_guards.py cluster`, `audit_retention_policy.py cluster`, `Community 304`, `Community 51`, `test_session_revocation.py cluster`, `Community 198`, `Community 71`, `Community 73`, `Community 205`, `Community 78`, `Community 79`, `Community 216`, `Community 94`, `Community 98`, `Community 101`, `Community 106`, `Community 121`?**
   _High betweenness centrality (0.119) - this node is a cross-community bridge._
-- **Why does `User` connect `Authenticated Backup Set` to `Auth Dependencies and User API`, `Community 258`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `Community 269`, `Document Control API and Service`, `Audit Retention Enforcement`, `Frontend Auth Session`, `File Magic Validation`, `Inventory Service and Idempotency`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Community 283`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Service Worker Sync Scripts`, `Finance Service Logic`, `Community 42`, `test_delegation_guards.py cluster`, `report_export_service.py cluster`, `audit_retention_policy.py cluster`, `Community 51`, `Community 311`, `test_session_revocation.py cluster`, `test_audit_retention_policy.py cluster`, `Community 65`, `Community 198`, `Community 71`, `Community 73`, `Community 205`, `Community 78`, `Community 79`, `Community 80`, `Community 83`, `Community 84`, `Community 216`, `Community 98`, `Community 99`, `Community 101`, `Community 102`, `celery_app.py cluster`, `Community 106`, `Community 111`, `Community 112`, `Community 121`?**
+- **Why does `User` connect `Authenticated Backup Set` to `Auth Dependencies and User API`, `Community 258`, `Community 132`, `Seed Data and Release Contract Tests`, `Community 7`, `Offline Queue and IndexedDB Sync`, `Bulk CSV Import Pipeline`, `Community 269`, `Document Control API and Service`, `Audit Retention Enforcement`, `Frontend Auth Session`, `File Magic Validation`, `Inventory Service and Idempotency`, `Analytics and Audit UI Shell`, `Invoices and Payments API`, `Community 283`, `Docs Map and Generated Types`, `Analytics and Import Test Suites`, `Daily Report Repository`, `Service Worker Sync Scripts`, `Finance Service Logic`, `Community 42`, `test_delegation_guards.py cluster`, `report_export_service.py cluster`, `audit_retention_policy.py cluster`, `Community 51`, `Community 311`, `test_session_revocation.py cluster`, `Community 65`, `Community 198`, `Community 71`, `Community 73`, `Community 205`, `Community 78`, `Community 79`, `Community 80`, `Community 83`, `Community 84`, `Community 216`, `Community 98`, `Community 99`, `Community 101`, `Community 102`, `celery_app.py cluster`, `Community 106`, `Community 111`, `Community 112`, `Community 121`?**
   _High betweenness centrality (0.115) - this node is a cross-community bridge._
 - **Why does `Runtime and data flow` connect `Community 198` to `Projects Service and Membership`, `Report Service Workflow`, `Supervisor Updates`, `Community 71`, `Community 83`, `File Magic Validation`, `Community 249`, `Community 282`?**
   _High betweenness centrality (0.090) - this node is a cross-community bridge._

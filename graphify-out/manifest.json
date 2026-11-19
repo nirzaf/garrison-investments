@@ -1775,8 +1775,8 @@
     "semantic_hash": ""
   },
   "backend/tests/test_scope_authorization.py": {
-    "mtime": 1794946575.8113396,
-    "ast_hash": "b96bc2f34054af1313d603db88d7c3c7",
+    "mtime": 1795061575.4352543,
+    "ast_hash": "c48349848ffa7a98e63de5536071f9f1",
     "semantic_hash": ""
   },
   "backend/tests/test_session_revocation.py": {

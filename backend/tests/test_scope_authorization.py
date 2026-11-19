@@ -346,9 +346,14 @@ async def test_hr_executive_reader_has_only_approved_scoped_access() -> None:
     async with create_test_client() as client:
         assigned, other = await two_teams(client)
         for team in (assigned, other):
+            detail = await client.get(
+                f"/api/v1/projects/{team['project_id']}",
+                headers=auth(team["op_token"]),
+            )
+            assert detail.status_code == 200, detail.text
             active = await client.patch(
                 f"/api/v1/projects/{team['project_id']}",
-                json={"status": "active"},
+                json={"status": "active", "expected_revision": detail.json()["revision"]},
                 headers=auth(team["op_token"]),
             )
             assert active.status_code == 200, active.text

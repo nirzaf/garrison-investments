@@ -20372,7 +20372,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "repositories_report_export_repository",
-      "community": 62,
+      "community": 79,
       "norm_label": "report_export_repository.py"
     },
     {
@@ -20382,7 +20382,7 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "repositories_report_export_repository_reportexportrepository",
-      "community": 62,
+      "community": 79,
       "norm_label": "reportexportrepository"
     },
     {
@@ -20412,7 +20412,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "repositories_report_export_repository_reportexportrepository_add",
-      "community": 62,
+      "community": 79,
       "norm_label": ".add()"
     },
     {
@@ -20422,7 +20422,7 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "backend_app_repositories_report_export_repository_py_reportexport",
-      "community": 62,
+      "community": 79,
       "norm_label": "reportexport"
     },
     {
@@ -20432,7 +20432,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "repositories_report_export_repository_reportexportrepository_latest_for_report",
-      "community": 62,
+      "community": 79,
       "norm_label": ".latest_for_report()"
     },
     {
@@ -20442,7 +20442,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "backend_app_repositories_report_export_repository_py_uuid",
-      "community": 62,
+      "community": 79,
       "norm_label": "uuid"
     },
     {
@@ -20452,7 +20452,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "repositories_report_export_repository_reportexportrepository_get_by_id",
-      "community": 62,
+      "community": 79,
       "norm_label": ".get_by_id()"
     },
     {
@@ -40222,7 +40222,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "services_report_export_service_reportexportservice_init",
-      "community": 62,
+      "community": 79,
       "norm_label": ".__init__()"
     },
     {
@@ -40232,7 +40232,7 @@
       "source_location": "L103",
       "_origin": "ast",
       "id": "backend_app_services_report_export_service_py_asyncsession",
-      "community": 62,
+      "community": 79,
       "norm_label": "asyncsession"
     },
     {
@@ -45992,7 +45992,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tasks_outbox",
-      "community": 62,
+      "community": 79,
       "norm_label": "outbox.py"
     },
     {
@@ -46002,7 +46002,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "tasks_outbox_dispatch_task_outbox",
-      "community": 62,
+      "community": 79,
       "norm_label": "dispatch_task_outbox()"
     },
     {
@@ -46012,7 +46012,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "tasks_outbox_parse_report_pdf_payload",
-      "community": 62,
+      "community": 79,
       "norm_label": "_parse_report_pdf_payload()"
     },
     {
@@ -46022,7 +46022,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "taskoutbox",
-      "community": 62,
+      "community": 79,
       "norm_label": "taskoutbox"
     },
     {
@@ -46032,7 +46032,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "backend_app_tasks_outbox_py_uuid",
-      "community": 62,
+      "community": 79,
       "norm_label": "uuid"
     },
     {
@@ -46042,7 +46042,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "tasks_outbox_parse_import_async_payload",
-      "community": 62,
+      "community": 79,
       "norm_label": "_parse_import_async_payload()"
     },
     {
@@ -46052,7 +46052,7 @@
       "source_location": "L46",
       "_origin": "ast",
       "id": "backend_app_tasks_outbox_py_any",
-      "community": 62,
+      "community": 79,
       "norm_label": "any"
     },
     {
@@ -46062,7 +46062,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "tasks_outbox_scrub_outbox_ciphertext",
-      "community": 62,
+      "community": 79,
       "norm_label": "_scrub_outbox_ciphertext()"
     },
     {
@@ -46072,7 +46072,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "tasks_outbox_reconcile_import_outbox_before_dispatch",
-      "community": 62,
+      "community": 79,
       "norm_label": "_reconcile_import_outbox_before_dispatch()"
     },
     {
@@ -46082,7 +46082,7 @@
       "source_location": "L93",
       "_origin": "ast",
       "id": "backend_app_tasks_outbox_py_asyncsession",
-      "community": 62,
+      "community": 79,
       "norm_label": "asyncsession"
     },
     {
@@ -46092,7 +46092,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "tasks_outbox_mark_import_batch_dispatch_failed",
-      "community": 62,
+      "community": 79,
       "norm_label": "_mark_import_batch_dispatch_failed()"
     },
     {
@@ -46102,7 +46102,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "tasks_outbox_build_dispatch_spec",
-      "community": 62,
+      "community": 79,
       "norm_label": "_build_dispatch_spec()"
     },
     {
@@ -46112,7 +46112,7 @@
       "source_location": "L140",
       "_origin": "ast",
       "id": "tasks_outbox_entry_task_id",
-      "community": 62,
+      "community": 79,
       "norm_label": "_entry_task_id()"
     },
     {
@@ -46122,7 +46122,7 @@
       "source_location": "L147",
       "_origin": "ast",
       "id": "tasks_outbox_dispatch_entry",
-      "community": 62,
+      "community": 79,
       "norm_label": "_dispatch_entry()"
     },
     {
@@ -46132,7 +46132,7 @@
       "source_location": "L174",
       "_origin": "ast",
       "id": "tasks_outbox_dispatch_import_outbox_for_batch",
-      "community": 62,
+      "community": 79,
       "norm_label": "dispatch_import_outbox_for_batch()"
     },
     {
@@ -46142,7 +46142,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tasks_report",
-      "community": 62,
+      "community": 79,
       "norm_label": "report.py"
     },
     {
@@ -46152,7 +46152,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "tasks_report_generate_report_pdf",
-      "community": 62,
+      "community": 79,
       "norm_label": "generate_report_pdf()"
     },
     {
@@ -46162,7 +46162,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "tasks_report_export_requires_email",
-      "community": 62,
+      "community": 79,
       "norm_label": "_export_requires_email()"
     },
     {
@@ -46172,7 +46172,7 @@
       "source_location": "L50",
       "_origin": "ast",
       "id": "tasks_report_mark_report_outbox_completed",
-      "community": 62,
+      "community": 79,
       "norm_label": "_mark_report_outbox_completed()"
     },
     {
@@ -46192,7 +46192,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "tasks_report_generate_management_export",
-      "community": 62,
+      "community": 79,
       "norm_label": "generate_management_export()"
     },
     {
@@ -57852,7 +57852,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "tests_test_authenticated_backup_set_recovery",
-      "community": 35,
+      "community": 122,
       "norm_label": "recovery()"
     },
     {
@@ -58152,7 +58152,7 @@
       "source_location": "L713",
       "_origin": "ast",
       "id": "tests_test_authenticated_backup_set_test_signed_receipt_ingestion_and_scheduled_backup_task_recording",
-      "community": 35,
+      "community": 265,
       "norm_label": "test_signed_receipt_ingestion_and_scheduled_backup_task_recording()"
     },
     {
@@ -58192,7 +58192,7 @@
       "source_location": "L1030",
       "_origin": "ast",
       "id": "tests_test_authenticated_backup_set_test_restore_drill_coverage_check_against_approved_policy",
-      "community": 35,
+      "community": 304,
       "norm_label": "test_restore_drill_coverage_check_against_approved_policy()"
     },
     {
@@ -66569,7 +66569,7 @@
       "label": "test_company_wide_documents_are_hidden_from_project_roles()",
       "file_type": "code",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L411",
+      "source_location": "L416",
       "_origin": "ast",
       "id": "tests_test_scope_authorization_test_company_wide_documents_are_hidden_from_project_roles",
       "community": 52,
@@ -66579,7 +66579,7 @@
       "label": "test_supervisor_updates_are_scoped_and_unprivileged_role_is_denied()",
       "file_type": "code",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L437",
+      "source_location": "L442",
       "_origin": "ast",
       "id": "tests_test_scope_authorization_test_supervisor_updates_are_scoped_and_unprivileged_role_is_denied",
       "community": 52,
@@ -66589,7 +66589,7 @@
       "label": "test_document_version_approval_requires_pending_and_project_scope()",
       "file_type": "code",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L484",
+      "source_location": "L489",
       "_origin": "ast",
       "id": "tests_test_scope_authorization_test_document_version_approval_requires_pending_and_project_scope",
       "community": 52,
@@ -66599,7 +66599,7 @@
       "label": "test_concurrent_document_approvals_activate_exactly_one_version()",
       "file_type": "code",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L540",
+      "source_location": "L545",
       "_origin": "ast",
       "id": "tests_test_scope_authorization_test_concurrent_document_approvals_activate_exactly_one_version",
       "community": 52,
@@ -66609,7 +66609,7 @@
       "label": "test_disabled_account_and_midflight_access_revision_revocation_deny_access()",
       "file_type": "code",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L587",
+      "source_location": "L592",
       "_origin": "ast",
       "id": "tests_test_scope_authorization_test_disabled_account_and_midflight_access_revision_revocation_deny_access",
       "community": 52,
@@ -66639,9 +66639,9 @@
       "label": "H15 race: three approvers, one pending version, one active row afterwards.",
       "file_type": "rationale",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L541",
+      "source_location": "L546",
       "_origin": "ast",
-      "id": "tests_test_scope_authorization_rationale_541",
+      "id": "tests_test_scope_authorization_rationale_546",
       "community": 52,
       "norm_label": "h15 race: three approvers, one pending version, one active row afterwards."
     },
@@ -896773,9 +896773,9 @@
       "source_file": "backend/tests/test_hr_case_scope.py",
       "source_location": "L133",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_hr_case_scope_py_monkeypatch",
-      "target": "backend_app_api_v1_hr_py_hrcaseresponse",
-      "confidence_score": 0.5
+      "target": "backend_app_api_v1_hr_py_hrcaseresponse"
     },
     {
       "relation": "uses",
@@ -896783,9 +896783,9 @@
       "source_file": "backend/tests/test_hr_case_scope.py",
       "source_location": "L133",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_hr_case_scope_py_path",
-      "target": "backend_app_api_v1_hr_py_hrcaseresponse",
-      "confidence_score": 0.5
+      "target": "backend_app_api_v1_hr_py_hrcaseresponse"
     },
     {
       "relation": "uses",
@@ -960157,9 +960157,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L934",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_imports_py_monkeypatch",
-      "target": "app_config_settings",
-      "confidence_score": 0.5
+      "target": "app_config_settings"
     },
     {
       "relation": "uses",
@@ -960167,9 +960167,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L934",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_imports_py_user",
-      "target": "app_config_settings",
-      "confidence_score": 0.5
+      "target": "app_config_settings"
     },
     {
       "relation": "uses",
@@ -960820,9 +960820,9 @@
       "source_file": "backend/app/config.py",
       "source_location": "L140",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "app_config_rationale_140",
-      "target": "app_config_settings_otp_hardened_env",
-      "confidence_score": 1.0
+      "target": "app_config_settings_otp_hardened_env"
     },
     {
       "relation": "calls",
@@ -991294,9 +991294,9 @@
       "source_file": "backend/tests/test_support_business_actions.py",
       "source_location": "L14",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_support_business_actions_py_monkeypatch",
-      "target": "models_support_business_actions_supportbusinessaction",
-      "confidence_score": 0.5
+      "target": "models_support_business_actions_supportbusinessaction"
     },
     {
       "relation": "uses",
@@ -1002719,9 +1002719,9 @@
       "source_file": "backend/tests/test_support_business_actions.py",
       "source_location": "L23",
       "weight": 0.8,
+      "confidence_score": 0.5,
       "source": "backend_tests_test_support_business_actions_py_monkeypatch",
-      "target": "models_support_identity_supportoperator",
-      "confidence_score": 0.5
+      "target": "models_support_identity_supportoperator"
     },
     {
       "relation": "uses",
@@ -1110183,9 +1110183,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L87",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_configured_previous_import_seeds",
-      "confidence_score": 1.0
+      "target": "services_import_service_configured_previous_import_seeds"
     },
     {
       "relation": "contains",
@@ -1110203,9 +1110203,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L67",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_derive_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_derive_import_key_entry"
     },
     {
       "relation": "contains",
@@ -1110223,9 +1110223,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L118",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_encrypt_import_payload_with_key_id",
-      "confidence_score": 1.0
+      "target": "services_import_service_encrypt_import_payload_with_key_id"
     },
     {
       "relation": "contains",
@@ -1110233,9 +1110233,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L78",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_fallback_import_outbox_seed",
-      "confidence_score": 1.0
+      "target": "services_import_service_fallback_import_outbox_seed"
     },
     {
       "relation": "contains",
@@ -1110253,9 +1110253,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L109",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_import_outbox_keyring",
-      "confidence_score": 1.0
+      "target": "services_import_service_import_outbox_keyring"
     },
     {
       "relation": "contains",
@@ -1110273,9 +1110273,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L73",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_legacy_import_outbox_fernet",
-      "confidence_score": 1.0
+      "target": "services_import_service_legacy_import_outbox_fernet"
     },
     {
       "relation": "contains",
@@ -1110283,9 +1110283,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L130",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_parse_import_payload_key_id",
-      "confidence_score": 1.0
+      "target": "services_import_service_parse_import_payload_key_id"
     },
     {
       "relation": "contains",
@@ -1110293,9 +1110293,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L97",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service",
-      "target": "services_import_service_primary_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_primary_import_key_entry"
     },
     {
       "relation": "references",
@@ -1110466,9 +1110466,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L67",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_derive_import_key_entry",
-      "target": "fernet",
-      "confidence_score": 1.0
+      "target": "fernet"
     },
     {
       "relation": "calls",
@@ -1110477,9 +1110477,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L113",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_import_outbox_keyring",
-      "target": "services_import_service_derive_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_derive_import_key_entry"
     },
     {
       "relation": "calls",
@@ -1110488,9 +1110488,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L106",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_primary_import_key_entry",
-      "target": "services_import_service_derive_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_derive_import_key_entry"
     },
     {
       "relation": "uses",
@@ -1110529,9 +1110529,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L109",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_import_outbox_keyring",
-      "target": "fernet",
-      "confidence_score": 1.0
+      "target": "fernet"
     },
     {
       "relation": "references",
@@ -1110540,9 +1110540,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L73",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_legacy_import_outbox_fernet",
-      "target": "fernet",
-      "confidence_score": 1.0
+      "target": "fernet"
     },
     {
       "relation": "references",
@@ -1110551,9 +1110551,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L97",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_primary_import_key_entry",
-      "target": "fernet",
-      "confidence_score": 1.0
+      "target": "fernet"
     },
     {
       "relation": "calls",
@@ -1110562,9 +1110562,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L156",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_decrypt_import_payload",
-      "target": "services_import_service_legacy_import_outbox_fernet",
-      "confidence_score": 1.0
+      "target": "services_import_service_legacy_import_outbox_fernet"
     },
     {
       "relation": "calls",
@@ -1110584,9 +1110584,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L156",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_decrypt_import_payload",
-      "target": "services_import_service_fallback_import_outbox_seed",
-      "confidence_score": 1.0
+      "target": "services_import_service_fallback_import_outbox_seed"
     },
     {
       "relation": "calls",
@@ -1110595,9 +1110595,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L105",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_primary_import_key_entry",
-      "target": "services_import_service_fallback_import_outbox_seed",
-      "confidence_score": 1.0
+      "target": "services_import_service_fallback_import_outbox_seed"
     },
     {
       "relation": "calls",
@@ -1110606,9 +1110606,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L157",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_decrypt_import_payload",
-      "target": "services_import_service_configured_previous_import_seeds",
-      "confidence_score": 1.0
+      "target": "services_import_service_configured_previous_import_seeds"
     },
     {
       "relation": "calls",
@@ -1110617,9 +1110617,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_import_outbox_keyring",
-      "target": "services_import_service_configured_previous_import_seeds",
-      "confidence_score": 1.0
+      "target": "services_import_service_configured_previous_import_seeds"
     },
     {
       "relation": "calls",
@@ -1110628,9 +1110628,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L120",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_encrypt_import_payload_with_key_id",
-      "target": "services_import_service_primary_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_primary_import_key_entry"
     },
     {
       "relation": "calls",
@@ -1110639,9 +1110639,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L110",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_import_outbox_keyring",
-      "target": "services_import_service_primary_import_key_entry",
-      "confidence_score": 1.0
+      "target": "services_import_service_primary_import_key_entry"
     },
     {
       "relation": "calls",
@@ -1110650,9 +1110650,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L147",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_decrypt_import_payload",
-      "target": "services_import_service_import_outbox_keyring",
-      "confidence_score": 1.0
+      "target": "services_import_service_import_outbox_keyring"
     },
     {
       "relation": "calls",
@@ -1110661,9 +1110661,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L126",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_encrypt_import_payload",
-      "target": "services_import_service_encrypt_import_payload_with_key_id",
-      "confidence_score": 1.0
+      "target": "services_import_service_encrypt_import_payload_with_key_id"
     },
     {
       "relation": "calls",
@@ -1110672,9 +1110672,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L393",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_importservice_queue_import",
-      "target": "services_import_service_encrypt_import_payload_with_key_id",
-      "confidence_score": 1.0
+      "target": "services_import_service_encrypt_import_payload_with_key_id"
     },
     {
       "relation": "calls",
@@ -1110705,9 +1110705,9 @@
       "source_file": "backend/app/services/import_service.py",
       "source_location": "L142",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "services_import_service_decrypt_import_payload",
-      "target": "services_import_service_parse_import_payload_key_id",
-      "confidence_score": 1.0
+      "target": "services_import_service_parse_import_payload_key_id"
     },
     {
       "relation": "calls",
@@ -1217573,9 +1217573,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L848",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports",
-      "target": "tests_test_imports_test_import_payload_encryption_keyring_rotation_and_tamper_guards",
-      "confidence_score": 1.0
+      "target": "tests_test_imports_test_import_payload_encryption_keyring_rotation_and_tamper_guards"
     },
     {
       "relation": "contains",
@@ -1217633,9 +1217633,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L928",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports",
-      "target": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired",
-      "confidence_score": 1.0
+      "target": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired"
     },
     {
       "relation": "contains",
@@ -1217770,9 +1217770,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L931",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired",
-      "target": "tests_test_imports_skip_if_database_unavailable",
-      "confidence_score": 1.0
+      "target": "tests_test_imports_skip_if_database_unavailable"
     },
     {
       "relation": "references",
@@ -1217847,9 +1217847,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L957",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired",
-      "target": "tests_test_imports_create_admin",
-      "confidence_score": 1.0
+      "target": "tests_test_imports_create_admin"
     },
     {
       "relation": "calls",
@@ -1217979,9 +1217979,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L976",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired",
-      "target": "tests_test_imports_csv_bytes",
-      "confidence_score": 1.0
+      "target": "tests_test_imports_csv_bytes"
     },
     {
       "relation": "calls",
@@ -1218056,9 +1218056,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L848",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports_test_import_payload_encryption_keyring_rotation_and_tamper_guards",
-      "target": "backend_tests_test_imports_py_monkeypatch",
-      "confidence_score": 1.0
+      "target": "backend_tests_test_imports_py_monkeypatch"
     },
     {
       "relation": "references",
@@ -1218067,9 +1218067,9 @@
       "source_file": "backend/tests/test_imports.py",
       "source_location": "L928",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_imports_test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired",
-      "target": "backend_tests_test_imports_py_monkeypatch",
-      "confidence_score": 1.0
+      "target": "backend_tests_test_imports_py_monkeypatch"
     },
     {
       "relation": "references",
@@ -1227922,11 +1227922,11 @@
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "backend/tests/test_scope_authorization.py",
-      "source_location": "L541",
+      "source_location": "L546",
       "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "tests_test_scope_authorization_rationale_541",
-      "target": "tests_test_scope_authorization_test_concurrent_document_approvals_activate_exactly_one_version"
+      "source": "tests_test_scope_authorization_rationale_546",
+      "target": "tests_test_scope_authorization_test_concurrent_document_approvals_activate_exactly_one_version",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -1229666,9 +1229666,9 @@
       "source_file": "backend/tests/test_suppliers.py",
       "source_location": "L256",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_suppliers_rationale_256",
-      "target": "tests_test_suppliers_test_supplier_tds_expiry_window_uses_the_business_date",
-      "confidence_score": 1.0
+      "target": "tests_test_suppliers_test_supplier_tds_expiry_window_uses_the_business_date"
     },
     {
       "relation": "contains",
@@ -1229835,9 +1229835,9 @@
       "source_file": "backend/tests/test_support_business_actions.py",
       "source_location": "L596",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_support_business_actions",
-      "target": "tests_test_support_business_actions_test_single_owner_rejects_session_replacement_membership_loss_expiry_and_suspension",
-      "confidence_score": 1.0
+      "target": "tests_test_support_business_actions_test_single_owner_rejects_session_replacement_membership_loss_expiry_and_suspension"
     },
     {
       "relation": "imports_from",
@@ -1229934,9 +1229934,9 @@
       "source_file": "backend/tests/test_support_business_actions.py",
       "source_location": "L596",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_test_support_business_actions_test_single_owner_rejects_session_replacement_membership_loss_expiry_and_suspension",
-      "target": "backend_tests_test_support_business_actions_py_monkeypatch",
-      "confidence_score": 1.0
+      "target": "backend_tests_test_support_business_actions_py_monkeypatch"
     },
     {
       "relation": "calls",
@@ -1275408,5 +1275408,5 @@
       "source_file": "README.md"
     }
   ],
-  "built_at_commit": "3925a5afdcc09f0bbeca85b85ab2f9cc7c711ffb"
+  "built_at_commit": "67f21c0e343772297d999f58117673fc7b8f542e"
 }
