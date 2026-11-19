@@ -3410,7 +3410,7 @@ class HrCaseCloseRequest(BaseModel):
 
     status: Literal["investigating", "action_taken", "closed"]
     resolution_notes: str | None = None
-    expected_state_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    expected_state_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class HrCaseResponse(BaseModel):

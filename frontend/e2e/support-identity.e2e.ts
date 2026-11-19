@@ -43,10 +43,20 @@ async function setupOperator(page: Page, fixture?: OperatorFixture) {
     const { pathname, search } = new URL(request.url());
     const isApi = pathname.startsWith('/api/v1/support/');
     const upstream = isApi ? 'http://127.0.0.1:8425' : 'http://127.0.0.1:4325';
-    const response = await route.fetch({
+    const fetchOptions = {
       url: upstream + pathname + search,
       headers: { ...(await request.allHeaders()), ...(isApi ? { host: supportHost } : {}) }
-    });
+    };
+    const isIdempotentRead = request.method() === 'GET' || request.method() === 'HEAD';
+    let response;
+    try {
+      response = await route.fetch(fetchOptions);
+    } catch (error) {
+      if (!isIdempotentRead || !/ECONNRESET|socket hang up/i.test(String(error))) {
+        throw error;
+      }
+      response = await route.fetch(fetchOptions);
+    }
     await route.fulfill({ response });
   });
 

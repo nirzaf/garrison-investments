@@ -115,14 +115,21 @@ async def _load_outbox_import_payload(session: AsyncSession, batch_id: UUID) -> 
         )
     ciphertext = entry.kwargs_json.get("content_ciphertext")
     expected_sha256 = entry.kwargs_json.get("content_sha256")
+    content_key_id = entry.kwargs_json.get("content_key_id")
     if not isinstance(ciphertext, str) or not ciphertext or not isinstance(expected_sha256, str):
         raise AppException(
             "Queued import payload metadata is incomplete.",
             status_code=422,
             error_code="IMPORT_PAYLOAD_UNAVAILABLE",
         )
+    if content_key_id is not None and (not isinstance(content_key_id, str) or not content_key_id):
+        raise AppException(
+            "Queued import payload key metadata is invalid.",
+            status_code=422,
+            error_code="IMPORT_PAYLOAD_UNAVAILABLE",
+        )
     try:
-        content = decrypt_import_payload(ciphertext)
+        content = decrypt_import_payload(ciphertext, expected_key_id=content_key_id)
     except (InvalidToken, ValueError, OSError):
         raise AppException(
             "Queued import payload could not be decrypted.",

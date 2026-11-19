@@ -189,7 +189,10 @@ async def test_assigned_engineer_can_read_assigned_project_only() -> None:
 
         denied_edit = await client.patch(
             f"/api/v1/projects/{project['id']}",
-            json={"name": "Unauthorized change"},
+            json={
+                "name": "Unauthorized change",
+                "expected_revision": detail_response.json()["revision"],
+            },
             headers={"Authorization": f"Bearer {engineer_token}"},
         )
         denied_assign = await client.post(
@@ -319,9 +322,20 @@ async def test_closed_project_is_read_only(final_status: str) -> None:
             )
         ).json()
 
-        complete_response = await client.patch(
+        missing_project_rev = await client.patch(
             f"/api/v1/projects/{project['id']}",
             json={"status": final_status, "actual_end_date": "2026-12-30"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert missing_project_rev.status_code == 422
+
+        complete_response = await client.patch(
+            f"/api/v1/projects/{project['id']}",
+            json={
+                "status": final_status,
+                "actual_end_date": "2026-12-30",
+                "expected_revision": project["revision"],
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -329,7 +343,10 @@ async def test_closed_project_is_read_only(final_status: str) -> None:
 
         update_response = await client.patch(
             f"/api/v1/projects/{project['id']}",
-            json={"name": "Changed Name"},
+            json={
+                "name": "Changed Name",
+                "expected_revision": complete_response.json()["revision"],
+            },
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -569,7 +586,11 @@ async def test_task_updates_keep_each_date_range_and_require_current_revision() 
         assert saved["actual_start_date"] == "2026-06-05" and saved["actual_end_date"] is None
         assert Decimal(saved["progress_percentage"]) == Decimal("25.50") and saved["revision"] == 2
 
-        completed = await client.patch(url, json={"status": "completed"}, headers=headers)
+        completed = await client.patch(
+            url,
+            json={"status": "completed", "expected_revision": project["revision"]},
+            headers=headers,
+        )
         assert completed.status_code == 200
         locked = await client.patch(
             task_url, json={"expected_revision": 2, "name": "Final edit"}, headers=headers

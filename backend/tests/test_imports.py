@@ -843,3 +843,214 @@ async def test_async_import_outbox_recovers_after_prepublish_crash_and_deduplica
         exhausted_batch = await session.get(ImportBatch, exhausted_id)
         assert exhausted_batch is not None and exhausted_batch.status == "failed"
         assert exhausted_batch.summary == {"error_code": "IMPORT_DISPATCH_FAILED"}
+
+
+async def test_import_payload_encryption_keyring_rotation_and_tamper_guards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import zlib
+
+    from pydantic import SecretStr
+
+    from app.config import Settings
+    from app.services import import_service
+    from app.services.import_service import (
+        InvalidToken,
+        _legacy_import_outbox_fernet,
+        decrypt_import_payload,
+        encrypt_import_payload_with_key_id,
+        parse_import_payload_key_id,
+    )
+
+    primary_key = "dedicated-import-outbox-key-alpha-001"
+    previous_keys: str | None = None
+    hr_key = "hr-secret-initial"
+    backup_key = "backup-secret-initial"
+    minio_key = "minio-secret-initial"
+
+    def fake_settings() -> Settings:
+        return Settings(
+            app_env="test",
+            import_outbox_encryption_key=SecretStr(primary_key),
+            import_outbox_previous_encryption_keys=(
+                SecretStr(previous_keys) if previous_keys is not None else None
+            ),
+            hr_encryption_key=SecretStr(hr_key),
+            backup_encryption_password=backup_key,
+            minio_root_password=minio_key,
+        )
+
+    monkeypatch.setattr(import_service, "get_settings", fake_settings)
+
+    payload = b"email,full_name\nsynthetic.user@example.test,Synthetic User\n"
+    token_v1, key_id_v1 = encrypt_import_payload_with_key_id(payload)
+    assert token_v1.startswith(f"v2:{key_id_v1}:")
+    assert parse_import_payload_key_id(token_v1) == key_id_v1
+    assert "synthetic.user@example.test" not in token_v1
+    assert primary_key not in token_v1
+
+    # Rotating unrelated HR, backup, and MinIO secrets does not affect import payload decryption.
+    hr_key = "hr-secret-rotated"
+    backup_key = "backup-secret-rotated"
+    minio_key = "minio-secret-rotated"
+    assert decrypt_import_payload(token_v1, expected_key_id=key_id_v1) == payload
+
+    # Approved key rotation: promote key B and retain key A in previous keys.
+    previous_keys = primary_key
+    primary_key = "dedicated-import-outbox-key-beta-002"
+    assert decrypt_import_payload(token_v1, expected_key_id=key_id_v1) == payload
+    token_v2, key_id_v2 = encrypt_import_payload_with_key_id(payload)
+    assert key_id_v2 != key_id_v1
+    assert decrypt_import_payload(token_v2, expected_key_id=key_id_v2) == payload
+
+    # Mismatched expected_key_id or tampered ciphertext fails closed.
+    with pytest.raises(InvalidToken):
+        decrypt_import_payload(token_v1, expected_key_id=key_id_v2)
+    with pytest.raises(InvalidToken):
+        decrypt_import_payload(token_v1[:-4] + "AAAA", expected_key_id=key_id_v1)
+
+    # Once key A is truly retired (removed from previous keys), old ciphertext fails closed.
+    previous_keys = None
+    with pytest.raises(InvalidToken):
+        decrypt_import_payload(token_v1, expected_key_id=key_id_v1)
+    assert decrypt_import_payload(token_v2, expected_key_id=key_id_v2) == payload
+
+    # Legacy unversioned pre-upgrade tokens remain readable during upgrade transition.
+    legacy_token = (
+        _legacy_import_outbox_fernet(hr_key).encrypt(zlib.compress(payload)).decode("ascii")
+    )
+    assert decrypt_import_payload(legacy_token) == payload
+    with pytest.raises(InvalidToken):
+        decrypt_import_payload(legacy_token, expected_key_id=key_id_v2)
+
+
+@pytest.mark.asyncio
+async def test_queued_import_survives_key_rotation_and_fails_closed_when_key_retired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    from pydantic import SecretStr
+
+    from app.config import Settings
+    from app.models.task_outbox import TaskOutbox
+    from app.services import import_service
+    from app.services.import_service import import_outbox_dedupe_key
+    from app.tasks import outbox as outbox_module
+    from app.tasks.outbox import _dispatch_task_outbox
+
+    state: dict[str, str | None] = {
+        "primary": "rotation-drill-key-one-0001",
+        "previous": None,
+    }
+
+    def fake_settings() -> Settings:
+        return Settings(
+            app_env="test",
+            import_outbox_encryption_key=SecretStr(state["primary"] or ""),
+            import_outbox_previous_encryption_keys=(
+                SecretStr(state["previous"]) if state["previous"] else None
+            ),
+        )
+
+    monkeypatch.setattr(import_service, "get_settings", fake_settings)
+
+    actor = await create_admin()
+    suffix = uuid4().hex[:8]
+    async with AsyncSessionLocal() as session:
+        item = InventoryItem(
+            name=f"Rotation Item {suffix}",
+            item_code=f"ROT-{suffix}",
+            category="Civil",
+            item_type="material",
+            unit="Nos",
+        )
+        location = StorageLocation(
+            name=f"Rotation Yard {suffix}",
+            code=f"RYD-{suffix}",
+            location_type="warehouse",
+        )
+        session.add_all([item, location])
+        await session.commit()
+        item_id, location_id = item.id, location.id
+
+        content = csv_bytes(
+            "item_code,location_code,quantity,notes",
+            f"ROT-{suffix},RYD-{suffix},4.25,Queued before rotation",
+        )
+        queued = await ImportService(session).queue_import(
+            template_type="opening_stock",
+            file_name="rotation.csv",
+            content=content,
+            actor=actor,
+            idempotency_key=str(uuid4()),
+        )
+        batch_id = queued.batch_id
+        dedupe_key = import_outbox_dedupe_key(batch_id)
+
+        retired_queued = await ImportService(session).queue_import(
+            template_type="opening_stock",
+            file_name="retired.csv",
+            content=content,
+            actor=actor,
+            idempotency_key=str(uuid4()),
+        )
+        retired_batch_id = retired_queued.batch_id
+        retired_dedupe_key = import_outbox_dedupe_key(retired_batch_id)
+
+    # Rotate key while both batches are queued; keep old key in previous list for first batch.
+    state["previous"] = state["primary"]
+    state["primary"] = "rotation-drill-key-two-0002"
+
+    dispatched_kwargs: list[dict[str, Any]] = []
+
+    def fake_send_task(task_name: str, *, args, kwargs, task_id, queue, retry) -> None:
+        del task_name, args, task_id, queue, retry
+        dispatched_kwargs.append(dict(kwargs))
+
+    monkeypatch.setattr(outbox_module.celery_app, "send_task", fake_send_task)
+
+    async with AsyncSessionLocal() as guard:
+        await guard.execute(
+            select(TaskOutbox.id).where(TaskOutbox.dedupe_key != dedupe_key).with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 1
+
+    assert len(dispatched_kwargs) == 1
+    assert "content_ciphertext" not in dispatched_kwargs[0]
+    result = await _run_import_async(**dispatched_kwargs[0])
+    assert "completed: completed" in result
+
+    async with AsyncSessionLocal() as session:
+        stock = await session.scalar(
+            select(InventoryLocationStock).where(
+                InventoryLocationStock.item_id == item_id,
+                InventoryLocationStock.location_id == location_id,
+            )
+        )
+        outbox_row = await session.scalar(
+            select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+        )
+        assert stock is not None and stock.on_hand_qty == Decimal("4.250")
+        assert outbox_row is not None and outbox_row.status == "completed"
+        assert "content_ciphertext" not in outbox_row.kwargs_json
+        assert isinstance(outbox_row.kwargs_json.get("content_key_id"), str)
+
+    # Retire the old key completely; the second pending batch fails closed and scrubs ciphertext.
+    state["previous"] = None
+    async with AsyncSessionLocal() as guard:
+        await guard.execute(
+            select(TaskOutbox.id)
+            .where(TaskOutbox.dedupe_key != retired_dedupe_key)
+            .with_for_update()
+        )
+        assert await _dispatch_task_outbox() == 0
+
+    async with AsyncSessionLocal() as session:
+        failed_batch = await session.get(ImportBatch, retired_batch_id)
+        failed_outbox = await session.scalar(
+            select(TaskOutbox).where(TaskOutbox.dedupe_key == retired_dedupe_key)
+        )
+        assert failed_batch is not None and failed_batch.status == "failed"
+        assert failed_batch.summary == {"error_code": "IMPORT_DISPATCH_FAILED"}
+        assert failed_outbox is not None and failed_outbox.status == "failed"
+        assert "content_ciphertext" not in failed_outbox.kwargs_json

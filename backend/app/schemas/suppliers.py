@@ -26,7 +26,7 @@ class SupplierCreateRequest(BaseModel):
 class SupplierUpdateRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
-    expected_revision: int | None = Field(default=None, ge=1)
+    expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
     category: str | None = Field(default=None, min_length=2, max_length=80)
     rating: str | None = Field(default=None, min_length=1, max_length=20)

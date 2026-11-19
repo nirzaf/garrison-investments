@@ -67,6 +67,8 @@ class Settings(BaseSettings, BusinessPolicy):
     report_pdf_template_name: str = "company-standard"
 
     backup_encryption_password: str | None = None
+    import_outbox_encryption_key: SecretStr | None = None
+    import_outbox_previous_encryption_keys: SecretStr | None = None
     backup_local_dir: str = "/tmp/garrison-backups"
     backup_retention_days: int = 30
     monthly_backup_retention_months: int = 12

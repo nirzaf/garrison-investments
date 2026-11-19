@@ -10219,16 +10219,9 @@
         "additionalProperties": false,
         "properties": {
           "expected_state_sha256": {
-            "anyOf": [
-              {
-                "pattern": "^[a-f0-9]{64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected State Sha256"
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected State Sha256",
+            "type": "string"
           },
           "resolution_notes": {
             "anyOf": [
@@ -10252,7 +10245,8 @@
           }
         },
         "required": [
-          "status"
+          "status",
+          "expected_state_sha256"
         ],
         "title": "HrCaseCloseRequest",
         "type": "object"
@@ -23764,16 +23758,9 @@
             "title": "Description"
           },
           "expected_revision": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Revision"
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
           },
           "location": {
             "anyOf": [
@@ -23848,6 +23835,9 @@
             "title": "Target End Date"
           }
         },
+        "required": [
+          "expected_revision"
+        ],
         "title": "ProjectUpdateRequest",
         "type": "object"
       },
@@ -27285,16 +27275,9 @@
             "title": "Email"
           },
           "expected_revision": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Revision"
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
           },
           "is_active": {
             "anyOf": [
@@ -27397,6 +27380,9 @@
             "title": "Tds Expiry Date"
           }
         },
+        "required": [
+          "expected_revision"
+        ],
         "title": "SupplierUpdateRequest",
         "type": "object"
       },
@@ -58626,18 +58612,11 @@
           {
             "in": "query",
             "name": "expected_revision",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Expected Revision"
+              "minimum": 1,
+              "title": "Expected Revision",
+              "type": "integer"
             }
           }
         ],

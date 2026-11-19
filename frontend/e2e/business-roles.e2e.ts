@@ -4664,9 +4664,17 @@ test('HR opens and closes a restricted case without overwriting a newer review',
   await expect(page.getByText('Restricted synthetic case narrative.')).toBeVisible();
 
   const headers = { Authorization: `Bearer ${owner.accessToken}` };
+  const initialReview = await page.request.get(`/api/v1/hr/cases/${id}`, { headers });
+  expect(initialReview.ok()).toBeTruthy();
+  const initialDigest = initialReview.headers()['x-hr-case-review'];
+  expect(initialDigest).toMatch(/^[a-f0-9]{64}$/);
   const concurrent = await page.request.post(`/api/v1/hr/cases/${id}/close`, {
     headers,
-    data: { status: 'investigating', resolution_notes: 'Concurrent synthetic note.' }
+    data: {
+      status: 'investigating',
+      resolution_notes: 'Concurrent synthetic note.',
+      expected_state_sha256: initialDigest
+    }
   });
   expect(concurrent.ok()).toBeTruthy();
   await page.getByLabel('New status').selectOption('closed');

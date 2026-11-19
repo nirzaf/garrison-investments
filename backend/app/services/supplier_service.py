@@ -126,7 +126,7 @@ class SupplierService:
         return supplier
 
     async def deactivate_supplier(
-        self, supplier_id: UUID, actor: User, *, expected_revision: int | None = None
+        self, supplier_id: UUID, actor: User, *, expected_revision: int
     ) -> Supplier:
         ensure_permission(actor, PERMISSION_SUPPLIERS_MANAGE)
         supplier = await self.get_supplier(supplier_id, for_update=True)
@@ -239,8 +239,8 @@ class SupplierService:
         return supplier
 
     @staticmethod
-    def _check_revision(supplier: Supplier, expected_revision: int | None) -> None:
-        if expected_revision is not None and expected_revision != supplier.revision:
+    def _check_revision(supplier: Supplier, expected_revision: int) -> None:
+        if expected_revision != supplier.revision:
             raise AppException(
                 "This supplier changed. Compare your edits with the saved record.",
                 status_code=409,

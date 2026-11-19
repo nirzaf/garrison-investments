@@ -90,7 +90,7 @@ async def test_hr_restricted_case_scope_and_encrypted_notes(monkeypatch) -> None
         assert (
             await client.post(
                 f"{detail}/close",
-                json={"status": "closed"},
+                json={"status": "closed", "expected_state_sha256": "0" * 64},
                 headers=outsider,
             )
         ).status_code == 404
@@ -99,20 +99,58 @@ async def test_hr_restricted_case_scope_and_encrypted_notes(monkeypatch) -> None
         assert listing["total"] == 1
         assert listing["items"][0]["id"] == str(case_id)
         assert listing["items"][0]["details_plain"] is None
-        assert (await client.get(detail, headers=owner)).json()["details_plain"] == request[
-            "details"
-        ]
+        first_review = await client.get(detail, headers=owner)
+        assert first_review.json()["details_plain"] == request["details"]
+        first_digest = first_review.headers["x-hr-case-review"]
+
+        # Omitting or supplying a stale review digest must fail closed without mutating the case.
+        assert (
+            await client.post(
+                f"{detail}/close",
+                json={"status": "investigating"},
+                headers=owner,
+            )
+        ).status_code == 422
+        stale_review = await client.post(
+            f"{detail}/close",
+            json={"status": "investigating", "expected_state_sha256": "0" * 64},
+            headers=owner,
+        )
+        assert stale_review.status_code == 409
+        assert stale_review.json()["error_code"] == "HR_CASE_REVIEW_STALE"
 
         notes = "synthetic-private-resolution-text"
         response = await client.post(
             f"{detail}/close",
-            json={"status": "investigating", "resolution_notes": notes},
+            json={
+                "status": "investigating",
+                "resolution_notes": notes,
+                "expected_state_sha256": first_digest,
+            },
             headers=owner,
         )
         assert response.status_code == 200, response.text
+        from app.schemas.hr import HrCaseResponse
+
+        investigating_digest = HrCaseResponse.model_validate(
+            response.json()
+        ).reviewed_state_sha256()
+        assert investigating_digest != first_digest
+        # Reusing the pre-update digest is rejected as stale.
+        assert (
+            await client.post(
+                f"{detail}/close",
+                json={"status": "closed", "expected_state_sha256": first_digest},
+                headers=owner,
+            )
+        ).status_code == 409
         closed = await asyncio.gather(
             *[
-                client.post(f"{detail}/close", json={"status": "closed"}, headers=owner)
+                client.post(
+                    f"{detail}/close",
+                    json={"status": "closed", "expected_state_sha256": investigating_digest},
+                    headers=owner,
+                )
                 for _ in range(2)
             ]
         )
@@ -193,10 +231,15 @@ async def test_case_cli_checks_the_reviewed_state_inside_the_write(
             path = request.url.raw_path.decode("ascii")
             if inject_change and request.method == "POST" and path.endswith("/close"):
                 inject_change = False
+                incoming = json.loads(request.content)
                 changed = await api.post(
                     path,
                     headers=_auth(owner),
-                    json={"status": "investigating", "resolution_notes": concurrent_note},
+                    json={
+                        "status": "investigating",
+                        "resolution_notes": concurrent_note,
+                        "expected_state_sha256": incoming["expected_state_sha256"],
+                    },
                 )
                 assert changed.status_code == 200, changed.text
             return await api.request(

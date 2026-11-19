@@ -233,8 +233,14 @@ test('analytics downloads match the filtered project and material control totals
   const headers = await signIn(page, account);
   const suffix = account.projectId.slice(0, 8);
   const location = `Analytics yard ${suffix}`;
+  const currentProject = await page.request.get(`/api/v1/projects/${account.projectId}`, {
+    headers
+  });
+  expect(currentProject.ok()).toBe(true);
+  const { revision } = (await currentProject.json()) as { revision: number };
   const updateProject = await page.request.patch(`/api/v1/projects/${account.projectId}`, {
-    headers, data: { location }
+    headers,
+    data: { location, expected_revision: revision }
   });
   expect(updateProject.ok()).toBe(true);
   const project = await updateProject.json();

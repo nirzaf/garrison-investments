@@ -535,7 +535,13 @@ if __name__ == "__main__":
                 PERMISSION_HR_PAYROLL_PREPARE,
                 PERMISSION_HR_PAYROLL_SENSITIVE,
             }
-        uvicorn.run("app.main:app", host="127.0.0.1", port=8425, access_log=False)
+        uvicorn.run(
+            "app.main:app",
+            host="127.0.0.1",
+            port=8425,
+            access_log=False,
+            timeout_keep_alive=65,
+        )
     elif args.command == "expire-login":
         asyncio.run(expire_login_challenge(args.challenge_id))
     elif args.command == "seed-delegation":

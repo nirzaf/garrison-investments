@@ -153,6 +153,12 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
             headers={"Authorization": f"Bearer {token}"},
         )
         assert invalid.status_code == 422
+        missing_rev = await client.patch(
+            f"/api/v1/suppliers/{supplier['id']}",
+            json={"rating": "A"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert missing_rev.status_code == 422
 
         filtered = await client.get(
             "/api/v1/suppliers",
@@ -177,6 +183,11 @@ async def test_operation_manager_can_create_update_filter_deactivate_and_downloa
         assert download.status_code == 200
         assert download.json()["url"].startswith("https://files.example.test/")
 
+        missing_delete_rev = await client.delete(
+            f"/api/v1/suppliers/{supplier['id']}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert missing_delete_rev.status_code == 422
         deactivated = await client.delete(
             f"/api/v1/suppliers/{supplier['id']}",
             params={"expected_revision": uploaded.json()["revision"]},

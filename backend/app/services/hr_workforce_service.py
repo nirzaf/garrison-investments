@@ -7359,7 +7359,7 @@ class HrWorkforceService:
             raise AppException(
                 "The case is already closed.", status_code=409, error_code="HR_CASE_CLOSED"
             )
-        if payload.expected_state_sha256 is not None and (
+        if (
             self._hr_case_response(case, include_content=True).reviewed_state_sha256()
             != payload.expected_state_sha256
         ):

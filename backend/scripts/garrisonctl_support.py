@@ -1,5 +1,7 @@
 """Commands authenticated by the dedicated Super Admin passkey session."""
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -8,40 +10,15 @@ import re
 import stat
 import webbrowser
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from secrets import token_hex, token_urlsafe
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import BaseModel, ValidationError
 
-from app.api.v1.support import (
-    GrantChangeRead,
-    GrantChangeRequest,
-    RegistrationDecision,
-    RegistrationProposal,
-    RegistrationProposalRead,
-    RegistrationStatus,
-    SupportVerifyRequest,
-    SuspensionRead,
-    SuspensionRequest,
-)
-from app.schemas.support_business_actions import BusinessActionCreate, BusinessActionRead
-from app.schemas.support_case_actions import CaseActionCreate, CaseActionRead
-from app.schemas.support_cases import SupportCaseCreate, SupportCaseRead, SupportCaseTransition
-from app.schemas.support_evidence_export import (
-    MAX_EXPORT_BYTES,
-    SupportEvidenceExportCreate,
-    SupportEvidenceExportRead,
-)
-from app.services.support_directory import SupportAccountSelector
-from app.services.support_request_logs import SupportRequestEvent
-from scripts import health_monitor, release_contract
 from scripts.garrisonctl_common import (
     AUTH,
     CONFLICT,
@@ -56,6 +33,10 @@ from scripts.garrisonctl_common import (
     read_private,
     write_private_bytes,
 )
+
+if TYPE_CHECKING:
+    from app.api.v1.support import RegistrationStatus
+    from app.schemas.support_cases import SupportCaseRead
 
 ORIGIN = "https://superadmin.garrisons.lk"
 _API = "/api/v1/support"
@@ -221,6 +202,8 @@ def _search_accounts(args: argparse.Namespace, ctx: Context) -> Result:
     path = f"/cases/{args.case}/accounts"
     if args.selector_file is None:
         return _read(ctx, path, args.output)
+    from app.services.support_directory import SupportAccountSelector
+
     try:
         selector = SupportAccountSelector.model_validate_json(read_private(args.selector_file))
     except ValidationError:
@@ -257,6 +240,9 @@ def _read_window(args: argparse.Namespace, ctx: Context, source: str) -> Result:
 
 
 def _follow_logs(args: argparse.Namespace, ctx: Context) -> Result:
+    from app.services.support_request_logs import SupportRequestEvent
+    from scripts import health_monitor, release_contract
+
     if not 1 <= args.seconds <= 60 or not 1 <= args.max_events <= 100:
         raise CLIError("Follow accepts 1 through 100 events and 1 through 60 seconds.")
     headers = _session_headers(ctx)
@@ -385,6 +371,8 @@ def _mutation_plan(
 
 
 def _case_revision(ctx: Context, case_id: UUID, headers: dict[str, str]) -> SupportCaseRead:
+    from app.schemas.support_cases import SupportCaseRead
+
     current = SupportCaseRead.model_validate(
         ctx.request("GET", f"{_API}/cases/{case_id}", auth=False, headers=headers)
     )
@@ -413,6 +401,8 @@ def _save_receipt(args: argparse.Namespace, receipt: Any) -> Result:
 
 
 def _change_case(args: argparse.Namespace, ctx: Context, *, transition: bool) -> Result:
+    from app.schemas.support_cases import SupportCaseCreate, SupportCaseRead, SupportCaseTransition
+
     _require_private_destination(args.output)
     schema = SupportCaseTransition if transition else SupportCaseCreate
     body = schema.model_validate_json(read_private(args.input)).model_dump(mode="json")
@@ -470,13 +460,17 @@ def _propose(
     ctx: Context,
     *,
     endpoint: str,
-    schema: type[BaseModel],
+    schema: Callable[[], type[BaseModel]],
     receipt_id: str,
     case_revision: bool = False,
     business: bool = False,
 ) -> Result:
+    from app.schemas.support_business_actions import BusinessActionRead
+    from app.schemas.support_case_actions import CaseActionRead
+
     _require_private_destination(args.output)
-    body = schema.model_validate_json(read_private(args.input)).model_dump(mode="json")
+    model = schema()
+    body = model.model_validate_json(read_private(args.input)).model_dump(mode="json")
     headers = _session_headers(ctx)
     actor = _profile(ctx, headers)
     path = _API + endpoint
@@ -523,6 +517,12 @@ def _mutation_arguments(leaf: argparse.ArgumentParser, *, case: bool = False) ->
 
 
 def _evidence_command(args: argparse.Namespace, ctx: Context, operation: str) -> Result:
+    from app.schemas.support_evidence_export import (
+        MAX_EXPORT_BYTES,
+        SupportEvidenceExportCreate,
+        SupportEvidenceExportRead,
+    )
+
     _require_private_destination(args.output)
     headers = _session_headers(ctx)
     actor = _profile(ctx, headers)
@@ -607,6 +607,13 @@ def _evidence_command(args: argparse.Namespace, ctx: Context, operation: str) ->
 
 
 def _proof_handoff(ctx: Context, headers: dict[str, str], original_proof: str) -> dict[str, Any]:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    from app.api.v1.support import SupportVerifyRequest
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     encoded = key.public_key().public_bytes(
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
@@ -666,6 +673,10 @@ def _proof_handoff(ctx: Context, headers: dict[str, str], original_proof: str) -
 
 
 def _decision_plan(family: str, stage: str, raw: str) -> tuple[str, str, str, dict[str, Any]]:
+    from app.api.v1.support import GrantChangeRead, RegistrationProposalRead, SuspensionRead
+    from app.schemas.support_business_actions import BusinessActionRead
+    from app.schemas.support_case_actions import CaseActionRead
+
     expected: dict[str, Any]
     if family == "case":
         case = CaseActionRead.model_validate_json(raw)
@@ -764,6 +775,10 @@ def _decide(args: argparse.Namespace, ctx: Context, *, family: str, stage: str) 
         proof.update(expected_digest=expected["digest"], expected_contact_ref=contact)
     _private_output(submitted, {"plan_sha256": plan["plan_sha256"]})
     reply = ctx.request("POST", path, auth=False, write=True, headers=headers, json=proof)
+    from app.api.v1.support import RegistrationDecision
+    from app.schemas.support_business_actions import BusinessActionRead
+    from app.schemas.support_case_actions import CaseActionRead
+
     try:
         if family == "case":
             case_decision = CaseActionRead.model_validate(reply)
@@ -817,6 +832,8 @@ def _invitation_file(args: argparse.Namespace, ctx: Context) -> Result:
         operator = matches[0]["operator_reference"]
         invitations = matches[0]["invitations"]
     elif isinstance(source, dict) and source.get("stage") == "execute":
+        from app.api.v1.support import RegistrationDecision
+
         operator = source["operator_reference"]
         if args.operator is not None and str(args.operator) != operator:
             raise CLIError("The enrollment receipt belongs to another operator.")
@@ -845,6 +862,8 @@ def _invitation_file(args: argparse.Namespace, ctx: Context) -> Result:
 
 
 def _registration_status(ctx: Context, operator: UUID, invitation: str) -> RegistrationStatus:
+    from app.api.v1.support import RegistrationStatus
+
     status = RegistrationStatus.model_validate(
         ctx.request(
             "POST",
@@ -918,13 +937,31 @@ def _register_mutations(registry: Registry) -> None:
             approval=True,
         )
         _mutation_arguments(leaf, case=transition)
+    def _case_action_schema() -> type[BaseModel]:
+        from app.schemas.support_case_actions import CaseActionCreate
+
+        return CaseActionCreate
+
+    def _business_action_schema() -> type[BaseModel]:
+        from app.schemas.support_business_actions import BusinessActionCreate
+
+        return BusinessActionCreate
+
+    def _custody_schema(name: str) -> Callable[[], type[BaseModel]]:
+        def load() -> type[BaseModel]:
+            from app.api.v1 import support as support_api
+
+            return getattr(support_api, name)
+
+        return load
+
     leaf = registry.add(
         "support cases action propose",
         lambda a, c: _propose(
             a,
             c,
             endpoint=f"/cases/{a.case}/actions",
-            schema=CaseActionCreate,
+            schema=_case_action_schema,
             receipt_id="id",
             case_revision=True,
         ),
@@ -940,7 +977,7 @@ def _register_mutations(registry: Registry) -> None:
             a,
             c,
             endpoint=f"/cases/{a.case}/account-actions",
-            schema=BusinessActionCreate,
+            schema=_business_action_schema,
             receipt_id="id",
             business=True,
         ),
@@ -950,14 +987,15 @@ def _register_mutations(registry: Registry) -> None:
         approval=True,
     )
     _mutation_arguments(leaf, case=True)
-    for operation, endpoint, schema, receipt_id in (
-        ("suspend", "/custody/suspensions", SuspensionRequest, "suspension_id"),
-        ("grant", "/custody/grant-changes", GrantChangeRequest, "grant_change_id"),
-        ("enrollment", "/custody/registrations", RegistrationProposal, "proposal_id"),
+    for operation, endpoint, schema_name, receipt_id in (
+        ("suspend", "/custody/suspensions", "SuspensionRequest", "suspension_id"),
+        ("grant", "/custody/grant-changes", "GrantChangeRequest", "grant_change_id"),
+        ("enrollment", "/custody/registrations", "RegistrationProposal", "proposal_id"),
     ):
+        schema_loader = _custody_schema(schema_name)
         leaf = registry.add(
             f"support custody {operation} propose",
-            lambda a, c, endpoint=endpoint, schema=schema, receipt_id=receipt_id: _propose(
+            lambda a, c, endpoint=endpoint, schema=schema_loader, receipt_id=receipt_id: _propose(
                 a,
                 c,
                 endpoint=endpoint,

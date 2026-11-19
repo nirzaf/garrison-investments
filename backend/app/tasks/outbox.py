@@ -58,13 +58,19 @@ def _parse_import_async_payload(entry: TaskOutbox) -> dict[str, Any] | None:
     file_name = kwargs.get("file_name")
     content_sha256 = kwargs.get("content_sha256")
     content_ciphertext = kwargs.get("content_ciphertext")
+    content_key_id = kwargs.get("content_key_id")
     if not all(
         isinstance(item, str) and bool(item)
         for item in (template_type, file_name, content_sha256, content_ciphertext)
     ):
         return None
+    if content_key_id is not None and (not isinstance(content_key_id, str) or not content_key_id):
+        return None
     try:
-        content = decrypt_import_payload(str(content_ciphertext))
+        content = decrypt_import_payload(
+            str(content_ciphertext),
+            expected_key_id=content_key_id,
+        )
     except (InvalidToken, ValueError, OSError):
         return None
     if sha256(content).hexdigest() != content_sha256:

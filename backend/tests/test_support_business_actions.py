@@ -12,6 +12,7 @@ from app.config import Settings
 from app.database import AsyncSessionLocal
 from app.models.auth import AuthOtpChallenge, AuthRefreshToken, AuthSession
 from app.models.support_business_actions import (
+    SupportBusinessAction,
     SupportBusinessApproval,
     SupportBusinessContact,
     SupportRecoveryDelivery,
@@ -19,6 +20,7 @@ from app.models.support_business_actions import (
 from app.models.support_case_audit import SupportCaseAuditRead
 from app.models.support_cases import SupportCase, SupportCaseMember, SupportOperatorGrant
 from app.models.support_directory import SupportCaseSubject
+from app.models.support_identity import SupportOperator
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailDeliveryError
@@ -587,3 +589,132 @@ async def test_single_owner_proposal_rejects_custody_mode_flip_or_grant_revocati
             await session.commit()
         assert (await maker.post(f"{action_path}/execute/options")).status_code == 403
         assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_single_owner_rejects_session_replacement_membership_loss_expiry_and_suspension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await skip_if_database_unavailable()
+    settings = Settings(
+        app_env="test",
+        support_portal_enabled=True,
+        support_custody_mode="single_owner",
+        support_recovery_key=SecretStr("disposable-support-issuance-key-for-testing"),
+        frontend_base_url="https://portal.example.test",
+    )
+    monkeypatch.setattr("app.services.support_business_actions.get_settings", lambda: settings)
+
+    async with client() as maker, client() as replacement:
+        a = await login(maker, custodian=False)
+
+        async def is_single_owner(self, operator_id: UUID) -> bool:
+            return operator_id == a[0]
+
+        monkeypatch.setattr(
+            "app.services.support_identity.SupportIdentity.is_single_owner", is_single_owner
+        )
+
+        # Authenticate the exact same operator in a separate support session.
+        login_proof = sign(await login_options(replacement, a[0]), *a, counter=2)
+        assert (await replacement.post(f"{API}/auth/verify", json=login_proof)).status_code == 200
+        replacement_csrf = replacement.cookies.get(CSRF_COOKIE)
+        assert replacement_csrf
+        replacement.headers["X-Support-CSRF"] = replacement_csrf
+
+        target, case = uuid4(), uuid4()
+        async with AsyncSessionLocal() as session:
+            session.add(
+                User(
+                    id=target,
+                    full_name="Single Owner Guard Target",
+                    email=f"{target}@example.com",
+                    role=ROLE_SITE_SUPERVISOR,
+                    password_hash="synthetic-original-hash",
+                    is_active=True,
+                )
+            )
+            session.add(
+                SupportCase(
+                    id=case,
+                    status="open",
+                    severity="medium",
+                    owner_id=a[0],
+                    external_ref=f"case-{case}",
+                    reason_code="access",
+                )
+            )
+            await session.flush()
+            session.add(SupportCaseSubject(case_id=case, user_id=target))
+            session.add(SupportCaseMember(case_id=case, operator_id=a[0]))
+            session.add(SupportOperatorGrant(operator_id=a[0], capability="account.request"))
+            await session.commit()
+
+        draft = await maker.post(
+            f"{API}/cases/{case}/account-actions",
+            json={
+                "user_id": str(target),
+                "user_revision": 0,
+                "case_revision": 1,
+                "kind": "disable",
+                "reason_code": "suspected_access",
+                "reason": "Synthetic negative guard coverage.",
+            },
+            headers={"Idempotency-Key": str(uuid4())},
+        )
+        assert draft.status_code == 201, draft.text
+        action = draft.json()
+        action_id = UUID(action["id"])
+        action_path = f"{API}/cases/{case}/account-actions/{action_id}"
+
+        # 1. Session replacement: a second session for the same operator cannot execute.
+        assert (await replacement.post(f"{action_path}/execute/options")).status_code == 403
+
+        # Capture a valid step-up proof from the proposing session before mutating state.
+        challenge = await maker.post(f"{action_path}/execute/options")
+        assert challenge.status_code == 200
+        proof = {**sign(challenge.json(), *a, counter=3), "expected_digest": action["digest"]}
+        assert (await replacement.post(f"{action_path}/execute", json=proof)).status_code == 403
+
+        # 2. Changed case membership between proposal and execution fails closed.
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                delete(SupportCaseMember).where(
+                    SupportCaseMember.case_id == case,
+                    SupportCaseMember.operator_id == a[0],
+                )
+            )
+            await session.commit()
+        assert (await maker.post(f"{action_path}/execute/options")).status_code == 404
+        assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 404
+
+        # Restore membership, then test 3. Expired action / late proof replay without mutating
+        # the immutable support_business_actions row.
+        async with AsyncSessionLocal() as session:
+            session.add(SupportCaseMember(case_id=case, operator_id=a[0]))
+            row = await session.get(SupportBusinessAction, action_id)
+            assert row is not None
+            expired_clock = row.expires_at + timedelta(seconds=5)
+            await session.commit()
+        monkeypatch.setattr(
+            "app.services.support_business_actions.utc_now",
+            lambda: expired_clock,
+        )
+        assert (await maker.post(f"{action_path}/execute/options")).status_code == 409
+        assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 409
+
+        # Restore clock, then test 4. Operator suspension after proposal fails closed.
+        monkeypatch.setattr("app.services.support_business_actions.utc_now", utc_now)
+        async with AsyncSessionLocal() as session:
+            operator = await session.get(SupportOperator, a[0])
+            assert operator is not None
+            operator.status = "suspended"
+            await session.commit()
+        assert (await maker.post(f"{action_path}/execute/options")).status_code == 401
+        assert (await maker.post(f"{action_path}/execute", json=proof)).status_code == 401
+
+        # Confirm the target user was never mutated by any rejected attempt.
+        async with AsyncSessionLocal() as session:
+            refreshed = await session.get(User, target)
+            assert refreshed is not None and refreshed.is_active is True

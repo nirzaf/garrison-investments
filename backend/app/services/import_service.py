@@ -57,30 +57,112 @@ MAX_XLSX_CELLS = 1_000_000
 IMPORT_SUBMISSION_ROUTE = "imports.submit"
 
 
+IMPORT_OUTBOX_ENVELOPE_PREFIX = "v2:"
+
+
 def import_outbox_dedupe_key(batch_id: UUID) -> str:
     return f"import-batch:{batch_id}"
 
 
-def _import_outbox_fernet() -> Fernet:
-    settings = get_settings()
-    if settings.hr_encryption_key is not None and settings.hr_encryption_key.get_secret_value():
-        seed = settings.hr_encryption_key.get_secret_value()
-    elif settings.backup_encryption_password:
-        seed = settings.backup_encryption_password
-    else:
-        seed = f"{settings.database_url}:{settings.minio_root_password}:garrisons-import-outbox-v1"
+def _derive_import_key_entry(seed: str) -> tuple[str, Fernet]:
+    digest = sha256(f"garrisons-import-outbox-key-v2:{seed}".encode()).digest()
+    key_id = sha256(b"key-id:" + digest).hexdigest()[:16]
+    return key_id, Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _legacy_import_outbox_fernet(seed: str) -> Fernet:
     derived = base64.urlsafe_b64encode(sha256(seed.encode("utf-8")).digest())
     return Fernet(derived)
 
 
-def encrypt_import_payload(content: bytes) -> str:
+def _fallback_import_outbox_seed() -> str:
+    settings = get_settings()
+    if settings.hr_encryption_key is not None and settings.hr_encryption_key.get_secret_value():
+        return settings.hr_encryption_key.get_secret_value()
+    if settings.backup_encryption_password:
+        return settings.backup_encryption_password
+    return f"{settings.database_url}:{settings.minio_root_password}:garrisons-import-outbox-v1"
+
+
+def _configured_previous_import_seeds() -> list[str]:
+    settings = get_settings()
+    raw = (
+        settings.import_outbox_previous_encryption_keys.get_secret_value()
+        if settings.import_outbox_previous_encryption_keys is not None
+        else ""
+    )
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _primary_import_key_entry() -> tuple[str, Fernet]:
+    settings = get_settings()
+    if (
+        settings.import_outbox_encryption_key is not None
+        and settings.import_outbox_encryption_key.get_secret_value().strip()
+    ):
+        seed = settings.import_outbox_encryption_key.get_secret_value().strip()
+    else:
+        seed = _fallback_import_outbox_seed()
+    return _derive_import_key_entry(seed)
+
+
+def _import_outbox_keyring() -> dict[str, Fernet]:
+    primary_id, primary_fernet = _primary_import_key_entry()
+    ring: dict[str, Fernet] = {primary_id: primary_fernet}
+    for seed in _configured_previous_import_seeds():
+        key_id, fernet = _derive_import_key_entry(seed)
+        ring.setdefault(key_id, fernet)
+    return ring
+
+
+def encrypt_import_payload_with_key_id(content: bytes) -> tuple[str, str]:
     compressed = zlib.compress(content, level=6)
-    return _import_outbox_fernet().encrypt(compressed).decode("ascii")
+    key_id, fernet = _primary_import_key_entry()
+    token = fernet.encrypt(compressed).decode("ascii")
+    return f"{IMPORT_OUTBOX_ENVELOPE_PREFIX}{key_id}:{token}", key_id
 
 
-def decrypt_import_payload(token: str) -> bytes:
-    compressed = _import_outbox_fernet().decrypt(token.encode("ascii"))
-    return zlib.decompress(compressed)
+def encrypt_import_payload(content: bytes) -> str:
+    ciphertext, _ = encrypt_import_payload_with_key_id(content)
+    return ciphertext
+
+
+def parse_import_payload_key_id(token: str) -> str | None:
+    if not token.startswith(IMPORT_OUTBOX_ENVELOPE_PREFIX):
+        return None
+    remainder = token[len(IMPORT_OUTBOX_ENVELOPE_PREFIX) :]
+    key_id, sep, raw = remainder.partition(":")
+    if not sep or not key_id or not raw:
+        raise InvalidToken("Malformed versioned import payload envelope.")
+    return key_id
+
+
+def decrypt_import_payload(token: str, *, expected_key_id: str | None = None) -> bytes:
+    if token.startswith(IMPORT_OUTBOX_ENVELOPE_PREFIX):
+        key_id = parse_import_payload_key_id(token)
+        assert key_id is not None
+        if expected_key_id is not None and expected_key_id != key_id:
+            raise InvalidToken("Import payload key version mismatch.")
+        raw_token = token[len(IMPORT_OUTBOX_ENVELOPE_PREFIX) + len(key_id) + 1 :]
+        fernet = _import_outbox_keyring().get(key_id)
+        if fernet is None:
+            raise InvalidToken("Import outbox encryption key version is unavailable.")
+        compressed = fernet.decrypt(raw_token.encode("ascii"))
+        return zlib.decompress(compressed)
+
+    if expected_key_id is not None:
+        raise InvalidToken("Legacy unversioned payload cannot match a versioned key identifier.")
+    legacy_candidates = [
+        _legacy_import_outbox_fernet(_fallback_import_outbox_seed()),
+        *(_legacy_import_outbox_fernet(seed) for seed in _configured_previous_import_seeds()),
+    ]
+    for candidate in legacy_candidates:
+        try:
+            compressed = candidate.decrypt(token.encode("ascii"))
+            return zlib.decompress(compressed)
+        except InvalidToken:
+            continue
+    raise InvalidToken("Unable to decrypt legacy import payload.")
 
 
 __all__ = [
@@ -89,7 +171,9 @@ __all__ = [
     "InvalidToken",
     "decrypt_import_payload",
     "encrypt_import_payload",
+    "encrypt_import_payload_with_key_id",
     "import_outbox_dedupe_key",
+    "parse_import_payload_key_id",
 ]
 
 TEMPLATE_COLUMNS = {
@@ -306,6 +390,7 @@ class ImportService:
         self.session.add(batch)
         await self.session.flush()
         safe_file_name = Path(file_name or "import.csv").name[:255] or "import.csv"
+        ciphertext, key_id = encrypt_import_payload_with_key_id(content)
         self.session.add(
             TaskOutbox(
                 dedupe_key=import_outbox_dedupe_key(batch.id),
@@ -315,7 +400,8 @@ class ImportService:
                     "template_type": template_type,
                     "file_name": safe_file_name,
                     "content_sha256": sha256(content).hexdigest(),
-                    "content_ciphertext": encrypt_import_payload(content),
+                    "content_key_id": key_id,
+                    "content_ciphertext": ciphertext,
                 },
                 status="pending",
             )

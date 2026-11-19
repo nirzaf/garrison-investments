@@ -4926,7 +4926,9 @@ def _update_case(args: argparse.Namespace, ctx: Context) -> Result:
         data = json.loads(read_private_bytes(args.file, max_bytes=64 * 1024))
         if not isinstance(data, dict) or not data.keys() <= {"status", "resolution_notes"}:
             raise ValueError
-        request = HrCaseCloseRequest.model_validate(data)
+        request = HrCaseCloseRequest.model_validate(
+            {**data, "expected_state_sha256": reviewed.reviewed_state_sha256()}
+        )
     except ValueError:
         raise CLIError("Supply a private reviewed case and a valid status update.") from None
     case_id = str(reviewed.id)

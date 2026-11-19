@@ -9702,7 +9702,7 @@ export interface components {
         /** HrCaseCloseRequest */
         HrCaseCloseRequest: {
             /** Expected State Sha256 */
-            expected_state_sha256?: string | null;
+            expected_state_sha256: string;
             /** Resolution Notes */
             resolution_notes?: string | null;
             /**
@@ -14457,7 +14457,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Expected Revision */
-            expected_revision?: number | null;
+            expected_revision: number;
             /** Location */
             location?: string | null;
             /** Name */
@@ -15776,7 +15776,7 @@ export interface components {
             /** Email */
             email?: string | null;
             /** Expected Revision */
-            expected_revision?: number | null;
+            expected_revision: number;
             /** Is Active */
             is_active?: boolean | null;
             /** Name */
@@ -30858,8 +30858,8 @@ export interface operations {
     };
     deactivate_supplier_api_v1_suppliers__supplier_id__delete: {
         parameters: {
-            query?: {
-                expected_revision?: number | null;
+            query: {
+                expected_revision: number;
             };
             header?: never;
             path: {
