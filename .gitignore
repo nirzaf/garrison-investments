@@ -44,4 +44,5 @@ nginx/ssl/*
 # Downloaded agent skills and generated graph cache
 /.agents/skills/
 /graphify-out/cache/
+/graphify-out/
 graphify-out/20??-??-??/
