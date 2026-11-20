@@ -52,10 +52,14 @@ export async function cancelRosterAllocation(id: string, reason: string) {
   return data;
 }
 
-export async function listHrAssignmentProjects(search?: string) {
+export async function listHrAssignmentProjects(
+  search?: string,
+  limit = 25,
+  offset = 0
+) {
   const { data } = await apiClient.get<HrSchemas['ProjectOptionListResponse']>(
     '/hr/project-assignment-options',
-    { params: { search } }
+    { params: { search: search || undefined, limit, offset } }
   );
   return data;
 }

@@ -11,12 +11,14 @@ export function HRProjectAssignments({ employeeId }: { employeeId?: string }) {
   const client = useQueryClient();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState('');
   const [action, setAction] = useState<'assign' | 'revoke'>('assign');
   const [offset, setOffset] = useState(0);
+  const [projectOffset, setProjectOffset] = useState(0);
   const projects = useQuery({
-    queryKey: ['hr', 'assignment-projects', search],
-    queryFn: () => listHrAssignmentProjects(search),
-    enabled: Boolean(employeeId && search)
+    queryKey: ['hr', 'project-assignment-options', employeeId, search, projectOffset],
+    queryFn: () => listHrAssignmentProjects(search, pageSize, projectOffset),
+    enabled: Boolean(employeeId)
   });
   const requests = useQuery({
     queryKey: ['hr', 'assignment-requests', offset],
@@ -40,13 +42,13 @@ export function HRProjectAssignments({ employeeId }: { employeeId?: string }) {
             className="flex flex-wrap items-end gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              setSelected('');
+              setProjectOffset(0);
               setSearch(String(new FormData(event.currentTarget).get('projectSearch')).trim());
             }}
           >
             <label>
               Find project by name or code
-              <input name="projectSearch" className={hrInputClass} required maxLength={100} />
+              <input name="projectSearch" className={hrInputClass} maxLength={100} />
             </label>
             <button className={hrButtonClass} type="submit" disabled={send.isPending}>
               Find project
@@ -84,10 +86,21 @@ export function HRProjectAssignments({ employeeId }: { employeeId?: string }) {
               <select
                 className={hrInputClass}
                 value={selected}
-                onChange={(event) => setSelected(event.target.value)}
+                disabled={!employeeId || projects.isFetching}
+                aria-label="Assignment project"
+                onChange={(event) => {
+                  const option = projects.data?.items.find((item) => item.id === event.target.value);
+                  setSelected(option?.id ?? '');
+                  setSelectedLabel(option ? `${option.code} · ${option.name}` : '');
+                }}
                 required
               >
-                <option value="">Choose a project</option>
+                <option value="">
+                  {projects.isFetching ? 'Loading projects…' : 'Choose a project'}
+                </option>
+                {selected && !projects.data?.items.some((item) => item.id === selected) && (
+                  <option value={selected}>{selectedLabel}</option>
+                )}
                 {projects.data?.items.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.code} · {item.name}
@@ -126,7 +139,9 @@ export function HRProjectAssignments({ employeeId }: { employeeId?: string }) {
       )}
       {!employeeId && <p>Select an employee with a linked portal account to request a change.</p>}
       {projects.isLoading && <p role="status">Finding projects…</p>}
-      {projects.isSuccess && !projects.data.items.length && <p>No matching editable projects.</p>}
+      {projects.isSuccess && !projects.data.items.length && (
+        <p>No editable projects are available for this search.</p>
+      )}
       {projects.isError && (
         <p role="alert">
           {formatApiError(projects.error, 'Could not find projects.')}{' '}
@@ -134,6 +149,26 @@ export function HRProjectAssignments({ employeeId }: { employeeId?: string }) {
             Retry
           </button>
         </p>
+      )}
+      {projects.data && projects.data.total > pageSize && employeeId && (
+        <nav className="flex gap-2 text-sm" aria-label="Assignment project option pages">
+          <button
+            className="underline"
+            type="button"
+            disabled={projectOffset === 0 || projects.isFetching}
+            onClick={() => setProjectOffset((value) => Math.max(0, value - pageSize))}
+          >
+            Previous projects
+          </button>
+          <button
+            className="underline"
+            type="button"
+            disabled={projectOffset + pageSize >= projects.data.total || projects.isFetching}
+            onClick={() => setProjectOffset((value) => value + pageSize)}
+          >
+            More projects
+          </button>
+        </nav>
       )}
       {send.isSuccess && <p role="status">Request sent for project review.</p>}
       {send.isError && (

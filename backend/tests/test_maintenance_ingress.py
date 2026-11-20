@@ -69,7 +69,7 @@ def test_real_nginx_blocks_business_and_mutating_requests(tmp_path):
         "none",
         "-v",
         f"{config}:/etc/nginx/nginx.conf:ro",
-        "nginx:1.25-alpine",
+        "nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3",
     )
     try:
         command("exec", name, "nginx", "-t")

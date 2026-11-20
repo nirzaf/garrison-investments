@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import os
@@ -91,7 +92,7 @@ def test_manual_only_host_path_and_fail_closed_activation():
     assert (
         '"$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true' in workflow
     )
-    assert '"$expected_main" "$((pinned || forward097))"' in host
+    assert "echo incident; elif (( pinned || forward097 )); then echo manual" in host
     assert host.index("Forward runtime installation is not protected") < host.index(
         "candidate=$(mktemp"
     )
@@ -99,6 +100,12 @@ def test_manual_only_host_path_and_fail_closed_activation():
     assert "Pending database migrations require the reviewed maintenance procedure." in host
     assert "python scripts/backup.py --target all --skip-retention" in host
     assert 'sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a' in host
+    assert "RELEASE_SHA=65308a2af263cd59e90276b3a771d4ed6ecbf842" in workflow
+    assert 'CI_RUN_ID" == 44734573582' in workflow
+    assert "compare/65308a2af263cd59e90276b3a771d4ed6ecbf842...$expected_main" in host
+    reconciliation = root / "deploy/forward097_reconcile.py"
+    assert "forward097.reconciled.json" in reconciliation.read_text()
+    assert hashlib.sha256(reconciliation.read_bytes()).hexdigest() in host
 
 
 @pytest.mark.parametrize("event,accepted", [("workflow_run", False), ("workflow_dispatch", True)])
@@ -123,7 +130,7 @@ def test_host_rejects_automatic_forward_mode(event, accepted):
     setup = (
         "set -euo pipefail; deploy_run_id=456; deploy_attempt=1; "
         "repository=nirzaf/garrison-investments; "
-        f"expected_main={sha}; pinned=0; forward097=1; "
+        f"expected_main={sha}; pinned=0; forward097=1; incident_replacement=0; "
         f"github() {{ printf '%s' {shlex.quote(json.dumps(run))}; }};"
     )
     result = subprocess.run(
@@ -134,7 +141,110 @@ def test_host_rejects_automatic_forward_mode(event, accepted):
     assert (result.returncode == 0) is accepted
 
 
-def test_all_modes_interlocked_before_schema_fast_path(tmp_path):
+def test_incident_dispatch_uses_the_dispatch_main_sha_not_the_older_release_sha():
+    import shlex
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("\nverify_deploy_run() {\n")
+    end = source.index("\nif (( pinned )); then\n  consume_pinned_exception", start)
+    main_sha = "b" * 40
+    deployment = {
+        "id": 456,
+        "run_attempt": 1,
+        "path": ".github/workflows/deploy.yml",
+        "status": "in_progress",
+        "head_branch": "main",
+        "head_repository": {"full_name": "nirzaf/garrison-investments"},
+        "event": "workflow_dispatch",
+        "head_sha": main_sha,
+    }
+    setup = (
+        "set -euo pipefail; deploy_run_id=456; deploy_attempt=1; "
+        "repository=nirzaf/garrison-investments; "
+        f"expected_main={'65308a2af263cd59e90276b3a771d4ed6ecbf842'}; "
+        "incident_replacement=1; pinned=0; forward097=0; "
+        f"github() {{ printf '%s' {shlex.quote(json.dumps(deployment))}; }};"
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            setup
+            + source[start:end]
+            + "\ndeployment_main_sha=$(verify_deploy_run); echo $deployment_main_sha",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == main_sha
+
+    deployment["event"] = "workflow_run"
+    blocked = setup.replace(
+        shlex.quote(json.dumps({**deployment, "event": "workflow_dispatch"})),
+        shlex.quote(json.dumps(deployment)),
+    )
+    result = subprocess.run(
+        ["bash", "-c", blocked + source[start:end] + "\nverify_deploy_run"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize(
+    "second_page_environment,accepted", [("Preview", True), ("Production", False)]
+)
+def test_incident_predecessor_deployment_check_paginates(second_page_environment, accepted):
+    import shlex
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("\nverify_no_predecessor_production_deployment() {\n") + 1
+    end = source.index("\n}\n", start) + 3
+    function = source[start:end]
+    page_one = json.dumps([{"environment": "Preview"}] * 100)
+    page_two = json.dumps([{"environment": second_page_environment}])
+    setup = (
+        "set -euo pipefail; "
+        f"page_one={shlex.quote(page_one)}; page_two={shlex.quote(page_two)}; "
+        "die() { exit 71; }; "
+        "github() { printf '%s\\n' \"$1\" >&2; "
+        'case "$1" in *page=1) printf \'%s\' "$page_one";; '
+        "*page=2) printf '%s' \"$page_two\";; *) exit 72;; esac; }; "
+    )
+    result = subprocess.run(
+        ["bash", "-c", setup + function + "\nverify_no_predecessor_production_deployment"],
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is accepted
+    assert result.stderr.count("deployments?sha=") == 2
+
+
+@pytest.mark.parametrize(
+    "run_id,sha",
+    [
+        (44734573581, "65308a2af263cd59e90276b3a771d4ed6ecbf842"),
+        (44734573582, "65308a2af263cd59e90276b3a771d4ed6ecbf843"),
+    ],
+)
+def test_incident_replacement_refuses_any_candidate_other_than_green_65308a2(run_id, sha):
+    import subprocess
+
+    script = FILE.parent / "hostinger-release.sh"
+    result = subprocess.run(
+        ["bash", str(script), str(run_id), sha, "rollback-v2", "incident-replacement"],
+        input="",
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "pinned to the previously verified green 65308a2" in result.stderr
+
+
+def test_marker_is_preserved_and_only_verified_reconciliation_reopens_normal_deploys(tmp_path):
     import subprocess
 
     text = (FILE.parent / "hostinger-release.sh").read_text()
@@ -142,14 +252,33 @@ def test_all_modes_interlocked_before_schema_fast_path(tmp_path):
     end = text.index("\n}\n", start) + 3
     function = text[start:end]
     assert text.index("assert_forward_maintenance_clear\n") < text.index("if (( pinned )); then")
+    command = (
+        "set -euo pipefail; die() { exit 71; }; "
+        'state="$1"; release_mode="$2"; incident_replacement=0; '
+        "forward_reconcile_tool=/root/helper; "
+        "verify_forward_reconcile_tool() { :; }; "
+        'python3() { if [[ "$2" == verify && '
+        '-e "$state/forward097.reconciled.json" ]]; then return 0; else return 1; fi; }; '
+        f"{function}\nassert_forward_maintenance_clear"
+    )
+    marker = tmp_path / "forward097.attempt"
+    marker.write_text("migration-intent: process disappeared")
     for mode in ("technical-checks-v1", "pinned-no-backup-093", "forward-only-093-to-097"):
-        command = (f'die() {{ exit 71; }}; state="$1"; release_mode="$2"; {function}\n'
-                   "assert_forward_maintenance_clear")
-        assert (
-            subprocess.run(["bash", "-c", command, "fixture", str(tmp_path), mode]).returncode == 0
-        )
-        (tmp_path / "forward097.attempt").write_text("migration-intent: process disappeared")
-        assert (
-            subprocess.run(["bash", "-c", command, "fixture", str(tmp_path), mode]).returncode == 71
-        )
-        (tmp_path / "forward097.attempt").unlink()
+        result = subprocess.run(["bash", "-c", command, "fixture", str(tmp_path), mode])
+        assert result.returncode == 71
+        assert marker.read_text() == "migration-intent: process disappeared"
+
+    receipt = tmp_path / "forward097.reconciled.json"
+    receipt.write_text('{"verified": true}\n')
+    result = subprocess.run(
+        ["bash", "-c", command, "fixture", str(tmp_path), "technical-checks-v1"]
+    )
+    assert result.returncode == 0
+    assert marker.read_text() == "migration-intent: process disappeared"
+
+    incident_command = command.replace("incident_replacement=0", "incident_replacement=1")
+    result = subprocess.run(
+        ["bash", "-c", incident_command, "fixture", str(tmp_path), "incident-replacement"]
+    )
+    assert result.returncode == 71
+    assert marker.read_text() == "migration-intent: process disappeared"

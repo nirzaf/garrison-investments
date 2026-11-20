@@ -39,6 +39,23 @@ import { HRMyTraining } from './HRMyTraining';
 import { HRPerformanceReviews } from './HRPerformanceReviews';
 import { HRMyPolicies } from './HRMyPolicies';
 
+type SelfRecordResource =
+  | 'balances'
+  | 'leaveTypes'
+  | 'leaveRequests'
+  | 'attendance'
+  | 'documents'
+  | 'serviceRequests';
+
+const selfRecordLabels: Record<SelfRecordResource, string> = {
+  balances: 'Leave balances',
+  leaveTypes: 'Leave types',
+  leaveRequests: 'Leave requests',
+  attendance: 'Attendance',
+  documents: 'Shared documents',
+  serviceRequests: 'HR service requests'
+};
+
 export function HRMePage() {
   const [profile, setProfile] = useState<EmployeeSelfRecord | null>(null);
   const [notLinked, setNotLinked] = useState(false);
@@ -50,6 +67,10 @@ export function HRMePage() {
   const [serviceRequests, setServiceRequests] = useState<HrServiceRequestRecord[]>([]);
   const [reopeningRequest, setReopeningRequest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recordLoading, setRecordLoading] = useState<
+    Partial<Record<SelfRecordResource, boolean>>
+  >({});
+  const [recordErrors, setRecordErrors] = useState<Partial<Record<SelfRecordResource, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,38 +119,90 @@ export function HRMePage() {
     setEmergencyPhone(snapshot.emergency_contact_phone ?? '');
   }, []);
 
+  const loadRecord = useCallback(async <T,>(
+    resource: SelfRecordResource,
+    request: () => Promise<T>,
+    accept: (result: T) => void
+  ) => {
+    setRecordLoading((current) => ({ ...current, [resource]: true }));
+    setRecordErrors((current) => ({ ...current, [resource]: undefined }));
+    try {
+      accept(await request());
+    } catch (err) {
+      setRecordErrors((current) => ({
+        ...current,
+        [resource]: formatApiError(
+          err,
+          `Unable to load ${selfRecordLabels[resource].toLowerCase()}.`
+        )
+      }));
+    } finally {
+      setRecordLoading((current) => ({ ...current, [resource]: false }));
+    }
+  }, []);
+
+  const retryRecord = useCallback(
+    (resource: SelfRecordResource) => {
+      switch (resource) {
+        case 'balances':
+          return loadRecord('balances', getMyLeaveBalances, (result) => setBalances(result.items));
+        case 'leaveTypes':
+          return loadRecord('leaveTypes', listMyLeaveTypes, (result) => {
+            setLeaveTypes(result.items);
+            setLeaveTypeId((selected) => selected || result.items[0]?.id || '');
+          });
+        case 'leaveRequests':
+          return loadRecord('leaveRequests', listMyLeaveRequests, (result) =>
+            setLeaveRequests(result.items)
+          );
+        case 'attendance':
+          return loadRecord('attendance', listMyAttendance, (result) =>
+            setAttendance(result.items)
+          );
+        case 'documents':
+          return loadRecord('documents', listMyHrDocuments, (result) =>
+            setDocuments(result.items)
+          );
+        case 'serviceRequests':
+          return loadRecord('serviceRequests', listMyServiceRequests, (result) =>
+            setServiceRequests(result.items)
+          );
+      }
+    },
+    [loadRecord]
+  );
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     setNotLinked(false);
     try {
       acceptContactSnapshot(await getMyHrProfile());
-
-      const [bal, types, reqs, att, docs, sreqs] = await Promise.all([
-        getMyLeaveBalances(),
-        listMyLeaveTypes(),
-        listMyLeaveRequests(),
-        listMyAttendance(),
-        listMyHrDocuments(),
-        listMyServiceRequests()
-      ]);
-      setBalances(bal.items);
-      setLeaveTypes(types.items);
-      setLeaveTypeId((selected) => selected || types.items[0]?.id || '');
-      setLeaveRequests(reqs.items);
-      setAttendance(att.items);
-      setDocuments(docs.items);
-      setServiceRequests(sreqs.items);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 404) {
         setNotLinked(true);
       } else {
         setError(formatApiError(err, 'Unable to load HR self-service records.'));
       }
+      return;
     } finally {
       setLoading(false);
     }
-  }, [acceptContactSnapshot]);
+
+    await Promise.all([
+      loadRecord('balances', getMyLeaveBalances, (result) => setBalances(result.items)),
+      loadRecord('leaveTypes', listMyLeaveTypes, (result) => {
+        setLeaveTypes(result.items);
+        setLeaveTypeId((selected) => selected || result.items[0]?.id || '');
+      }),
+      loadRecord('leaveRequests', listMyLeaveRequests, (result) => setLeaveRequests(result.items)),
+      loadRecord('attendance', listMyAttendance, (result) => setAttendance(result.items)),
+      loadRecord('documents', listMyHrDocuments, (result) => setDocuments(result.items)),
+      loadRecord('serviceRequests', listMyServiceRequests, (result) =>
+        setServiceRequests(result.items)
+      )
+    ]);
+  }, [acceptContactSnapshot, loadRecord]);
 
   useEffect(() => {
     void loadAll();
@@ -337,6 +410,31 @@ export function HRMePage() {
           {error}
         </div>
       ) : null}
+      {Object.values(recordLoading).some(Boolean) && (
+        <p role="status" className="text-sm text-theme-text-muted">
+          Loading HR records…
+        </p>
+      )}
+      {Object.entries(recordErrors).map(([resource, message]) =>
+        message ? (
+          <div
+            key={resource}
+            role="alert"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-2 text-sm text-[var(--status-error-text)]"
+          >
+            <span>
+              {selfRecordLabels[resource as SelfRecordResource]}: {message}
+            </span>
+            <button
+              className="font-semibold underline"
+              type="button"
+              onClick={() => void retryRecord(resource as SelfRecordResource)}
+            >
+              Retry {selfRecordLabels[resource as SelfRecordResource]}
+            </button>
+          </div>
+        ) : null
+      )}
 
       <section className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs">
         <h3 className="text-base font-semibold text-theme-text-primary">
@@ -429,7 +527,9 @@ export function HRMePage() {
         <div className="rounded-lg border border-theme-border bg-theme-card p-5 shadow-xs">
           <h3 className="text-base font-semibold text-theme-text-primary">My Leave Balances</h3>
           <div className="mt-3 space-y-2 text-sm">
-            {balances.length === 0 ? (
+            {recordLoading.balances ? (
+              <p role="status" className="text-theme-text-muted">Loading leave balances…</p>
+            ) : recordErrors.balances ? null : balances.length === 0 ? (
               <p className="text-theme-text-muted">No leave balances posted yet.</p>
             ) : (
               balances.map((b) => (
@@ -457,10 +557,19 @@ export function HRMePage() {
               className="w-full rounded-md border border-theme-border bg-theme-input px-3 py-2 text-sm"
               onChange={(e) => setLeaveTypeId(e.target.value)}
               required
+              disabled={recordLoading.leaveTypes || leaveTypes.length === 0}
               aria-label="Leave type"
               value={leaveTypeId}
             >
-              <option value="">Select leave type</option>
+              <option value="">
+                {recordLoading.leaveTypes
+                  ? 'Loading leave types…'
+                  : recordErrors.leaveTypes
+                    ? 'Leave types unavailable'
+                    : leaveTypes.length === 0
+                      ? 'No leave types available'
+                      : 'Select leave type'}
+              </option>
               {leaveTypes.map((lt) => (
                 <option key={lt.id} value={lt.id}>
                   {lt.name} ({lt.code})
@@ -514,9 +623,16 @@ export function HRMePage() {
                   className="ml-2 rounded border border-theme-border bg-theme-input"
                   value={leaveAttachment}
                   onChange={(event) => setLeaveAttachment(event.target.value)}
+                  disabled={recordLoading.documents || documents.length === 0}
                   required={leaveTypes.find((type) => type.id === leaveTypeId)?.requires_attachment}
                 >
-                  <option value="">Choose a shared document</option>
+                  <option value="">
+                    {recordLoading.documents
+                      ? 'Loading shared documents…'
+                      : recordErrors.documents
+                        ? 'Shared documents unavailable'
+                        : 'Choose a shared document'}
+                  </option>
                   {documents.map((document) => (
                     <option key={document.id} value={document.id}>
                       {document.title}
@@ -607,7 +723,9 @@ export function HRMePage() {
           <div>
             <h3 className="text-base font-semibold text-theme-text-primary">My HR Documents</h3>
             <div className="mt-2 space-y-2 text-sm">
-              {documents.length === 0 ? (
+              {recordLoading.documents ? (
+                <p role="status" className="text-theme-text-muted">Loading shared HR documents…</p>
+              ) : recordErrors.documents ? null : documents.length === 0 ? (
                 <p className="text-theme-text-muted">No shared HR documents.</p>
               ) : (
                 documents.map((doc) => (
@@ -689,6 +807,10 @@ export function HRMePage() {
               </form>
             </details>
             <div className="mt-2 space-y-1 text-xs text-theme-text-secondary">
+              {recordLoading.attendance && <p role="status">Loading attendance…</p>}
+              {!recordLoading.attendance && !recordErrors.attendance && attendance.length === 0 && (
+                <p>No recent attendance records.</p>
+              )}
               {attendance.slice(0, 6).map((a) => (
                 <div className="flex justify-between" key={a.id}>
                   <span>{a.work_date}</span>
@@ -741,6 +863,10 @@ export function HRMePage() {
             </button>
           </form>
           <div className="mt-3 space-y-1 text-xs">
+            {recordLoading.serviceRequests && <p role="status">Loading service requests…</p>}
+            {!recordLoading.serviceRequests &&
+              !recordErrors.serviceRequests &&
+              serviceRequests.length === 0 && <p>No HR service requests yet.</p>}
             {serviceRequests.map((sr) => (
               <div className="flex flex-wrap items-center gap-2" key={sr.id}>
                 <span>

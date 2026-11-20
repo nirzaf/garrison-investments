@@ -13,6 +13,25 @@ def _compose(name: str) -> dict:
     return yaml.safe_load((ROOT / name).read_text())
 
 
+def test_production_nginx_uses_patched_digest_pinned_stable_image() -> None:
+    production = _compose("docker-compose.prod.yml")["services"]
+    assert production["nginx"]["image"] == (
+        "nginx:1.30.7-alpine@sha256:"
+        "caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3"
+    )
+
+    for filename in ("nginx.prod.conf", "support.prod.conf"):
+        config = (ROOT / "nginx" / filename).read_text()
+        assert "listen 443 ssl;" in config
+        assert "http2 on;" in config
+    grafana = (ROOT / "nginx" / "grafana.prod.conf.template").read_text()
+    assert "listen 443 ssl;" in grafana
+    assert "http2 on;" in grafana
+    support = (ROOT / "nginx" / "support.prod.conf").read_text()
+    assert "include /etc/nginx/ssl/support-allowlist.conf;" in support
+    assert "    deny all;" in support
+
+
 def test_observability_images_are_digest_pinned_and_ports_are_private() -> None:
     expected_images = {
         "grafana": "grafana/grafana:13.1.1@sha256:",

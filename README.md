@@ -172,7 +172,7 @@ npm ci
 npm run dev
 ```
 
-Use [.env.example](.env.example) as the local configuration reference and the [runbook](docs/OPERATIONS_AND_DEPLOYMENT.md) for production settings, mail, signing keys, and backup encryption. Keep credentials in private environment files. Existing PostgreSQL 16 volumes require the [database upgrade procedure](docs/OPERATIONS_AND_DEPLOYMENT.md#upgrade-an-existing-postgresql-16-database) before starting PostgreSQL 18.
+Use [.env.example](.env.example) as the local configuration reference and the [runbook](docs/OPERATIONS_AND_DEPLOYMENT.md) for production settings, mail, signing keys, and backup encryption. Keep credentials in private environment files. Fresh Compose setups use PostgreSQL 19.0 with the versioned `pgdata19` volume. Existing PostgreSQL 18 data must be migrated with the [PostgreSQL 18-to-19 procedure](docs/OPERATIONS_AND_DEPLOYMENT.md#upgrade-postgresql-18-to-190) before switching the database image or volume.
 
 For terminal administration, see the [garrisonctl command guide](docs/CLI_ADMINISTRATION.md).
 

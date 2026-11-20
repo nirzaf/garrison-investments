@@ -580,7 +580,7 @@ def test_legacy_workflow_invocation_is_rejected_before_token_read(protocol: list
         text=True,
     )
     assert result.returncode == 1
-    assert "rollback-v2 and technical-checks-v1" in result.stderr
+    assert "rollback-v2 and release mode" in result.stderr
 
 
 def test_unhealthy_runtime_cannot_be_masked_by_nginx_reload() -> None:
