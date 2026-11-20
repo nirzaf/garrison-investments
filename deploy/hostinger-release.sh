@@ -195,7 +195,7 @@ for path in (base.parent.parent,base.parent,base):
  info=path.lstat()
  if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
   raise SystemExit('Forward runtime installation is not protected')
-expected={'forward097-runtime.sh': '7f62934d332afb869c4b13c5250b9b6d9a62d6df35dc4bc58c1b1366bda6ca46', 'forward_release_contract.py': '318e661a5ced681fbe26c9a5dbc59c314bf26dfc1edb8c929306460440ee516d', 'consume-forward097.py': '0596e6125d70affe3ccf76b2f5e14213c158ced632cecb87ce9f3e1f9e802e93', 'forward097-schema.sql': 'b7bc5ea00f38bdd9e2a4dbd62646b5ec48a3d8b49c2ed9a2892eaf4f00342978', 'forward097-schema.json': '3aac1590deb8b6aafc68149b8acae60a675d1a0a4ca06827c03d6de006d36732'}
+expected={'forward097-runtime.sh': '52171806726020a99f8ccb93bfdb3e9bc040bcc26cdd13e0ffac246b2e3997ce', 'forward_release_contract.py': '318e661a5ced681fbe26c9a5dbc59c314bf26dfc1edb8c929306460440ee516d', 'consume-forward097.py': '0596e6125d70affe3ccf76b2f5e14213c158ced632cecb87ce9f3e1f9e802e93', 'forward097-schema.sql': 'b7bc5ea00f38bdd9e2a4dbd62646b5ec48a3d8b49c2ed9a2892eaf4f00342978', 'forward097-schema.json': '3aac1590deb8b6aafc68149b8acae60a675d1a0a4ca06827c03d6de006d36732'}
 for name,digest in expected.items():
  path=base/name;info=path.lstat()
  if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:

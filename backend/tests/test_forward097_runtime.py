@@ -93,6 +93,59 @@ def test_root_helper_binding_is_exact_and_before_staging():
     assert "if (( ! pinned && ! forward097 ))" in host
 
 
+def test_forward_http_get_retries_transient_503_but_fails_persistent_503():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    from typing import Any
+
+    counts: dict[str, int] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            counts[self.path] = counts.get(self.path, 0) + 1
+            if self.path == "/always-503" or counts[self.path] == 1:
+                self.send_response(503)
+                body = b"temporarily unavailable"
+            else:
+                self.send_response(200)
+                body = b"ready"
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        script = 'set -euo pipefail; source "$1"; forward_http_get "$2"'
+        recovered = subprocess.run(
+            ["bash", "-c", script, "test", str(RUNTIME), f"{base_url}/transient"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert recovered.returncode == 0, recovered.stderr
+        assert recovered.stdout == "ready"
+        assert counts["/transient"] == 2
+
+        persistent = subprocess.run(
+            ["bash", "-c", script, "test", str(RUNTIME), f"{base_url}/always-503"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert persistent.returncode != 0
+        assert counts["/always-503"] == 4
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 @pytest.mark.parametrize("state", ["", "false", "false dead", "ERROR", "true restarting"])
 def test_stop_rejects_unknown_state(tmp_path, state):
     script = r"""set -euo pipefail
