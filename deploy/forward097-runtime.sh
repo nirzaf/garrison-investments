@@ -128,6 +128,13 @@ override={"services":{"nginx":{"volumes":[{"type":"bind","source":str(path),"tar
 ' "$candidate"
   forward_compose "$candidate" config --quiet
 }
+forward_http_get() {
+  # Retry only the read-only smoke GETs: a container can be healthy before
+  # Nginx/backend readiness has converged. curl retries transient HTTP 5xx and
+  # connection-refused errors; persistent failures still fail the release.
+  curl --fail --silent --show-error --retry 3 --retry-connrefused \
+    --retry-delay 1 --retry-max-time 12 --connect-timeout 5 --max-time 10 "$@"
+}
 forward_smoke() {
   local path code actual
   for path in /api/v1/projects /api/v1/auth/login /api/v1/support /portal-files/test; do
@@ -136,12 +143,12 @@ forward_smoke() {
   done
   code=$(curl --silent --show-error --max-time 10 -X POST -o /dev/null -w '%{http_code}' "$portal/health/readiness")
   [[ "$code" == 503 ]] || die 'Maintenance guard allowed a mutating request.'
-  curl --fail --silent --show-error --max-time 10 "$portal/health/readiness" | check_readiness
-  actual=$(curl --fail --silent --show-error --max-time 10 "$portal/login" | hash)
+  forward_http_get "$portal/health/readiness" | check_readiness
+  actual=$(forward_http_get "$portal/login" | hash)
   [[ "$actual" == "$expected" ]] || die 'Guarded frontend identity mismatch.'
-  actual=$(curl --fail --silent --show-error --max-time 10 "$portal$asset" | hash)
+  actual=$(forward_http_get "$portal$asset" | hash)
   [[ "$actual" == "$expected_asset" ]] || die 'Guarded asset identity mismatch.'
-  actual=$(curl --fail --silent --show-error --max-time 10 "$portal/sw.js" | hash)
+  actual=$(forward_http_get "$portal/sw.js" | hash)
   [[ "$actual" == "$expected_worker" ]] || die 'Guarded service-worker identity mismatch.'
 }
 forward_wait_beat() {
