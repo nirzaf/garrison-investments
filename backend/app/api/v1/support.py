@@ -268,6 +268,25 @@ router = APIRouter(
 )
 
 
+class SupportAuthModeRead(BaseModel):
+    otp_only_login: bool
+
+
+@router.get("/auth/mode", response_model=SupportAuthModeRead)
+async def login_mode() -> SupportAuthModeRead:
+    return SupportAuthModeRead(otp_only_login=get_settings().support_email_otp_only_login)
+
+
+@router.post("/auth/request-otp", response_model=SupportOtpRequired)
+async def request_login_otp(
+    payload: SupportLoginRequest, request: Request, session: DbSession
+) -> SupportOtpRequired:
+    pending = await SupportIdentity(session).request_email_otp(
+        payload.operator_id, request.state.request_id
+    )
+    return SupportOtpRequired(otp_reference=pending.reference)
+
+
 @router.post("/auth/options", response_model=SupportLoginOptions)
 async def login_options(payload: SupportLoginRequest, session: DbSession) -> SupportLoginOptions:
     challenge_id, options = await SupportIdentity(session).options(payload.operator_id)

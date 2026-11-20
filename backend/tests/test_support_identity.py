@@ -591,3 +591,65 @@ async def test_email_code_is_bound_to_cli_pairing(monkeypatch: pytest.MonkeyPatc
         assert confirmed.status_code == 204 and "set-cookie" not in confirmed.headers
         assert (await browser.get(f"{API}/me")).status_code == 401
         assert (await terminal.get(f"{API}/me", headers=cookies)).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_engine_pool", "enabled")
+async def test_email_otp_only_login_flow_and_guards(monkeypatch: pytest.MonkeyPatch) -> None:
+    await skip_if_database_unavailable()
+    operator, _, _ = await seed_operator()
+    codes = mock_support_email(monkeypatch, operator)
+
+    async with client() as browser:
+        # Disabled by default: /auth/mode reports false and /auth/request-otp fails closed.
+        mode = await browser.get(f"{API}/auth/mode")
+        assert mode.status_code == 200 and mode.json() == {"otp_only_login": False}
+        denied = await browser.post(
+            f"{API}/auth/request-otp", json={"operator_id": str(operator)}
+        )
+        assert denied.status_code == 401 and not codes
+
+        # Enable email-OTP-only login with the bound operator mailbox.
+        otp_only_settings = Settings(
+            app_env="test",
+            support_portal_enabled=True,
+            support_email_otp_only_login=True,
+            support_email_otp_key=SecretStr("test-support-email-otp-secret-key-32-bytes-long"),
+            support_email_otp_recipients={operator: "synthetic-support@example.com"},
+        )
+        monkeypatch.setattr("app.api.v1.support.get_settings", lambda: otp_only_settings)
+        monkeypatch.setattr("app.services.support_identity.get_settings", lambda: otp_only_settings)
+
+        mode_enabled = await browser.get(f"{API}/auth/mode")
+        assert mode_enabled.status_code == 200 and mode_enabled.json() == {"otp_only_login": True}
+
+        requested = await browser.post(
+            f"{API}/auth/request-otp", json={"operator_id": str(operator)}
+        )
+        assert requested.status_code == 200 and "otp_reference" in requested.json()
+        assert len(codes) == 1 and "set-cookie" not in requested.headers
+
+        wrong = await browser.post(
+            f"{API}/auth/verify-otp",
+            json={"otp_reference": requested.json()["otp_reference"], "otp": "000000"},
+        )
+        assert wrong.status_code == 401
+
+        verified = await browser.post(
+            f"{API}/auth/verify-otp",
+            json={"otp_reference": requested.json()["otp_reference"], "otp": codes[0]},
+        )
+        assert verified.status_code == 200
+        assert (await browser.get(f"{API}/me")).status_code == 200
+
+        # Suspended operator cannot request an OTP.
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(SupportOperator)
+                .where(SupportOperator.id == operator)
+                .values(status="suspended")
+            )
+            await session.commit()
+        assert (
+            await browser.post(f"{API}/auth/request-otp", json={"operator_id": str(operator)})
+        ).status_code == 401

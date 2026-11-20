@@ -38,6 +38,7 @@ export function SupportLoginPage() {
   const [cliReference, setCliReference] = useState(readCliReference);
   const [session, setSession] = useState<Session | null>(null);
   const [otpReference, setOtpReference] = useState<string | null>(null);
+  const [otpOnlyLogin, setOtpOnlyLogin] = useState(false);
   const [pending, setPending] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -50,10 +51,17 @@ export function SupportLoginPage() {
   useEffect(() => {
     if (cliReference) return;
     const controller = new AbortController();
-    void supportRequest('/me', { signal: controller.signal })
-      .then(async (response) => {
-        if (response.ok) {
-          const identity = await response.json() as Session;
+    void Promise.all([
+      supportRequest('/me', { signal: controller.signal }),
+      supportRequest('/auth/mode', { signal: controller.signal }).catch(() => null)
+    ])
+      .then(async ([meResponse, modeResponse]) => {
+        if (modeResponse?.ok) {
+          const mode = await modeResponse.json() as { otp_only_login?: boolean };
+          if (!controller.signal.aborted) setOtpOnlyLogin(Boolean(mode.otp_only_login));
+        }
+        if (meResponse.ok) {
+          const identity = await meResponse.json() as Session;
           if (!controller.signal.aborted) setSession(identity);
         }
       })
@@ -73,6 +81,17 @@ export function SupportLoginPage() {
     setPending(true);
     setMessage('');
     try {
+      if (otpOnlyLogin) {
+        const result = await supportPost('/auth/request-otp', { operator_id: operatorId });
+        if (result.status === 503) {
+          setMessage('Verification email is unavailable. Start a new sign-in and try again.');
+          return;
+        }
+        if (!result.ok) throw new Error();
+        const signInResult = await result.json() as components['schemas']['SupportOtpRequired'];
+        setOtpReference(signInResult.otp_reference);
+        return;
+      }
       const optionsResponse = await supportPost('/auth/options', { operator_id: operatorId });
       if (!optionsResponse.ok) throw new Error();
       const options = await optionsResponse.json() as LoginOptions;
@@ -90,7 +109,11 @@ export function SupportLoginPage() {
         await loadProfile();
       }
     } catch {
-      setMessage('The passkey could not be verified. Check the operator reference and try again.');
+      setMessage(
+        otpOnlyLogin
+          ? 'Sign-in code could not be sent. Check the operator reference and try again.'
+          : 'The passkey could not be verified. Check the operator reference and try again.'
+      );
     } finally {
       setPending(false);
     }
@@ -229,10 +252,10 @@ export function SupportLoginPage() {
                 disabled={pending}
                 type="submit"
               >
-                Sign in with a passkey
+                {otpOnlyLogin ? 'Send sign-in code' : 'Sign in with a passkey'}
               </button>
             </form>
-            <SupportRegistrationPanel />
+            {!otpOnlyLogin && <SupportRegistrationPanel />}
           </>
         )}
       </section>

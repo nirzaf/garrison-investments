@@ -24,6 +24,7 @@ class Settings(BaseSettings, BusinessPolicy):
     support_recovery_delivery_enabled: bool = False
     support_recovery_allowed_origins: str = ""
     support_email_otp_key: SecretStr | None = None
+    support_email_otp_only_login: bool = False
     support_email_otp_recipients: dict[UUID, EmailStr] = Field(default_factory=dict, repr=False)
 
     database_url: str = (

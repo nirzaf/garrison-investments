@@ -222,6 +222,41 @@ class SupportIdentity:
             return await self._send_otp(operator_id, challenge.id, request_id, now)
         return await self._activate(operator, challenge, request_id, now)
 
+    async def request_email_otp(self, operator_id: UUID, request_id: str) -> PendingSupportOtp:
+        settings = get_settings()
+        if not settings.support_email_otp_only_login:
+            raise _denied()
+        operator = await self.session.get(SupportOperator, operator_id, with_for_update=True)
+        now = utc_now()
+        if operator is None or operator.status != "active":
+            raise _denied()
+        recent = await self.session.scalar(
+            select(func.count())
+            .select_from(SupportLoginChallenge)
+            .where(
+                SupportLoginChallenge.operator_id == operator_id,
+                SupportLoginChallenge.created_at > now - _CHALLENGE_LIFETIME,
+            )
+        )
+        if recent is None or recent >= 5:
+            self._record(operator_id, request_id, "login_denied", now)
+            await self.session.commit()
+            raise _denied()
+        challenge_id = uuid4()
+        self.session.add(
+            SupportLoginChallenge(
+                id=challenge_id,
+                operator_id=operator_id,
+                challenge=token_bytes(32),
+                grant_epoch=operator.grant_epoch,
+                created_at=now,
+                expires_at=now + _CHALLENGE_LIFETIME,
+                consumed_at=now,
+            )
+        )
+        await self.session.flush()
+        return await self._send_otp(operator_id, challenge_id, request_id, now)
+
     async def _send_otp(
         self, operator_id: UUID, challenge_id: UUID, request_id: str, now: datetime
     ) -> PendingSupportOtp:

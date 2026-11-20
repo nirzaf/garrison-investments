@@ -5423,6 +5423,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/auth/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Login Mode */
+        get: operations["login_mode_api_v1_support_auth_mode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/auth/options": {
         parameters: {
             query?: never;
@@ -5434,6 +5451,23 @@ export interface paths {
         put?: never;
         /** Login Options */
         post: operations["login_options_api_v1_support_auth_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/auth/request-otp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Login Otp */
+        post: operations["request_login_otp_api_v1_support_auth_request_otp_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15956,6 +15990,11 @@ export interface components {
             events: components["schemas"]["SupportAuditEvent"][];
             /** Truncated */
             truncated: boolean;
+        };
+        /** SupportAuthModeRead */
+        SupportAuthModeRead: {
+            /** Otp Only Login */
+            otp_only_login: boolean;
         };
         /** SupportBackupReceiptSummary */
         SupportBackupReceiptSummary: {
@@ -31253,6 +31292,35 @@ export interface operations {
             };
         };
     };
+    login_mode_api_v1_support_auth_mode_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAuthModeRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
     login_options_api_v1_support_auth_options_post: {
         parameters: {
             query?: never;
@@ -31273,6 +31341,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportLoginOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    request_login_otp_api_v1_support_auth_request_otp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportOtpRequired"];
                 };
             };
             /** @description Invalid request */

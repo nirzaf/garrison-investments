@@ -27768,6 +27768,19 @@
         "title": "SupportAuditPage",
         "type": "object"
       },
+      "SupportAuthModeRead": {
+        "properties": {
+          "otp_only_login": {
+            "title": "Otp Only Login",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "otp_only_login"
+        ],
+        "title": "SupportAuthModeRead",
+        "type": "object"
+      },
       "SupportBackupReceiptSummary": {
         "additionalProperties": false,
         "properties": {
@@ -59216,6 +59229,45 @@
         ]
       }
     },
+    "/api/v1/support/auth/mode": {
+      "get": {
+        "operationId": "login_mode_api_v1_support_auth_mode_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAuthModeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Login Mode Api V1 Support Auth Mode Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Login Mode",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
     "/api/v1/support/auth/options": {
       "post": {
         "operationId": "login_options_api_v1_support_auth_options_post",
@@ -59260,6 +59312,55 @@
           }
         },
         "summary": "Login Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/auth/request-otp": {
+      "post": {
+        "operationId": "request_login_otp_api_v1_support_auth_request_otp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportOtpRequired"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Request Login Otp Api V1 Support Auth Request Otp Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Request Login Otp",
         "tags": [
           "Support"
         ]
