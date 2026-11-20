@@ -40,3 +40,23 @@ def test_backup_and_restore_client_matches_postgres_19() -> None:
     assert "postgresql-client-18" not in content
     assert "#upgrade-postgresql-18-to-190" in readme
     assert "before starting PostgreSQL 18" not in readme
+
+
+def test_upgrade_runbook_names_postgres_19_compatibility_gates() -> None:
+    runbook = (REPOSITORY_ROOT / "docs/OPERATIONS_AND_DEPLOYMENT.md").read_text(
+        encoding="utf-8"
+    )
+
+    for compatibility_check in (
+        "standard_conforming_strings=on",
+        "MULE_INTERNAL",
+        "containing CR or LF",
+        "RADIUS authentication",
+        "removed settings such as `io_workers`",
+        "`btree_gist`",
+        "`inet` or `cidr`",
+        "`pg_trgm`",
+        "`fuzzystrmatch`",
+        "stored `tsvector` recomputation",
+    ):
+        assert compatibility_check in runbook
