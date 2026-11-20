@@ -5866,6 +5866,261 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/support/company/commands/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan Company Admin Command */
+        post: operations["plan_company_admin_command_api_v1_support_company_commands_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/commands/{command_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Company Admin Command */
+        get: operations["read_company_admin_command_api_v1_support_company_commands__command_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/commands/{command_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute Company Admin Command */
+        post: operations["execute_company_admin_command_api_v1_support_company_commands__command_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/commands/{command_id}/proof/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Company Admin Command Proof Options */
+        post: operations["company_admin_command_proof_options_api_v1_support_company_commands__command_id__proof_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Context */
+        get: operations["support_company_context_api_v1_support_company_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/data-inspector/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Data Inspector Catalog */
+        get: operations["support_company_data_inspector_catalog_api_v1_support_company_data_inspector_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/data-inspector/{entity_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Data Inspector Query */
+        get: operations["support_company_data_inspector_query_api_v1_support_company_data_inspector__entity_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/owner-security": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Owner Security */
+        get: operations["support_company_owner_security_api_v1_support_company_owner_security_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Safe Settings */
+        get: operations["support_company_safe_settings_api_v1_support_company_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company Users */
+        get: operations["support_company_users_api_v1_support_company_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company User Profile */
+        get: operations["support_company_user_profile_api_v1_support_company_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users/{user_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company User Access */
+        get: operations["support_company_user_access_api_v1_support_company_users__user_id__access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users/{user_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company User Activity */
+        get: operations["support_company_user_activity_api_v1_support_company_users__user_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users/{user_id}/diagnose-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Support Company User Diagnose Case */
+        post: operations["support_company_user_diagnose_case_api_v1_support_company_users__user_id__diagnose_case_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/support/company/users/{user_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Support Company User Sessions */
+        get: operations["support_company_user_sessions_api_v1_support_company_users__user_id__sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/config/status": {
         parameters: {
             query?: never;
@@ -7675,6 +7930,39 @@ export interface components {
             /** Remaining Budget */
             remaining_budget: string;
         };
+        /** BulkAccountLifecycleCommand */
+        BulkAccountLifecycleCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "bulk_account_lifecycle";
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "disable" | "reactivate" | "unlock" | "revoke_sessions";
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default suspected_access
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /** Targets */
+            targets: components["schemas"]["BulkAccountTargetSpec"][];
+        };
+        /** BulkAccountTargetSpec */
+        BulkAccountTargetSpec: {
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** BusinessActionCreate */
         BusinessActionCreate: {
             /** Case Revision */
@@ -8099,6 +8387,68 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ChangeBusinessRoleCommand */
+        ChangeBusinessRoleCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "change_business_role";
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /** New Role */
+            new_role: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default role_adjustment
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
+        };
+        /** ChangeProjectMembershipCommand */
+        ChangeProjectMembershipCommand: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "assign" | "revoke";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "change_project_membership";
+            /** Expected Project Revision */
+            expected_project_revision: number;
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default project_membership
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /** Role In Project */
+            role_in_project?: string | null;
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
+        };
         /** ClearanceStepResponse */
         ClearanceStepResponse: {
             /** Assigned User Id */
@@ -8250,6 +8600,39 @@ export interface components {
             status: string;
             /** Title */
             title: string;
+        };
+        /** CreateBusinessAccountCommand */
+        CreateBusinessAccountCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "create_business_account";
+            /** Designation */
+            designation?: string | null;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Employee Code */
+            employee_code: string;
+            /** Full Name */
+            full_name: string;
+            /** Phone */
+            phone: string;
+            /** Project Assignments */
+            project_assignments?: components["schemas"]["ProjectAssignmentSpec"][];
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default account_provisioning
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /** Role */
+            role: string;
         };
         /** CurrencyReconciliationResponse */
         CurrencyReconciliationResponse: {
@@ -9616,7 +9999,7 @@ export interface components {
              * Capability
              * @enum {string}
              */
-            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read";
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read" | "company.directory.read" | "company.accounts.manage" | "company.access.assign" | "company.sessions.read" | "company.sessions.revoke" | "company.settings.manage" | "company.jobs.retry" | "company.data.inspect";
             /**
              * Challenge Id
              * Format: uuid
@@ -9637,7 +10020,7 @@ export interface components {
              * Capability
              * @enum {string}
              */
-            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read";
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read" | "company.directory.read" | "company.accounts.manage" | "company.access.assign" | "company.sessions.read" | "company.sessions.revoke" | "company.settings.manage" | "company.jobs.retry" | "company.data.inspect";
             /** Enable */
             enable: boolean;
             /**
@@ -9662,7 +10045,7 @@ export interface components {
              * Capability
              * @enum {string}
              */
-            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read";
+            capability: "cases.manage" | "logs.runtime" | "logs.stream" | "logs.export" | "health.read" | "directory.read" | "account.request" | "logs.audit" | "simulation.start" | "overview.company.read" | "overview.projects.read" | "overview.workforce.read" | "overview.inventory.read" | "overview.suppliers.read" | "overview.documents.read" | "overview.finance.read" | "overview.approvals.read" | "jobs.read" | "backups.read" | "config.read" | "incidents.read" | "company.directory.read" | "company.accounts.manage" | "company.access.assign" | "company.sessions.read" | "company.sessions.revoke" | "company.settings.manage" | "company.jobs.retry" | "company.data.inspect";
             /** Enable */
             enable: boolean;
             /**
@@ -14125,6 +14508,18 @@ export interface components {
             /** Report Count */
             report_count: number;
         };
+        /** ProjectAssignmentSpec */
+        ProjectAssignmentSpec: {
+            /** Expected Project Revision */
+            expected_project_revision: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Role In Project */
+            role_in_project?: string | null;
+        };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Boq Items */
@@ -15013,6 +15408,29 @@ export interface components {
             /** Unit */
             unit: string;
         };
+        /** RequestAccountRecoveryCommand */
+        RequestAccountRecoveryCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "request_account_recovery";
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default verified_user_report
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
+        };
         /** RequestProjectOption */
         RequestProjectOption: {
             /** Code */
@@ -15128,6 +15546,32 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RetrySafeJobCommand */
+        RetrySafeJobCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "retry_safe_job";
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Job Source
+             * @enum {string}
+             */
+            job_source: "task_outbox" | "support_recovery_delivery";
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default operational_recovery
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
         };
         /** ReviewCreateRequest */
         ReviewCreateRequest: {
@@ -15256,6 +15700,36 @@ export interface components {
             status: string;
             /** Summary Notes */
             summary_notes: string | null;
+        };
+        /** RevokeBusinessSessionCommand */
+        RevokeBusinessSessionCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "revoke_business_session";
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default suspected_access
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "selected" | "all";
+            /** Session Id */
+            session_id?: string | null;
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
         };
         /** RosterAllocationCreateRequest */
         RosterAllocationCreateRequest: {
@@ -15453,6 +15927,31 @@ export interface components {
             decision: "approved" | "rejected";
             /** Evidence Reference */
             evidence_reference: string;
+        };
+        /** SetAccountStateCommand */
+        SetAccountStateCommand: {
+            /** Active */
+            active: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "set_account_state";
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default suspected_access
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
         };
         /** ShiftAssignmentCreateRequest */
         ShiftAssignmentCreateRequest: {
@@ -15828,6 +16327,22 @@ export interface components {
             /** Tds Expiry Date */
             tds_expiry_date?: string | null;
         };
+        /** SupportAccessExplanationItem */
+        SupportAccessExplanationItem: {
+            /** Allowed */
+            allowed: boolean;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "allowed" | "no_permission" | "no_project_membership" | "account_inactive" | "not_eligible_approver" | "self_approval_prohibited" | "feature_disabled_by_policy";
+            /** Explanation */
+            explanation: string;
+            /** Label */
+            label: string;
+            /** Subject Key */
+            subject_key: string;
+        };
         /** SupportAccountEvent */
         SupportAccountEvent: {
             /**
@@ -15894,6 +16409,113 @@ export interface components {
             field: "email" | "employee_code" | "name" | "role";
             /** Value */
             value: string;
+        };
+        /** SupportAdminCommandExecuteRequest */
+        SupportAdminCommandExecuteRequest: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            credential: components["schemas"]["SupportAssertion"];
+            /** Expected Plan Sha256 */
+            expected_plan_sha256: string;
+        };
+        /** SupportAdminCommandProofOptions */
+        SupportAdminCommandProofOptions: {
+            /**
+             * Challenge Id
+             * Format: uuid
+             */
+            challenge_id: string;
+            command: components["schemas"]["SupportAdminCommandRead"];
+            public_key: components["schemas"]["SupportPublicKeyOptions"];
+        };
+        /** SupportAdminCommandRead */
+        SupportAdminCommandRead: {
+            /** After */
+            after: {
+                [key: string]: unknown;
+            };
+            /**
+             * Authorization Mode
+             * @enum {string}
+             */
+            authorization_mode: "single_owner" | "paired";
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            };
+            /** Case Id */
+            case_id?: string | null;
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /** Command Kind */
+            command_kind: string;
+            /**
+             * Company Context
+             * @default garrisons_single_company
+             */
+            company_context: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Denied Conditions */
+            denied_conditions: string[];
+            /** Effects */
+            effects: string[];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /** Policy Version */
+            policy_version: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Revision */
+            project_revision?: number | null;
+            /** Reason */
+            reason: string;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Requires Action Passkey
+             * @default true
+             */
+            requires_action_passkey: boolean;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "expired" | "succeeded" | "delivery_pending" | "delivery_failed" | "rejected";
+            /** Target Id */
+            target_id?: string | null;
+            /** Target Revision */
+            target_revision?: number | null;
         };
         /** SupportApprovalsOverviewRead */
         SupportApprovalsOverviewRead: {
@@ -16291,6 +16913,58 @@ export interface components {
             /** Pairing Code */
             pairing_code: string;
         };
+        /** SupportCompanyContextRead */
+        SupportCompanyContextRead: {
+            /**
+             * Auth Method
+             * @enum {string}
+             */
+            auth_method: "passkey" | "email_otp_only";
+            /** Banner Notice */
+            banner_notice: string;
+            /** Capabilities */
+            capabilities: string[];
+            /** Company Name */
+            company_name: string;
+            /**
+             * Custody Mode
+             * @enum {string}
+             */
+            custody_mode: "single_owner" | "paired" | "unknown";
+            /** Default Directory Page Size */
+            default_directory_page_size: number;
+            /**
+             * Deployment Scope
+             * @default single_company
+             * @constant
+             */
+            deployment_scope: "single_company";
+            /** Environment */
+            environment: string;
+            /** Features */
+            features: components["schemas"]["SupportFeatureAvailability"][];
+            /** Maintenance Window Notice */
+            maintenance_window_notice: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Policy Version */
+            policy_version: string;
+            /**
+             * Session Expires At
+             * Format: date-time
+             */
+            session_expires_at: string;
+            /** Source Sha */
+            source_sha: string;
+        };
         /** SupportCompanyOverviewRead */
         SupportCompanyOverviewRead: {
             /**
@@ -16328,6 +17002,146 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+        };
+        /** SupportCompanyUserAccessRead */
+        SupportCompanyUserAccessRead: {
+            /** Access Revision */
+            access_revision: number;
+            /** Assignable Roles */
+            assignable_roles: components["schemas"]["SupportRoleOption"][];
+            /** Company Scope */
+            company_scope: boolean;
+            /** Effective Permissions */
+            effective_permissions: string[];
+            /** Eligible Projects */
+            eligible_projects: components["schemas"]["SupportProjectOptionRead"][];
+            /** Explanations */
+            explanations: components["schemas"]["SupportAccessExplanationItem"][];
+            focused_project_explanation?: components["schemas"]["SupportAccessExplanationItem"] | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Navigation Routes */
+            navigation_routes: components["schemas"]["SupportNavigationRouteItem"][];
+            /** Project Memberships */
+            project_memberships: components["schemas"]["SupportUserProjectMembershipRead"][];
+            /** Role */
+            role: string;
+            /** Role Label */
+            role_label: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SupportCompanyUserPage */
+        SupportCompanyUserPage: {
+            /** Items */
+            items: components["schemas"]["SupportCompanyUserSummary"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total: number;
+        };
+        /** SupportCompanyUserProfileRead */
+        SupportCompanyUserProfileRead: {
+            /** Access Revision */
+            access_revision: number;
+            /** Active Session Count */
+            active_session_count: number;
+            /** Assigned Project Count */
+            assigned_project_count: number;
+            /** Available Actions */
+            available_actions: components["schemas"]["SupportUserActionAvailability"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Designation */
+            designation: string | null;
+            /** Email Masked */
+            email_masked: string;
+            /** Employee Code */
+            employee_code: string | null;
+            /** Employee Status */
+            employee_status: string | null;
+            /** Full Name */
+            full_name: string;
+            /** Has Linked Employee */
+            has_linked_employee: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Locked */
+            is_locked: boolean;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Linked Cases */
+            linked_cases: components["schemas"]["SupportLinkedCaseSummary"][];
+            /** Must Change Password */
+            must_change_password: boolean;
+            /** Phone Masked */
+            phone_masked: string | null;
+            /** Recovery Destination Verified */
+            recovery_destination_verified: boolean;
+            /** Role */
+            role: string;
+            /** Role Label */
+            role_label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "inactive" | "locked";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SupportCompanyUserSummary */
+        SupportCompanyUserSummary: {
+            /** Access Revision */
+            access_revision: number;
+            /** Assigned Project Count */
+            assigned_project_count: number;
+            /** Designation */
+            designation: string | null;
+            /** Email Masked */
+            email_masked: string;
+            /** Employee Code */
+            employee_code: string | null;
+            /** Full Name */
+            full_name: string;
+            /** Has Linked Employee */
+            has_linked_employee: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /** Is Locked */
+            is_locked: boolean;
+            /** Last Login At */
+            last_login_at: string | null;
+            /** Recovery Destination Verified */
+            recovery_destination_verified: boolean;
+            /** Role */
+            role: string;
+            /** Role Label */
+            role_label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "inactive" | "locked";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
         };
         /** SupportConfigStatusRead */
         SupportConfigStatusRead: {
@@ -16388,6 +17202,97 @@ export interface components {
              * @enum {string}
              */
             tls_status: "valid" | "expiring_soon" | "expired" | "unknown";
+        };
+        /** SupportCredentialSummary */
+        SupportCredentialSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credential Hash Prefix */
+            credential_hash_prefix: string;
+            /**
+             * Credential Id
+             * Format: uuid
+             */
+            credential_id: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Sign Count */
+            sign_count: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "revoked";
+        };
+        /** SupportDataInspectorCatalogRead */
+        SupportDataInspectorCatalogRead: {
+            /** Entities */
+            entities: components["schemas"]["SupportDataInspectorEntityMeta"][];
+            /** Excluded Domains Notice */
+            excluded_domains_notice: string;
+        };
+        /** SupportDataInspectorEntityMeta */
+        SupportDataInspectorEntityMeta: {
+            /** Columns */
+            columns: string[];
+            /** Description */
+            description: string;
+            /** Entity Key */
+            entity_key: string;
+            /** Filterable Statuses */
+            filterable_statuses: string[];
+            /** Label */
+            label: string;
+        };
+        /** SupportDataInspectorPage */
+        SupportDataInspectorPage: {
+            /** Columns */
+            columns: string[];
+            /** Entity Key */
+            entity_key: string;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Total */
+            total: number;
+        };
+        /** SupportDiagnoseCaseRead */
+        SupportDiagnoseCaseRead: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Created New */
+            created_new: boolean;
+            /** External Ref */
+            external_ref: string | null;
+            /** Linked Project Ids */
+            linked_project_ids: string[];
+            /** Revision */
+            revision: number;
+            /** Status */
+            status: string;
+            /**
+             * Subject User Id
+             * Format: uuid
+             */
+            subject_user_id: string;
+        };
+        /** SupportDiagnoseCaseRequest */
+        SupportDiagnoseCaseRequest: {
+            /** Project Id */
+            project_id?: string | null;
+            /** Reason */
+            reason: string;
         };
         /** SupportDocumentsOverviewRead */
         SupportDocumentsOverviewRead: {
@@ -16518,6 +17423,19 @@ export interface components {
             challenge_id: string;
             export: components["schemas"]["SupportEvidenceExportRead"];
             public_key: components["schemas"]["SupportPublicKeyOptions"];
+        };
+        /** SupportFeatureAvailability */
+        SupportFeatureAvailability: {
+            /** Enabled */
+            enabled: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Required Capability */
+            required_capability?: string | null;
         };
         /** SupportFinanceOverviewRead */
         SupportFinanceOverviewRead: {
@@ -16753,6 +17671,24 @@ export interface components {
              */
             worker_status: "operational" | "unavailable" | "unknown";
         };
+        /** SupportLinkedCaseSummary */
+        SupportLinkedCaseSummary: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** External Ref */
+            external_ref: string | null;
+            /** Reason Code */
+            reason_code: string | null;
+            /** Revision */
+            revision: number;
+            /** Severity */
+            severity: string | null;
+            /** Status */
+            status: string;
+        };
         /** SupportLoginOptions */
         SupportLoginOptions: {
             /**
@@ -16813,6 +17749,13 @@ export interface components {
             /** Visible */
             visible: boolean;
         };
+        /** SupportNavigationRouteItem */
+        SupportNavigationRouteItem: {
+            /** Route Id */
+            route_id: string;
+            /** Visible */
+            visible: boolean;
+        };
         /** SupportOtpRequired */
         SupportOtpRequired: {
             /**
@@ -16832,6 +17775,74 @@ export interface components {
             otp_reference: string;
             /** Pairing Code */
             pairing_code?: string | null;
+        };
+        /** SupportOwnerAuthEventItem */
+        SupportOwnerAuthEventItem: {
+            /** Action */
+            action: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Request Id */
+            request_id: string;
+        };
+        /** SupportOwnerSecurityRead */
+        SupportOwnerSecurityRead: {
+            /** Active Passkey Count */
+            active_passkey_count: number;
+            /** Bootstrap Activated At */
+            bootstrap_activated_at: string | null;
+            /**
+             * Custody Mode
+             * @enum {string}
+             */
+            custody_mode: "single_owner" | "paired" | "unknown";
+            /** Display Label */
+            display_label: string;
+            /** Grant Epoch */
+            grant_epoch: number;
+            /** Minimum Passkeys Required */
+            minimum_passkeys_required: number;
+            /**
+             * Operator Id
+             * Format: uuid
+             */
+            operator_id: string;
+            /** Passkeys */
+            passkeys: components["schemas"]["SupportCredentialSummary"][];
+            /** Recent Auth Events */
+            recent_auth_events: components["schemas"]["SupportOwnerAuthEventItem"][];
+            /** Recovery Guidance */
+            recovery_guidance: string[];
+            /**
+             * Session Auth Method
+             * @enum {string}
+             */
+            session_auth_method: "passkey" | "email_otp_only";
+            /**
+             * Session Expires At
+             * Format: date-time
+             */
+            session_expires_at: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Session Idle Deadline
+             * Format: date-time
+             */
+            session_idle_deadline: string;
+            /** Status */
+            status: string;
         };
         /** SupportPermissionExplanation */
         SupportPermissionExplanation: {
@@ -16988,6 +17999,26 @@ export interface components {
              * Format: uuid
              */
             view_id: string;
+        };
+        /** SupportProjectOptionRead */
+        SupportProjectOptionRead: {
+            /** Is Member */
+            is_member: boolean;
+            /** Is Read Only */
+            is_read_only: boolean;
+            /** Project Code */
+            project_code: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Project Revision */
+            project_revision: number;
+            /** Project Status */
+            project_status: string;
         };
         /** SupportProjectsOverviewRead */
         SupportProjectsOverviewRead: {
@@ -17155,6 +18186,62 @@ export interface components {
              */
             view_id: string;
         };
+        /** SupportRoleOption */
+        SupportRoleOption: {
+            /** Company Scope */
+            company_scope: boolean;
+            /** Label */
+            label: string;
+            /** Permissions */
+            permissions: string[];
+            /** Protected Target */
+            protected_target: boolean;
+            /** Role */
+            role: string;
+        };
+        /** SupportSafeSettingItem */
+        SupportSafeSettingItem: {
+            /** Current Value */
+            current_value: string | number;
+            /** Default Value */
+            default_value: string | number;
+            /** Description */
+            description: string;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "immediate" | "restart_required";
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Revision */
+            revision: number;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By Operator Id */
+            updated_by_operator_id?: string | null;
+            /**
+             * Value Type
+             * @enum {string}
+             */
+            value_type: "string" | "integer";
+        };
+        /** SupportSafeSettingsRead */
+        SupportSafeSettingsRead: {
+            /** Editable Enabled */
+            editable_enabled: boolean;
+            /** Items */
+            items: components["schemas"]["SupportSafeSettingItem"][];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Permanently Locked Controls */
+            permanently_locked_controls: string[];
+        };
         /** SupportSessionRead */
         SupportSessionRead: {
             /**
@@ -17235,6 +18322,126 @@ export interface components {
             events: components["schemas"]["SupportTimelineEvent"][];
             /** Truncated */
             truncated: boolean;
+        };
+        /** SupportUserActionAvailability */
+        SupportUserActionAvailability: {
+            /** Action Kind */
+            action_kind: string;
+            /** Allowed */
+            allowed: boolean;
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Required Capability */
+            required_capability: string;
+        };
+        /** SupportUserActivityItem */
+        SupportUserActivityItem: {
+            /** Actor Reference */
+            actor_reference: string | null;
+            /** Authorization Mode */
+            authorization_mode: string | null;
+            /** Category */
+            category: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "business_auth" | "technical_command" | "case_account_action";
+            /** Summary */
+            summary: string;
+        };
+        /** SupportUserActivityPage */
+        SupportUserActivityPage: {
+            /** Items */
+            items: components["schemas"]["SupportUserActivityItem"][];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SupportUserProjectMembershipRead */
+        SupportUserProjectMembershipRead: {
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /** Project Code */
+            project_code: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Project Revision */
+            project_revision: number;
+            /** Project Status */
+            project_status: string;
+            /** Role In Project */
+            role_in_project: string | null;
+        };
+        /** SupportUserSessionInventoryRead */
+        SupportUserSessionInventoryRead: {
+            /** Access Revision */
+            access_revision: number;
+            /** Active Session Count */
+            active_session_count: number;
+            /** Has Unindexed Legacy Tokens */
+            has_unindexed_legacy_tokens: boolean;
+            /** Sessions */
+            sessions: components["schemas"]["SupportUserSessionItem"][];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SupportUserSessionItem */
+        SupportUserSessionItem: {
+            /** Active Refresh Tokens */
+            active_refresh_tokens: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Last Active At
+             * Format: date-time
+             */
+            last_active_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "revoked" | "expired";
         };
         /** SupportVerifyRequest */
         SupportVerifyRequest: {
@@ -17735,10 +18942,55 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** UnlockAccountCommand */
+        UnlockAccountCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "unlock_account";
+            /** Expected User Revision */
+            expected_user_revision: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default failed_sign_in
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /**
+             * Target User Id
+             * Format: uuid
+             */
+            target_user_id: string;
+        };
         /** UnreadCountResponse */
         UnreadCountResponse: {
             /** Unread Count */
             unread_count: number;
+        };
+        /** UpdateSafeSettingCommand */
+        UpdateSafeSettingCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            command_kind: "update_safe_setting";
+            /** Expected Revision */
+            expected_revision: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @default operational_configuration
+             * @enum {string}
+             */
+            reason_code: "account_provisioning" | "role_adjustment" | "project_membership" | "suspected_access" | "verified_user_report" | "failed_sign_in" | "offboarding_access" | "operational_configuration" | "operational_recovery";
+            /** Setting Key */
+            setting_key: string;
+            /** Value */
+            value: number | string;
         };
         /** UserCreateRequest */
         UserCreateRequest: {
@@ -32205,6 +33457,486 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportCaseRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    plan_company_admin_command_api_v1_support_company_commands_plan_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBusinessAccountCommand"] | components["schemas"]["SetAccountStateCommand"] | components["schemas"]["UnlockAccountCommand"] | components["schemas"]["ChangeBusinessRoleCommand"] | components["schemas"]["ChangeProjectMembershipCommand"] | components["schemas"]["RequestAccountRecoveryCommand"] | components["schemas"]["RevokeBusinessSessionCommand"] | components["schemas"]["UpdateSafeSettingCommand"] | components["schemas"]["RetrySafeJobCommand"] | components["schemas"]["BulkAccountLifecycleCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAdminCommandRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    read_company_admin_command_api_v1_support_company_commands__command_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAdminCommandRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    execute_company_admin_command_api_v1_support_company_commands__command_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportAdminCommandExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAdminCommandRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    company_admin_command_proof_options_api_v1_support_company_commands__command_id__proof_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAdminCommandProofOptions"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_context_api_v1_support_company_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCompanyContextRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_data_inspector_catalog_api_v1_support_company_data_inspector_entities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportDataInspectorCatalogRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_data_inspector_query_api_v1_support_company_data_inspector__entity_key__get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                entity_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportDataInspectorPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_owner_security_api_v1_support_company_owner_security_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportOwnerSecurityRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_safe_settings_api_v1_support_company_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportSafeSettingsRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_users_api_v1_support_company_users_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                role?: string | null;
+                state?: ("active" | "inactive" | "locked") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCompanyUserPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_user_profile_api_v1_support_company_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCompanyUserProfileRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_user_access_api_v1_support_company_users__user_id__access_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportCompanyUserAccessRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_user_activity_api_v1_support_company_users__user_id__activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportUserActivityPage"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_user_diagnose_case_api_v1_support_company_users__user_id__diagnose_case_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportDiagnoseCaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportDiagnoseCaseRead"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"] | components["schemas"]["AppErrorResponse"];
+                };
+            };
+        };
+    };
+    support_company_user_sessions_api_v1_support_company_users__user_id__sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportUserSessionInventoryRead"];
                 };
             };
             /** @description Invalid request */

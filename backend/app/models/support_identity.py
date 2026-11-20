@@ -45,6 +45,10 @@ class SupportLoginChallenge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             " AND (cli_token_hash IS NULL) = (cli_code_hash IS NULL)",
             name="cli_binding",
         ),
+        CheckConstraint(
+            "auth_method IN ('passkey', 'email_otp_only')",
+            name="auth_method",
+        ),
     )
 
     operator_id: Mapped[UUID] = mapped_column(
@@ -52,6 +56,9 @@ class SupportLoginChallenge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     challenge: Mapped[bytes] = mapped_column(LargeBinary)
     grant_epoch: Mapped[int] = mapped_column(BigInteger)
+    auth_method: Mapped[str] = mapped_column(
+        String(24), default="passkey", server_default="passkey"
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cli_token_hash: Mapped[str | None] = mapped_column(String(64))
@@ -75,7 +82,13 @@ class SupportEmailOtp(UUIDPrimaryKeyMixin, Base):
 
 class SupportSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "support_sessions"
-    __table_args__ = (Index("ix_support_sessions_operator_expiry", "operator_id", "expires_at"),)
+    __table_args__ = (
+        Index("ix_support_sessions_operator_expiry", "operator_id", "expires_at"),
+        CheckConstraint(
+            "auth_method IN ('passkey', 'email_otp_only')",
+            name="auth_method",
+        ),
+    )
 
     operator_id: Mapped[UUID] = mapped_column(
         ForeignKey("support_operators.id", ondelete="RESTRICT")
@@ -83,6 +96,9 @@ class SupportSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     csrf_hash: Mapped[str] = mapped_column(String(64))
     grant_epoch: Mapped[int] = mapped_column(BigInteger)
+    auth_method: Mapped[str] = mapped_column(
+        String(24), default="passkey", server_default="passkey"
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

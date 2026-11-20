@@ -2,27 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import type { components } from '../../api/schema';
 import { supportCsrf, supportPasskey, supportPost, supportRequest } from '../../api/support';
-import { SupportAccountPanel } from '../support/SupportAccountPanel';
-import { SupportBackupsPanel } from '../support/SupportBackupsPanel';
-import { SupportBusinessActionReview } from '../support/SupportBusinessActionsPanel';
-import { SupportConfigPanel } from '../support/SupportConfigPanel';
-import { SupportIncidentsPanel } from '../support/SupportIncidentsPanel';
-import { SupportJobsPanel } from '../support/SupportJobsPanel';
-import { SupportOverviewPanel } from '../support/SupportOverviewPanel';
-import { SupportPolicyExplainPanel } from '../support/SupportPolicyExplainPanel';
-import { SupportRecoveryStatusPanel } from '../support/SupportRecoveryStatusPanel';
-import { SupportPermissionViewPanel } from '../support/SupportPermissionViewPanel';
-import { SupportCliProofPanel } from '../support/SupportCliProofPanel';
 import { SupportCliLoginPanel } from '../support/SupportCliLoginPanel';
-import { SupportCaseAuditPanel } from '../support/SupportCaseAuditPanel';
-import { SupportCaseReview } from '../support/SupportCaseActionsPanel';
-import { SupportCasesPanel } from '../support/SupportCasesPanel';
-import { SupportEvidenceExportPanel } from '../support/SupportEvidenceExportPanel';
-import { SupportCustodyPanel } from '../support/SupportCustodyPanel';
-import { SupportLogs } from '../support/SupportLogs';
-import { SupportHealthPanel } from '../support/SupportHealthPanel';
+import { SupportCliProofPanel } from '../support/SupportCliProofPanel';
 import { SupportOtpForm } from '../support/SupportOtpForm';
 import { SupportRegistrationPanel } from '../support/SupportRegistrationPanel';
+import { SupportShell } from '../support/SupportShell';
 
 type LoginOptions = components['schemas']['SupportLoginOptions'];
 type Session = components['schemas']['SupportProfile'];
@@ -30,8 +14,9 @@ type Session = components['schemas']['SupportProfile'];
 function readCliReference() {
   if (typeof window === 'undefined') return null;
   if (window.location.hash === '#register') return ['', 'register', ''];
-  return /^#(cli|proof)=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/
-    .exec(window.location.hash);
+  return /^#(cli|proof)=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(
+    window.location.hash
+  );
 }
 
 export function SupportLoginPage() {
@@ -57,11 +42,11 @@ export function SupportLoginPage() {
     ])
       .then(async ([meResponse, modeResponse]) => {
         if (modeResponse?.ok) {
-          const mode = await modeResponse.json() as { otp_only_login?: boolean };
+          const mode = (await modeResponse.json()) as { otp_only_login?: boolean };
           if (!controller.signal.aborted) setOtpOnlyLogin(Boolean(mode.otp_only_login));
         }
         if (meResponse.ok) {
-          const identity = await meResponse.json() as Session;
+          const identity = (await meResponse.json()) as Session;
           if (!controller.signal.aborted) setSession(identity);
         }
       })
@@ -88,20 +73,20 @@ export function SupportLoginPage() {
           return;
         }
         if (!result.ok) throw new Error();
-        const signInResult = await result.json() as components['schemas']['SupportOtpRequired'];
+        const signInResult = (await result.json()) as components['schemas']['SupportOtpRequired'];
         setOtpReference(signInResult.otp_reference);
         return;
       }
       const optionsResponse = await supportPost('/auth/options', { operator_id: operatorId });
       if (!optionsResponse.ok) throw new Error();
-      const options = await optionsResponse.json() as LoginOptions;
+      const options = (await optionsResponse.json()) as LoginOptions;
       const result = await supportPost('/auth/verify', await supportPasskey(options));
       if (result.status === 503) {
         setMessage('Verification email is unavailable. Start a new sign-in and try again.');
         return;
       }
       if (!result.ok) throw new Error();
-      const signInResult = await result.json() as
+      const signInResult = (await result.json()) as
         components['schemas']['SupportSessionRead'] | components['schemas']['SupportOtpRequired'];
       if ('otp_reference' in signInResult) {
         setOtpReference(signInResult.otp_reference);
@@ -122,7 +107,7 @@ export function SupportLoginPage() {
   async function loadProfile() {
     const profile = await supportRequest('/me');
     if (!profile.ok) throw new Error();
-    setSession(await profile.json() as Session);
+    setSession((await profile.json()) as Session);
     setOtpReference(null);
   }
 
@@ -162,78 +147,26 @@ export function SupportLoginPage() {
         <h1 className="text-2xl font-semibold">Garrisons Super Admin</h1>
         {message && <p role="alert">{message}</p>}
         {cliReference ? (
-          cliReference[1] === 'register'
-            ? <SupportRegistrationPanel fromCli />
-            : cliReference[1] === 'proof'
-            ? <SupportCliProofPanel key={cliReference[2]} reference={cliReference[2]} />
-            : <SupportCliLoginPanel key={cliReference[2]} reference={cliReference[2]} />
+          cliReference[1] === 'register' ? (
+            <SupportRegistrationPanel fromCli />
+          ) : cliReference[1] === 'proof' ? (
+            <SupportCliProofPanel key={cliReference[2]} reference={cliReference[2]} />
+          ) : (
+            <SupportCliLoginPanel key={cliReference[2]} reference={cliReference[2]} />
+          )
         ) : session ? (
-          <div key={session.operator_id} className="space-y-4">
-            <p>Technical session active</p>
-            <SupportOverviewPanel capabilities={session.capabilities} onExpired={handleExpiry} />
-            {session.capabilities.includes('jobs.read') && (
-              <SupportJobsPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('backups.read') && (
-              <SupportBackupsPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('config.read') && (
-              <SupportConfigPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('incidents.read') && (
-              <SupportIncidentsPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('cases.manage') && (
-              <SupportCasesPanel onExpired={handleExpiry} operatorId={session.operator_id}
-                canReadDirectory={session.capabilities.includes('directory.read')}
-                canReviewProjectScope={session.capabilities.includes('simulation.start')}
-                canReadTimeline={session.capabilities.includes('logs.runtime')} />
-            )}
-            {session.capabilities.includes('operator.manage') && (
-              <SupportCustodyPanel onExpired={handleExpiry} />
-            )}
-            {(session.capabilities.includes('operator.manage') || (
-              session.capabilities.includes('cases.manage') && (
-                session.capabilities.includes('logs.runtime') || session.capabilities.includes('directory.read')
-              )
-            )) && <SupportCaseReview onExpired={handleExpiry} />}
-            {session.capabilities.includes('directory.read') && (
-              <SupportAccountPanel onExpired={handleExpiry}
-                canRequest={session.capabilities.includes('account.request')}
-                canExplain={session.capabilities.includes('simulation.start')} />
-            )}
-            {(session.capabilities.includes('account.request') || session.capabilities.includes('simulation.start')) && (
-              <SupportBusinessActionReview onExpired={handleExpiry} canRecordContact={
-                session.capabilities.includes('operator.manage') && session.capabilities.includes('account.request')
-              } />
-            )}
-            {session.capabilities.includes('simulation.start') && (
-              <>
-                <SupportPermissionViewPanel key={session.operator_id} onExpired={handleExpiry} />
-                <SupportPolicyExplainPanel onExpired={handleExpiry} />
-              </>
-            )}
-            {session.capabilities.includes('account.request') && (
-              <SupportRecoveryStatusPanel key={'recovery-status:' + session.operator_id} onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('logs.audit') && (
-              <SupportCaseAuditPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('health.read') && (
-              <SupportHealthPanel onExpired={handleExpiry} />
-            )}
-            {session.capabilities.includes('logs.runtime') && (
-              <SupportLogs onExpired={handleExpiry}
-                canFollow={session.capabilities.includes('logs.stream')} />
-            )}
-            {session.capabilities.includes('logs.runtime') && session.capabilities.includes('logs.export') && (
-              <SupportEvidenceExportPanel onExpired={handleExpiry} />
-            )}
-            <button disabled={pending} onClick={() => void signOut()} type="button">Sign out</button>
-          </div>
+          <SupportShell
+            session={session}
+            pending={pending}
+            onSignOut={() => void signOut()}
+            onExpired={handleExpiry}
+          />
         ) : otpReference ? (
-          <SupportOtpForm reference={otpReference} onVerified={loadProfile}
-            onRestart={() => setOtpReference(null)} />
+          <SupportOtpForm
+            reference={otpReference}
+            onVerified={loadProfile}
+            onRestart={() => setOtpReference(null)}
+          />
         ) : (
           <>
             <form className="space-y-3" onSubmit={(event) => void signIn(event)}>

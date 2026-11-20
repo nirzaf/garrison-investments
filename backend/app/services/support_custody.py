@@ -58,6 +58,14 @@ GrantCapability = Literal[
     "backups.read",
     "config.read",
     "incidents.read",
+    "company.directory.read",
+    "company.accounts.manage",
+    "company.access.assign",
+    "company.sessions.read",
+    "company.sessions.revoke",
+    "company.settings.manage",
+    "company.jobs.retry",
+    "company.data.inspect",
 ]
 _CUSTODY_CAPABILITY = "operator.manage"
 _MIN_CUSTODIANS = 2

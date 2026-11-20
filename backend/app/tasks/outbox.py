@@ -99,7 +99,8 @@ async def _reconcile_import_outbox_before_dispatch(
         batch_id = UUID(str(entry.args_json[0]))
     except (ValueError, TypeError):
         return False
-    batch = await session.get(ImportBatch, batch_id)
+    # Lock order: TaskOutbox (already locked by dispatcher) -> ImportBatch.
+    batch = await session.get(ImportBatch, batch_id, with_for_update=True, populate_existing=True)
     if batch is not None and batch.status in {"completed", "failed"}:
         entry.status = "completed" if batch.status == "completed" else "failed"
         _scrub_outbox_ciphertext(entry)
@@ -117,7 +118,11 @@ async def _mark_import_batch_dispatch_failed(session: AsyncSession, entry: TaskO
         batch_id = UUID(str(entry.args_json[0]))
     except (ValueError, TypeError):
         return
-    batch = await session.get(ImportBatch, batch_id, with_for_update=True)
+    # Lock order: TaskOutbox (already locked by dispatcher) -> ImportBatch.
+    batch = await session.get(ImportBatch, batch_id, with_for_update=True, populate_existing=True)
+    if batch is not None and batch.status == "completed":
+        entry.status = "completed"
+        return
     if batch is not None and batch.status == "queued":
         batch.status = "failed"
         batch.error_count = 1

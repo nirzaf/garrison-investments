@@ -31,7 +31,15 @@ const labels: Record<Grant['capability'], string> = {
   'jobs.read': 'Read job and scheduler monitor',
   'backups.read': 'Read backup and restore provenance',
   'config.read': 'Read allowlisted configuration status',
-  'incidents.read': 'Read sanitized security incident summary'
+  'incidents.read': 'Read sanitized security incident summary',
+  'company.directory.read': 'Read company-wide people directory and User 360 profile',
+  'company.accounts.manage': 'Manage business account creation, state, locks, and recovery',
+  'company.access.assign': 'Assign business roles and project memberships',
+  'company.sessions.read': 'Read business user session inventory metadata',
+  'company.sessions.revoke': 'Revoke selected or all business sessions',
+  'company.settings.manage': 'Update allowlisted safe operational settings',
+  'company.jobs.retry': 'Retry allowlisted terminal failed jobs',
+  'company.data.inspect': 'Read registered non-sensitive data inspector entities'
 };
 const descriptions = {
   suspensions: 'Suspend operator',
@@ -46,7 +54,9 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
   const [proposal, setProposal] = useState('');
   const [stage, setStage] = useState<Stage>('review');
   const [preview, setPreview] = useState<{
-    path: string; stage: Stage; options: SuspensionOptions | GrantOptions | RegistrationOptions;
+    path: string;
+    stage: Stage;
+    options: SuspensionOptions | GrantOptions | RegistrationOptions;
   } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -82,16 +92,24 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
     setPreview(null);
     try {
       const target_id = String(fields.get('target'));
-      const payload = registration ? { target_id, kind } : kind === 'suspensions' ? { target_id } : {
-        target_id,
-        capability: String(fields.get('capability')) as Grant['capability'],
-        enable: fields.get('enable') === 'add'
-      };
-      const response = await supportPost('/custody/' + (registration ? 'registrations' : kind), payload);
+      const payload = registration
+        ? { target_id, kind }
+        : kind === 'suspensions'
+          ? { target_id }
+          : {
+              target_id,
+              capability: String(fields.get('capability')) as Grant['capability'],
+              enable: fields.get('enable') === 'add'
+            };
+      const response = await supportPost(
+        '/custody/' + (registration ? 'registrations' : kind),
+        payload
+      );
       if (!check(response)) return;
-      const result = await response.json() as
-        components['schemas']['SuspensionRead'] | components['schemas']['GrantChangeRead'] |
-        components['schemas']['RegistrationProposalRead'];
+      const result = (await response.json()) as
+        | components['schemas']['SuspensionRead']
+        | components['schemas']['GrantChangeRead']
+        | components['schemas']['RegistrationProposalRead'];
       if ('proposal_id' in result) setProposal(result.proposal_id);
       else setProposal('suspension_id' in result ? result.suspension_id : result.grant_change_id);
       setStatus('Proposal created. A different eligible custodian must review it.');
@@ -115,7 +133,11 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
     try {
       const response = await supportPost(path + '/options', {});
       if (!check(response)) return;
-      setPreview({ path, stage, options: await response.json() as SuspensionOptions | GrantOptions | RegistrationOptions });
+      setPreview({
+        path,
+        stage,
+        options: (await response.json()) as SuspensionOptions | GrantOptions | RegistrationOptions
+      });
     } catch {
       setError('The passkey proof could not be prepared.');
     } finally {
@@ -133,10 +155,12 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
       const response = await supportPost(path, await supportPasskey(options));
       if (!check(response)) return;
       if ('kind' in options) {
-        const result = await response.json() as components['schemas']['RegistrationDecision'];
+        const result = (await response.json()) as components['schemas']['RegistrationDecision'];
         if (result.invitations) setInvitations(result.invitations);
       }
-      setStatus(decision === 'review' ? 'Independent review recorded.' : 'Custody decision applied.');
+      setStatus(
+        decision === 'review' ? 'Independent review recorded.' : 'Custody decision applied.'
+      );
     } catch {
       setError('The decision could not be confirmed. Prepare a new passkey proof.');
     } finally {
@@ -150,7 +174,9 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
       <label className="block">
         Custody action
         <select
-          className="block rounded border p-2" value={kind} disabled={pending}
+          className="block rounded border p-2"
+          value={kind}
+          disabled={pending}
           onChange={(event) => {
             setKind(event.target.value as ProposalKind);
             setProposal('');
@@ -169,14 +195,23 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
       <form className="space-y-2" onSubmit={(event) => void propose(event)}>
         <label className="block">
           Target operator reference
-          <input name="target" required pattern={uuidPattern} className="block w-full rounded border p-2" />
+          <input
+            name="target"
+            required
+            pattern={uuidPattern}
+            className="block w-full rounded border p-2"
+          />
         </label>
         {kind === 'grant-changes' && (
           <>
             <label className="block">
               Capability
               <select name="capability" className="block rounded border p-2">
-                {Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {Object.entries(labels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="block">
@@ -188,36 +223,55 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
             </label>
           </>
         )}
-        <button type="submit" disabled={pending}>Create custody proposal</button>
+        <button type="submit" disabled={pending}>
+          Create custody proposal
+        </button>
       </form>
       <form className="space-y-2" onSubmit={(event) => void prepare(event)}>
         <label className="block">
           Proposal reference
           <input
-            className="block w-full rounded border p-2" value={proposal} required pattern={uuidPattern}
-            onChange={(event) => { setProposal(event.target.value); setPreview(null); }}
+            className="block w-full rounded border p-2"
+            value={proposal}
+            required
+            pattern={uuidPattern}
+            onChange={(event) => {
+              setProposal(event.target.value);
+              setPreview(null);
+            }}
           />
         </label>
         <label className="block">
           Decision
           <select
-            className="block rounded border p-2" value={stage}
-            onChange={(event) => { setStage(event.target.value as Stage); setPreview(null); }}
+            className="block rounded border p-2"
+            value={stage}
+            onChange={(event) => {
+              setStage(event.target.value as Stage);
+              setPreview(null);
+            }}
           >
             <option value="review">Review proposal</option>
             <option value="execute">Execute approved proposal</option>
           </select>
         </label>
-        <button type="submit" disabled={pending}>Prepare passkey proof</button>
+        <button type="submit" disabled={pending}>
+          Prepare passkey proof
+        </button>
       </form>
       {preview && (
         <section aria-label="Confirm custody decision" className="space-y-2 border-t pt-3">
           <p className="break-all">Target operator {preview.options.target_id}</p>
-          {'capability' in preview.options
-            ? <p>{preview.options.enable ? 'Grant until revoked' : 'Revoke'} · {labels[preview.options.capability]}</p>
-            : 'kind' in preview.options
-              ? <p>{descriptions[preview.options.kind]}. Issue two one-use passkey invitations.</p>
-              : <p>Suspend operator and revoke their passkeys and sessions.</p>}
+          {'capability' in preview.options ? (
+            <p>
+              {preview.options.enable ? 'Grant until revoked' : 'Revoke'} ·{' '}
+              {labels[preview.options.capability]}
+            </p>
+          ) : 'kind' in preview.options ? (
+            <p>{descriptions[preview.options.kind]}. Issue two one-use passkey invitations.</p>
+          ) : (
+            <p>Suspend operator and revoke their passkeys and sessions.</p>
+          )}
           <button type="button" disabled={pending} onClick={() => void confirm()}>
             {preview.stage === 'review' ? 'Approve with passkey' : 'Execute with passkey'}
           </button>
@@ -225,21 +279,37 @@ export function SupportCustodyPanel({ onExpired }: { onExpired: () => void }) {
       )}
       {invitations && (
         <section aria-label="One-use registration invitations" className="space-y-2 border-t pt-3">
-          <p>Deliver one invitation per verified device through the approved private channel. They expire in 10 minutes.</p>
+          <p>
+            Deliver one invitation per verified device through the approved private channel. They
+            expire in 10 minutes.
+          </p>
           {invitations.map((invitation, index) => (
             <div key={index} className="flex gap-2">
               <input
-                aria-label={'Invitation ' + (index + 1)} className="min-w-0 flex-1 rounded border p-2"
-                type="password" readOnly value={invitation}
+                aria-label={'Invitation ' + (index + 1)}
+                className="min-w-0 flex-1 rounded border p-2"
+                type="password"
+                readOnly
+                value={invitation}
               />
-              <button type="button" onClick={() => {
-                void navigator.clipboard.writeText(invitation)
-                  .then(() => setStatus('Invitation copied.'))
-                  .catch(() => setError('Clipboard unavailable. Select the invitation to copy it.'));
-              }}>Copy invitation {index + 1}</button>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(invitation)
+                    .then(() => setStatus('Invitation copied.'))
+                    .catch(() =>
+                      setError('Clipboard unavailable. Select the invitation to copy it.')
+                    );
+                }}
+              >
+                Copy invitation {index + 1}
+              </button>
             </div>
           ))}
-          <button type="button" onClick={() => setInvitations(null)}>Hide invitations</button>
+          <button type="button" onClick={() => setInvitations(null)}>
+            Hide invitations
+          </button>
         </section>
       )}
       {pending && <p role="status">Working…</p>}

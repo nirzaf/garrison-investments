@@ -1242,3 +1242,65 @@ def register(registry: Registry) -> None:
     leaf.add_argument("--hours", type=int, default=24)
     leaf.add_argument("--case", type=UUID)
     leaf.add_argument("--output", type=Path, required=True)
+
+    for command, path, permission in (
+        ("support company context", "/company/context", "technical session"),
+        ("support company settings", "/company/settings", "config.read or company.settings.manage"),
+        ("support company owner-security", "/company/owner-security", "technical session"),
+    ):
+        leaf = registry.add(
+            command,
+            lambda a, c, path=path: _read(c, path, a.output),
+            permission=permission,
+        )
+        leaf.add_argument("--output", type=Path, required=True)
+
+    leaf = registry.add(
+        "support company users",
+        lambda a, c: _read(
+            c,
+            "/company/users",
+            a.output,
+            search=a.search,
+            role=a.role,
+            state=a.state,
+            limit=a.limit,
+        ),
+        permission="company.directory.read",
+    )
+    leaf.add_argument("--search")
+    leaf.add_argument("--role")
+    leaf.add_argument("--state", choices=("active", "inactive", "locked"))
+    leaf.add_argument("--limit", type=int, default=25)
+    leaf.add_argument("--output", type=Path, required=True)
+
+    for subcmd, suffix, perm in (
+        ("user-profile", "", "company.directory.read"),
+        ("user-access", "/access", "company.directory.read"),
+        ("user-sessions", "/sessions", "company.sessions.read"),
+        ("user-activity", "/activity", "company.directory.read"),
+    ):
+        leaf = registry.add(
+            f"support company {subcmd}",
+            lambda a, c, suffix=suffix: _read(
+                c,
+                f"/company/users/{a.user}{suffix}",
+                a.output,
+                project_id=str(getattr(a, "project", None))
+                if getattr(a, "project", None) is not None
+                else None,
+            ),
+            permission=perm,
+        )
+        leaf.add_argument("--user", type=UUID, required=True)
+        if subcmd == "user-access":
+            leaf.add_argument("--project", type=UUID)
+        leaf.add_argument("--output", type=Path, required=True)
+
+    leaf = registry.add(
+        "support company command show",
+        lambda a, c: _read(c, f"/company/commands/{a.command}", a.output),
+        permission="matching company command capability",
+    )
+    leaf.add_argument("--command", type=UUID, required=True)
+    leaf.add_argument("--output", type=Path, required=True)

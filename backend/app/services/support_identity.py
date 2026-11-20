@@ -146,6 +146,7 @@ class SupportIdentity:
                         operator_id=operator_id,
                         challenge=challenge,
                         grant_epoch=operator.grant_epoch,
+                        auth_method="passkey",
                         created_at=now,
                         expires_at=now + _CHALLENGE_LIFETIME,
                         cli_token_hash=cli_token_hash,
@@ -249,6 +250,7 @@ class SupportIdentity:
                 operator_id=operator_id,
                 challenge=token_bytes(32),
                 grant_epoch=operator.grant_epoch,
+                auth_method="email_otp_only",
                 created_at=now,
                 expires_at=now + _CHALLENGE_LIFETIME,
                 consumed_at=now,
@@ -332,7 +334,16 @@ class SupportIdentity:
             or otp.expires_at <= now
             or otp.attempts >= _OTP_ATTEMPTS
             or destination is None
+            or (
+                challenge.auth_method == "email_otp_only"
+                and not get_settings().support_email_otp_only_login
+            )
         ):
+            if challenge is not None and challenge.auth_method == "email_otp_only" and (
+                not get_settings().support_email_otp_only_login
+            ):
+                self._record(operator_id, request_id, "login_denied", now)
+                await self.session.commit()
             raise _denied()
         secret, mailbox = destination
         if not compare_digest(otp.code_digest, _otp_digest(secret, mailbox, reference, code)):
@@ -361,6 +372,7 @@ class SupportIdentity:
             token_hash=token_hash,
             csrf_hash=csrf_hash,
             grant_epoch=operator.grant_epoch,
+            auth_method=challenge.auth_method,
             last_seen_at=now,
             expires_at=now + timedelta(seconds=SUPPORT_SESSION_SECONDS),
         )
@@ -402,7 +414,9 @@ class SupportIdentity:
             raise _denied()
         stored.sign_count = verified.new_sign_count
 
-    async def current(self, token: str | None) -> tuple[SupportOperator, SupportSession]:
+    async def current(
+        self, token: str | None, *, require_passkey_assurance: bool = False
+    ) -> tuple[SupportOperator, SupportSession]:
         if not token or len(token) != 43:
             raise _denied()
         token_hash = _digest(token)
@@ -423,8 +437,18 @@ class SupportIdentity:
             or active.revoked_at is not None
             or support_session_deadline(active) <= now
             or active.grant_epoch != operator.grant_epoch
+            or (
+                active.auth_method == "email_otp_only"
+                and not get_settings().support_email_otp_only_login
+            )
         ):
             raise _denied()
+        if require_passkey_assurance and active.auth_method != "passkey":
+            raise AppException(
+                "A passkey-authenticated technical session is required for this operation.",
+                status_code=403,
+                error_code="SUPPORT_PASSKEY_ASSURANCE_REQUIRED",
+            )
         return operator, active
 
     async def logout(self, token: str | None, csrf: str | None, request_id: str) -> None:

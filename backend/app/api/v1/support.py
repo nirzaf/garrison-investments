@@ -27,6 +27,22 @@ from app.schemas.support_cases import (
     SupportCaseRead,
     SupportCaseTransition,
 )
+from app.schemas.support_company_admin import (
+    SupportAdminCommandPlanRequest,
+    SupportAdminCommandRead,
+    SupportCompanyContextRead,
+    SupportCompanyUserAccessRead,
+    SupportCompanyUserPage,
+    SupportCompanyUserProfileRead,
+    SupportDataInspectorCatalogRead,
+    SupportDataInspectorPage,
+    SupportDiagnoseCaseRead,
+    SupportDiagnoseCaseRequest,
+    SupportOwnerSecurityRead,
+    SupportSafeSettingsRead,
+    SupportUserActivityPage,
+    SupportUserSessionInventoryRead,
+)
 from app.schemas.support_evidence_export import (
     SupportEvidenceExportCreate,
     SupportEvidenceExportRead,
@@ -48,6 +64,22 @@ from app.schemas.support_oversight import (
     SupportProjectsOverviewRead,
     SupportSuppliersOverviewRead,
     SupportWorkforceOverviewRead,
+)
+from app.services.support_account_directory import (
+    diagnose_or_link_user_case,
+    list_company_users,
+    query_data_inspector_entity,
+    read_company_user_access,
+    read_company_user_activity,
+    read_company_user_profile,
+    read_company_user_sessions,
+    read_data_inspector_catalog,
+)
+from app.services.support_admin_commands import SupportAdminCommands
+from app.services.support_admin_policy import (
+    read_company_context,
+    read_owner_security,
+    read_safe_settings,
 )
 from app.services.support_business_actions import SupportBusinessActions
 from app.services.support_case_actions import SupportCaseActions
@@ -1370,4 +1402,232 @@ async def support_incidents_summary(
 ) -> SupportIncidentsSummaryRead:
     return await read_incidents_summary(
         session, request.cookies.get(SESSION_COOKIE), query, request.state.request_id
+    )
+
+
+class SupportAdminCommandProofOptions(SupportLoginOptions):
+    command: SupportAdminCommandRead
+
+
+class SupportAdminCommandExecuteRequest(SupportVerifyRequest):
+    expected_plan_sha256: ActionDigest
+
+
+@router.get("/company/context", response_model=SupportCompanyContextRead)
+async def support_company_context(
+    request: Request, session: DbSession
+) -> SupportCompanyContextRead:
+    return await read_company_context(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/company/users", response_model=SupportCompanyUserPage)
+async def support_company_users(
+    request: Request,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    role: Annotated[str | None, Query(max_length=64)] = None,
+    state: Annotated[Literal["active", "inactive", "locked"] | None, Query()] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> SupportCompanyUserPage:
+    return await list_company_users(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        request.state.request_id,
+        search=search,
+        role=role,
+        state=state,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+@router.get("/company/users/{user_id}", response_model=SupportCompanyUserProfileRead)
+async def support_company_user_profile(
+    user_id: UUID, request: Request, session: DbSession
+) -> SupportCompanyUserProfileRead:
+    return await read_company_user_profile(
+        session, request.cookies.get(SESSION_COOKIE), user_id, request.state.request_id
+    )
+
+
+@router.get("/company/users/{user_id}/access", response_model=SupportCompanyUserAccessRead)
+async def support_company_user_access(
+    user_id: UUID,
+    request: Request,
+    session: DbSession,
+    project_id: UUID | None = None,
+) -> SupportCompanyUserAccessRead:
+    return await read_company_user_access(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        user_id,
+        request.state.request_id,
+        project_id=project_id,
+    )
+
+
+@router.get("/company/users/{user_id}/sessions", response_model=SupportUserSessionInventoryRead)
+async def support_company_user_sessions(
+    user_id: UUID, request: Request, session: DbSession
+) -> SupportUserSessionInventoryRead:
+    return await read_company_user_sessions(
+        session, request.cookies.get(SESSION_COOKIE), user_id, request.state.request_id
+    )
+
+
+@router.get("/company/users/{user_id}/activity", response_model=SupportUserActivityPage)
+async def support_company_user_activity(
+    user_id: UUID, request: Request, session: DbSession
+) -> SupportUserActivityPage:
+    return await read_company_user_activity(
+        session, request.cookies.get(SESSION_COOKIE), user_id, request.state.request_id
+    )
+
+
+@router.post(
+    "/company/users/{user_id}/diagnose-case",
+    status_code=201,
+    response_model=SupportDiagnoseCaseRead,
+)
+async def support_company_user_diagnose_case(
+    user_id: UUID,
+    payload: SupportDiagnoseCaseRequest,
+    request: Request,
+    session: DbSession,
+) -> SupportDiagnoseCaseRead:
+    return await diagnose_or_link_user_case(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        user_id,
+        payload,
+        request.state.request_id,
+    )
+
+
+@router.post(
+    "/company/commands/plan",
+    status_code=201,
+    response_model=SupportAdminCommandRead,
+)
+async def plan_company_admin_command(
+    payload: SupportAdminCommandPlanRequest,
+    request: Request,
+    session: DbSession,
+    idempotency_key: Annotated[str, Header(min_length=1, max_length=64)],
+) -> SupportAdminCommandRead:
+    return await SupportAdminCommands(session).plan(
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        idempotency_key,
+        payload,
+        request.state.request_id,
+    )
+
+
+@router.post(
+    "/company/commands/{command_id}/proof/options",
+    response_model=SupportAdminCommandProofOptions,
+)
+async def company_admin_command_proof_options(
+    command_id: UUID, request: Request, session: DbSession
+) -> SupportAdminCommandProofOptions:
+    challenge_id, options_json, command = await SupportAdminCommands(session).options(
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        command_id,
+        request.state.request_id,
+    )
+    return SupportAdminCommandProofOptions(
+        challenge_id=challenge_id,
+        public_key=SupportPublicKeyOptions.model_validate(json.loads(options_json)),
+        command=command,
+    )
+
+
+@router.post(
+    "/company/commands/{command_id}/execute",
+    response_model=SupportAdminCommandRead,
+)
+async def execute_company_admin_command(
+    command_id: UUID,
+    payload: SupportAdminCommandExecuteRequest,
+    request: Request,
+    session: DbSession,
+) -> SupportAdminCommandRead:
+    return await SupportAdminCommands(session).execute(
+        request.cookies.get(SESSION_COOKIE),
+        request.headers.get("x-support-csrf"),
+        command_id,
+        payload.challenge_id,
+        payload.expected_plan_sha256,
+        payload.credential.model_dump(),
+        request.state.request_id,
+    )
+
+
+@router.get("/company/commands/{command_id}", response_model=SupportAdminCommandRead)
+async def read_company_admin_command(
+    command_id: UUID, request: Request, session: DbSession
+) -> SupportAdminCommandRead:
+    return await SupportAdminCommands(session).get_command(
+        request.cookies.get(SESSION_COOKIE), command_id, request.state.request_id
+    )
+
+
+@router.get("/company/settings", response_model=SupportSafeSettingsRead)
+async def support_company_safe_settings(
+    request: Request, session: DbSession
+) -> SupportSafeSettingsRead:
+    return await read_safe_settings(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get("/company/owner-security", response_model=SupportOwnerSecurityRead)
+async def support_company_owner_security(
+    request: Request, session: DbSession
+) -> SupportOwnerSecurityRead:
+    return await read_owner_security(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get(
+    "/company/data-inspector/entities",
+    response_model=SupportDataInspectorCatalogRead,
+)
+async def support_company_data_inspector_catalog(
+    request: Request, session: DbSession
+) -> SupportDataInspectorCatalogRead:
+    return await read_data_inspector_catalog(
+        session, request.cookies.get(SESSION_COOKIE), request.state.request_id
+    )
+
+
+@router.get(
+    "/company/data-inspector/{entity_key}",
+    response_model=SupportDataInspectorPage,
+)
+async def support_company_data_inspector_query(
+    entity_key: str,
+    request: Request,
+    session: DbSession,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    status: Annotated[str | None, Query(max_length=32)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 25,
+    offset: Annotated[int, Query(ge=0, le=5000)] = 0,
+) -> SupportDataInspectorPage:
+    return await query_data_inspector_entity(
+        session,
+        request.cookies.get(SESSION_COOKIE),
+        entity_key,
+        request.state.request_id,
+        search=search,
+        status=status,
+        limit=limit,
+        offset=offset,
     )

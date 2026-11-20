@@ -73,7 +73,9 @@ class SupportCases:
     async def _actor(
         self, token: str | None, csrf: str | None = None, *, write: bool = False
     ) -> tuple[SupportOperator, SupportSession]:
-        operator, active = await SupportIdentity(self.session).current(token)
+        operator, active = await SupportIdentity(self.session).current(
+            token, require_passkey_assurance=write
+        )
         if write and (
             not csrf or len(csrf) != 43 or not compare_digest(active.csrf_hash, _digest(csrf))
         ):

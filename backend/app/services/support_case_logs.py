@@ -32,7 +32,9 @@ async def authorize_case_request_logs(
     *,
     require_stream: bool = False,
 ) -> SupportSession:
-    operator, auth_session = await SupportIdentity(session).current(token)
+    operator, auth_session = await SupportIdentity(session).current(
+        token, require_passkey_assurance=True
+    )
     await require_case_request_log_scope(
         session, operator.id, case_id, source_request_id,
         additional_grant="logs.stream" if require_stream else None,

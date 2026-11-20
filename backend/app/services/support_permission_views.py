@@ -141,31 +141,44 @@ class SupportPermissionViews:
             or subject.user_id != action.user_id
         ):
             raise NotFoundException("Support view")
-        reviewer = await self.session.scalar(
-            select(SupportBusinessApproval.reviewer_id)
-            .join(SupportOperator, SupportOperator.id == SupportBusinessApproval.reviewer_id)
-            .join(
-                SupportCaseMember,
-                and_(
-                    SupportCaseMember.case_id == action.case_id,
-                    SupportCaseMember.operator_id == SupportOperator.id,
-                ),
+        owner_authorized = False
+        if action.owner_session_id is not None:
+            owner_authorized = (
+                action.owner_session_id == active.id
+                and action.permission_session_id == active.id
+                and active.operator_id == action.requester_id
+                and active.grant_epoch == action.requester_epoch
+                and active.revoked_at is None
+                and support_session_deadline(active) > utc_now()
+                and await SupportIdentity(self.session).is_single_owner(operator.id)
             )
-            .join(
-                SupportOperatorGrant,
-                and_(
-                    SupportOperatorGrant.operator_id == SupportOperator.id,
-                    SupportOperatorGrant.capability == _CAPABILITY,
-                ),
+        reviewer = None
+        if not owner_authorized and action.owner_session_id is None:
+            reviewer = await self.session.scalar(
+                select(SupportBusinessApproval.reviewer_id)
+                .join(SupportOperator, SupportOperator.id == SupportBusinessApproval.reviewer_id)
+                .join(
+                    SupportCaseMember,
+                    and_(
+                        SupportCaseMember.case_id == action.case_id,
+                        SupportCaseMember.operator_id == SupportOperator.id,
+                    ),
+                )
+                .join(
+                    SupportOperatorGrant,
+                    and_(
+                        SupportOperatorGrant.operator_id == SupportOperator.id,
+                        SupportOperatorGrant.capability == _CAPABILITY,
+                    ),
+                )
+                .where(
+                    SupportBusinessApproval.action_id == action.id,
+                    SupportBusinessApproval.reviewer_id != operator.id,
+                    SupportBusinessApproval.reviewer_epoch == SupportOperator.grant_epoch,
+                    SupportOperator.status == "active",
+                )
+                .limit(1)
             )
-            .where(
-                SupportBusinessApproval.action_id == action.id,
-                SupportBusinessApproval.reviewer_id != operator.id,
-                SupportBusinessApproval.reviewer_epoch == SupportOperator.grant_epoch,
-                SupportOperator.status == "active",
-            )
-            .limit(1)
-        )
         user = (
             await self.session.execute(
                 select(User.role, User.access_revision)
@@ -176,7 +189,7 @@ class SupportPermissionViews:
             )
         ).one_or_none()
         if (
-            reviewer is None
+            (not owner_authorized and reviewer is None)
             or user is None
             or user.access_revision != action.user_revision
             or user.role not in BUSINESS_ROLES

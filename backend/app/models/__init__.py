@@ -33,6 +33,12 @@ from app.models.project_task import ProjectTask
 from app.models.report_export import ReportExport
 from app.models.supervisor_update import SupervisorUpdate
 from app.models.supplier import Supplier
+from app.models.support_admin_commands import (
+    SupportAdminCommand,
+    SupportAdminCommandEvent,
+    SupportAdminCommandProof,
+    SupportSafeSetting,
+)
 from app.models.support_business_actions import (
     SupportBusinessAction,
     SupportBusinessApproval,
@@ -118,6 +124,9 @@ __all__ = [
     "ReportMaterialConsumption",
     "SupervisorUpdate",
     "Supplier",
+    "SupportAdminCommand",
+    "SupportAdminCommandEvent",
+    "SupportAdminCommandProof",
     "SupportAuthEvent",
     "SupportBackupReceipt",
     "SupportBusinessAction",
@@ -152,6 +161,7 @@ __all__ = [
     "SupportBootstrap",
     "SupportBootstrapEvent",
     "SupportRegistration",
+    "SupportSafeSetting",
     "SupportSession",
     "SupportCliProof",
     "SupportCustodyAction",

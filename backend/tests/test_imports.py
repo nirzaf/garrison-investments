@@ -1054,3 +1054,99 @@ async def test_queued_import_survives_key_rotation_and_fails_closed_when_key_ret
         assert failed_batch.summary == {"error_code": "IMPORT_DISPATCH_FAILED"}
         assert failed_outbox is not None and failed_outbox.status == "failed"
         assert "content_ciphertext" not in failed_outbox.kwargs_json
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interleaving", ["dispatcher_first", "worker_first"])
+async def test_concurrent_outbox_dispatch_and_worker_terminal_failure_lock_order(
+    interleaving: str,
+) -> None:
+    """Two real PostgreSQL sessions contend on terminal failure without deadlock (F-02 / V-31)."""
+    await skip_if_database_unavailable()
+    from app.models.task_outbox import TaskOutbox
+    from app.services.import_service import import_outbox_dedupe_key
+    from app.tasks.imports import _mark_batch_failed
+    from app.tasks.outbox import MAX_OUTBOX_ATTEMPTS, _mark_import_batch_dispatch_failed
+
+    actor = await create_admin()
+    batch_id = uuid4()
+    dedupe_key = import_outbox_dedupe_key(batch_id)
+    async with AsyncSessionLocal() as setup_session:
+        setup_session.add(
+            ImportBatch(
+                id=batch_id,
+                template_type="opening_stock",
+                file_name="deadlock_check.csv",
+                status="queued",
+                created_by=actor.id,
+            )
+        )
+        setup_session.add(
+            TaskOutbox(
+                dedupe_key=dedupe_key,
+                task_name="run_import_async",
+                args_json=[str(batch_id), str(actor.id)],
+                kwargs_json={
+                    "template_type": "opening_stock",
+                    "file_name": "deadlock_check.csv",
+                    "content_sha256": "a" * 64,
+                    "content_ciphertext": "secret-ciphertext-to-scrub",
+                },
+                status="dispatched",
+                attempts=MAX_OUTBOX_ATTEMPTS,
+            )
+        )
+        await setup_session.commit()
+
+    first_locked = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def run_dispatcher() -> None:
+        async with AsyncSessionLocal() as disp_session:
+            if interleaving == "worker_first":
+                await first_locked.wait()
+                second_started.set()
+            entry = await disp_session.scalar(
+                select(TaskOutbox)
+                .where(TaskOutbox.dedupe_key == dedupe_key)
+                .with_for_update()
+            )
+            assert entry is not None
+            if interleaving == "dispatcher_first":
+                first_locked.set()
+                await second_started.wait()
+            entry.status = "failed"
+            await _mark_import_batch_dispatch_failed(disp_session, entry)
+            await disp_session.commit()
+
+    async def run_worker_failure() -> None:
+        async with AsyncSessionLocal() as worker_session:
+            if interleaving == "dispatcher_first":
+                await first_locked.wait()
+                second_started.set()
+                await _mark_batch_failed(worker_session, batch_id, "IMPORT_EXECUTION_FAILED")
+                return
+            # worker_first: acquire first lock in _mark_batch_failed's order, signal, then finish.
+            entry = await worker_session.scalar(
+                select(TaskOutbox)
+                .where(TaskOutbox.dedupe_key == dedupe_key)
+                .with_for_update()
+            )
+            assert entry is not None
+            first_locked.set()
+            await second_started.wait()
+            await _mark_batch_failed(worker_session, batch_id, "IMPORT_EXECUTION_FAILED")
+
+    await asyncio.wait_for(
+        asyncio.gather(run_dispatcher(), run_worker_failure()),
+        timeout=5.0,
+    )
+
+    async with AsyncSessionLocal() as check_session:
+        batch = await check_session.get(ImportBatch, batch_id)
+        outbox = await check_session.scalar(
+            select(TaskOutbox).where(TaskOutbox.dedupe_key == dedupe_key)
+        )
+        assert batch is not None and batch.status == "failed"
+        assert outbox is not None and outbox.status == "failed"
+        assert "content_ciphertext" not in (outbox.kwargs_json or {})

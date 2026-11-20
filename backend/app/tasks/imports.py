@@ -84,6 +84,32 @@ def run_import_async(
     )
 
 
+def _apply_outbox_finalization(entry: TaskOutbox | None, *, completed: bool) -> None:
+    if entry is None:
+        return
+    entry.status = "completed" if completed else "failed"
+    if isinstance(entry.kwargs_json, dict) and "content_ciphertext" in entry.kwargs_json:
+        entry.kwargs_json = {
+            key: value for key, value in entry.kwargs_json.items() if key != "content_ciphertext"
+        }
+
+
+async def _lock_import_outbox_and_batch(
+    session: AsyncSession, batch_id: UUID
+) -> tuple[TaskOutbox | None, ImportBatch | None]:
+    """Acquire TaskOutbox before ImportBatch to match outbox dispatcher lock order."""
+    entry = await session.scalar(
+        select(TaskOutbox)
+        .where(TaskOutbox.dedupe_key == import_outbox_dedupe_key(batch_id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    batch = await session.get(
+        ImportBatch, batch_id, with_for_update=True, populate_existing=True
+    )
+    return entry, batch
+
+
 async def _finalize_import_outbox(
     session: AsyncSession, batch_id: UUID | None, *, completed: bool
 ) -> None:
@@ -94,13 +120,7 @@ async def _finalize_import_outbox(
         .where(TaskOutbox.dedupe_key == import_outbox_dedupe_key(batch_id))
         .with_for_update()
     )
-    if entry is None:
-        return
-    entry.status = "completed" if completed else "failed"
-    if isinstance(entry.kwargs_json, dict) and "content_ciphertext" in entry.kwargs_json:
-        entry.kwargs_json = {
-            key: value for key, value in entry.kwargs_json.items() if key != "content_ciphertext"
-        }
+    _apply_outbox_finalization(entry, completed=completed)
 
 
 async def _load_outbox_import_payload(session: AsyncSession, batch_id: UUID) -> bytes:
@@ -163,8 +183,9 @@ async def _run_import_async(
         try:
             ImportService.ensure_template_access(actor, template_type)
             batch: ImportBatch | None = None
+            outbox_entry: TaskOutbox | None = None
             if batch_uuid:
-                batch = await session.get(ImportBatch, batch_uuid, with_for_update=True)
+                outbox_entry, batch = await _lock_import_outbox_and_batch(session, batch_uuid)
                 if (
                     batch is None
                     or batch.created_by != actor.id
@@ -177,7 +198,7 @@ async def _run_import_async(
                         error_code="IMPORT_BATCH_NOT_ELIGIBLE",
                     )
                 if batch.status == "completed":
-                    await _finalize_import_outbox(session, batch_uuid, completed=True)
+                    _apply_outbox_finalization(outbox_entry, completed=True)
                     await session.commit()
                     return f"import {batch.id} completed: {batch.status}"
             payload_bytes = content
@@ -247,18 +268,18 @@ async def _run_import_async(
 async def _mark_batch_failed(session: AsyncSession, batch_id: UUID | None, error_code: str) -> None:
     if not batch_id:
         return
-    batch = await session.get(ImportBatch, batch_id, with_for_update=True)
+    outbox_entry, batch = await _lock_import_outbox_and_batch(session, batch_id)
     if batch is None:
-        await _finalize_import_outbox(session, batch_id, completed=False)
+        _apply_outbox_finalization(outbox_entry, completed=False)
         await session.commit()
         return
     if batch.status == "completed":
-        await _finalize_import_outbox(session, batch_id, completed=True)
+        _apply_outbox_finalization(outbox_entry, completed=True)
         await session.commit()
         return
     batch.status = "failed"
     batch.summary = {"error_code": error_code}
-    await _finalize_import_outbox(session, batch_id, completed=False)
+    _apply_outbox_finalization(outbox_entry, completed=False)
     await session.commit()
 
 

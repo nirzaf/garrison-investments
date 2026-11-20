@@ -33,12 +33,35 @@ EXISTING_NON_BOOTSTRAP_CAPABILITIES: tuple[str, ...] = (
     "simulation.start",
 )
 
+COMPANY_CONTROL_CAPABILITIES: tuple[str, ...] = (
+    "company.directory.read",
+    "company.accounts.manage",
+    "company.access.assign",
+    "company.sessions.read",
+    "company.sessions.revoke",
+    "company.settings.manage",
+    "company.jobs.retry",
+    "company.data.inspect",
+)
+
 ALL_GRANTABLE_CAPABILITIES: tuple[str, ...] = (
+    *EXISTING_NON_BOOTSTRAP_CAPABILITIES,
+    *OVERSIGHT_CAPABILITIES,
+    *COMPANY_CONTROL_CAPABILITIES,
+)
+
+# Retained as the baseline bootstrap capability set so new company.* capabilities
+# are granted deliberately rather than via blanket enumeration (T-03 / Section 7.2).
+ALL_SUPPORT_CAPABILITIES: tuple[str, ...] = (
+    "operator.manage",
     *EXISTING_NON_BOOTSTRAP_CAPABILITIES,
     *OVERSIGHT_CAPABILITIES,
 )
 
-ALL_SUPPORT_CAPABILITIES: tuple[str, ...] = ("operator.manage", *ALL_GRANTABLE_CAPABILITIES)
+ALL_KNOWN_SUPPORT_CAPABILITIES: tuple[str, ...] = (
+    "operator.manage",
+    *ALL_GRANTABLE_CAPABILITIES,
+)
 
 OVERSIGHT_SURFACES: tuple[str, ...] = (
     "overview_company",
@@ -54,6 +77,14 @@ OVERSIGHT_SURFACES: tuple[str, ...] = (
     "config",
     "incidents",
     "policy_explain",
+    "company_context",
+    "company_directory",
+    "company_user_profile",
+    "company_user_access",
+    "company_user_sessions",
+    "company_user_activity",
+    "company_settings",
+    "company_data_inspector",
 )
 
 

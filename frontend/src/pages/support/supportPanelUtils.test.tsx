@@ -7,7 +7,11 @@ import { SupportConfigPanel } from './SupportConfigPanel';
 import { SupportIncidentsPanel } from './SupportIncidentsPanel';
 import { SupportJobsPanel } from './SupportJobsPanel';
 import { SupportOverviewPanel } from './SupportOverviewPanel';
+import { SupportOwnerSecurityPanel } from './SupportOwnerSecurityPanel';
 import { SupportPolicyExplainPanel } from './SupportPolicyExplainPanel';
+import { SupportSafeSettingsPanel } from './SupportSafeSettingsPanel';
+import { SupportShell } from './SupportShell';
+import { SupportUsersPage } from './SupportUsersPage';
 import { formatMetricValue } from './supportPanelUtils';
 
 describe('support oversight UI helpers and gating', () => {
@@ -87,5 +91,63 @@ describe('support oversight UI helpers and gating', () => {
     expect(html).toContain('Garrisons Super Admin');
     expect(html).toContain('Sign in with a passkey');
     expect(html).not.toContain('Enterprise oversight');
+  });
+
+  it('renders Company Control Centre shell with 7 task-oriented navigation sections', () => {
+    const html = renderToString(
+      <SupportShell
+        session={{
+          operator_id: '00000000-0000-0000-0000-000000000001',
+          expires_at: '2026-11-20T18:00:00Z',
+          capabilities: ['company.directory.read', 'overview.company.read']
+        }}
+        pending={false}
+        onSignOut={vi.fn()}
+        onExpired={vi.fn()}
+      />
+    );
+    expect(html).toContain('Company Control Centre');
+    expect(html).toContain('Single-company deployment');
+    expect(html).toContain('Overview');
+    expect(html).toContain('People &amp; Access');
+    expect(html).toContain('Projects &amp; Operations');
+    expect(html).toContain('Support &amp; Audit');
+    expect(html).toContain('Recovery');
+    expect(html).toContain('Settings');
+    expect(html).toContain('Owner Security');
+  });
+
+  it('enforces capability gates on People & Access directory and safe settings editor', () => {
+    const deniedHtml = renderToString(
+      <SupportUsersPage
+        capabilities={['directory.read']}
+        selectedUserId={null}
+        onSelectUser={vi.fn()}
+        onExpired={vi.fn()}
+      />
+    );
+    expect(deniedHtml).toContain('company.directory.read');
+    expect(deniedHtml).not.toContain('Search directory');
+
+    const grantedHtml = renderToString(
+      <SupportUsersPage
+        capabilities={['company.directory.read', 'company.accounts.manage']}
+        selectedUserId={null}
+        onSelectUser={vi.fn()}
+        onExpired={vi.fn()}
+      />
+    );
+    expect(grantedHtml).toContain('People &amp; Access Directory');
+    expect(grantedHtml).toContain('+ Create or invite user');
+
+    const settingsHtml = renderToString(
+      <SupportSafeSettingsPanel canManage={false} onExpired={vi.fn()} />
+    );
+    expect(settingsHtml).toContain('Allowlisted non-secret operational settings');
+
+    const securityHtml = renderToString(
+      <SupportOwnerSecurityPanel canManageOperators={false} onExpired={vi.fn()} />
+    );
+    expect(securityHtml).toContain('Owner Security &amp; Enrolled Devices');
   });
 });

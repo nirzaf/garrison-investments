@@ -950,6 +950,7 @@ technical origin, passkey user presence and approval challenge.
 | Read attested backup and restore-drill receipts | `support monitor backups` (`--output`) | Implemented locally under `backups.read`. Reads append-only receipts without host paths or object-store keys. |
 | Read non-secret runtime configuration posture | `support config show` (`--output`) | Implemented locally under `config.read`. Reports boolean posture, normalized origins, leaf certificate expiry window and build SHA without secrets. |
 | Read incident failure and unknown-delivery summary | `support incidents show` (`--hours`, optional `--case`, `--output`) | Implemented locally under `incidents.read`. Summarizes failed jobs, unknown/failed recovery outcomes and denied support requests without PII or request bodies. |
+| Read Company Control Centre context, users, sessions, settings, security, or command receipts | `support company context`, `users`, `user-profile`, `user-access`, `user-sessions`, `user-activity`, `settings`, `owner-security`, `command` (`--output`) | Implemented locally under the corresponding `company.*` read capabilities (`company.directory.read`, `company.sessions.read`, `config.read`, etc.). Writes output to a new owner-only private file without raw tokens or sensitive HR records. |
 
 The [production activation procedure](OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation)
 owns the host-only bootstrap. Routine CLI operations must go through the

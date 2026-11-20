@@ -63,7 +63,9 @@ async def read_case_audit(
     query: SupportAuditQuery,
     request_id: str,
 ) -> SupportAuditPage:
-    operator, active = await SupportIdentity(session).current(token)
+    operator, active = await SupportIdentity(session).current(
+        token, require_passkey_assurance=True
+    )
     grant = await session.get(
         SupportOperatorGrant, (operator.id, "logs.audit"), with_for_update=True
     )

@@ -2,15 +2,16 @@
 
 The support schema is additive and has no production operator grants. Models live in [support identity](../../backend/app/models/support_identity.py),
 [case access](../../backend/app/models/support_cases.py),
-[custody](../../backend/app/models/support_custody.py), and
-[oversight and backup receipts](../../backend/app/models/support_oversight.py).
+[custody](../../backend/app/models/support_custody.py),
+[oversight and backup receipts](../../backend/app/models/support_oversight.py), and
+[company control commands](../../backend/app/models/support_admin_commands.py).
 
 | Tables | Purpose |
 | --- | --- |
 | `support_operators`, `support_credentials` | Separate technical identities with status and grant epoch. Credentials hold a unique credential digest, public key, signature counter and revocation time. |
-| `support_login_challenges` | Two-minute single-use assertions tied to one operator and grant epoch. |
+| `support_login_challenges` | Two-minute single-use assertions tied to one operator, grant epoch and authentication assurance method (`passkey` or `email_otp_only`). |
 | `support_email_otps` | One email verification per accepted passkey challenge. Stores a keyed code digest, transport acceptance, expiry, failed-attempt count and use time. |
-| `support_sessions` | Digests of opaque session and CSRF values. Absolute expiry is 60 minutes, idle expiry is 15 minutes, and revocation or an epoch mismatch denies access. |
+| `support_sessions` | Digests of opaque session and CSRF values with persisted `auth_method` assurance (`passkey` or `email_otp_only`). Absolute expiry is 60 minutes, idle expiry is 15 minutes, and revocation, epoch mismatch, or disabling `support_email_otp_only_login` for an email-only session denies access. |
 | `support_operator_grants`, `support_cases`, `support_case_members`, `support_case_requests` | Case authorization intersects a live operator grant, case state, membership and an explicitly linked source request. |
 | `support_custody_actions`, `support_custody_proofs`, `support_custody_events` | Independently reviewed suspension and capability changes, session- and stage-bound proofs, and append-only custody decisions. |
 | `support_registrations` | Two one-use invitation digests per reviewed enrollment or recovery, with proof expiry and consumption state. |
@@ -30,6 +31,8 @@ The support schema is additive and has no production operator grants. Models liv
 | `support_evidence_exports`, `support_evidence_proofs` | Immutable case, linked request, filters and SHA-256 with independent approval and one-use download. Only proof and receipt metadata are retained. |
 | `support_oversight_events` | Append-only disclosure and per-operator read rate-limit events (`surface`, `action`, optional `case_id`, `request_id`, `occurred_at`). Triggers block updates, deletes and truncate. |
 | `support_backup_receipts` | Append-only attested backup and restore-drill receipts (`receipt_kind`, `backup_set_id`, `manifest_sha256`, `target_domain`, `outcome`, `rpo_minutes`, `rto_minutes`, `captured_at`, `verified_at`, `signer_key_id`, `recorded_by`) without host paths or object keys. |
+| `support_admin_commands`, `support_admin_command_proofs`, `support_admin_command_events` | Previewed Company Control Centre command plans, session- and plan-digest-bound one-use passkey proofs, and append-only command audit events. PostgreSQL triggers lock completed command receipts against mutation and block deletion/truncation of events. |
+| `support_safe_settings` | Optimistically versioned registry of allowlisted non-secret operational display settings (`company_display_name`, `support_banner_notice`, `default_directory_page_size`, `maintenance_window_notice`), linked to the executing `support_admin_commands` receipt. |
 
 [Revision 063](../../backend/alembic/versions/202605310063_support_identity.py)
 adds the operator realm and [revision 064](../../backend/alembic/versions/202605310064_support_case_logs.py)
@@ -113,6 +116,15 @@ adds `business_log_streams` to track and limit active business audit streams acr
 expands the capability check constraints for the 12 oversight/monitor grants,
 creates append-only `support_oversight_events` and `support_backup_receipts`
 tables with `prevent_support_audit_change()` triggers, and blocks `downgrade()`.
+[Revision 095](../../backend/alembic/versions/202605310095_support_single_owner_bootstrap.py),
+[revision 096](../../backend/alembic/versions/202605310096_support_owner_decisions.py), and
+[revision 097](../../backend/alembic/versions/202605310097_support_business_owner_session.py)
+add single-owner bootstrap custody, single-owner decision support, and owner-session tracking on business actions.
+[Revision 098](../../backend/alembic/versions/202605310098_support_company_control_centre.py)
+adds `auth_method` assurance tracking to `support_login_challenges` and `support_sessions`,
+expands grant constraints to include the 8 `company.*` control capabilities (not auto-granted during initial bootstrap),
+and creates `support_admin_commands`, `support_admin_command_proofs`, `support_admin_command_events`,
+and `support_safe_settings` with immutability triggers (`preserve_support_admin_command` and `prevent_support_audit_change`).
 These revisions follow
 the business session revision 062 and create no operator accounts or grants. Keep the schema and retained evidence
 during application rollback. See the [operations runbook](../OPERATIONS_AND_DEPLOYMENT.md#super-admin-activation).

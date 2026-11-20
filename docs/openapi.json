@@ -3728,6 +3728,86 @@
         "title": "BudgetSummaryResponse",
         "type": "object"
       },
+      "BulkAccountLifecycleCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "bulk_account_lifecycle",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "disable",
+              "reactivate",
+              "unlock",
+              "revoke_sessions"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "suspected_access",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/BulkAccountTargetSpec"
+            },
+            "maxItems": 25,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "command_kind",
+          "operation",
+          "targets",
+          "reason"
+        ],
+        "title": "BulkAccountLifecycleCommand",
+        "type": "object"
+      },
+      "BulkAccountTargetSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "expected_user_revision"
+        ],
+        "title": "BulkAccountTargetSpec",
+        "type": "object"
+      },
       "BusinessActionCreate": {
         "additionalProperties": false,
         "properties": {
@@ -4977,6 +5057,146 @@
         "title": "CertificationResponse",
         "type": "object"
       },
+      "ChangeBusinessRoleCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "change_business_role",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "new_role": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "New Role",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "role_adjustment",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "new_role",
+          "reason"
+        ],
+        "title": "ChangeBusinessRoleCommand",
+        "type": "object"
+      },
+      "ChangeProjectMembershipCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "assign",
+              "revoke"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "command_kind": {
+            "const": "change_project_membership",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_project_revision": {
+            "minimum": 1.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "project_membership",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "role_in_project": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role In Project"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "project_id",
+          "expected_project_revision",
+          "action",
+          "reason"
+        ],
+        "title": "ChangeProjectMembershipCommand",
+        "type": "object"
+      },
       "ClearanceStepResponse": {
         "properties": {
           "assigned_user_id": {
@@ -5359,6 +5579,98 @@
           "status"
         ],
         "title": "ComplianceItemResponse",
+        "type": "object"
+      },
+      "CreateBusinessAccountCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "create_business_account",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "designation": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "employee_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Employee Code",
+            "type": "string"
+          },
+          "full_name": {
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Full Name",
+            "type": "string"
+          },
+          "phone": {
+            "maxLength": 32,
+            "minLength": 5,
+            "title": "Phone",
+            "type": "string"
+          },
+          "project_assignments": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectAssignmentSpec"
+            },
+            "maxItems": 25,
+            "title": "Project Assignments",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "account_provisioning",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "email",
+          "full_name",
+          "role",
+          "employee_code",
+          "phone",
+          "reason"
+        ],
+        "title": "CreateBusinessAccountCommand",
         "type": "object"
       },
       "CurrencyReconciliationResponse": {
@@ -9964,7 +10276,15 @@
               "jobs.read",
               "backups.read",
               "config.read",
-              "incidents.read"
+              "incidents.read",
+              "company.directory.read",
+              "company.accounts.manage",
+              "company.access.assign",
+              "company.sessions.read",
+              "company.sessions.revoke",
+              "company.settings.manage",
+              "company.jobs.retry",
+              "company.data.inspect"
             ],
             "title": "Capability",
             "type": "string"
@@ -10021,7 +10341,15 @@
               "jobs.read",
               "backups.read",
               "config.read",
-              "incidents.read"
+              "incidents.read",
+              "company.directory.read",
+              "company.accounts.manage",
+              "company.access.assign",
+              "company.sessions.read",
+              "company.sessions.revoke",
+              "company.settings.manage",
+              "company.jobs.retry",
+              "company.data.inspect"
             ],
             "title": "Capability",
             "type": "string"
@@ -10081,7 +10409,15 @@
               "jobs.read",
               "backups.read",
               "config.read",
-              "incidents.read"
+              "incidents.read",
+              "company.directory.read",
+              "company.accounts.manage",
+              "company.access.assign",
+              "company.sessions.read",
+              "company.sessions.revoke",
+              "company.settings.manage",
+              "company.jobs.retry",
+              "company.data.inspect"
             ],
             "title": "Capability",
             "type": "string"
@@ -22460,6 +22796,39 @@
         "title": "ProjectAnalyticsRow",
         "type": "object"
       },
+      "ProjectAssignmentSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_project_revision": {
+            "minimum": 1.0,
+            "title": "Expected Project Revision",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "role_in_project": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role In Project"
+          }
+        },
+        "required": [
+          "project_id",
+          "expected_project_revision"
+        ],
+        "title": "ProjectAssignmentSpec",
+        "type": "object"
+      },
       "ProjectCreateRequest": {
         "properties": {
           "boq_items": {
@@ -25170,6 +25539,56 @@
         "title": "ReportMaterialConsumptionResponse",
         "type": "object"
       },
+      "RequestAccountRecoveryCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "request_account_recovery",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "verified_user_report",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "reason"
+        ],
+        "title": "RequestAccountRecoveryCommand",
+        "type": "object"
+      },
       "RequestProjectOption": {
         "properties": {
           "code": {
@@ -25570,6 +25989,59 @@
         "title": "RequisitionResponse",
         "type": "object"
       },
+      "RetrySafeJobCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "retry_safe_job",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_source": {
+            "enum": [
+              "task_outbox",
+              "support_recovery_delivery"
+            ],
+            "title": "Job Source",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "operational_recovery",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "job_source",
+          "job_id",
+          "reason"
+        ],
+        "title": "RetrySafeJobCommand",
+        "type": "object"
+      },
       "ReviewCreateRequest": {
         "properties": {
           "cycle_id": {
@@ -25902,6 +26374,77 @@
           "created_at"
         ],
         "title": "ReviewResponse",
+        "type": "object"
+      },
+      "RevokeBusinessSessionCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "revoke_business_session",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "suspected_access",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "selected",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "scope",
+          "reason"
+        ],
+        "title": "RevokeBusinessSessionCommand",
         "type": "object"
       },
       "RosterAllocationCreateRequest": {
@@ -26379,6 +26922,61 @@
           "evidence_reference"
         ],
         "title": "SeparationSettlementReview",
+        "type": "object"
+      },
+      "SetAccountStateCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "command_kind": {
+            "const": "set_account_state",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "suspected_access",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "active",
+          "reason"
+        ],
+        "title": "SetAccountStateCommand",
         "type": "object"
       },
       "ShiftAssignmentCreateRequest": {
@@ -27386,6 +27984,48 @@
         "title": "SupplierUpdateRequest",
         "type": "object"
       },
+      "SupportAccessExplanationItem": {
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "category": {
+            "enum": [
+              "allowed",
+              "no_permission",
+              "no_project_membership",
+              "account_inactive",
+              "not_eligible_approver",
+              "self_approval_prohibited",
+              "feature_disabled_by_policy"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "subject_key": {
+            "title": "Subject Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_key",
+          "label",
+          "allowed",
+          "category",
+          "explanation"
+        ],
+        "title": "SupportAccessExplanationItem",
+        "type": "object"
+      },
       "SupportAccountEvent": {
         "properties": {
           "category": {
@@ -27552,6 +28192,258 @@
           "value"
         ],
         "title": "SupportAccountSelector",
+        "type": "object"
+      },
+      "SupportAdminCommandExecuteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SupportAssertion"
+          },
+          "expected_plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Plan Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential",
+          "expected_plan_sha256"
+        ],
+        "title": "SupportAdminCommandExecuteRequest",
+        "type": "object"
+      },
+      "SupportAdminCommandProofOptions": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "command": {
+            "$ref": "#/components/schemas/SupportAdminCommandRead"
+          },
+          "public_key": {
+            "$ref": "#/components/schemas/SupportPublicKeyOptions"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key",
+          "command"
+        ],
+        "title": "SupportAdminCommandProofOptions",
+        "type": "object"
+      },
+      "SupportAdminCommandRead": {
+        "properties": {
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          },
+          "authorization_mode": {
+            "enum": [
+              "single_owner",
+              "paired"
+            ],
+            "title": "Authorization Mode",
+            "type": "string"
+          },
+          "before": {
+            "additionalProperties": true,
+            "title": "Before",
+            "type": "object"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "command_id": {
+            "format": "uuid",
+            "title": "Command Id",
+            "type": "string"
+          },
+          "command_kind": {
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "company_context": {
+            "default": "garrisons_single_company",
+            "title": "Company Context",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "denied_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Denied Conditions",
+            "type": "array"
+          },
+          "effects": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "plan_sha256": {
+            "title": "Plan Sha256",
+            "type": "string"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "project_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Revision"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "requires_action_passkey": {
+            "default": true,
+            "title": "Requires Action Passkey",
+            "type": "boolean"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "planned",
+              "expired",
+              "succeeded",
+              "delivery_pending",
+              "delivery_failed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Revision"
+          }
+        },
+        "required": [
+          "command_id",
+          "command_kind",
+          "operator_id",
+          "session_id",
+          "authorization_mode",
+          "before",
+          "after",
+          "effects",
+          "denied_conditions",
+          "policy_version",
+          "plan_sha256",
+          "reason_code",
+          "reason",
+          "status",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "SupportAdminCommandRead",
         "type": "object"
       },
       "SupportApprovalsOverviewRead": {
@@ -28472,6 +29364,108 @@
         "title": "SupportCliVerifyRequest",
         "type": "object"
       },
+      "SupportCompanyContextRead": {
+        "properties": {
+          "auth_method": {
+            "enum": [
+              "passkey",
+              "email_otp_only"
+            ],
+            "title": "Auth Method",
+            "type": "string"
+          },
+          "banner_notice": {
+            "title": "Banner Notice",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "company_name": {
+            "title": "Company Name",
+            "type": "string"
+          },
+          "custody_mode": {
+            "enum": [
+              "single_owner",
+              "paired",
+              "unknown"
+            ],
+            "title": "Custody Mode",
+            "type": "string"
+          },
+          "default_directory_page_size": {
+            "title": "Default Directory Page Size",
+            "type": "integer"
+          },
+          "deployment_scope": {
+            "const": "single_company",
+            "default": "single_company",
+            "title": "Deployment Scope",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/SupportFeatureAvailability"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "maintenance_window_notice": {
+            "title": "Maintenance Window Notice",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "session_expires_at": {
+            "format": "date-time",
+            "title": "Session Expires At",
+            "type": "string"
+          },
+          "source_sha": {
+            "title": "Source Sha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_name",
+          "environment",
+          "source_sha",
+          "custody_mode",
+          "auth_method",
+          "operator_id",
+          "session_expires_at",
+          "capabilities",
+          "banner_notice",
+          "maintenance_window_notice",
+          "default_directory_page_size",
+          "policy_version",
+          "features",
+          "observed_at"
+        ],
+        "title": "SupportCompanyContextRead",
+        "type": "object"
+      },
       "SupportCompanyOverviewRead": {
         "additionalProperties": false,
         "properties": {
@@ -28537,6 +29531,419 @@
           "metrics"
         ],
         "title": "SupportCompanyOverviewRead",
+        "type": "object"
+      },
+      "SupportCompanyUserAccessRead": {
+        "properties": {
+          "access_revision": {
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "assignable_roles": {
+            "items": {
+              "$ref": "#/components/schemas/SupportRoleOption"
+            },
+            "title": "Assignable Roles",
+            "type": "array"
+          },
+          "company_scope": {
+            "title": "Company Scope",
+            "type": "boolean"
+          },
+          "effective_permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effective Permissions",
+            "type": "array"
+          },
+          "eligible_projects": {
+            "items": {
+              "$ref": "#/components/schemas/SupportProjectOptionRead"
+            },
+            "title": "Eligible Projects",
+            "type": "array"
+          },
+          "explanations": {
+            "items": {
+              "$ref": "#/components/schemas/SupportAccessExplanationItem"
+            },
+            "title": "Explanations",
+            "type": "array"
+          },
+          "focused_project_explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportAccessExplanationItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "navigation_routes": {
+            "items": {
+              "$ref": "#/components/schemas/SupportNavigationRouteItem"
+            },
+            "title": "Navigation Routes",
+            "type": "array"
+          },
+          "project_memberships": {
+            "items": {
+              "$ref": "#/components/schemas/SupportUserProjectMembershipRead"
+            },
+            "title": "Project Memberships",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "role_label": {
+            "title": "Role Label",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role",
+          "role_label",
+          "access_revision",
+          "is_active",
+          "company_scope",
+          "effective_permissions",
+          "assignable_roles",
+          "project_memberships",
+          "eligible_projects",
+          "navigation_routes",
+          "explanations"
+        ],
+        "title": "SupportCompanyUserAccessRead",
+        "type": "object"
+      },
+      "SupportCompanyUserPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCompanyUserSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SupportCompanyUserPage",
+        "type": "object"
+      },
+      "SupportCompanyUserProfileRead": {
+        "properties": {
+          "access_revision": {
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "active_session_count": {
+            "title": "Active Session Count",
+            "type": "integer"
+          },
+          "assigned_project_count": {
+            "title": "Assigned Project Count",
+            "type": "integer"
+          },
+          "available_actions": {
+            "items": {
+              "$ref": "#/components/schemas/SupportUserActionAvailability"
+            },
+            "title": "Available Actions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "designation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
+          "email_masked": {
+            "title": "Email Masked",
+            "type": "string"
+          },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "employee_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Status"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "has_linked_employee": {
+            "title": "Has Linked Employee",
+            "type": "boolean"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_locked": {
+            "title": "Is Locked",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "linked_cases": {
+            "items": {
+              "$ref": "#/components/schemas/SupportLinkedCaseSummary"
+            },
+            "title": "Linked Cases",
+            "type": "array"
+          },
+          "must_change_password": {
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "phone_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Masked"
+          },
+          "recovery_destination_verified": {
+            "title": "Recovery Destination Verified",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "role_label": {
+            "title": "Role Label",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "inactive",
+              "locked"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "full_name",
+          "email_masked",
+          "employee_code",
+          "phone_masked",
+          "designation",
+          "role",
+          "role_label",
+          "state",
+          "is_active",
+          "is_locked",
+          "must_change_password",
+          "access_revision",
+          "recovery_destination_verified",
+          "has_linked_employee",
+          "employee_status",
+          "assigned_project_count",
+          "active_session_count",
+          "created_at",
+          "updated_at",
+          "last_login_at",
+          "available_actions",
+          "linked_cases"
+        ],
+        "title": "SupportCompanyUserProfileRead",
+        "type": "object"
+      },
+      "SupportCompanyUserSummary": {
+        "properties": {
+          "access_revision": {
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "assigned_project_count": {
+            "title": "Assigned Project Count",
+            "type": "integer"
+          },
+          "designation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Designation"
+          },
+          "email_masked": {
+            "title": "Email Masked",
+            "type": "string"
+          },
+          "employee_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Code"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "has_linked_employee": {
+            "title": "Has Linked Employee",
+            "type": "boolean"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_locked": {
+            "title": "Is Locked",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "recovery_destination_verified": {
+            "title": "Recovery Destination Verified",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "role_label": {
+            "title": "Role Label",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "inactive",
+              "locked"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "full_name",
+          "email_masked",
+          "employee_code",
+          "designation",
+          "role",
+          "role_label",
+          "state",
+          "is_active",
+          "is_locked",
+          "access_revision",
+          "assigned_project_count",
+          "has_linked_employee",
+          "recovery_destination_verified",
+          "last_login_at"
+        ],
+        "title": "SupportCompanyUserSummary",
         "type": "object"
       },
       "SupportConfigStatusRead": {
@@ -28675,6 +30082,247 @@
           "change_control_reference"
         ],
         "title": "SupportConfigStatusRead",
+        "type": "object"
+      },
+      "SupportCredentialSummary": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credential_hash_prefix": {
+            "title": "Credential Hash Prefix",
+            "type": "string"
+          },
+          "credential_id": {
+            "format": "uuid",
+            "title": "Credential Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "sign_count": {
+            "title": "Sign Count",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential_id",
+          "credential_hash_prefix",
+          "sign_count",
+          "created_at",
+          "revoked_at",
+          "status"
+        ],
+        "title": "SupportCredentialSummary",
+        "type": "object"
+      },
+      "SupportDataInspectorCatalogRead": {
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/SupportDataInspectorEntityMeta"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "excluded_domains_notice": {
+            "title": "Excluded Domains Notice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entities",
+          "excluded_domains_notice"
+        ],
+        "title": "SupportDataInspectorCatalogRead",
+        "type": "object"
+      },
+      "SupportDataInspectorEntityMeta": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_key": {
+            "title": "Entity Key",
+            "type": "string"
+          },
+          "filterable_statuses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filterable Statuses",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_key",
+          "label",
+          "description",
+          "columns",
+          "filterable_statuses"
+        ],
+        "title": "SupportDataInspectorEntityMeta",
+        "type": "object"
+      },
+      "SupportDataInspectorPage": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "entity_key": {
+            "title": "Entity Key",
+            "type": "string"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entity_key",
+          "columns",
+          "rows",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SupportDataInspectorPage",
+        "type": "object"
+      },
+      "SupportDiagnoseCaseRead": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_new": {
+            "title": "Created New",
+            "type": "boolean"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "linked_project_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Linked Project Ids",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_user_id": {
+            "format": "uuid",
+            "title": "Subject User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "external_ref",
+          "status",
+          "revision",
+          "subject_user_id",
+          "linked_project_ids",
+          "created_new"
+        ],
+        "title": "SupportDiagnoseCaseRead",
+        "type": "object"
+      },
+      "SupportDiagnoseCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "SupportDiagnoseCaseRequest",
         "type": "object"
       },
       "SupportDocumentsOverviewRead": {
@@ -28948,6 +30596,45 @@
           "export"
         ],
         "title": "SupportEvidenceProofOptions",
+        "type": "object"
+      },
+      "SupportFeatureAvailability": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "required_capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Capability"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "enabled",
+          "reason"
+        ],
+        "title": "SupportFeatureAvailability",
         "type": "object"
       },
       "SupportFinanceOverviewRead": {
@@ -29478,6 +31165,66 @@
         "title": "SupportJobsMonitorRead",
         "type": "object"
       },
+      "SupportLinkedCaseSummary": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "external_ref",
+          "status",
+          "severity",
+          "reason_code",
+          "revision"
+        ],
+        "title": "SupportLinkedCaseSummary",
+        "type": "object"
+      },
       "SupportLoginOptions": {
         "properties": {
           "challenge_id": {
@@ -29581,6 +31328,24 @@
         "title": "SupportNavigationRoute",
         "type": "object"
       },
+      "SupportNavigationRouteItem": {
+        "properties": {
+          "route_id": {
+            "title": "Route Id",
+            "type": "string"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "route_id",
+          "visible"
+        ],
+        "title": "SupportNavigationRouteItem",
+        "type": "object"
+      },
       "SupportOtpRequired": {
         "properties": {
           "otp_reference": {
@@ -29626,6 +31391,149 @@
           "otp"
         ],
         "title": "SupportOtpVerification",
+        "type": "object"
+      },
+      "SupportOwnerAuthEventItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "request_id",
+          "occurred_at"
+        ],
+        "title": "SupportOwnerAuthEventItem",
+        "type": "object"
+      },
+      "SupportOwnerSecurityRead": {
+        "properties": {
+          "active_passkey_count": {
+            "title": "Active Passkey Count",
+            "type": "integer"
+          },
+          "bootstrap_activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap Activated At"
+          },
+          "custody_mode": {
+            "enum": [
+              "single_owner",
+              "paired",
+              "unknown"
+            ],
+            "title": "Custody Mode",
+            "type": "string"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "grant_epoch": {
+            "title": "Grant Epoch",
+            "type": "integer"
+          },
+          "minimum_passkeys_required": {
+            "title": "Minimum Passkeys Required",
+            "type": "integer"
+          },
+          "operator_id": {
+            "format": "uuid",
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "passkeys": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCredentialSummary"
+            },
+            "title": "Passkeys",
+            "type": "array"
+          },
+          "recent_auth_events": {
+            "items": {
+              "$ref": "#/components/schemas/SupportOwnerAuthEventItem"
+            },
+            "title": "Recent Auth Events",
+            "type": "array"
+          },
+          "recovery_guidance": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Guidance",
+            "type": "array"
+          },
+          "session_auth_method": {
+            "enum": [
+              "passkey",
+              "email_otp_only"
+            ],
+            "title": "Session Auth Method",
+            "type": "string"
+          },
+          "session_expires_at": {
+            "format": "date-time",
+            "title": "Session Expires At",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "session_idle_deadline": {
+            "format": "date-time",
+            "title": "Session Idle Deadline",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "display_label",
+          "status",
+          "grant_epoch",
+          "custody_mode",
+          "bootstrap_activated_at",
+          "session_id",
+          "session_auth_method",
+          "session_expires_at",
+          "session_idle_deadline",
+          "active_passkey_count",
+          "minimum_passkeys_required",
+          "passkeys",
+          "recent_auth_events",
+          "recovery_guidance"
+        ],
+        "title": "SupportOwnerSecurityRead",
         "type": "object"
       },
       "SupportPermissionExplanation": {
@@ -29865,6 +31773,50 @@
           "projects"
         ],
         "title": "SupportProjectList",
+        "type": "object"
+      },
+      "SupportProjectOptionRead": {
+        "properties": {
+          "is_member": {
+            "title": "Is Member",
+            "type": "boolean"
+          },
+          "is_read_only": {
+            "title": "Is Read Only",
+            "type": "boolean"
+          },
+          "project_code": {
+            "title": "Project Code",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "project_revision": {
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "project_status": {
+            "title": "Project Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_code",
+          "project_name",
+          "project_status",
+          "project_revision",
+          "is_member",
+          "is_read_only"
+        ],
+        "title": "SupportProjectOptionRead",
         "type": "object"
       },
       "SupportProjectsOverviewRead": {
@@ -30226,6 +32178,171 @@
         "title": "SupportRequestSummary",
         "type": "object"
       },
+      "SupportRoleOption": {
+        "properties": {
+          "company_scope": {
+            "title": "Company Scope",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "protected_target": {
+            "title": "Protected Target",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "label",
+          "permissions",
+          "company_scope",
+          "protected_target"
+        ],
+        "title": "SupportRoleOption",
+        "type": "object"
+      },
+      "SupportSafeSettingItem": {
+        "properties": {
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "default_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Default Value"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "effect": {
+            "enum": [
+              "immediate",
+              "restart_required"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_operator_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Operator Id"
+          },
+          "value_type": {
+            "enum": [
+              "string",
+              "integer"
+            ],
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "value_type",
+          "current_value",
+          "default_value",
+          "revision",
+          "effect"
+        ],
+        "title": "SupportSafeSettingItem",
+        "type": "object"
+      },
+      "SupportSafeSettingsRead": {
+        "properties": {
+          "editable_enabled": {
+            "title": "Editable Enabled",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupportSafeSettingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "permanently_locked_controls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permanently Locked Controls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observed_at",
+          "editable_enabled",
+          "items",
+          "permanently_locked_controls"
+        ],
+        "title": "SupportSafeSettingsRead",
+        "type": "object"
+      },
       "SupportSessionRead": {
         "properties": {
           "expires_at": {
@@ -30396,6 +32513,274 @@
           "truncated"
         ],
         "title": "SupportTimelineRead",
+        "type": "object"
+      },
+      "SupportUserActionAvailability": {
+        "properties": {
+          "action_kind": {
+            "title": "Action Kind",
+            "type": "string"
+          },
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "required_capability": {
+            "title": "Required Capability",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_kind",
+          "label",
+          "allowed",
+          "required_capability",
+          "reason"
+        ],
+        "title": "SupportUserActionAvailability",
+        "type": "object"
+      },
+      "SupportUserActivityItem": {
+        "properties": {
+          "actor_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Reference"
+          },
+          "authorization_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Mode"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "business_auth",
+              "technical_command",
+              "case_account_action"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "source",
+          "category",
+          "summary",
+          "actor_reference",
+          "authorization_mode",
+          "occurred_at"
+        ],
+        "title": "SupportUserActivityItem",
+        "type": "object"
+      },
+      "SupportUserActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupportUserActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "items"
+        ],
+        "title": "SupportUserActivityPage",
+        "type": "object"
+      },
+      "SupportUserProjectMembershipRead": {
+        "properties": {
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "project_code": {
+            "title": "Project Code",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "project_revision": {
+            "title": "Project Revision",
+            "type": "integer"
+          },
+          "project_status": {
+            "title": "Project Status",
+            "type": "string"
+          },
+          "role_in_project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role In Project"
+          }
+        },
+        "required": [
+          "membership_id",
+          "project_id",
+          "project_code",
+          "project_name",
+          "project_status",
+          "project_revision",
+          "role_in_project"
+        ],
+        "title": "SupportUserProjectMembershipRead",
+        "type": "object"
+      },
+      "SupportUserSessionInventoryRead": {
+        "properties": {
+          "access_revision": {
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "active_session_count": {
+            "title": "Active Session Count",
+            "type": "integer"
+          },
+          "has_unindexed_legacy_tokens": {
+            "title": "Has Unindexed Legacy Tokens",
+            "type": "boolean"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SupportUserSessionItem"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "access_revision",
+          "has_unindexed_legacy_tokens",
+          "active_session_count",
+          "sessions"
+        ],
+        "title": "SupportUserSessionInventoryRead",
+        "type": "object"
+      },
+      "SupportUserSessionItem": {
+        "properties": {
+          "active_refresh_tokens": {
+            "title": "Active Refresh Tokens",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "title": "Last Active At",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "revoked",
+              "expired"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "created_at",
+          "last_active_at",
+          "expires_at",
+          "revoked_at",
+          "state",
+          "active_refresh_tokens"
+        ],
+        "title": "SupportUserSessionItem",
         "type": "object"
       },
       "SupportVerifyRequest": {
@@ -31656,6 +34041,56 @@
         "title": "TrainingRequirementStatusListResponse",
         "type": "object"
       },
+      "UnlockAccountCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "unlock_account",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_user_revision": {
+            "minimum": 0.0,
+            "title": "Expected User Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "failed_sign_in",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "target_user_id": {
+            "format": "uuid",
+            "title": "Target User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_kind",
+          "target_user_id",
+          "expected_user_revision",
+          "reason"
+        ],
+        "title": "UnlockAccountCommand",
+        "type": "object"
+      },
       "UnreadCountResponse": {
         "properties": {
           "unread_count": {
@@ -31667,6 +34102,70 @@
           "unread_count"
         ],
         "title": "UnreadCountResponse",
+        "type": "object"
+      },
+      "UpdateSafeSettingCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "command_kind": {
+            "const": "update_safe_setting",
+            "title": "Command Kind",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "operational_configuration",
+            "enum": [
+              "account_provisioning",
+              "role_adjustment",
+              "project_membership",
+              "suspected_access",
+              "verified_user_report",
+              "failed_sign_in",
+              "offboarding_access",
+              "operational_configuration",
+              "operational_recovery"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "setting_key": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Setting Key",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "maxLength": 240,
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "command_kind",
+          "setting_key",
+          "expected_revision",
+          "value",
+          "reason"
+        ],
+        "title": "UpdateSafeSettingCommand",
         "type": "object"
       },
       "UserCreateRequest": {
@@ -61007,6 +63506,949 @@
           }
         },
         "summary": "Transition Case",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/commands/plan": {
+      "post": {
+        "operationId": "plan_company_admin_command_api_v1_support_company_commands_plan_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "bulk_account_lifecycle": "#/components/schemas/BulkAccountLifecycleCommand",
+                    "change_business_role": "#/components/schemas/ChangeBusinessRoleCommand",
+                    "change_project_membership": "#/components/schemas/ChangeProjectMembershipCommand",
+                    "create_business_account": "#/components/schemas/CreateBusinessAccountCommand",
+                    "request_account_recovery": "#/components/schemas/RequestAccountRecoveryCommand",
+                    "retry_safe_job": "#/components/schemas/RetrySafeJobCommand",
+                    "revoke_business_session": "#/components/schemas/RevokeBusinessSessionCommand",
+                    "set_account_state": "#/components/schemas/SetAccountStateCommand",
+                    "unlock_account": "#/components/schemas/UnlockAccountCommand",
+                    "update_safe_setting": "#/components/schemas/UpdateSafeSettingCommand"
+                  },
+                  "propertyName": "command_kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateBusinessAccountCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAccountStateCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UnlockAccountCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ChangeBusinessRoleCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ChangeProjectMembershipCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RequestAccountRecoveryCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RevokeBusinessSessionCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UpdateSafeSettingCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RetrySafeJobCommand"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BulkAccountLifecycleCommand"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAdminCommandRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Plan Company Admin Command Api V1 Support Company Commands Plan Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Plan Company Admin Command",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/commands/{command_id}": {
+      "get": {
+        "operationId": "read_company_admin_command_api_v1_support_company_commands__command_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAdminCommandRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Read Company Admin Command Api V1 Support Company Commands  Command Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Read Company Admin Command",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/commands/{command_id}/execute": {
+      "post": {
+        "operationId": "execute_company_admin_command_api_v1_support_company_commands__command_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportAdminCommandExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAdminCommandRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Execute Company Admin Command Api V1 Support Company Commands  Command Id  Execute Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Execute Company Admin Command",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/commands/{command_id}/proof/options": {
+      "post": {
+        "operationId": "company_admin_command_proof_options_api_v1_support_company_commands__command_id__proof_options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportAdminCommandProofOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Company Admin Command Proof Options Api V1 Support Company Commands  Command Id  Proof Options Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Company Admin Command Proof Options",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/context": {
+      "get": {
+        "operationId": "support_company_context_api_v1_support_company_context_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCompanyContextRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Context Api V1 Support Company Context Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Context",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/data-inspector/entities": {
+      "get": {
+        "operationId": "support_company_data_inspector_catalog_api_v1_support_company_data_inspector_entities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportDataInspectorCatalogRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Data Inspector Catalog Api V1 Support Company Data Inspector Entities Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Data Inspector Catalog",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/data-inspector/{entity_key}": {
+      "get": {
+        "operationId": "support_company_data_inspector_query_api_v1_support_company_data_inspector__entity_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_key",
+            "required": true,
+            "schema": {
+              "title": "Entity Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 5000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportDataInspectorPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Data Inspector Query Api V1 Support Company Data Inspector  Entity Key  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Data Inspector Query",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/owner-security": {
+      "get": {
+        "operationId": "support_company_owner_security_api_v1_support_company_owner_security_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportOwnerSecurityRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Owner Security Api V1 Support Company Owner Security Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Owner Security",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/settings": {
+      "get": {
+        "operationId": "support_company_safe_settings_api_v1_support_company_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportSafeSettingsRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Safe Settings Api V1 Support Company Settings Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Safe Settings",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users": {
+      "get": {
+        "operationId": "support_company_users_api_v1_support_company_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "inactive",
+                    "locked"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCompanyUserPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company Users Api V1 Support Company Users Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company Users",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users/{user_id}": {
+      "get": {
+        "operationId": "support_company_user_profile_api_v1_support_company_users__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCompanyUserProfileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company User Profile Api V1 Support Company Users  User Id  Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company User Profile",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users/{user_id}/access": {
+      "get": {
+        "operationId": "support_company_user_access_api_v1_support_company_users__user_id__access_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportCompanyUserAccessRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company User Access Api V1 Support Company Users  User Id  Access Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company User Access",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users/{user_id}/activity": {
+      "get": {
+        "operationId": "support_company_user_activity_api_v1_support_company_users__user_id__activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportUserActivityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company User Activity Api V1 Support Company Users  User Id  Activity Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company User Activity",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users/{user_id}/diagnose-case": {
+      "post": {
+        "operationId": "support_company_user_diagnose_case_api_v1_support_company_users__user_id__diagnose_case_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportDiagnoseCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportDiagnoseCaseRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company User Diagnose Case Api V1 Support Company Users  User Id  Diagnose Case Post"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company User Diagnose Case",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/api/v1/support/company/users/{user_id}/sessions": {
+      "get": {
+        "operationId": "support_company_user_sessions_api_v1_support_company_users__user_id__sessions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportUserSessionInventoryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AppErrorResponse"
+                    }
+                  ],
+                  "title": "Response 422 Support Company User Sessions Api V1 Support Company Users  User Id  Sessions Get"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Support Company User Sessions",
         "tags": [
           "Support"
         ]
