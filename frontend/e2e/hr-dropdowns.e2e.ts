@@ -229,7 +229,15 @@ test('one workspace option failure does not block other options and retry restor
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(departmentSelect).toBeVisible();
   await expect(positionSelect).toBeVisible();
+  const saveResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === `/api/v1/hr/employees/${employee.id}` &&
+      response.request().method() === 'PATCH'
+    );
+  });
   await page.getByRole('button', { name: 'Save employee' }).click();
+  expect((await saveResponse).status()).toBe(200);
   await expect(departmentSelect).toHaveValue(departmentTwo.id);
   await expect(positionSelect).toHaveValue(position.id);
 

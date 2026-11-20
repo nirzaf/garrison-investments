@@ -364,6 +364,26 @@ window; source review and a healthy API do not establish them. Do not proceed if
 the host, source image/volume, exact Alembic revision, recovery evidence, or incident
 state cannot be verified.
 
+Before approving the source-to-target restore, perform a PostgreSQL 19
+compatibility inventory against the live PostgreSQL 18 configuration and
+catalogs. Use the pinned PostgreSQL 19 `pg_dump` client with
+`--quote-all-identifiers`; do not reuse an older client's dump. Confirm the
+application and database role settings are safe with PostgreSQL 19's enforced
+`standard_conforming_strings=on`. Stop for any database encoded as
+`MULE_INTERNAL`, any database/role/tablespace name containing CR or LF, or
+RADIUS authentication in `pg_hba.conf`; each needs a reviewed disposition.
+Inspect custom server configuration for removed settings such as `io_workers`
+and validate the target configuration before cutover. Inventory `btree_gist`
+indexes whose indexed type is `inet` or `cidr`; PostgreSQL 19 changes the
+network-type GiST operator classes because the old behavior could omit
+matching rows. Do not restore those indexes unchanged. Also identify indexes
+and stored values using full-text search, `pg_trgm`, or `fuzzystrmatch`.
+PostgreSQL 19 changes locale-sensitive behavior for these functions; plan and
+verify any required index rebuilds and stored `tsvector` recomputation on the
+isolated PostgreSQL 19 copy before production use. Record each check and its
+result; an unknown source setting or unresolved compatibility finding is a
+stop condition.
+
 #### Preparation and write pause
 
 1. Record the exact candidate SHA and successful CI run, active release and
