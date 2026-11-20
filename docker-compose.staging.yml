@@ -72,13 +72,13 @@ services:
     logging: *default-logging
 
   postgres:
-    image: postgres:18.6-alpine
+    image: postgres:19.0-alpine3.24@sha256:8b0ff4cdf221f0c53d7fcda681d3b461be725c492cd881c5ec9c0ad25023f188
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata19:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -111,7 +111,7 @@ services:
       retries: 5
 
   grafana_db_init:
-    image: postgres:18.6-alpine
+    image: postgres:19.0-alpine3.24@sha256:8b0ff4cdf221f0c53d7fcda681d3b461be725c492cd881c5ec9c0ad25023f188
     restart: "no"
     env_file:
       - .env.staging
@@ -288,8 +288,8 @@ services:
     logging: *default-logging
 
 volumes:
-  pgdata:
-    name: garrisonstg-pgdata
+  pgdata19:
+    name: garrisonstg-pgdata19
   redisdata:
     name: garrisonstg-redisdata
   miniodata:

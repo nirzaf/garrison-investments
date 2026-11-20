@@ -233,14 +233,110 @@ Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its 
 
 For the first owner-aware offline rollout, stop the previous Celery beat and worker and drain active application writes before migration. Keep an ingress write block in place through activation and the read-only smoke checks. The deployment probe needs GET access to the sign-in page, frontend entry asset, service worker, and readiness endpoint. Remove the block after verifying the new application and worker and confirming no legacy writers are running.
 
-### Upgrade an existing PostgreSQL 16 database
+### Upgrade PostgreSQL 18 to 19.0
 
-Fresh volumes initialize with PostgreSQL 18.6. Existing PostgreSQL 16 data requires a major-version migration. The PostgreSQL 18 image mounts `pgdata` at `/var/lib/postgresql`.
+The runtime and CI use the official [`postgres:19.0-alpine3.24` image](https://hub.docker.com/_/postgres)
+pinned to multi-platform manifest digest
+`sha256:8b0ff4cdf221f0c53d7fcda681d3b461be725c492cd881c5ec9c0ad25023f188`.
+The official Alpine image is available for the existing runtime; no Debian switch
+is needed. [PostgreSQL 19.0 GA](https://www.postgresql.org/about/news/postgresql-19-released-3449/)
+was released on 19 November 2026. A major upgrade
+uses logical dump/restore into the new `pgdata19` volume. Never mount the PostgreSQL
+18 data directory into PostgreSQL 19, and do not run this change while a production
+incident hold is open. In particular, this procedure does not clear or bypass any
+`forward097.*` marker.
 
-1. Record the Compose project, source volume, and deployed revision. Stop application, worker, and Grafana writes for the final cutover. With PostgreSQL 16 available, take and verify application and Grafana dumps and capture the roles and grants needed for restore.
-2. Create a fresh PostgreSQL 18 volume and set `volumes.pgdata.name` in the environment's Compose override. Use that override and the same Compose project throughout the rollout.
-3. Start PostgreSQL 18, provision the roles and empty databases, and restore both dumps using PostgreSQL 18 client tools with SQL errors fatal.
-4. Compare the Alembic revision, representative records, and permissions, then verify the app and Grafana before resuming writes. Keep the prior volume and backups. Before writes resume, the prior runtime can return to its original volume. Later rollback requires reconciling new data.
+The regular release entrypoint intentionally blocks PostgreSQL image or volume
+changes. Treat this as an approved production maintenance operation, not a normal
+CD deployment. Current host, source-volume, database-size, role-inventory, and
+recovery-policy facts must be read from the actual production host before the
+window; source review and a healthy API do not establish them. Do not proceed if
+the host, source image/volume, exact Alembic revision, recovery evidence, or incident
+state cannot be verified.
+
+#### Preparation and write pause
+
+1. Record the exact candidate SHA and successful CI run, active release and
+   application version, PostgreSQL 18 server/image digest, Compose project and
+   source volume, both database names, role/owner/grant inventory, installed
+   extensions, locale/collation metadata, and Alembic revision. Confirm the
+   candidate's application schema is compatible with that revision. Do not apply
+   an unrelated Alembic revision as part of this database-engine change.
+2. Require a current authenticated database-and-object recovery set in the
+   approved independent destination and a successful isolated restore of that
+   set. A database dump in the portal's own object store is not independent
+   recovery evidence. Preserve the backup set and the original PostgreSQL 18
+   volume; no cleanup is part of this procedure.
+3. Rehearse the candidate's PostgreSQL 19 image, logical restore, catalog checks,
+   and rollback using a disposable copy with matching data volume and extensions.
+   Capture dump checksums, exact catalog/count comparison output, restore duration,
+   candidate/image digests, and the observed collation versions. The local
+   PostgreSQL 18.6-to-19.0 rehearsal recorded for this change is synthetic and is
+   not production recovery evidence.
+4. Acquire the existing deployment lock and confirm the incident hold is closed
+   through its reviewed reconciliation procedure. Block ingress, then stop
+   `backend`, `celery_worker`, `celery_beat`, and `grafana` so they cannot write.
+   Drain all client sessions and scheduled/one-shot database jobs. Leave the
+   PostgreSQL 18 database and its old volume intact until final verification.
+5. Create a root-only, encrypted maintenance artifact directory. Use the pinned
+   PostgreSQL 19 client image for the final `pg_dump --format=custom` captures of
+   both the application database and `grafana`. Record checksums and use
+   `pg_restore --list` to confirm both archives are readable. Do not put database
+   passwords or raw role password hashes in logs or repository evidence.
+
+#### Fresh-volume restore and comparison
+
+6. Start the candidate's PostgreSQL 19 service using the `pgdata19` Compose volume.
+   This creates a new volume; it does not rename, reformat, mount, or delete the
+   PostgreSQL 18 volume. Initialize the application role/database from the
+   protected production configuration, then run the checked-in
+   `grafana_db_init` service to create/update the Grafana role and database before
+   restoring.
+7. Before restore, compare the source's non-system roles and ownership against the
+   deployment contract (`POSTGRES_USER` plus `grafana`), including role attributes,
+   database/schema/table grants, and tablespaces. If there are additional roles,
+   owners, extensions, or tablespaces, stop and prepare a reviewed mapping rather
+   than silently omitting them. Restore each custom archive with SQL errors fatal,
+   `--no-owner`, and `--role` set to its established database owner; retain ACLs.
+   Restore into the fresh databases only. Do not use `--clean` against a source or
+   shared database.
+8. Compare source and target before reopening writes: exact row counts by table;
+   primary/foreign/unique/check constraint names and definitions; index names,
+   key columns, uniqueness, predicates, and validity; sequence values and
+   `is_called`; role attributes and grants; database owners; extension names and
+   versions; and Alembic revision rows. Confirm every index is valid and every
+   extension is installed. PostgreSQL versions can render equivalent expressions
+   differently in `pg_get_indexdef`/`pg_get_constraintdef`; compare catalog
+   structure and expression semantics rather than requiring byte-identical
+   display text.
+9. Compare each database's locale, collation provider, recorded collation version,
+   and actual version. A mismatch is a stop condition; obtain a reviewed
+   `REINDEX`/collation-refresh plan before use. Do not automatically refresh a
+   version marker without rebuilding affected indexes.
+10. Keep ingress blocked. Start the application, worker, beat, and Grafana against
+    PostgreSQL 19; verify readiness, queue connectivity, worker/beat health,
+    Grafana health, protected report/document reads, and the approved read-only
+    business checks. Confirm the exact served PostgreSQL 19 image digest and
+    migration head. Do not create or delete customer business records as a smoke
+    test.
+
+#### Rollback boundary
+
+Before reopening writers, rollback is to stop PostgreSQL 19 and restore the
+previous application release and PostgreSQL 18 Compose configuration with the
+original PostgreSQL 18 volume. Do not delete either volume. Recheck schema and
+readiness before removing the ingress block. Once writes have resumed on
+PostgreSQL 19, the old PostgreSQL 18 volume is stale: switching back to it would
+discard newer writes. At that point, stop writes and use an approved forward
+reconciliation or tested recovery plan; do not describe a volume switch as a
+no-loss rollback.
+
+Record actual UTC start/end, downtime, source/target volume names, release and
+image IDs/digests, dump and recovery-set identities, catalog comparison results,
+Alembic heads, health checks, and the operator/reviewer. Keep the old volume and
+encrypted artifacts under the approved retention policy until a separate
+recovery/cleanup approval. No production migration or release is authorized by
+this runbook text alone.
 
 ### Post-Deploy Verification
 
