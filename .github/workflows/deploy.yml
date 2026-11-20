@@ -15,8 +15,12 @@ on:
         description: One-time owner-confirmed forward-only maintenance (not enrolled)
         type: boolean
         default: false
+      incident_replacement:
+        description: One-time replacement with the fixed green 65308a2 release for the open forward097 incident
+        type: boolean
+        default: false
       ci_run_id:
-        description: Successful CI run for the current main commit
+        description: Successful CI run for the selected release candidate
         type: string
         required: true
 
@@ -51,18 +55,25 @@ jobs:
       - name: Deploy the tested commit
         env:
           FORWARD_ONLY_093_TO_097: ${{ inputs.forward_only_093_to_097 }}
+          INCIDENT_REPLACEMENT: ${{ inputs.incident_replacement }}
           PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: |
           release_mode=technical-checks-v1
+          if [[ "$INCIDENT_REPLACEMENT" == true ]]; then
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44734573582 &&
+               "$PINNED_NO_BACKUP_093" != true && "$FORWARD_ONLY_093_TO_097" != true ]] || exit 1
+            RELEASE_SHA=65308a2af263cd59e90276b3a771d4ed6ecbf842
+            release_mode=incident-replacement
+          fi
           if [[ "$FORWARD_ONLY_093_TO_097" == true ]]; then
-            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true ]] || exit 1
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
             release_mode=forward-only-093-to-097
           fi
           if [[ "$PINNED_NO_BACKUP_093" == true ]]; then
-            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 ]] || exit 1
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 && "$FORWARD_ONLY_093_TO_097" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
             RELEASE_SHA=0d581001bd294f79a47021c7e30f75a1bf291d2a
             release_mode=pinned-no-backup-093
           fi

@@ -17,6 +17,8 @@ Use Docker with Compose v2. Keep production configuration and secrets on the hos
 
 During routine deployments, [hostinger-release.sh](../deploy/hostinger-release.sh) checks `production.env` (`0600`), `compose.vps.yml`, required candidate configuration files, non-symlink bind mounts, TLS certificates (`/etc/nginx/ssl/fullchain.pem` and `privkey.pem`), JWT signing key mounts, and `LOG_PURGE_ENABLED=false`. The release gate confirms that each application writer receives every value from the pinned candidate environment. Docker Compose's normalized JSON flattens `env_file` paths into each service's effective environment, so the gate validates the resulting key/value contract rather than expecting a source path in normalized output.
 
+The production proxy image is pinned to the official `nginx:1.30.7-alpine` multi-architecture manifest digest in `docker-compose.prod.yml`. Treat the live Nginx version as verified only from the running container after deployment; keep the business TLS virtual host and Super Admin source allowlist checks in the release smoke test.
+
 For optional post-release formal acceptance, you may bind the production configuration to exact bytes without copying secrets into the evidence bundle using `/opt/garrison-portal/deploy/authorized-configuration.json`. That profile has a `files` map keyed by namespace: `host/` files resolve beneath the deployment state directory, `release/` files resolve beneath the exact candidate archive, and `external/` files resolve beneath `/opt/garrison-portal`. `configuration_sha256` is the SHA-256 of the canonical `files` map (sorted keys, compact separators, UTF-8, `ensure_ascii=False`). This release's required versioned runtime file set is shown in the [authorization profile template](templates/release-closure/authorized-configuration.json).
 
 If running optional formal acceptance, generate a proposed profile from a restricted candidate directory on the production host using `backend/scripts/release_contract.py` (do not use the active release as the candidate). The command below emits file names and hashes only, and `docker compose config` output is piped directly to stdin without saving secrets:
@@ -61,6 +63,26 @@ The automatic job passes the triggering CI run's tested SHA to the host. For a m
 
 The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, all pinned candidate environment values in the effective `backend`/`celery_worker`/`celery_beat` environments, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It then checks stateful Compose resources and Alembic heads, builds from the tested source, and takes encrypted application and Grafana database backups before activation. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
+### Forward097 incident reconciliation (read-only review, 2026-11-20)
+
+The incident evidence and production state were inspected without changing the host, workflow settings, or database. The original `forward097.*` files remain in place. The prepared reconciliation code leaves them untouched and, only after a verified replacement, records their SHA-256 values and filesystem metadata in a root-only receipt.
+
+| UTC observation | Evidence and interpretation |
+| --- | --- |
+| 2026-11-19 11:19:32.201885723 | `forward097.used` records the one-use `093`→`097` permit bound to `9da0010`, CI run `44506276841`, and deploy run `44513571888`. |
+| 2026-11-19 11:21:48–11:21:51 | Deploy run `44513571888` reached schema `097`, then failed its readiness check (HTTP 503) at 11:21:48; the failed run and durable `forward097.attempt` are timestamped at 11:21:51. |
+| 2026-11-19 11:59:04.914351773–11:59:06.772364748 | `forward097.reopen-commit` and `forward097.recovery-attempt` record a serving commit and recovery phases. Those records do not establish that the image now running is the same image, and there is no final `DEPLOYED` receipt for the current `60be439` release. |
+| 2026-11-20 11:14:54–11:18:58 | The current `60be439` release files were staged, backend/worker/beat containers started at 11:18:42, and Nginx at 11:18:58. Available host logs show direct root SSH sessions during this interval but do not identify a named operator; sudo/audit records do not provide an attributable deployment trail. |
+| 2026-11-20 11:37:51 | CI run `44726033272` for `60be439` completed failed; its two backend test shards failed. GitHub has no Production deployment record for that SHA. |
+
+Accordingly, `60be439` is classified **UNATTESTED**. Its image is present and was observed running against schema `202605310097`, but the required deployment authorization/receipt chain is absent. Preserve that release directory, image, and all incident records; do not add a retroactive receipt or label the historical deployment authorized. The earlier `9da0010` recovery records are preserved as historical evidence, not treated as proof of the running `60be439` image.
+
+The recovery candidate is fixed to green commit `65308a2af263cd59e90276b3a771d4ed6ecbf842` (CI run `44734573582`, all seven required jobs passed). Current `main` has since advanced to `573de5daaab7f2a3b358524059ebb6005ecc11df`, which contains migration `202605310098`. The replacement deliberately builds the fixed `65308a2` source archive and requires its schema head to equal the live `097`; it does not include or apply migration `098`. It separately requires passing CI for the exact current-main SHA that carries the reconciliation code and verifies that `65308a2` remains its ancestor.
+
+The prepared one-time `incident-replacement` mode is root-controlled and serialized by `deploy.lock`; it is local worktree code and has not been installed on the host. It rechecks the original record hashes and exact predecessor image/schema, requires the failed predecessor CI and absence of a GitHub Production deployment record, takes the normal pre-activation backups, forces a new backend image build, forbids migration, and uses the existing same-schema rollback path. After `current` points to the verified replacement, the root helper checks the `DEPLOYED` receipt, exact image IDs, backend/worker/beat identities, Celery ping and beat startup, schema `097`, public readiness, and served asset hashes. It then exclusively creates `forward097.reconciled.json`; it never removes `forward097.attempt`, edits historical receipts, or closes the incident unless all checks pass. A later normal release may proceed only while both the original marker and a valid reconciliation receipt remain present. If any check fails, keep CD disabled and the original evidence intact.
+
+The current release workflow is manually disabled. Keep it disabled until the reconciliation changes are on `main` and that exact SHA's CI passes, and until the reviewed root helper and entrypoint are installed under the deployment lock. For the authorized recovery, enable the workflow only to dispatch the fixed incident mode from current `main`; do not rely on a delayed automatic deployment. Leave normal CD enabled only after replacement health and incident receipt verification. The replacement is a routine same-schema image release; it is not a migration or a restoration of the database.
+
 ### CI runner capacity
 
 Keep the `garrison-ci` label on dedicated CI runners and the `garrison-production` label on the Hostinger deployment runner. CI executes repository code and needs Docker Engine and Compose v2 for disposable PostgreSQL, Redis and S3 fixtures. Give each CI runner its own isolated Docker daemon and loopback port namespace so the test service ports do not conflict. Keep production credentials, volumes and the production Docker socket outside CI. CI is intended for trusted repository collaborators.
@@ -70,6 +92,18 @@ Runner availability changes, so do not assume one runner executes all seven CI j
 ### Review pipeline time on every release
 
 Compare the exact candidate's Actions run with recent runs that cover the same tests. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests and the browser jobs log individual test durations. Look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and confirm the same required checks and test coverage ran.
+
+Incident candidate `65308a2` passed all seven required jobs in self-hosted CI run
+`44734573582` in 30m23s; its first job started 25 seconds after creation. The exact
+current-main run `44748642997` on `573de5d` also passed all seven jobs in 31m33s
+(13:55:46–14:27:19 UTC). Its first job started three seconds after creation; the
+backend shards took 5m42s and 6m26s, and the Chrome shards 8m06s and 8m47s. Summed
+job elapsed time was about 31m15s, close to wall time. The runner API then showed one
+of four `garrison-ci` runners online, with the Production runner online. Restoring
+the three offline CI runners is the clearest evidence-based speed opportunity; do
+not raise the tested integration concurrency cap or remove required jobs to hide
+runner scarcity. This run verifies current `main` CI, not the fixed `65308a2` recovery
+artifact or any uncommitted reconciliation changes.
 
 The backend suite and Google Chrome browser suite each run in two shards with separate PostgreSQL, Redis and object storage services. The integration matrix runs at most two of those jobs at a time on the shared self-hosted runners. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser tests by measured duration. One shard uses the checked-in test selection and the other runs its complement, including newly added tests. Each shard uses one Chrome worker to stay within shared-host capacity. Each browser test uses its own browser context, synthetic accounts and project data. The browser jobs reuse Google Chrome when the installed binary can report its version. On a new runner, they install Chrome under a lock while building the production bundle, then wait for both before serving it. They still type-check the browser tests, and the required frontend job type-checks the application. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
@@ -230,6 +264,82 @@ Pending Alembic revisions and changes to PostgreSQL, Redis, the S3 service, its 
 2. Record the backup object names and tested recovery plan. The pre-activation database backup uses `--skip-retention` to preserve existing backups. It protects the databases. Independent database and object recovery remains in the post-release backlog. Coordinate with the deployment operator so routine CD and maintenance cannot overlap. Quiesce affected writers when the change requires a consistent database or object snapshot.
 3. Apply the approved migration or infrastructure change using the candidate's images and the host override. Compare the resulting Alembic revision and persistent resource layout with the plan before resuming writes.
 4. Verify health, data and permissions, relevant background jobs, and the affected browser workflow. Capture the deployment and restore evidence. If a rollback needs data recovery, account for writes after the recovery point before reopening traffic.
+
+### Emergency NGINX-only maintenance while the forward-097 hold is open
+
+This procedure changes only the NGINX container. It does not switch the application `current` symlink, start or stop backend/worker/beat/PostgreSQL, run Alembic, edit `forward097.*`, close the incident, or enable normal CD. Run it only after the designated production confirmation codeword and under the existing deployment lock. Record actual UTC start/end times and retain the host command output.
+
+Before activation, verify the portal VM, active release, schema `202605310097`, NGINX container ID/image/version, the exact source paths mounted at `/etc/nginx/conf.d/default.conf`, `/etc/nginx/templates/grafana.conf.template`, and `/etc/nginx/conf.d/support.conf`, the TLS mount, and the support allowlist. Hash the incident records and allowlist. Confirm `forward097.attempt` remains present. If the marker, active release, source mounts, schema, or allowlist differs from the reviewed state, stop; do not adapt the procedure by clearing the hold.
+
+If the patched image cannot be activated immediately, `deploy/nginx_http2_mitigation.py` creates new read-only bind-mount copies of the portal, Grafana, and Super Admin configs with HTTP/2 disabled. It supports both the legacy `listen 443 ssl http2;` form and `http2 on;`; the Super Admin allowlist include and `deny all` must remain in its copied config. It never edits source files or activates containers. With the host deployment lock held and all source paths taken from the running NGINX container's actual mounts:
+
+```bash
+state=/opt/garrison-portal/deploy
+current=$(readlink -f "$state/current")
+nginx_id=$(docker ps --filter label=com.docker.compose.project=garrison-portal \
+  --filter label=com.docker.compose.service=nginx --format '{{.ID}}')
+docker inspect --format '{{range .Mounts}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}' "$nginx_id"
+```
+
+Set `portal_config`, `grafana_config`, and `support_config` to the three exact source paths shown by that inspection. Use a new private output directory for every attempt; never reuse prior evidence:
+
+```bash
+umask 077
+overlay="$state/nginx-emergency/http2-off-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 deploy/nginx_http2_mitigation.py --require-root \
+  --portal-config "$portal_config" \
+  --grafana-config "$grafana_config" \
+  --support-config "$support_config" \
+  --output-dir "$overlay"
+```
+
+Define the Compose command against the active release and host-only override. Do not print its fully rendered environment, which includes production secrets:
+
+```bash
+prod() {
+  docker compose --project-name garrison-portal \
+    --project-directory "$current" \
+    --env-file "$current/.env" --env-file "$current/.images.env" \
+    -f "$current/docker-compose.prod.yml" \
+    -f "$state/compose.vps.yml" "$@"
+}
+```
+
+For the HTTP/2-off fallback, validate the NGINX config with the currently running image and recreate only the proxy:
+
+```bash
+prod -f "$overlay/compose.no-http2.yml" config --quiet
+prod -f "$overlay/compose.no-http2.yml" run --rm --no-deps --pull never \
+  --entrypoint nginx nginx -t
+prod -f "$overlay/compose.no-http2.yml" up --detach --no-deps --pull never \
+  --force-recreate --wait --wait-timeout 90 nginx
+```
+
+Verify TLS without `-k`, readiness, Grafana `/api/health`, HTTP/1.1 fallback, and a denied Super Admin request. Confirm backend, worker, beat, database container IDs, schema, current symlink, marker hashes, and allowlist hash are unchanged. Keep HTTP/2 disabled until a patched NGINX version is observed running.
+
+For the upgrade, pull only `nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3`. Validate the image's `nginx -v`, `nginx -t`, and image digest before activation. First start that image with the HTTP/2-off overlay. After proving NGINX 1.30.7 is active and all previous vulnerable NGINX containers/workers have exited, recreate only NGINX again using the pinned image and original HTTP/2-enabled configs. Verify HTTP/2 negotiation on the portal and Grafana, HTTPS and health, Super Admin denial from a non-allowlisted source, and unchanged allowlist bytes. The approved office/VPN source must use its own real network to verify allowed access; a synthetic local test does not prove that source reaches production.
+
+The helper also writes `compose.patched-image.yml`. Use the two overlays together for the first activation, while HTTP/2 stays off:
+
+```bash
+docker pull nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3
+prod -f "$overlay/compose.no-http2.yml" -f "$overlay/compose.patched-image.yml" config --quiet
+prod -f "$overlay/compose.no-http2.yml" -f "$overlay/compose.patched-image.yml" \
+  run --rm --no-deps --pull never --entrypoint nginx nginx -t
+prod -f "$overlay/compose.no-http2.yml" -f "$overlay/compose.patched-image.yml" \
+  up --detach --no-deps --pull never --force-recreate --wait --wait-timeout 90 nginx
+```
+
+After verifying the patched version, image ID, TLS and HTTP/1.1 health, enable HTTP/2 by omitting only the no-HTTP/2 overlay. Keep the pinned-image overlay:
+
+```bash
+prod -f "$overlay/compose.patched-image.yml" run --rm --no-deps --pull never \
+  --entrypoint nginx nginx -t
+prod -f "$overlay/compose.patched-image.yml" up --detach --no-deps --pull never \
+  --force-recreate --wait --wait-timeout 90 nginx
+```
+
+If the patched image fails before activation, leave the existing proxy running and activate the tested HTTP/2-off overlay with `--pull never`. If the first replacement fails after stopping the old proxy, restore the recorded old image **with the HTTP/2-off overlay**. Never restore HTTP/2 on a vulnerable image. If re-enabling HTTP/2 fails after the patched image is verified, keep the patched image with HTTP/2 off and report that partial result. Preserve the overlay, image IDs, hashes, command output, health results, actual UTC timestamps, and the untouched incident markers. This proxy-only procedure does not reconcile the forward-097 hold.
 
 For the first owner-aware offline rollout, stop the previous Celery beat and worker and drain active application writes before migration. Keep an ingress write block in place through activation and the read-only smoke checks. The deployment probe needs GET access to the sign-in page, frontend entry asset, service worker, and readiness endpoint. Remove the block after verifying the new application and worker and confirming no legacy writers are running.
 

@@ -27,7 +27,11 @@ export function HRRoster() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [employeeLabel, setEmployeeLabel] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [projectLabel, setProjectLabel] = useState('');
+  const [employeeOptionOffset, setEmployeeOptionOffset] = useState(0);
+  const [projectOptionOffset, setProjectOptionOffset] = useState(0);
   const [workDate, setWorkDate] = useState('');
   const [commandId, setCommandId] = useState(() => crypto.randomUUID());
   const [startDate, setStartDate] = useState('');
@@ -38,14 +42,17 @@ export function HRRoster() {
   const [reason, setReason] = useState('');
 
   const employees = useQuery({
-    queryKey: ['hr', 'roster-employee-options', employeeSearch],
-    queryFn: () => listEmployees({ search: employeeSearch, limit: 25 }),
-    enabled: Boolean(employeeSearch.trim())
+    queryKey: ['hr', 'roster-employee-options', employeeSearch.trim(), employeeOptionOffset],
+    queryFn: () =>
+      listEmployees({
+        search: employeeSearch.trim() || undefined,
+        limit: pageSize,
+        offset: employeeOptionOffset
+      })
   });
   const projects = useQuery({
-    queryKey: ['hr', 'assignment-projects', projectSearch],
-    queryFn: () => listHrAssignmentProjects(projectSearch),
-    enabled: Boolean(projectSearch.trim())
+    queryKey: ['hr', 'assignment-projects', projectSearch.trim(), projectOptionOffset],
+    queryFn: () => listHrAssignmentProjects(projectSearch.trim(), pageSize, projectOptionOffset)
   });
   const roster = useQuery({
     queryKey: [...rosterKey, range, offset],
@@ -103,7 +110,7 @@ export function HRRoster() {
               maxLength={100}
               onChange={(event) => {
                 setEmployeeSearch(event.target.value);
-                setEmployeeId('');
+                setEmployeeOptionOffset(0);
                 setCommandId(crypto.randomUUID());
               }}
             />
@@ -113,19 +120,66 @@ export function HRRoster() {
             <select
               className={hrInputClass}
               required
+              disabled={employees.isFetching}
+              aria-label="Roster employee"
               value={employeeId}
               onChange={(event) => {
-                setEmployeeId(event.target.value);
+                const option = employees.data?.items.find((row) => row.id === event.target.value);
+                setEmployeeId(option?.id ?? '');
+                setEmployeeLabel(option ? `${option.full_name} (${option.employee_code})` : '');
                 setCommandId(crypto.randomUUID());
               }}
             >
-              <option value="">Choose employee</option>
+              <option value="">
+                {employees.isFetching ? 'Loading employees…' : 'Choose employee'}
+              </option>
+              {employeeId && !employees.data?.items.some((row) => row.id === employeeId) && (
+                <option value={employeeId}>{employeeLabel}</option>
+              )}
               {employees.data?.items.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.full_name} ({row.employee_code})
                 </option>
               ))}
             </select>
+            {employees.isError && (
+              <span role="alert" className="mt-1 block text-sm">
+                {formatApiError(employees.error, 'Employee search failed.')} {' '}
+                <button
+                  className="underline"
+                  type="button"
+                  onClick={() => void employees.refetch()}
+                >
+                  Retry employee search
+                </button>
+              </span>
+            )}
+            {employees.isSuccess && !employees.data.items.length && (
+              <span className="mt-1 block text-sm">No matching employees.</span>
+            )}
+            {(employees.data?.total ?? 0) > pageSize && (
+              <nav className="mt-1 flex gap-2 text-sm" aria-label="Roster employee options pages">
+                <button
+                  type="button"
+                  className="underline"
+                  disabled={employeeOptionOffset === 0 || employees.isFetching}
+                  onClick={() => setEmployeeOptionOffset((value) => Math.max(0, value - pageSize))}
+                >
+                  Previous employees
+                </button>
+                <button
+                  type="button"
+                  className="underline"
+                  disabled={
+                    employeeOptionOffset + pageSize >= (employees.data?.total ?? 0) ||
+                    employees.isFetching
+                  }
+                  onClick={() => setEmployeeOptionOffset((value) => value + pageSize)}
+                >
+                  More employees
+                </button>
+              </nav>
+            )}
           </label>
           <label>
             Find roster project
@@ -136,7 +190,7 @@ export function HRRoster() {
               maxLength={100}
               onChange={(event) => {
                 setProjectSearch(event.target.value);
-                setProjectId('');
+                setProjectOptionOffset(0);
                 setCommandId(crypto.randomUUID());
               }}
             />
@@ -146,19 +200,66 @@ export function HRRoster() {
             <select
               className={hrInputClass}
               required
+              disabled={projects.isFetching}
+              aria-label="Roster project"
               value={projectId}
               onChange={(event) => {
-                setProjectId(event.target.value);
+                const option = projects.data?.items.find((row) => row.id === event.target.value);
+                setProjectId(option?.id ?? '');
+                setProjectLabel(option ? `${option.name} (${option.code})` : '');
                 setCommandId(crypto.randomUUID());
               }}
             >
-              <option value="">Choose project</option>
+              <option value="">
+                {projects.isFetching ? 'Loading projects…' : 'Choose project'}
+              </option>
+              {projectId && !projects.data?.items.some((row) => row.id === projectId) && (
+                <option value={projectId}>{projectLabel}</option>
+              )}
               {projects.data?.items.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name} ({row.code})
                 </option>
               ))}
             </select>
+            {projects.isError && (
+              <span role="alert" className="mt-1 block text-sm">
+                {formatApiError(projects.error, 'Project search failed.')} {' '}
+                <button
+                  className="underline"
+                  type="button"
+                  onClick={() => void projects.refetch()}
+                >
+                  Retry project search
+                </button>
+              </span>
+            )}
+            {projects.isSuccess && !projects.data.items.length && (
+              <span className="mt-1 block text-sm">No matching projects.</span>
+            )}
+            {(projects.data?.total ?? 0) > pageSize && (
+              <nav className="mt-1 flex gap-2 text-sm" aria-label="Roster project options pages">
+                <button
+                  type="button"
+                  className="underline"
+                  disabled={projectOptionOffset === 0 || projects.isFetching}
+                  onClick={() => setProjectOptionOffset((value) => Math.max(0, value - pageSize))}
+                >
+                  Previous projects
+                </button>
+                <button
+                  type="button"
+                  className="underline"
+                  disabled={
+                    projectOptionOffset + pageSize >= (projects.data?.total ?? 0) ||
+                    projects.isFetching
+                  }
+                  onClick={() => setProjectOptionOffset((value) => value + pageSize)}
+                >
+                  More projects
+                </button>
+              </nav>
+            )}
           </label>
           <label>
             Allocation date
@@ -179,15 +280,9 @@ export function HRRoster() {
             </button>
           </div>
         </fieldset>
-        {(employees.isFetching || projects.isFetching) && <p role="status">Searching…</p>}
-        {employees.isError && (
-          <p role="alert">{formatApiError(employees.error, 'Employee search failed.')}</p>
+        {(employees.isFetching || projects.isFetching) && (
+          <p role="status">Loading roster options…</p>
         )}
-        {projects.isError && (
-          <p role="alert">{formatApiError(projects.error, 'Project search failed.')}</p>
-        )}
-        {employees.isSuccess && !employees.data.items.length && <p>No matching employees.</p>}
-        {projects.isSuccess && !projects.data.items.length && <p>No matching projects.</p>}
         {add.isError && (
           <p role="alert">{formatApiError(add.error, 'Could not allocate the shift.')}</p>
         )}

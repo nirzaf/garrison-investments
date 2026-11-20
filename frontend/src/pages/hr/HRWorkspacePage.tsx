@@ -102,6 +102,30 @@ const LEAVE_PAGE_SIZE = 25;
 const LEAVE_REQUESTS_KEY = ['hr', 'leave-requests'];
 const SERVICE_REQUEST_PAGE_SIZE = 25;
 const SERVICE_REQUESTS_KEY = ['hr', 'service-requests'];
+type CoreResource =
+  | 'departments'
+  | 'positions'
+  | 'employees'
+  | 'accessRequests'
+  | 'compliance'
+  | 'requisitions'
+  | 'documents'
+  | 'leaveTypes'
+  | 'policies'
+  | 'offboarding';
+
+const coreResourceLabels: Record<CoreResource, string> = {
+  departments: 'Departments',
+  positions: 'Positions',
+  employees: 'Employee directory',
+  accessRequests: 'Access requests',
+  compliance: 'Compliance records',
+  requisitions: 'Recruitment requisitions',
+  documents: 'HR documents',
+  leaveTypes: 'Leave types',
+  policies: 'HR policies',
+  offboarding: 'Offboarding cases'
+};
 
 function OrgBranch({ node }: { node: OrgChartNode }) {
   return (
@@ -133,6 +157,8 @@ export function HRWorkspacePage() {
   const [tab, setTab] = useState<HrTab>(hasPerm('hr:employees:read') ? 'overview' : 'access');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coreLoading, setCoreLoading] = useState<Partial<Record<CoreResource, boolean>>>({});
+  const [coreErrors, setCoreErrors] = useState<Partial<Record<CoreResource, string>>>({});
 
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [positions, setPositions] = useState<PositionRecord[]>([]);
@@ -230,41 +256,69 @@ export function HRWorkspacePage() {
   const [ltName, setLtName] = useState('');
 
   const loadCore = useCallback(async () => {
-    try {
-      if (hasPerm('hr:employees:read')) {
-        const [deptsRes, posRes, empsRes] = await Promise.all([
-          listDepartments(),
-          listPositions(),
-          listEmployees({ search: employeeSearch || undefined, offset: employeeOffset, limit: 50 })
-        ]);
-        setDepartments(deptsRes.items);
-        setPositions(posRes.items);
-        setEmployees(empsRes.items);
-        setEmployeeTotal(empsRes.total);
+    const load = async <T,>(
+      resource: CoreResource,
+      request: () => Promise<T>,
+      accept: (result: T) => void
+    ) => {
+      setCoreLoading((current) => ({ ...current, [resource]: true }));
+      setCoreErrors((current) => ({ ...current, [resource]: undefined }));
+      try {
+        accept(await request());
+      } catch (failure) {
+        setCoreErrors((current) => ({
+          ...current,
+          [resource]: errMsg(
+            failure,
+            `Unable to load ${coreResourceLabels[resource].toLowerCase()}.`
+          )
+        }));
+      } finally {
+        setCoreLoading((current) => ({ ...current, [resource]: false }));
       }
-      if (hasPerm('hr:employees:read') || hasPerm('users:manage')) {
-        setAccessRequests((await listAccessRequests()).items);
-      }
+    };
 
-      if (hasPerm('hr:compliance:manage')) {
-        setCompliance(await listExpiringCompliance(60));
-      }
-      if (hasPerm('hr:recruitment:manage')) {
-        setRequisitions((await listRequisitions()).items);
-      }
-      if (hasPerm('hr:documents:manage')) {
-        setDocuments((await listHrDocuments()).items);
-      }
-      if (hasPerm('hr:leave:manage')) {
-        setLeaveTypes((await listLeaveTypes()).items);
-      }
-      if (hasPerm('hr:employees:read')) setPolicies((await listPolicies()).items);
-      if (hasPerm('hr:offboarding:manage')) {
-        setOffboarding((await listOffboardingCases()).items);
-      }
-    } catch (err) {
-      setError(errMsg(err, 'Unable to load HR workspace data.'));
+    const requests: Promise<void>[] = [];
+    if (hasPerm('hr:employees:read')) {
+      requests.push(
+        load('departments', listDepartments, (result) => setDepartments(result.items)),
+        load('positions', listPositions, (result) => setPositions(result.items)),
+        load(
+          'employees',
+          () => listEmployees({
+            search: employeeSearch || undefined,
+            offset: employeeOffset,
+            limit: 50
+          }),
+          (result) => {
+            setEmployees(result.items);
+            setEmployeeTotal(result.total);
+          }
+        )
+      );
     }
+    if (hasPerm('hr:employees:read') || hasPerm('users:manage')) {
+      requests.push(load('accessRequests', listAccessRequests, (result) => setAccessRequests(result.items)));
+    }
+    if (hasPerm('hr:compliance:manage')) {
+      requests.push(load('compliance', () => listExpiringCompliance(60), setCompliance));
+    }
+    if (hasPerm('hr:recruitment:manage')) {
+      requests.push(load('requisitions', listRequisitions, (result) => setRequisitions(result.items)));
+    }
+    if (hasPerm('hr:documents:manage')) {
+      requests.push(load('documents', listHrDocuments, (result) => setDocuments(result.items)));
+    }
+    if (hasPerm('hr:leave:manage')) {
+      requests.push(load('leaveTypes', listLeaveTypes, (result) => setLeaveTypes(result.items)));
+    }
+    if (hasPerm('hr:employees:read')) {
+      requests.push(load('policies', listPolicies, (result) => setPolicies(result.items)));
+    }
+    if (hasPerm('hr:offboarding:manage')) {
+      requests.push(load('offboarding', listOffboardingCases, (result) => setOffboarding(result.items)));
+    }
+    await Promise.all(requests);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perms.join('|'), user?.role, employeeSearch, employeeOffset]);
 
@@ -568,6 +622,31 @@ export function HRWorkspacePage() {
           {error}
         </div>
       ) : null}
+      {Object.values(coreLoading).some(Boolean) && (
+        <p role="status" className="text-sm text-theme-text-muted">
+          Loading HR workspace data…
+        </p>
+      )}
+      {Object.entries(coreErrors).map(([resource, message]) =>
+        message ? (
+          <div
+            key={resource}
+            role="alert"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-2 text-sm text-[var(--status-error-text)]"
+          >
+            <span>
+              {coreResourceLabels[resource as CoreResource]}: {message}
+            </span>
+            <button
+              className="font-semibold underline"
+              type="button"
+              onClick={() => void loadCore()}
+            >
+              Retry HR data
+            </button>
+          </div>
+        ) : null
+      )}
 
       <div className="flex flex-wrap gap-2 border-b border-theme-border pb-3">
         {tabs
@@ -790,6 +869,10 @@ export function HRWorkspacePage() {
                 </button>
               </div>
               <div className="mt-3 overflow-x-auto">
+                {coreLoading.employees && <p role="status">Loading employees…</p>}
+                {!coreLoading.employees &&
+                  !coreErrors.employees &&
+                  employees.length === 0 && <p>No employees match this directory page.</p>}
                 <table className="min-w-full text-left text-sm">
                   <thead className="border-b border-theme-border text-xs uppercase text-theme-text-muted">
                     <tr>
@@ -961,25 +1044,69 @@ export function HRWorkspacePage() {
                       </label>
                       <label className="block">
                         Department{' '}
-                        <select name="department" defaultValue={selectedEmp.department_id ?? ''}>
+                        <select
+                          name="department"
+                          aria-label="Department"
+                          defaultValue={selectedEmp.department_id ?? ''}
+                        >
                           <option value="">None</option>
+                          {selectedEmp.department_id &&
+                            !departments.some((dept) => dept.id === selectedEmp.department_id) && (
+                              <option value={selectedEmp.department_id}>
+                                {selectedEmp.department_name ?? 'Current department'}
+                              </option>
+                            )}
                           {departments.map((dept) => (
                             <option key={dept.id} value={dept.id}>
                               {dept.name}
                             </option>
                           ))}
                         </select>
+                        {coreLoading.departments && <span role="status">Loading departments…</span>}
+                        {!coreLoading.departments &&
+                          !coreErrors.departments &&
+                          departments.length === 0 && <span>No departments are configured.</span>}
+                        {coreErrors.departments && (
+                          <span role="alert">
+                            Department options failed to load.{' '}
+                            <button className="underline" type="button" onClick={() => void loadCore()}>
+                              Retry
+                            </button>
+                          </span>
+                        )}
                       </label>
                       <label className="block">
                         Position{' '}
-                        <select name="position" defaultValue={selectedEmp.position_id ?? ''}>
+                        <select
+                          name="position"
+                          aria-label="Position"
+                          defaultValue={selectedEmp.position_id ?? ''}
+                        >
                           <option value="">None</option>
+                          {selectedEmp.position_id &&
+                            !positions.some((position) => position.id === selectedEmp.position_id) && (
+                              <option value={selectedEmp.position_id}>
+                                {selectedEmp.position_title ?? 'Current position'}
+                              </option>
+                            )}
                           {positions.map((position) => (
                             <option key={position.id} value={position.id}>
                               {position.title}
                             </option>
                           ))}
                         </select>
+                        {coreLoading.positions && <span role="status">Loading positions…</span>}
+                        {!coreLoading.positions &&
+                          !coreErrors.positions &&
+                          positions.length === 0 && <span>No positions are configured.</span>}
+                        {coreErrors.positions && (
+                          <span role="alert">
+                            Position options failed to load.{' '}
+                            <button className="underline" type="button" onClick={() => void loadCore()}>
+                              Retry
+                            </button>
+                          </span>
+                        )}
                       </label>
                       <label className="block">
                         Reporting manager{' '}
@@ -1556,6 +1683,10 @@ export function HRWorkspacePage() {
                 <HRLeaveRollover employees={employees} leaveTypes={leaveTypes} />
               </>
             )}
+            {coreLoading.leaveTypes && <p role="status">Loading leave types…</p>}
+            {!coreLoading.leaveTypes &&
+              !coreErrors.leaveTypes &&
+              leaveTypes.length === 0 && <p>No leave types are configured.</p>}
             {hasPerm('hr:policy:manage') && leaveTypes.length > 0 && (
               <details className="border-t border-theme-border pt-3 text-sm">
                 <summary>Record opening leave balance</summary>
@@ -1590,6 +1721,7 @@ export function HRWorkspacePage() {
                         </option>
                       ))}
                     </select>
+                    {coreLoading.employees && <span role="status">Loading employees…</span>}
                   </label>
                   <label>
                     Leave type{' '}

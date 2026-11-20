@@ -204,7 +204,7 @@ location / { return 200 'synthetic static'; }
         assert int(sql("select count(*) from activity_log where action='system.startup'")) == 1
         nginx = run(
             "ingress",
-            "nginx:1.25-alpine",
+            "nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3",
             options=("-v", f"{tmp_path}:/fixture:ro", "-v", f"{config}:/etc/nginx/nginx.conf:ro"),
         )
         docker("exec", nginx, "nginx", "-t")

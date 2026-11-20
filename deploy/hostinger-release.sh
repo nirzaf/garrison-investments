@@ -20,19 +20,25 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 ) ]] ||
-  die 'Expected a CI run ID, full SHA, rollback-v2 and technical-checks-v1.'
+   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 || "$4" == incident-replacement ) ]] ||
+  die 'Expected a CI run ID, full SHA, rollback-v2 and release mode.'
 run_id=$1
 sha=$2
 release_mode=$4
 expected_main=$sha
 pinned=0
 forward097=0
+incident_replacement=0
 [[ "$release_mode" != forward-only-093-to-097 ]] || forward097=1
+[[ "$release_mode" != incident-replacement ]] || incident_replacement=1
 if [[ "$release_mode" == pinned-no-backup-093 ]]; then
   pinned=1
   [[ "$sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a && "$run_id" == 44163196512 ]] ||
     die "Pinned exception does not match the authorized candidate and CI run."
+fi
+if (( incident_replacement )); then
+  [[ "$sha" == 65308a2af263cd59e90276b3a771d4ed6ecbf842 && "$run_id" == 44734573582 ]] ||
+    die 'Incident replacement is pinned to the previously verified green 65308a2 release.'
 fi
 IFS= read -r token || die 'A GitHub Actions token is required on stdin.'
 [[ "$token" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'Invalid GitHub Actions token format.'
@@ -62,10 +68,41 @@ exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
 
 assert_forward_maintenance_clear() {
-  # All modes stop before schema equality/idempotence can reopen an interrupted attempt.
-  # Only a separately reviewed operator reconciliation may retire this durable marker.
-  [[ ! -e "$state/forward097.attempt" && ! -L "$state/forward097.attempt" ]] ||
-    die 'A forward097 attempt requires operator reconciliation; every release mode is blocked.'
+  local marker=$state/forward097.attempt reconciled=$state/forward097.reconciled.json
+  if [[ -e "$marker" || -L "$marker" ]]; then
+    [[ -f "$marker" && ! -L "$marker" ]] || die 'The original forward097 marker is unsafe.'
+    verify_forward_reconcile_tool
+    if (( incident_replacement )); then
+      [[ ! -e "$reconciled" && ! -L "$reconciled" ]] ||
+        die 'Incident already reconciled; use the normal release mode.'
+      python3 "$forward_reconcile_tool" check --lock-fd 9 ||
+        die 'Historical forward097 evidence failed exact reconciliation checks.'
+    else
+      python3 "$forward_reconcile_tool" verify --lock-fd 9 ||
+        die 'A forward097 attempt requires a verified reconciliation receipt.'
+    fi
+  elif (( incident_replacement )); then
+    die 'Incident replacement mode requires the preserved forward097.attempt marker.'
+  elif [[ -e "$reconciled" || -L "$reconciled" ]]; then
+    die 'A reconciliation receipt without its original marker requires operator review.'
+  fi
+}
+
+forward_reconcile_tool=/usr/local/lib/garrison-release/forward097_reconcile.py
+verify_forward_reconcile_tool() {
+  python3 - "$forward_reconcile_tool" <<'PYRECONCILE'
+import hashlib,pathlib,stat,sys
+base=pathlib.Path('/usr/local/lib/garrison-release')
+for path in (base.parent.parent.parent,base.parent.parent,base.parent,base):
+ info=path.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
+  raise SystemExit('Forward reconciliation installation is not protected')
+path=pathlib.Path(sys.argv[1]);info=path.lstat()
+if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
+ raise SystemExit('Forward reconciliation helper is not root-controlled')
+if hashlib.sha256(path.read_bytes()).hexdigest()!='3ac4db8f436b77f4b1208af24b714e05f0c2b0350f0d63e07447e65069b3c98c':
+ raise SystemExit('Forward reconciliation helper bytes differ from the reviewed entrypoint')
+PYRECONCILE
 }
 assert_forward_maintenance_clear
 
@@ -79,7 +116,8 @@ consume_pinned_exception() {
     die 'Pinned exception permit is invalid.'
   now=$(date -u +%s)
   [[ "$bound_run" == "$deploy_run_id" && "$bound_attempt" == "$deploy_attempt" &&
-     -z "$extra" && "$bound_main" =~ ^[a-f0-9]{40}$ && "$start" =~ ^[1-9][0-9]{9}$ && "$end" =~ ^[1-9][0-9]{9}$ ]] &&
+     -z "$extra" && "$bound_main" =~ ^[a-f0-9]{40}$ &&
+     "$start" =~ ^[1-9][0-9]{9}$ && "$end" =~ ^[1-9][0-9]{9}$ ]] &&
     (( start <= now && now < end && end - start <= 1800 )) ||
     die 'Pinned exception run, attempt or window does not match.'
   mv -T -- "$permit" "$consumed"
@@ -97,6 +135,34 @@ github() {
       "https://api.github.com/repos/$repository/$1"
 }
 
+verify_no_predecessor_production_deployment() {
+  local page=1 count
+  while :; do
+    count=$(github "deployments?sha=60be439923df92e127540ffc9f0b509879797c1b&per_page=100&page=$page" | python3 -c '
+import json, sys
+
+deployments = json.load(sys.stdin)
+if not isinstance(deployments, list):
+    sys.exit("GitHub deployments response is invalid.")
+if any(not isinstance(item, dict) for item in deployments):
+    sys.exit("GitHub deployments response contains an invalid record.")
+if any(
+    str(item.get("environment", "")).casefold() == "production"
+    for item in deployments
+):
+    sys.exit("A Production deployment record exists for the predecessor; independent review is required.")
+print(len(deployments))
+') || return
+    if (( count < 100 )); then
+      return 0
+    fi
+    if (( page >= 100 )); then
+      die 'Cannot verify every predecessor deployment record within the bounded page limit.'
+    fi
+    page=$((page + 1))
+  done
+}
+
 verify_main() {
   github git/ref/heads/main | python3 -c '
 import json, sys
@@ -106,8 +172,8 @@ if json.load(sys.stdin)["object"]["sha"] != sys.argv[1]:
 }
 
 verify_ci() {
-  local attempt
-  attempt=$(github "actions/runs/$run_id" | python3 -c '
+  local attempt checked_run=${1:-$run_id} checked_sha=${2:-$sha}
+  attempt=$(github "actions/runs/$checked_run" | python3 -c '
 import json, sys
 
 run = json.load(sys.stdin)
@@ -125,8 +191,8 @@ if not (
 ):
     sys.exit("The candidate does not match a successful CI push to main.")
 print(attempt)
-' "$run_id" "$repository" "$sha") || return
-  github "actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" | python3 -c '
+' "$checked_run" "$repository" "$checked_sha") || return
+  github "actions/runs/$checked_run/attempts/$attempt/jobs?per_page=100" | python3 -c '
 import json, sys
 
 required = {
@@ -151,17 +217,19 @@ if (
     )
 ):
     sys.exit("The successful CI attempt is missing a passed required job.")
-' "$run_id" "$sha" "$attempt" || return
+' "$checked_run" "$checked_sha" "$attempt" || return
   printf '%s\n' "$attempt"
 }
 
-ci_attempt=$(verify_ci)
+ci_attempt=$(verify_ci "$run_id" "$sha")
+main_ci_run_id=$run_id
+main_ci_attempt=$ci_attempt
 verify_deploy_run() {
   github "actions/runs/$deploy_run_id/attempts/$deploy_attempt" | python3 -c '
 import json, sys
 
 run = json.load(sys.stdin)
-if not (
+common = (
     run.get("id") == int(sys.argv[1])
     and run.get("run_attempt") == int(sys.argv[2])
     and run.get("path") == ".github/workflows/deploy.yml"
@@ -171,21 +239,65 @@ if not (
     and run.get("status") in {"queued", "in_progress"}
     and run.get("head_branch") == "main"
     and (run.get("head_repository") or {}).get("full_name") == sys.argv[3]
-    and (
-        (sys.argv[5] == "1" and run.get("event") == "workflow_dispatch"
-         and run.get("head_sha") == sys.argv[4])
-        or (sys.argv[5] == "0" and (run.get("event") == "workflow_run"
-             or (run.get("event") == "workflow_dispatch" and run.get("head_sha") == sys.argv[4])))
-    )
-):
+)
+main_sha=run.get("head_sha")
+if not common or not isinstance(main_sha,str) or len(main_sha)!=40:
     sys.exit("The production deployment run does not match this invocation.")
-  ' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" "$((pinned || forward097))"
+if sys.argv[5] == "incident":
+    valid=run.get("event")=="workflow_dispatch"
+elif sys.argv[5] == "manual":
+    valid=(run.get("event")=="workflow_dispatch" and main_sha==sys.argv[4])
+else:
+    valid=(run.get("event")=="workflow_run"
+           or (run.get("event")=="workflow_dispatch" and main_sha==sys.argv[4]))
+if not valid:
+    sys.exit("The production deployment run does not match this invocation.")
+print(main_sha if sys.argv[5] == "incident" else sys.argv[4])
+' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" \
+    "$(if (( ${incident_replacement:-0} )); then echo incident; elif (( pinned || forward097 )); then echo manual; else echo automatic; fi)"
 }
 if (( pinned )); then
   consume_pinned_exception
 fi
-verify_deploy_run
+deployment_main_sha=$(verify_deploy_run)
+if (( incident_replacement )); then
+  expected_main=$deployment_main_sha
+  github "compare/65308a2af263cd59e90276b3a771d4ed6ecbf842...$expected_main" | python3 -c '
+import json,sys
+comparison=json.load(sys.stdin)
+if (comparison.get("status") not in {"ahead","identical"}
+    or comparison.get("base_commit",{}).get("sha")!="65308a2af263cd59e90276b3a771d4ed6ecbf842"
+    or comparison.get("merge_base",{}).get("sha")!="65308a2af263cd59e90276b3a771d4ed6ecbf842"):
+ sys.exit("The fixed green recovery candidate is no longer an ancestor of deployment main.")
+'
+  main_ci_run_id=$(github "actions/runs?head_sha=$expected_main&branch=main&event=push&per_page=100" | python3 -c '
+import json,sys
+response=json.load(sys.stdin)
+runs=response.get("workflow_runs",[])
+valid=[run for run in runs if run.get("path")==".github/workflows/ci.yml"
+       and run.get("event")=="push" and run.get("head_branch")=="main"
+       and run.get("head_sha")==sys.argv[1]
+       and (run.get("head_repository") or {}).get("full_name")=="nirzaf/garrison-investments"]
+if not valid: sys.exit("Exact deployment main SHA has no CI run.")
+valid.sort(key=lambda run: (run.get("created_at",""),run.get("run_attempt",0)),reverse=True)
+print(valid[0]["id"])
+' "$expected_main")
+  main_ci_attempt=$(verify_ci "$main_ci_run_id" "$expected_main")
+fi
+[[ "$deployment_main_sha" == "$expected_main" ]] || die 'Deployment workflow main SHA does not match the verified main tip.'
 verify_main
+if (( incident_replacement )); then
+  github "actions/runs/44726033272" | python3 -c '
+import json,sys
+run=json.load(sys.stdin)
+if (run.get("head_sha")!="60be439923df92e127540ffc9f0b509879797c1b"
+    or run.get("event")!="push" or run.get("conclusion")!="failure"):
+ sys.exit("The recorded predecessor CI failure does not match the incident.")
+'
+  verify_no_predecessor_production_deployment
+  verify_forward_reconcile_tool
+  python3 "$forward_reconcile_tool" preflight --lock-fd 9
+fi
 if (( forward097 )); then
   # Fixed protected installation, never execute privileged helper code from candidate.
   python3 - <<'PYFORWARD'
@@ -281,6 +393,11 @@ if [[ "$generation" != "$previous_generation" ]] ||
    ! cmp -s "$previous/docker-compose.prod.yml" "$candidate/docker-compose.prod.yml" ||
    ! diff -qr --exclude=ssl "$previous/nginx" "$candidate/nginx" >/dev/null ||
    ! diff -qr "$previous/observability" "$candidate/observability" >/dev/null; then
+  runtime_changed=1
+fi
+if (( ${incident_replacement:-0} )); then
+  # Never attest/release a candidate while retaining the image from the
+  # unattested predecessor, even when the application tree is unchanged.
   runtime_changed=1
 fi
 
@@ -589,6 +706,10 @@ if (( forward097 )); then
 elif (( pinned )); then
   [[ "$current" == 202605310061 && "$heads" == 202605310093 && "$runtime_changed" == 1 ]] ||
     die 'Pinned exception requires the exact 061 to 093 migration and runtime switch.'
+elif (( incident_replacement )); then
+  [[ "$current" == 202605310097 && "$heads" == "$current" && "$runtime_changed" == 1 &&
+     "$backend_image" == "garrison-portal-release-backend:$sha" ]] ||
+    die 'Incident replacement requires an exact 097 schema match and a freshly built candidate image.'
 else
   [[ -n "$heads" && "$heads" == "$current" ]] ||
     die 'Pending database migrations require the reviewed maintenance procedure.'
@@ -654,8 +775,12 @@ if (( ! pinned && ! forward097 )) && [[ "$generation" == "$previous_generation" 
     rollback_compatible=1
   fi
 fi
+if (( ${incident_replacement:-0} && !rollback_compatible )); then
+  die 'Incident replacement requires a verified same-schema rollback image before activation.'
+fi
 runtime_attempted=0
 frontend_attempted=0
+pointer_advanced=0
 
 rollback() {
   local result=$?
@@ -678,6 +803,11 @@ rollback() {
         > "$candidate/ACTIVATION_FAILED"
       compose "$candidate" stop nginx celery_beat celery_worker backend ||
         printf 'Automatic containment failed. Stop portal ingress and writers from the host.\n' >&2
+    fi
+    if (( pointer_advanced && rollback_compatible )); then
+      ln -sfn "$previous" "$state/.current-rollback" &&
+        mv -Tf "$state/.current-rollback" "$state/current" ||
+        printf 'Release pointer rollback failed. Keep CD disabled and reconcile the host state.\n' >&2
     fi
   fi
   exit "$result"
@@ -756,6 +886,7 @@ printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\n
 if (( forward097 )); then mv "$candidate/DEPLOYED" "$candidate/FORWARD_ACTIVATION_PENDING"; fi
 ln -sfn "$candidate" "$state/.current-next"
 mv -Tf "$state/.current-next" "$state/current"
+pointer_advanced=1
 if (( forward097 )); then
   printf 'Mode: forward-only-093-to-097\nSecured backup/restore: waived for exact owner-authorized release; not verified\n' >> "$candidate/FORWARD_ACTIVATION_PENDING"
   python3 - "$candidate" "$state" <<'PYFS'
@@ -777,6 +908,13 @@ PYFS
   curl --fail --silent --show-error --max-time 12 "$portal/health/readiness" | check_readiness
   forward_mark reopened_verified
   mv "$candidate/FORWARD_ACTIVATION_PENDING" "$candidate/DEPLOYED"
+fi
+if (( incident_replacement )); then
+  verify_forward_reconcile_tool
+  python3 "$forward_reconcile_tool" close --lock-fd 9 \
+    --sha "$sha" --ci-run "$run_id" --ci-attempt "$ci_attempt" \
+    --main-sha "$expected_main" --main-ci-run "$main_ci_run_id" --main-ci-attempt "$main_ci_attempt" \
+    --deploy-run "$deploy_run_id" --deploy-attempt "$deploy_attempt"
 fi
 trap - EXIT INT TERM
 printf '\nDeployed %s from CI run %s. Frontend asset %s verified.\n' "$sha" "$run_id" "$asset"
