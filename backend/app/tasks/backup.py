@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import subprocess
 import sys
 from typing import Literal
 
 import structlog
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.services.backup_receipt_ingestion import record_local_scheduled_db_attempt
 from app.tasks.async_utils import run_async_task
@@ -18,7 +18,7 @@ logger = structlog.get_logger("celery.task")
 
 
 def backup_command(monthly: bool = False, target: str = "all") -> list[str]:
-    command = [sys.executable, "scripts/backup.py", "--target", target]
+    command = [sys.executable, "-m", "scripts.backup", "--target", target]
     if monthly:
         command.append("--monthly")
     return command
@@ -60,10 +60,10 @@ def _record_local_attempt_best_effort(outcome: Literal["pass", "fail"]) -> None:
     max_retries=3,
 )
 def run_database_backup(monthly: bool = False) -> str:
-    if not os.getenv("BACKUP_ENCRYPTION_PASSWORD"):
+    if not get_settings().backup_encryption_password:
         logger.error("backup_encryption_password_missing")
         _record_local_attempt_best_effort("fail")
-        raise RuntimeError("BACKUP_ENCRYPTION_PASSWORD is required for scheduled backups.")
+        raise RuntimeError("A backup-encryption secret is required for scheduled backups.")
     cmd = backup_command(monthly)
     logger.info("backup_executing", command=" ".join(cmd), monthly=monthly)
     try:

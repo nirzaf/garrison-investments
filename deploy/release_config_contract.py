@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import ssl
+import stat
 import subprocess
 import time
 from collections.abc import Mapping
@@ -146,6 +148,65 @@ def validate_pinned_service_environment(
             f"({'; '.join(details)})"
         )
     return environment
+
+
+def validate_backup_secret_configuration(
+    environment: Mapping[str, str], services: Mapping[str, object]
+) -> None:
+    """Require backup encryption to come from one protected, read-only file mount."""
+    if "BACKUP_ENCRYPTION_PASSWORD" in environment:
+        raise ValueError("Remove BACKUP_ENCRYPTION_PASSWORD from production.env.")
+    source = environment.get("BACKUP_ENCRYPTION_KEY_HOST_FILE", "").strip()
+    expected_target = "/run/secrets/backup_encryption_key"
+    if not source or not Path(source).is_absolute():
+        raise ValueError("Production needs an absolute backup-encryption secret-file path.")
+    try:
+        source_path = Path(source)
+        metadata = source_path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+            or not stat.S_IMODE(metadata.st_mode) & 0o400
+            or metadata.st_size <= 0
+        ):
+            raise ValueError
+        resolved_source = source_path.resolve(strict=True)
+    except (OSError, ValueError):
+        raise ValueError(
+            "Backup encryption secret file must be a root-owned, owner-only file."
+        ) from None
+
+    for service_name in ("backend", "celery_worker", "celery_beat"):
+        service = services.get(service_name)
+        if not isinstance(service, Mapping):
+            raise ValueError(f"Effective Compose configuration is missing {service_name}.")
+        raw_environment = service.get("environment") or {}
+        if not isinstance(raw_environment, Mapping) or str(
+            raw_environment.get("BACKUP_ENCRYPTION_KEY_FILE", "")
+        ) != expected_target:
+            raise ValueError(f"{service_name} must use the mounted backup-encryption file.")
+        volumes = service.get("volumes") or []
+        if not isinstance(volumes, list):
+            raise ValueError(f"{service_name} has invalid backup-encryption mounts.")
+        mounts = [
+            volume
+            for volume in volumes
+            if isinstance(volume, Mapping) and volume.get("target") == expected_target
+        ]
+        if len(mounts) != 1:
+            raise ValueError(f"{service_name} must mount the backup secret exactly once.")
+        mount = mounts[0]
+        mounted_source = Path(str(mount.get("source", "")))
+        try:
+            matches = mounted_source.resolve(strict=True) == resolved_source
+        except OSError:
+            matches = False
+        if not matches or mount.get("read_only") is not True or mount.get("type") != "bind":
+            raise ValueError(
+                f"{service_name} backup secret mount must be the approved read-only file."
+            )
 
 
 def validate_support_ingress(

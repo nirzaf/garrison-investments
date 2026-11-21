@@ -1349,9 +1349,9 @@ def main() -> None:
         if args.command == "fetch" and policy:
             fetch(args.source, policy, args.destination)
             return
-        password = os.getenv("BACKUP_ENCRYPTION_PASSWORD")
+        password = get_settings().backup_encryption_password
         if not password:
-            raise BackupSetError("BACKUP_ENCRYPTION_PASSWORD is required.")
+            raise BackupSetError("A backup-encryption secret file is required.")
         if args.command == "capture":
             asyncio.run(capture(args, password))
         else:
