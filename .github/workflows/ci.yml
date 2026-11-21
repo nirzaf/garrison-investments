@@ -16,8 +16,10 @@ concurrency:
 jobs:
   backend-static:
     name: Backend lint and types
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, garrison-ci]
     timeout-minutes: 30
+    env:
+      PIP_CACHE_DIR: /runner/state/pip-cache
     defaults:
       run:
         working-directory: backend
@@ -28,8 +30,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
+          # The self-hosted runner keeps this pip cache between jobs.
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Ruff
@@ -41,8 +42,10 @@ jobs:
 
   frontend:
     name: Frontend lint, types, tests and build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, garrison-ci]
     timeout-minutes: 30
+    env:
+      npm_config_cache: /runner/state/npm-cache
     defaults:
       run:
         working-directory: frontend
@@ -53,8 +56,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - name: Install dependencies
         run: npm ci
       - name: ESLint
@@ -75,7 +77,7 @@ jobs:
 
   compose-validate:
     name: Compose files are valid
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, garrison-ci]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -93,13 +95,16 @@ jobs:
 
   integration-tests:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, garrison-ci]
     timeout-minutes: 30
+    env:
+      PIP_CACHE_DIR: /runner/state/pip-cache
+      npm_config_cache: /runner/state/npm-cache
+      CI_TEST_S3_CONTAINER: garrison-ci-s3-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
-      # Each job has its own GitHub-hosted VM and isolated test services.
-      # Run every independent shard in parallel to shorten release latency.
-      max-parallel: 4
+      # Keep two independent test shards active on the isolated runner pool.
+      max-parallel: 2
       matrix:
         include:
           - suite: backend
@@ -151,20 +156,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: backend/requirements.txt
       - uses: actions/setup-node@v6
         if: matrix.suite == 'browser'
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - name: Prepare test dependencies and storage
         shell: bash
         env:
           TEST_SUITE: ${{ matrix.suite }}
+          CI_TEST_SHARD: ${{ matrix.shard }}
           TEST_S3_IMAGE: motoserver/moto:5.2.2@sha256:d8ae5edc2bf080e7e4c13f9bd4b29b53ac3b4427e92956318db3dbe23ec43eb7
           MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/${{ matrix.database }}
+          BUSINESS_TIMEZONE: Asia/Qatar
         run: |
           set -euo pipefail
 
@@ -188,10 +192,23 @@ jobs:
                 sleep "$attempt"
               done
             fi
-            docker run --pull never --detach --name garrison-ci-s3 --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
-            # The Docker port proxy can reset a connection before Moto starts listening.
-            curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 \
-              --retry-max-time 25 --max-time 5 http://127.0.0.1:9000/ -o /dev/null
+            docker run --pull never --detach --name "$CI_TEST_S3_CONTAINER" \
+              --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
+            # Keep startup transient errors quiet, then print container diagnostics once.
+            ready=0
+            deadline=$((SECONDS + 30))
+            while (( SECONDS < deadline )); do
+              if curl --fail --silent --max-time 2 http://127.0.0.1:9000/ -o /dev/null; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+            if (( ! ready )); then
+              echo "The isolated Moto endpoint did not become ready within 30 seconds."
+              docker logs --tail 50 "$CI_TEST_S3_CONTAINER" || true
+              exit 1
+            fi
           ) &
           storage_pid=$!
 
@@ -241,19 +258,19 @@ jobs:
         run: |
           # Run 43902036278 measured 180s/525s of Chrome test time.
           # The list moves individual HR tests. Its complement covers new tests.
-          # Each shard runs on its own two-core GitHub-hosted VM.
+          # One browser worker per isolated self-hosted runner avoids oversubscribing the host.
           case "$BROWSER_SHARD" in
             1) selection=--test-list ;;
             2) selection=--test-list-invert ;;
             *) exit 2 ;;
           esac
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
+            npm run test:browser -- --fully-parallel --workers=1 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
       - name: Remove the test S3 container
         if: always()
         run: |
-          if docker container inspect garrison-ci-s3 >/dev/null 2>&1; then
-            docker container rm --force garrison-ci-s3 >/dev/null
+          if docker container inspect "$CI_TEST_S3_CONTAINER" >/dev/null 2>&1; then
+            docker container rm --force "$CI_TEST_S3_CONTAINER" >/dev/null
           fi
       - name: Upload shard test report
         if: "!cancelled() && github.event_name == 'push'"

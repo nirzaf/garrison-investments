@@ -57,7 +57,7 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses ephemeral GitHub-hosted `ubuntu-24.04` workers for pull requests and pushes to `main`. Those workers receive no production credentials or production Docker access; test databases, Redis and object storage are disposable per job. Python and npm dependency caches are keyed by their lockfiles. This removes runner-host maintenance from the CI critical path and uses GitHub Actions hosted-runner minutes; review actual usage after the first hosted run. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs on the dedicated self-hosted Hostinger runner labeled `garrison-production`; CI never uses that runner. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The two-job integration cap matches the available isolated runner pool, and persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; CI never uses that runner. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
 
 The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, all seven required CI jobs, and the current `main` branch tip before fetching the tested archive.
 
@@ -86,19 +86,23 @@ The current release workflow is manually disabled. Keep it disabled until the co
 
 ### CI runner isolation and availability
 
-CI runs on isolated GitHub-hosted `ubuntu-24.04` workers. The four independent integration shards can run concurrently because each receives its own VM and its own PostgreSQL, Redis and object-storage fixtures. Browser shards use Google Chrome only. No CI job receives production secrets, the production Docker socket or access to production volumes. The Hostinger `garrison-production` runner remains dedicated to the reviewed deployment workflow and must never be used as a general CI fallback.
+CI runs on isolated self-hosted Linux x64 runners tagged `garrison-ci`, with separate Docker-in-Docker fixtures and persistent pip/npm caches. Browser shards use Google Chrome only. CI receives no production secrets, production Docker socket or production volumes. The Hostinger `garrison-production` runner remains dedicated to deployment and must never be used as a general CI fallback.
 
-The former `garrison-ci` runner fleet is no longer a release dependency. On 2026-11-21 at 12:50 UTC, the GitHub runner API showed all four `garrison-ci` runners offline while `garrison-production` was online; all seven jobs in run `44905570008` for `5f032409bf997914dfa8f288a551cb4d7b11efe5` were queued. The workflow change moves tests to ephemeral hosted workers without removing jobs or checks. Record actual queue, wall time, job time, cache outcomes and test counts from the first green hosted run before claiming a measured speedup.
+### CI runner availability — 2026-11-21
+
+At 12:50 UTC, the GitHub runner API showed all four `garrison-ci` runners offline while the separate `garrison-production` runner was online; all seven jobs in exact-main run `44905570008` for `5f032409bf997914dfa8f288a551cb4d7b11efe5` were queued. The existing local registrations for `garrison-ci-desktop` (ID 22) and `garrison-ci-linux-3` (ID 25) were restarted with their isolated Docker-in-Docker daemons. At 13:59 UTC, both were online and idle; IDs 23 and 24 remained offline. This two-runner pool supports the checked-in two-job integration cap. The same main run's third attempt is being used to verify all required jobs; record its terminal result and measured timings before release qualification. Do not route jobs to the production runner.
+
+A hosted-runner fallback was tested on PR #39 (`283713cab3f892b2f5ffe77aa58d3ddd28efadca`, run `44907543620`) but GitHub rejected job startup because of account payment/spending-limit restrictions. No steps ran, so this is not a test result. The candidate CI change has returned to the existing self-hosted runner model; hosted CI remains unavailable until that account restriction is resolved.
 
 ### Review pipeline time on every release
 
 Compare the exact candidate's Actions run with recent runs that cover the same tests. Record queue time, elapsed CI time, the slowest job and steps, cache hits, and total runner time. Pytest reports its ten longest tests and the browser jobs log individual test durations. Look for independent work to run in parallel, repeated setup, and avoidable rebuilds. Record a measured result after each change and confirm the same required checks and test coverage ran.
 
-### Historical self-hosted CI measurements (superseded 2026-11-21)
+### Prior self-hosted CI measurements
 
-The following runs describe the former self-hosted `garrison-ci` workflow. They
-are retained as historical measurements; the active workflow now uses hosted
-workers and requires a fresh timing comparison before claiming an improvement.
+The following runs provide comparable baseline timings for the active self-hosted
+`garrison-ci` workflow. The hosted fallback attempt was stopped before job startup
+by an account billing restriction, so it produced no timing or test evidence.
 
 Incident candidate `65308a2` passed all seven required jobs in self-hosted CI run
 `44734573582` in 30m23s; its first job started 25 seconds after creation. The exact
@@ -127,13 +131,14 @@ cancellation, and the two-job integration cap are already in place, so no cache 
 parallelism change is justified by this run alone. The exact-main run does not
 verify the current uncommitted application changes.
 
-A pre-change runner inventory at 12:50 UTC on 2026-11-21 showed zero of four
-`garrison-ci` runners online and the production runner online. The resulting
-queue on run `44905570008` is the measured cause addressed by moving CI to
-ephemeral hosted workers. The parallelism and cache changes must be evaluated
-from the first successful hosted run; no measured improvement is claimed yet.
+A runner inventory at 12:50 UTC on 2026-11-21 showed zero of four `garrison-ci`
+runners online. Two isolated runner registrations were restored later that day;
+the other two remain offline. Exact-main run `44905570008` is being rerun on the
+same SHA to verify that runner recovery clears the queue and that all checks pass.
+Use its terminal timestamps and job durations to assess the effect; do not infer a
+workflow speedup from runner recovery alone.
 
-The backend suite and Google Chrome browser suite each run in two complementary shards with separate PostgreSQL, Redis and object-storage services. All four integration shards may run concurrently on independent hosted VMs. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser tests by measured duration. One shard uses the checked-in test selection and the other runs its complement, including newly added tests. Browser shards use two workers on a two-core VM; each browser test uses its own context, synthetic accounts and project data. The workers reuse the hosted image's Google Chrome when available and install Chrome only when necessary while building the production bundle. They still type-check the browser tests, and the required frontend job type-checks the application. Lockfile-keyed pip/npm caches reduce repeated dependency downloads. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
+The backend suite and Google Chrome browser suite each run in two complementary shards with separate PostgreSQL, Redis and object-storage services. The four integration shards are capped at two concurrent jobs across the isolated runner pool. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser tests by measured duration. One shard uses the checked-in test selection and the other runs its complement, including newly added tests. Each browser shard uses one worker to avoid oversubscribing a runner; each browser test uses its own context, synthetic accounts and project data. Runners reuse Google Chrome when available and install Chrome only when necessary while building the production bundle. They still type-check the browser tests, and the required frontend job type-checks the application. Persistent pip/npm caches reduce repeated dependency downloads. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
 Backend sharding assigns whole test modules using measured runtimes for the slowest modules and case counts for the rest. If shard timings diverge across comparable runs, sum JUnit case times by module from both backend reports before adjusting the estimates in [the pytest configuration](../backend/tests/conftest.py).
 
