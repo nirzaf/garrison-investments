@@ -10,16 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: garrison-self-hosted-ci-${{ github.ref }}
+  group: garrison-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-static:
     name: Backend lint and types
-    runs-on: [self-hosted, linux, x64, garrison-ci]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      PIP_CACHE_DIR: /runner/state/pip-cache
     defaults:
       run:
         working-directory: backend
@@ -30,7 +28,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          # This self-hosted runner keeps its local pip cache between jobs.
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Ruff
@@ -42,10 +41,8 @@ jobs:
 
   frontend:
     name: Frontend lint, types, tests and build
-    runs-on: [self-hosted, linux, x64, garrison-ci]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      npm_config_cache: /runner/state/npm-cache
     defaults:
       run:
         working-directory: frontend
@@ -56,7 +53,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: ESLint
@@ -77,7 +75,7 @@ jobs:
 
   compose-validate:
     name: Compose files are valid
-    runs-on: [self-hosted, linux, x64, garrison-ci]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -95,16 +93,13 @@ jobs:
 
   integration-tests:
     name: ${{ matrix.name }}
-    runs-on: [self-hosted, linux, x64, garrison-ci]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      PIP_CACHE_DIR: /runner/state/pip-cache
-      npm_config_cache: /runner/state/npm-cache
     strategy:
       fail-fast: false
-      # Concurrent Chrome shards and a third integration job have exceeded
-      # the shared runner host's capacity. Keep all shards and tests.
-      max-parallel: 2
+      # Each job has its own GitHub-hosted VM and isolated test services.
+      # Run every independent shard in parallel to shorten release latency.
+      max-parallel: 4
       matrix:
         include:
           - suite: backend
@@ -156,12 +151,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          # This self-hosted runner keeps its local pip cache between jobs.
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
       - uses: actions/setup-node@v6
         if: matrix.suite == 'browser'
         with:
           node-version: "24"
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Prepare test dependencies and storage
         shell: bash
         env:
@@ -244,14 +241,14 @@ jobs:
         run: |
           # Run 43902036278 measured 180s/525s of Chrome test time.
           # The list moves individual HR tests. Its complement covers new tests.
-          # Two workers per shard exhausted the shared host in run 43948823590.
+          # Each shard runs on its own two-core GitHub-hosted VM.
           case "$BROWSER_SHARD" in
             1) selection=--test-list ;;
             2) selection=--test-list-invert ;;
             *) exit 2 ;;
           esac
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/test-report.xml" \
-            npm run test:browser -- --fully-parallel --workers=1 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
+            npm run test:browser -- --fully-parallel --workers=2 --reporter=list,junit "$selection" e2e/ci-shard-1.txt
       - name: Remove the test S3 container
         if: always()
         run: |
