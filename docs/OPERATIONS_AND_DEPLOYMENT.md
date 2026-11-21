@@ -90,7 +90,7 @@ CI runs on isolated self-hosted Linux x64 runners tagged `garrison-ci`, with sep
 
 ### CI runner availability — 2026-11-21
 
-At 12:50 UTC, the GitHub runner API showed all four `garrison-ci` runners offline while the separate `garrison-production` runner was online; all seven jobs in exact-main run `44905570008` for `5f032409bf997914dfa8f288a551cb4d7b11efe5` were queued. The existing local registrations for `garrison-ci-desktop` (ID 22) and `garrison-ci-linux-3` (ID 25) were restarted with their isolated Docker-in-Docker daemons. Registration `garrison-ci-linux-2` (ID 24) was then restored from its existing credential state and isolated daemon. As of 14:24 UTC, IDs 22, 24 and 25 were online; ID 23 remained offline because its separate Docker-in-Docker container repeatedly exits on a stale daemon PID file. Its Docker data volume was preserved. Do not route jobs to the production runner.
+At 12:50 UTC, the GitHub runner API showed all four `garrison-ci` runners offline while the separate `garrison-production` runner was online; all seven jobs in exact-main run `44905570008` for `5f032409bf997914dfa8f288a551cb4d7b11efe5` were queued. The existing local registrations for `garrison-ci-desktop` (ID 22) and `garrison-ci-linux-3` (ID 25) were restarted with their isolated Docker-in-Docker daemons. Registration `garrison-ci-linux-2` (ID 24) was then restored from its existing credential state and isolated daemon. As of 14:24 UTC, IDs 22, 24 and 25 were online; ID 23 remained offline. A separate legacy Docker-in-Docker container was restart-looping on a stale daemon PID file, but its registration mapping to ID 23 could not be confirmed; its data volume was preserved. Do not route jobs to the production runner.
 
 A hosted-runner fallback was tested on PR #39 (`283713cab3f892b2f5ffe77aa58d3ddd28efadca`, run `44907543620`) but GitHub rejected job startup because of account payment/spending-limit restrictions. No steps ran, so this is not a test result. The repair commit `f47d1941df72d30b3d0ca34f75da56f37e2eece2` keeps isolated self-hosted CI and passed all seven required jobs in run `44912557531` at 14:30:07 UTC. That run took 19m34s from dispatch to completion; the first job started three seconds after dispatch. Hosted CI remains unavailable until the account restriction is resolved.
 
@@ -155,6 +155,16 @@ stability regressions. These runs verify CI only; they do not clear the producti
 incident or recovery gates. No workflow speedup is claimed from these runs because
 the exact-main comparison includes runner outage/retries and the prior run used a
 different runner-availability state.
+
+The final documentation commit `3b563a36e18490ebefd250d1a739ce574fedde6c` passed
+all seven required jobs in run `44914388930` at 14:54:01 UTC. Its first frontend
+attempt was assigned to runner ID 22, which accepted the job but emitted no worker
+steps before its job lease expired at 14:41:45 UTC. No frontend test ran or failed.
+The isolated runner was restarted and reconnected; rerunning only the failed
+frontend job on runner ID 25 passed ESLint, generated API types, Vitest and build
+in 59 seconds. All other required jobs passed in the original attempt. Record this
+as one transient runner startup/transport failure followed by a green run, not a
+test failure or a speed measurement.
 
 The backend suite and Google Chrome browser suite each run in two complementary shards with separate PostgreSQL, Redis and object-storage services. Integration concurrency remains capped at two while the recovered runner pool's capacity is measured; all four shards remain required. Each job starts its pinned Moto container alongside dependency installation and applies migrations to its own database before testing. The [CI workflow](../.github/workflows/ci.yml) assigns browser tests by measured duration. One shard uses the checked-in test selection and the other runs its complement, including newly added tests. Each browser shard uses one worker to avoid oversubscribing a runner; each browser test uses its own context, synthetic accounts and project data. Runners reuse Google Chrome when available and install Chrome only when necessary while building the production bundle. They still type-check the browser tests, and the required frontend job type-checks the application. Persistent pip/npm caches reduce repeated dependency downloads. Local `pytest` and `npm run test:browser` still run the full suites by default. The release receipt requires success from all four shards.
 
