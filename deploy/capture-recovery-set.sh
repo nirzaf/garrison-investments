@@ -31,13 +31,14 @@ configuration=${RECOVERY_CONFIGURATION_ROOT:?Set the dedicated nonsecret configu
 capture_env=${RECOVERY_CAPTURE_ENV:?Set the dedicated capture credentials file path.}
 publisher_env=${RECOVERY_PUBLISH_ENV:?Set the dedicated publisher credentials file path.}
 auth_key=${BACKUP_AUTH_KEY_FILE:?Set the restricted authentication key file path.}
+backup_password_file=${BACKUP_ENCRYPTION_PASSWORD_HOST_FILE:?Set the root-only backup-encryption file path.}
 key_id=${BACKUP_AUTH_KEY_ID:?Set the approved authentication key identifier.}
 [[ "$key_id" =~ ^[a-zA-Z0-9_.-]{1,80}$ ]] || die 'Invalid authentication key ID.'
 [[ "$configuration" == /* && -d "$configuration" && ! -L "$configuration" &&
    "$(stat -c %u "$configuration")" == 0 ]] || die 'Configuration requires a root-owned directory.'
 configuration=$(realpath -e -- "$configuration")
 [[ "$configuration" != / ]] || die 'Configuration requires a dedicated directory.'
-for input in "$policy" "$template" "$capture_env" "$publisher_env" "$auth_key"; do
+for input in "$policy" "$template" "$capture_env" "$publisher_env" "$auth_key" "$backup_password_file"; do
   private_file "$input"
   [[ "$(realpath -e -- "$input")" != "$configuration/"* ]] ||
     die 'Keep recovery control files and credentials outside the configuration directory.'
@@ -67,12 +68,14 @@ def assignments(path):
 
 capture, publish = (assignments(path) for path in sys.argv[1:])
 source = {"DATABASE_URL", "MINIO_ENDPOINT", "MINIO_BUCKET", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
-          "BACKUP_ENCRYPTION_PASSWORD"}
+          "BACKUP_ENCRYPTION_PASSWORD_FILE"}
+legacy = {"BACKUP_ENCRYPTION_PASSWORD", "BACKUP_ENCRYPTION_PASSWORD_HOST_FILE"}
 destination = {"DR_BACKUP_ENDPOINT", "DR_BACKUP_BUCKET", "DR_BACKUP_PREFIX", "DR_BACKUP_SECURE",
                "DR_BACKUP_ACCESS_KEY", "DR_BACKUP_SECRET_KEY"}
-source_only = source | {"BACKUP_GRAFANA_DATABASE_URL", "MINIO_SECURE"}
+source_only = source | legacy | {"BACKUP_GRAFANA_DATABASE_URL", "MINIO_SECURE"}
 if (
     not all(capture.get(name, "").strip() for name in source)
+    or capture.get("BACKUP_ENCRYPTION_PASSWORD_FILE") != "/run/secrets/backup_encryption_password"
     or not all(publish.get(name, "").strip() for name in destination)
     or source_only & publish.keys()
     or destination & capture.keys()
@@ -108,6 +111,7 @@ paused=0
 writers=()
 common=(-v "$policy:/policy.json:ro" -v "$auth_key:/recovery-key:ro"
   -e BACKUP_AUTH_KEY_FILE=/recovery-key -e "BACKUP_AUTH_KEY_ID=$key_id")
+capture_secret=(-v "$backup_password_file:/run/secrets/backup_encryption_password:ro")
 remove_run() {
   protected_directory "$run" 077 && rm -rf -- "$run"
 }
@@ -266,7 +270,8 @@ remaining=$((pause_seconds - (SECONDS - pause_started)))
 (( remaining > 0 )) || die 'The capture pause limit was exceeded.'
 phase=capture
 timeout "$remaining" docker run --rm --network "$network" --env-file "$capture_env" \
-  "${common[@]}" -v "$run:/capture" -v "$configuration:/configuration:ro" "$image" \
+  "${common[@]}" "${capture_secret[@]}" -v "$run:/capture" \
+  -v "$configuration:/configuration:ro" "$image" \
   python -m scripts.backup_set capture --destination /capture/set --source-sha "$sha" \
   --policy /policy.json --capture-receipt /capture/capture-receipt.json \
   --configuration-root /configuration --consistency-note "Deployment lock and writer pause at $paused_at"

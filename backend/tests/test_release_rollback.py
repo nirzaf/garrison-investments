@@ -637,6 +637,10 @@ apply_runtime previous || exit "$?"
             "unsafe-bind-mount",
             "technical configuration, secret/TLS/key, or log-retention safety validation",
         ),
+        (
+            "unpatched-nginx",
+            "technical configuration, secret/TLS/key, or log-retention safety validation",
+        ),
         ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
@@ -656,6 +660,7 @@ def test_release_entrypoint_uses_technical_checks(
         "LOG_PURGE_ENABLED=false\n"
         "JWT_PRIVATE_KEY_PATH=/run/secrets/jwt_private_key\n"
         "JWT_PUBLIC_KEY_PATH=/run/secrets/jwt_public_key\n"
+        f"BACKUP_ENCRYPTION_PASSWORD_HOST_FILE={tmp_path}/secrets/backup-encryption-password\n"
     )
     (state / "production.env").chmod(0o600)
     (state / "compose.vps.yml").write_text("services: {}\n")
@@ -663,6 +668,9 @@ def test_release_entrypoint_uses_technical_checks(
 
     secrets_dir = tmp_path / "secrets"
     secrets_dir.mkdir(mode=0o755)
+    backup_password_file = secrets_dir / "backup-encryption-password"
+    backup_password_file.write_text("synthetic-only\n")
+    backup_password_file.chmod(0o600)
     jwt_priv = secrets_dir / "jwt_private_key"
     jwt_pub = secrets_dir / "jwt_public_key"
     if scenario != "missing-tls-or-key":
@@ -804,8 +812,19 @@ docker() {
     'ps --filter') [[ "$scenario" == quiesced-generation-change ]] || echo nginx ;;
     'image inspect') printf 'sha256:%s\n' "$asset_digest" ;;
     'exec garrison-portal-postgres-1') echo fixture-head ;;
-    'exec garrison-portal-nginx-1') : ;;
-    'inspect --format') printf 'sha256:%s\n' "$asset_digest" ;;
+    'exec garrison-portal-nginx-1')
+      if [[ "$*" == *'nginx -v'* ]]; then
+        printf '%s\n' 'nginx version: nginx/1.30.7'
+      fi ;;
+    'inspect --format')
+      if [[ "$*" == *'Config.Image'* ]]; then
+        printf '%s\n' 'nginx:1.30.7-alpine@sha256:'\
+'caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3'
+      elif [[ "$*" == *'{{.Id}}'* ]]; then
+        printf '%s\n' 'fixture-nginx-container-id'
+      else
+        printf 'sha256:%s\n' "$asset_digest"
+      fi ;;
     'run --rm')
       if [[ "$*" == *alembic* ]]; then
         if [[ "$scenario" == schema-change && "$*" != *old-backend* ]]; then
@@ -837,6 +856,12 @@ services = dict.fromkeys(stateful, {})
 backend_volumes = [
     {
         "type": "bind",
+        "source": f"{base}/secrets/backup-encryption-password",
+        "target": "/run/secrets/backup_encryption_password",
+        "read_only": True,
+    },
+    {
+        "type": "bind",
         "source": f"{base}/secrets/jwt_public_key",
         "target": "/run/secrets/jwt_public_key",
     },
@@ -855,15 +880,33 @@ for name in ("backend", "celery_worker", "celery_beat"):
         "LOG_PURGE_ENABLED": "true" if scenario == "purge-enabled" and candidate else "false",
         "JWT_PRIVATE_KEY_PATH": "/run/secrets/jwt_private_key",
         "JWT_PUBLIC_KEY_PATH": "/run/secrets/jwt_public_key",
+        "BACKUP_ENCRYPTION_PASSWORD_HOST_FILE": f"{base}/secrets/backup-encryption-password",
+        "BACKUP_ENCRYPTION_PASSWORD_FILE": "/run/secrets/backup_encryption_password",
     }
     services[name] = {
         # Compose config --format json flattens env_file values into the
         # effective environment instead of retaining their source paths.
         "env_file": [],
         "environment": environment,
-        "volumes": backend_volumes if name == "backend" else [],
+        "volumes": (
+            backend_volumes
+            if name == "backend"
+            else [
+                volume
+                for volume in backend_volumes
+                if volume["target"] == "/run/secrets/backup_encryption_password"
+            ]
+        ),
     }
 services["nginx"] = {
+    "image": (
+        "nginx:1.25-alpine"
+        if scenario == "unpatched-nginx"
+        else (
+            "nginx:1.30.7-alpine@sha256:"
+            "caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3"
+        )
+    ),
     "volumes": [
         {"type": "bind", "source": f"{base}/deploy/ssl", "target": "/etc/nginx/ssl"},
     ]
@@ -874,9 +917,14 @@ PYTHON
           ;;
         build|pull) : ;;
         run)
-          [[ "$*" == *'--target all --skip-retention' ]] || return 43
-          echo backup >> "$base/events"
-          [[ "$scenario" != backup-fails ]] ;;
+          if [[ "$*" == *'nginx -t'* ]]; then
+            echo nginx-config >> "$base/events"
+          elif [[ "$*" == *'--target all --skip-retention' ]]; then
+            echo backup >> "$base/events"
+            [[ "$scenario" != backup-fails ]]
+          else
+            return 43
+          fi ;;
         up) echo "activate ${location##*/}" >> "$base/events" ;;
         ps) echo fixture-container ;;
         *) return 43 ;;
@@ -948,9 +996,9 @@ curl() {
             },
             utc(receipt["UTC"], "fixture activation"),
         )
-        assert events[:3] == ["download", "runtime-config", "backup"]
-        assert events[3].startswith("activate ")
-        assert events[4].startswith("publish ")
+        assert events[:4] == ["download", "runtime-config", "nginx-config", "backup"]
+        assert events[4].startswith("activate ")
+        assert events[5].startswith("publish ")
     else:
         assert result.returncode != 0, result.stdout
         assert error in result.stderr
@@ -960,14 +1008,16 @@ curl() {
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
         elif scenario == "backup-fails":
-            assert events == ["download", "runtime-config", "backup"]
+            assert events == ["download", "runtime-config", "nginx-config", "backup"]
+        elif scenario == "schema-change":
+            assert events == ["download", "runtime-config", "nginx-config"]
         elif scenario in {
             "purge-enabled",
             "missing-config",
             "missing-tls-or-key",
             "unsafe-bind-mount",
+            "unpatched-nginx",
             "stateful-change",
-            "schema-change",
         }:
             assert events == ["download", "runtime-config"]
         elif scenario == "generation-change":

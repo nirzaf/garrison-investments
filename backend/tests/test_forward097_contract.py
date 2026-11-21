@@ -98,7 +98,7 @@ def test_manual_only_host_path_and_fail_closed_activation():
     )
     assert '[[ "$current" == 202605310061 && "$heads" == 202605310093' in host
     assert "Pending database migrations require the reviewed maintenance procedure." in host
-    assert "python scripts/backup.py --target all --skip-retention" in host
+    assert "python -m scripts.backup --target all --skip-retention" in host
     assert 'sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a' in host
     assert "RELEASE_SHA=65308a2af263cd59e90276b3a771d4ed6ecbf842" in workflow
     assert 'CI_RUN_ID" == 44734573582' in workflow
@@ -106,6 +106,79 @@ def test_manual_only_host_path_and_fail_closed_activation():
     reconciliation = root / "deploy/forward097_reconcile.py"
     assert "forward097.reconciled.json" in reconciliation.read_text()
     assert hashlib.sha256(reconciliation.read_bytes()).hexdigest() in host
+
+
+@pytest.mark.parametrize(
+    ("merge_base_sha", "accepted"),
+    [
+        ("65308a2af263cd59e90276b3a771d4ed6ecbf842", True),
+        ("different-commit", False),
+    ],
+)
+def test_incident_ancestry_guard_uses_github_compare_merge_base_field(
+    merge_base_sha: str, accepted: bool
+) -> None:
+    import subprocess
+    import sys
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    compare_start = source.index('github "compare/65308a2af263cd59e90276b3a771d4ed6ecbf842...')
+    python_start = source.index("| python3 -c '\n", compare_start) + len("| python3 -c '\n")
+    python_end = source.index("\n'\n", python_start)
+    validator = source[python_start:python_end]
+    response = {
+        "status": "ahead",
+        "base_commit": {"sha": "65308a2af263cd59e90276b3a771d4ed6ecbf842"},
+        "merge_base_commit": {"sha": merge_base_sha},
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", validator],
+        input=json.dumps(response),
+        capture_output=True,
+        text=True,
+    )
+
+    assert (result.returncode == 0) is accepted
+    if not accepted:
+        assert "no longer an ancestor" in result.stderr
+
+
+def test_legacy_backup_contract_is_limited_to_incident_replacement() -> None:
+    host = (FILE.parent / "hostinger-release.sh").read_text()
+    start = host.index('if release_mode == "incident-replacement":')
+    end = host.index("\n\nmounted_files_by_target", start)
+    compatibility_branch = host[start:end]
+    import_header = host[
+        host.index('sys.path.insert(0, str(candidate / "deploy"))') : start
+    ]
+    assert "validate_backup_secret_configuration" not in import_header
+    assert '"BACKUP_ENCRYPTION_PASSWORD" not in env_values' in compatibility_branch
+    assert '"BACKUP_ENCRYPTION_PASSWORD_HOST_FILE" in env_values' in compatibility_branch
+    assert "validate_backup_secret_configuration" in compatibility_branch
+    assert '"$release_mode" <<\'PY\'' in host
+
+    legacy_environment = {
+        "BACKUP_ENCRYPTION_PASSWORD": "synthetic-only",
+        "LOG_PURGE_ENABLED": "false",
+    }
+    exec(  # noqa: S102 - execute the extracted release guard as its regression test.
+        compatibility_branch,
+        {"release_mode": "incident-replacement", "env_values": legacy_environment},
+    )
+
+
+def test_incident_replacement_overrides_the_recovery_archive_proxy() -> None:
+    host = (FILE.parent / "hostinger-release.sh").read_text()
+    assert (
+        "nginx:1.30.7-alpine@sha256:"
+        "caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3"
+    ) in host
+    assert 'incident_nginx_override="$candidate/.incident-nginx-override.yml"' in host
+    assert 'compose_files+=(-f "$proxy_override")' in host
+    assert "compose \"$candidate\" run --rm --no-deps -T nginx nginx -t" in host
+    assert "nginx version: nginx/1.30.7" in host
+    assert "The previous Nginx container is still present after patched proxy activation." in host
 
 
 @pytest.mark.parametrize("event,accepted", [("workflow_run", False), ("workflow_dispatch", True)])

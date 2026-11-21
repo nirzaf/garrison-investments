@@ -9,6 +9,7 @@ repository=nirzaf/garrison-investments
 portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
+patched_nginx_image='nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3'
 
 die() {
   printf '%s\n' "$*" >&2
@@ -267,7 +268,7 @@ import json,sys
 comparison=json.load(sys.stdin)
 if (comparison.get("status") not in {"ahead","identical"}
     or comparison.get("base_commit",{}).get("sha")!="65308a2af263cd59e90276b3a771d4ed6ecbf842"
-    or comparison.get("merge_base",{}).get("sha")!="65308a2af263cd59e90276b3a771d4ed6ecbf842"):
+    or comparison.get("merge_base_commit",{}).get("sha")!="65308a2af263cd59e90276b3a771d4ed6ecbf842"):
  sys.exit("The fixed green recovery candidate is no longer an ancestor of deployment main.")
 '
   main_ci_run_id=$(github "actions/runs?head_sha=$expected_main&branch=main&event=push&per_page=100" | python3 -c '
@@ -343,12 +344,17 @@ fi
 phase_started=$SECONDS
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-for reserved in .env .images.env SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json FORWARD_NGINX.conf FORWARD_COMPOSE.json; do
+for reserved in .env .images.env .incident-nginx-override.yml SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json FORWARD_NGINX.conf FORWARD_COMPOSE.json; do
   [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
     die 'The source archive contains a reserved release file.'
 done
 install -m 0600 "$state/production.env" "$candidate/.env"
 printf '%s\n' "$sha" > "$candidate/SOURCE_COMMIT"
+incident_nginx_override="$candidate/.incident-nginx-override.yml"
+if (( incident_replacement )); then
+  printf 'services:\n  nginx:\n    image: %s\n' "$patched_nginx_image" > "$incident_nginx_override"
+  chmod 0600 "$incident_nginx_override"
+fi
 report_duration 'CI verification and source preparation' "$phase_started"
 
 generation=$(cat "$candidate/deploy/rollback-generation")
@@ -413,17 +419,28 @@ printf '\nGARRISON_FRONTEND_IMAGE=%s\nGARRISON_BACKEND_IMAGE=%s\n' \
 compose() {
   local directory=$1
   shift
+  local proxy_override="$directory/.incident-nginx-override.yml"
+  local -a compose_files=(-f "$directory/docker-compose.prod.yml" -f "$state/compose.vps.yml")
+  if (( incident_replacement )); then
+    proxy_override=$incident_nginx_override
+  fi
+  if [[ -e "$proxy_override" || -L "$proxy_override" ]]; then
+    [[ -f "$proxy_override" && ! -L "$proxy_override" && -O "$proxy_override" &&
+       "$(stat -c '%a' "$proxy_override")" == 600 ]] || die 'Incident Nginx override is unsafe.'
+    printf 'services:\n  nginx:\n    image: %s\n' "$patched_nginx_image" |
+      cmp -s - "$proxy_override" || die 'Incident Nginx override differs from the reviewed digest.'
+    compose_files+=(-f "$proxy_override")
+  fi
   docker compose --project-name "$project" --project-directory "$directory" \
     --env-file "$directory/.env" --env-file "$directory/.images.env" \
-    -f "$directory/docker-compose.prod.yml" \
-    -f "$state/compose.vps.yml" "$@"
+    "${compose_files[@]}" "$@"
 }
 
 phase_started=$SECONDS
 # Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
 candidate_compose_file=$(mktemp)
 if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
-   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$((pinned || forward097))" <<'PY'; then
+   ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$((pinned || forward097))" "$release_mode" <<'PY'; then
 import json
 import os
 import stat
@@ -528,11 +545,17 @@ if sys.argv[5] == "1" and env_values.get("SUPPORT_PORTAL_ENABLED", "false").lowe
     raise SystemExit("Super Admin ingress must remain disabled during the pinned rollout.")
 if env_values.get("LOG_PURGE_ENABLED", "").strip().lower() not in false_tokens:
     raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
+release_mode = sys.argv[6]
 
 cfg = json.loads(compose_path.read_text(encoding="utf-8"))
 services = cfg.get("services")
 if not isinstance(services, dict) or not services:
     raise SystemExit("Effective Compose configuration is missing services")
+nginx_service = services.get("nginx")
+if not isinstance(nginx_service, dict) or nginx_service.get("image") != (
+    "nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3"
+):
+    raise SystemExit("Effective Nginx service configuration is invalid")
 
 sys.path.insert(0, str(candidate / "deploy"))
 from release_config_contract import validate_pinned_service_environment, validate_support_ingress
@@ -549,6 +572,24 @@ for svc_name in ("backend", "celery_worker", "celery_beat"):
         purge_val = env.get("LOG_PURGE_ENABLED")
         if not isinstance(purge_val, (str, int, bool)) or str(purge_val).strip().lower() not in false_tokens:
             raise SystemExit("Production audit deletion must be disabled (LOG_PURGE_ENABLED=false).")
+if release_mode == "incident-replacement":
+    # The fixed 65308a2 recovery archive predates the file-based secret
+    # contract. Accept its legacy variable only for this exact incident mode;
+    # ordinary releases must use the protected read-only secret-file mount.
+    if (
+        "BACKUP_ENCRYPTION_PASSWORD" not in env_values
+        or "BACKUP_ENCRYPTION_PASSWORD_HOST_FILE" in env_values
+    ):
+        raise SystemExit("The incident replacement requires its verified legacy backup-secret contract.")
+else:
+    try:
+        from release_config_contract import validate_backup_secret_configuration
+    except ImportError as error:
+        raise SystemExit("Candidate is missing file-based backup-secret validation.") from error
+    try:
+        validate_backup_secret_configuration(env_values, services)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
 mounted_files_by_target: dict[str, Path] = {}
 nginx_files_by_target: dict[str, Path] = {}
@@ -693,6 +734,7 @@ PY
   compose "$candidate" build backend
   compose "$candidate" pull --policy missing nginx grafana loki alloy
 fi
+compose "$candidate" run --rm --no-deps -T nginx nginx -t
 report_duration 'Image preparation and configuration checks' "$phase_started"
 
 backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
@@ -762,6 +804,11 @@ publish_frontend() {
 apply_runtime() {
   compose "$1" up --detach --no-build --pull never --no-deps --wait --wait-timeout 150 \
     backend celery_worker celery_beat grafana loki alloy nginx || return
+  local actual_nginx_image nginx_version
+  actual_nginx_image=$(docker inspect --format '{{.Config.Image}}' "$project-nginx-1") || return
+  [[ "$actual_nginx_image" == "$patched_nginx_image" ]] || return 1
+  nginx_version=$(docker exec "$project-nginx-1" nginx -v 2>&1) || return
+  [[ "$nginx_version" == 'nginx version: nginx/1.30.7' ]] || return 1
   docker exec "$project-nginx-1" nginx -s reload
 }
 
@@ -781,6 +828,12 @@ fi
 runtime_attempted=0
 frontend_attempted=0
 pointer_advanced=0
+previous_nginx_id=
+previous_nginx_image=
+if (( ${incident_replacement:-0} )); then
+  previous_nginx_id=$(docker inspect --format '{{.Id}}' "$project-nginx-1")
+  previous_nginx_image=$(docker inspect --format '{{.Config.Image}}' "$project-nginx-1")
+fi
 
 rollback() {
   local result=$?
@@ -841,7 +894,7 @@ elif (( pinned )); then
   [[ "$current" == "$heads" ]] || die 'Pinned production migration did not reach the authorized head.'
 else
   compose "$candidate" run --rm --no-deps --pull never -T backend \
-    python scripts/backup.py --target all --skip-retention
+    python -m scripts.backup --target all --skip-retention
   report_duration 'Pre-activation backup' "$phase_started"
 fi
 verify_main
@@ -853,6 +906,10 @@ fi
 if (( runtime_changed && ! forward097 )); then
   runtime_attempted=1
   apply_runtime "$candidate"
+  if (( incident_replacement )) && [[ "$previous_nginx_image" != "$patched_nginx_image" ]] &&
+     docker inspect "$previous_nginx_id" >/dev/null 2>&1; then
+    die 'The previous Nginx container is still present after patched proxy activation.'
+  fi
 fi
 if (( ! forward097 )); then
   frontend_attempted=1

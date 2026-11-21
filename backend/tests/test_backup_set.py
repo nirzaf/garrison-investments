@@ -1,6 +1,7 @@
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -33,6 +34,11 @@ def test_backup_retention_can_be_skipped_for_release(
     monkeypatch.setenv("DATABASE_URL", "postgresql://synthetic@127.0.0.1/disposable")
     monkeypatch.setenv("GRAFANA_DB_PASSWORD", "synthetic")
     monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "synthetic")
+    monkeypatch.setattr(
+        backup,
+        "get_settings",
+        lambda: SimpleNamespace(backup_encryption_password="synthetic"),
+    )
     monkeypatch.setenv("BACKUP_LOCAL_DIR", str(tmp_path))
     monkeypatch.setenv("MINIO_BUCKET", "disposable-backups")
     client = Mock()

@@ -5,6 +5,7 @@ import gzip
 import os
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +13,12 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import structlog
 from minio import Minio
+
+backend_root = str(Path(__file__).resolve().parents[1])
+if backend_root not in sys.path:
+    sys.path.insert(0, backend_root)
+
+from app.config import get_settings  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -188,11 +195,12 @@ def backup_database(
 
 def main() -> None:
     args = parse_args()
-    encryption_password = os.getenv("BACKUP_ENCRYPTION_PASSWORD")
+    encryption_password = get_settings().backup_encryption_password
     if not encryption_password:
         if not args.allow_unencrypted:
             raise SystemExit(
-                "BACKUP_ENCRYPTION_PASSWORD is required. "
+                "A backup-encryption secret file is required, or a legacy "
+                "BACKUP_ENCRYPTION_PASSWORD for local compatibility. "
                 "Use --allow-unencrypted only for an intentional plaintext backup."
             )
         logger.warning("backup_unencrypted_allowed", event_type="audit", target=args.target)
