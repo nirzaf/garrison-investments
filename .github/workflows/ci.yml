@@ -134,7 +134,8 @@ jobs:
           POSTGRES_PASSWORD: garrison_dev_password
           POSTGRES_DB: ${{ matrix.database }}
         ports:
-          - 5432:5432
+          # Random host port avoids collisions between jobs sharing a Docker host.
+          - "5432"
         options: >-
           --health-cmd "pg_isready -h 127.0.0.1 -U garrison -d ${{ matrix.database }}"
           --health-interval 2s
@@ -143,7 +144,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - "6379"
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 2s
@@ -167,7 +168,7 @@ jobs:
           TEST_SUITE: ${{ matrix.suite }}
           CI_TEST_SHARD: ${{ matrix.shard }}
           TEST_S3_IMAGE: motoserver/moto:5.2.2@sha256:d8ae5edc2bf080e7e4c13f9bd4b29b53ac3b4427e92956318db3dbe23ec43eb7
-          MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/${{ matrix.database }}
+          MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${{ matrix.database }}
           BUSINESS_TIMEZONE: Asia/Qatar
         run: |
           set -euo pipefail
@@ -193,12 +194,24 @@ jobs:
               done
             fi
             docker run --pull never --detach --name "$CI_TEST_S3_CONTAINER" \
-              --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
+              --publish 127.0.0.1::5000 "$TEST_S3_IMAGE" >/dev/null
+            storage_port="$(docker port "$CI_TEST_S3_CONTAINER" 5000/tcp | awk -F: 'NR == 1 {print $NF}')"
+            if [[ ! "$storage_port" =~ ^[0-9]+$ ]]; then
+              echo "Could not resolve the isolated Moto host port."
+              docker logs --tail 50 "$CI_TEST_S3_CONTAINER" || true
+              exit 1
+            fi
+            storage_endpoint="127.0.0.1:$storage_port"
+            {
+              printf 'MINIO_ENDPOINT=%s\n' "$storage_endpoint"
+              printf 'MINIO_PUBLIC_ENDPOINT=%s\n' "$storage_endpoint"
+              printf 'BROWSER_TEST_MINIO_ENDPOINT=%s\n' "$storage_endpoint"
+            } >> "$GITHUB_ENV"
             # Keep startup transient errors quiet, then print container diagnostics once.
             ready=0
             deadline=$((SECONDS + 30))
             while (( SECONDS < deadline )); do
-              if curl --fail --silent --max-time 2 http://127.0.0.1:9000/ -o /dev/null; then
+              if curl --fail --silent --max-time 2 "http://$storage_endpoint/" -o /dev/null; then
                 ready=1
                 break
               fi
@@ -248,6 +261,8 @@ jobs:
         if: matrix.suite == 'backend'
         env:
           PYTEST_SHARD: ${{ matrix.shard }}
+          DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${{ matrix.database }}
+          REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/8
         run: pytest -q -rs --durations=10 --garrison-shard "$PYTEST_SHARD" --junitxml="$RUNNER_TEMP/test-report.xml"
       - name: Browser regressions
         if: matrix.suite == 'browser'
@@ -255,6 +270,8 @@ jobs:
         env:
           BROWSER_SHARD: ${{ matrix.shard }}
           BROWSER_TEST_PREBUILT: "true"
+          BROWSER_TEST_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/garrison_browser_test
+          BROWSER_TEST_REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/8
         run: |
           # Run 43902036278 measured 180s/525s of Chrome test time.
           # The list moves individual HR tests. Its complement covers new tests.
