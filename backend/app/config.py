@@ -6,6 +6,7 @@ from pydantic import EmailStr, Field, HttpUrl, IPvAnyAddress, SecretStr, model_v
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.business_policy import DEFAULT_BUSINESS_CURRENCY, BusinessPolicy, BusinessPolicyResponse
+from app.utils.secret_files import read_private_secret_file
 
 
 class Settings(BaseSettings, BusinessPolicy):
@@ -67,7 +68,8 @@ class Settings(BaseSettings, BusinessPolicy):
     report_email_recipients: str = "admin@garrisons.lk"
     report_pdf_template_name: str = "company-standard"
 
-    backup_encryption_password: str | None = None
+    backup_encryption_password: str | None = Field(default=None, repr=False)
+    backup_encryption_key_file: str | None = Field(default=None, repr=False)
     import_outbox_encryption_key: SecretStr | None = None
     import_outbox_previous_encryption_keys: SecretStr | None = None
     backup_local_dir: str = "/tmp/garrison-backups"
@@ -106,6 +108,11 @@ class Settings(BaseSettings, BusinessPolicy):
 
     @model_validator(mode="after")
     def validate_business_currency_environment(self) -> "Settings":
+        if self.backup_encryption_key_file:
+            self.backup_encryption_password = read_private_secret_file(
+                self.backup_encryption_key_file,
+                setting_name="BACKUP_ENCRYPTION_PASSWORD",
+            )
         disposable_environment = self.app_env.strip().lower() in {"development", "test", "local"}
         if self.business_currency != DEFAULT_BUSINESS_CURRENCY and not disposable_environment:
             raise ValueError(

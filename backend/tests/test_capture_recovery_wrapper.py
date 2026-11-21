@@ -56,6 +56,12 @@ elif 'policy-check' in args:
         sys.exit(1)
 elif 'capture' in args:
     assert not any(state.values())
+    secret_mount = (
+        f"{os.environ['BACKUP_ENCRYPTION_KEY_HOST_FILE']}"
+        ":/run/secrets/backup_encryption_key:ro"
+    )
+    assert secret_mount in args
+    assert not any('BACKUP_ENCRYPTION_PASSWORD=' in arg for arg in args)
     volume = next(arg for arg in args if arg.endswith(':/capture'))
     destination = pathlib.Path(volume.removesuffix(':/capture')) / 'set'
     destination.mkdir(mode=0o700)
@@ -208,9 +214,8 @@ match sys.argv[2]:
                 "MINIO_BUCKET",
                 "MINIO_ROOT_USER",
                 "MINIO_ROOT_PASSWORD",
-                "BACKUP_ENCRYPTION_PASSWORD",
             )
-        ),
+        ) + "\nBACKUP_ENCRYPTION_KEY_FILE=/run/secrets/backup_encryption_key",
         "RECOVERY_PUBLISH_ENV": "\n".join(
             f"{key}=fixture"
             for key in (
@@ -230,7 +235,11 @@ match sys.argv[2]:
         path.write_text(content)
         path.chmod(0o600)
         env[name] = str(path)
+    backup_password_file = tmp_path / "backup-encryption-key"
+    backup_password_file.write_text("synthetic-capture-key\n")
+    backup_password_file.chmod(0o600)
     env.update(
+        BACKUP_ENCRYPTION_KEY_HOST_FILE=str(backup_password_file),
         BACKUP_AUTH_KEY_ID="fixture",
         RECOVERY_CONFIGURATION_ROOT=str(configuration),
         FIXTURE_WRITER_STATE=str(state),
@@ -292,6 +301,26 @@ def test_capture_wrapper_preserves_writer_state_and_failure_receipts(
         ]
     else:
         assert not any(path.is_dir() for path in evidence.iterdir())
+
+
+def test_capture_wrapper_rejects_legacy_environment_password(
+    scheduled_capture: ScheduledCapture,
+) -> None:
+    capture_env = Path(scheduled_capture.env["RECOVERY_CAPTURE_ENV"])
+    capture_env.write_text(
+        capture_env.read_text().replace(
+            "BACKUP_ENCRYPTION_KEY_FILE=/run/secrets/backup_encryption_key",
+            "BACKUP_ENCRYPTION_PASSWORD=",
+        )
+    )
+    capture_env.chmod(0o600)
+
+    result = scheduled_capture.run()
+
+    assert result.returncode != 0
+    assert "credential inputs must be explicit and isolated" in result.stderr
+    assert scheduled_capture.events.read_text() == ""
+    assert json.loads(scheduled_capture.writer_state.read_text()) == scheduled_capture.before
 
 
 def test_successes_release_only_the_current_capture_workspace(

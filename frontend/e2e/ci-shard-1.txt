@@ -14,3 +14,8 @@ business-roles.e2e.ts › HR independently corrects an employee name and stale M
 business-roles.e2e.ts › HR extends and confirms probation from a completed onboarding case
 business-roles.e2e.ts › a direct manager recommends self-submitted time and HR makes the final decision
 business-roles.e2e.ts › payroll operators lock a reviewed snapshot and publish its employee payslip
+business-roles.e2e.ts › reviewed recovery opens the reset confirmation without requesting another code
+business-roles.e2e.ts › HR Manager creates a draft in the workspace and it persists across reload
+business-roles.e2e.ts › revoking the HR role clears the open HR workspace and prevents access after sign-in
+business-roles.e2e.ts › a second HR Manager approves the exact candidate rejection letter
+business-roles.e2e.ts › HR requests a project assignment for a director to approve

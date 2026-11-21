@@ -908,12 +908,20 @@ async def test_signed_receipt_ingestion_and_scheduled_backup_task_recording(
         recorded.append(outcome)
 
     monkeypatch.setattr(backup_task, "_persist_local_backup_attempt", fake_persist)
-    monkeypatch.delenv("BACKUP_ENCRYPTION_PASSWORD", raising=False)
-    with pytest.raises(RuntimeError, match="BACKUP_ENCRYPTION_PASSWORD"):
+    monkeypatch.setattr(
+        backup_task,
+        "get_settings",
+        lambda: SimpleNamespace(backup_encryption_password=None),
+    )
+    with pytest.raises(RuntimeError, match="backup-encryption secret"):
         await asyncio.to_thread(backup_task.run_database_backup, False)
     assert recorded == ["fail"]
 
-    monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "fixture-password")
+    monkeypatch.setattr(
+        backup_task,
+        "get_settings",
+        lambda: SimpleNamespace(backup_encryption_password="fixture-password"),
+    )
     monkeypatch.setattr(
         backup_task.subprocess,
         "run",
@@ -983,6 +991,11 @@ def test_local_cli_requires_authenticated_manual_operations(
     legacy.mkdir()
     (legacy / backup_set.MANIFEST).write_text('{"format_version": 1}')
     monkeypatch.setenv("BACKUP_ENCRYPTION_PASSWORD", "synthetic-only")
+    monkeypatch.setattr(
+        backup_set,
+        "get_settings",
+        lambda: SimpleNamespace(backup_encryption_password="synthetic-only"),
+    )
     cases = [
         (
             ["schedule", "--policy", str(policy_path), "--output", str(tmp_path / "timer")],
