@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: garrison-self-hosted-ci-${{ github.ref }}
+  group: garrison-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          # This self-hosted runner keeps its local pip cache between jobs.
+          # The self-hosted runner keeps this pip cache between jobs.
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Ruff
@@ -100,10 +100,10 @@ jobs:
     env:
       PIP_CACHE_DIR: /runner/state/pip-cache
       npm_config_cache: /runner/state/npm-cache
+      CI_TEST_S3_CONTAINER: garrison-ci-s3-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
-      # Concurrent Chrome shards and a third integration job have exceeded
-      # the shared runner host's capacity. Keep all shards and tests.
+      # Keep two independent test shards active on the isolated runner pool.
       max-parallel: 2
       matrix:
         include:
@@ -134,7 +134,8 @@ jobs:
           POSTGRES_PASSWORD: garrison_dev_password
           POSTGRES_DB: ${{ matrix.database }}
         ports:
-          - 5432:5432
+          # Random host port avoids collisions between jobs sharing a Docker host.
+          - "5432"
         options: >-
           --health-cmd "pg_isready -h 127.0.0.1 -U garrison -d ${{ matrix.database }}"
           --health-interval 2s
@@ -143,7 +144,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - "6379"
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 2s
@@ -156,7 +157,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-          # This self-hosted runner keeps its local pip cache between jobs.
       - uses: actions/setup-node@v6
         if: matrix.suite == 'browser'
         with:
@@ -166,8 +166,10 @@ jobs:
         shell: bash
         env:
           TEST_SUITE: ${{ matrix.suite }}
+          CI_TEST_SHARD: ${{ matrix.shard }}
           TEST_S3_IMAGE: motoserver/moto:5.2.2@sha256:d8ae5edc2bf080e7e4c13f9bd4b29b53ac3b4427e92956318db3dbe23ec43eb7
-          MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:5432/${{ matrix.database }}
+          MIGRATION_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${{ matrix.database }}
+          BUSINESS_TIMEZONE: Asia/Qatar
         run: |
           set -euo pipefail
 
@@ -191,10 +193,35 @@ jobs:
                 sleep "$attempt"
               done
             fi
-            docker run --pull never --detach --name garrison-ci-s3 --publish 127.0.0.1:9000:5000 "$TEST_S3_IMAGE" >/dev/null
-            # The Docker port proxy can reset a connection before Moto starts listening.
-            curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 \
-              --retry-max-time 25 --max-time 5 http://127.0.0.1:9000/ -o /dev/null
+            docker run --pull never --detach --name "$CI_TEST_S3_CONTAINER" \
+              --publish 127.0.0.1::5000 "$TEST_S3_IMAGE" >/dev/null
+            storage_port="$(docker port "$CI_TEST_S3_CONTAINER" 5000/tcp | awk -F: 'NR == 1 {print $NF}')"
+            if [[ ! "$storage_port" =~ ^[0-9]+$ ]]; then
+              echo "Could not resolve the isolated Moto host port."
+              docker logs --tail 50 "$CI_TEST_S3_CONTAINER" || true
+              exit 1
+            fi
+            storage_endpoint="127.0.0.1:$storage_port"
+            {
+              printf 'MINIO_ENDPOINT=%s\n' "$storage_endpoint"
+              printf 'MINIO_PUBLIC_ENDPOINT=%s\n' "$storage_endpoint"
+              printf 'BROWSER_TEST_MINIO_ENDPOINT=%s\n' "$storage_endpoint"
+            } >> "$GITHUB_ENV"
+            # Keep startup transient errors quiet, then print container diagnostics once.
+            ready=0
+            deadline=$((SECONDS + 30))
+            while (( SECONDS < deadline )); do
+              if curl --fail --silent --max-time 2 "http://$storage_endpoint/" -o /dev/null; then
+                ready=1
+                break
+              fi
+              sleep 1
+            done
+            if (( ! ready )); then
+              echo "The isolated Moto endpoint did not become ready within 30 seconds."
+              docker logs --tail 50 "$CI_TEST_S3_CONTAINER" || true
+              exit 1
+            fi
           ) &
           storage_pid=$!
 
@@ -234,6 +261,8 @@ jobs:
         if: matrix.suite == 'backend'
         env:
           PYTEST_SHARD: ${{ matrix.shard }}
+          DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/${{ matrix.database }}
+          REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/8
         run: pytest -q -rs --durations=10 --garrison-shard "$PYTEST_SHARD" --junitxml="$RUNNER_TEMP/test-report.xml"
       - name: Browser regressions
         if: matrix.suite == 'browser'
@@ -241,10 +270,12 @@ jobs:
         env:
           BROWSER_SHARD: ${{ matrix.shard }}
           BROWSER_TEST_PREBUILT: "true"
+          BROWSER_TEST_DATABASE_URL: postgresql+asyncpg://garrison:garrison_dev_password@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/garrison_browser_test
+          BROWSER_TEST_REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/8
         run: |
           # Run 43902036278 measured 180s/525s of Chrome test time.
           # The list moves individual HR tests. Its complement covers new tests.
-          # Two workers per shard exhausted the shared host in run 43948823590.
+          # One browser worker per isolated self-hosted runner avoids oversubscribing the host.
           case "$BROWSER_SHARD" in
             1) selection=--test-list ;;
             2) selection=--test-list-invert ;;
@@ -255,8 +286,8 @@ jobs:
       - name: Remove the test S3 container
         if: always()
         run: |
-          if docker container inspect garrison-ci-s3 >/dev/null 2>&1; then
-            docker container rm --force garrison-ci-s3 >/dev/null
+          if docker container inspect "$CI_TEST_S3_CONTAINER" >/dev/null 2>&1; then
+            docker container rm --force "$CI_TEST_S3_CONTAINER" >/dev/null
           fi
       - name: Upload shard test report
         if: "!cancelled() && github.event_name == 'push'"
