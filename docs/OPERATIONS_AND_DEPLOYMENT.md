@@ -20,8 +20,9 @@ passed all seven jobs on attempt 3. Its first two attempts failed at
 **Backend lint and types** before recording any job steps; the logs were
 unavailable, so the runner failure cause remains unconfirmed. The CI run was
 created at 16:56:14 UTC and completed at 17:45:52 UTC after those retries.
-The five-job fast-CI change described below remains local and uncommitted; this
-remote CI run used the seven-job workflow currently on `main`.
+The five-job fast-CI change described below is committed locally but has not
+been pushed to `origin/main`; this remote CI run used the seven-job workflow
+currently on `main`.
 
 GitHub reports both `CI` and `Deploy production` workflows as active. Following
 the successful CI run, [deployment run 45051269314](https://github.com/nirzaf/garrison-investments/actions/runs/45051269314)
@@ -153,7 +154,7 @@ Observed seven-job baseline for three recent successful main pushes (seconds):
 | --- | ---: | ---: | ---: |
 | `45005886117` | 26 | 915 | 451 |
 | `45008220436` | 3 | 1,236 | 1,236 |
-| `45012746159` | 25 | 1,001 | 502 |
+| `45012746159` | 25 | 1,001 | 441 |
 
 Median baseline CI wall time was 1,001 seconds. In the observed runs, individual
 backend shards took 306–425 seconds and their combined dependency/storage setup
@@ -228,15 +229,19 @@ Three recent successful seven-job main runs establish the current comparison:
 | `45008220436` | 3 s | 1,236 s | Browser shard 2, 495 s |
 | `45012746159` | 25 s | 1,001 s | Browser shard 2, 497 s |
 
-The median wall time is 1,001 seconds (16m41s). Step timings show cached pip
-installation at about 1 second, npm installation at 7–8 seconds, browser test
-preparation at 9–12 seconds, backend pytest at 269–387 seconds per shard, and
-Chrome execution at 432–450 seconds per shard. Current runner API state is one
-of four `garrison-ci` runners online, so availability remains a limiting factor.
-The fast-main workflow and host verifier are local-only and have no comparable
-remote run yet; no after-change speedup is claimed. The exact remote main run
-`45046582618` failed twice at Backend lint and types, so its candidate is not a
-valid release timing sample.
+The median full-workflow wall time is 1,001 seconds (16m41s). In those same
+seven-job runs, the five jobs intended for the fast main gate had completion
+times of 451, 1,236 and 441 seconds from workflow creation (median 451 seconds).
+Those are historical subset timings, not an after-change measurement: browser
+jobs were still consuming runners and affecting queue order. Step timings show
+cached pip installation at about 1 second, npm installation at 7–8 seconds,
+browser test preparation at 9–12 seconds, backend pytest at 269–387 seconds per
+shard, and Chrome execution at 432–450 seconds per shard. Current runner API
+state is one of four `garrison-ci` runners online, so availability remains a
+limiting factor. The fast-main workflow and host verifier are local-only and
+have no comparable remote run yet; no after-change speedup is claimed. Exact
+main run `45046582618` passed on attempt 3 after two backend lint/type failures;
+the retries make it unsuitable as a clean timing comparison.
 
 On `be5f583328e9a4958f6be5738663767b8e31c56a`, exact-main run `44974005236`
 passed all seven jobs on attempt 2. The first attempt's Chrome shards failed
