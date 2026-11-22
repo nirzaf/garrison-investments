@@ -70,7 +70,20 @@ def compose_config(*, target: bool) -> dict:
             },
             "redis": {"image": "redis:7-alpine"},
             "minio": {"image": "example/minio:fixed"},
-            "loki_minio_init": {"image": "example/mc:fixed"},
+            "loki_minio_init": {
+                "image": "example/mc:fixed",
+                "environment": (
+                    {
+                        "LOKI_BUCKET": "logs",
+                        "BACKUP_ENCRYPTION_PASSWORD": "fixture-legacy-secret",
+                    }
+                    if old
+                    else {
+                        "LOKI_BUCKET": "logs",
+                        "BACKUP_ENCRYPTION_KEY_HOST_FILE": "/run/private/backup-key",
+                    }
+                ),
+            },
         },
     }
 
@@ -100,6 +113,7 @@ def test_postgres19_transition_accepts_unchanged_file_based_backup_secret() -> N
         "change_minio",
         "change_pg_settings",
         "change_grafana_init_settings",
+        "change_loki_init_settings",
         "retain_legacy_backup_secret",
         "remove_backup_secret_file",
         "change_volume_target",
@@ -123,6 +137,8 @@ def test_postgres19_transition_rejects_unrelated_or_unsafe_changes(mutation: str
         candidate["services"]["postgres"]["environment"]["POSTGRES_DB"] = "other"
     elif mutation == "change_grafana_init_settings":
         candidate["services"]["grafana_db_init"]["environment"]["PGHOST"] = "other"
+    elif mutation == "change_loki_init_settings":
+        candidate["services"]["loki_minio_init"]["environment"]["LOKI_BUCKET"] = "other"
     elif mutation == "retain_legacy_backup_secret":
         candidate["services"]["grafana_db_init"]["environment"] = {
             "PGHOST": "postgres",

@@ -63,12 +63,12 @@ def _without(value: Mapping[str, Any], *keys: str) -> dict[str, Any]:
     return {key: item for key, item in value.items() if key not in keys}
 
 
-def _grafana_init_settings(service: Mapping[str, Any]) -> dict[str, Any]:
+def _secret_aware_service_settings(service: Mapping[str, Any]) -> dict[str, Any]:
     """Permit only the exact production backup-secret env migration."""
     settings = _without(service, "image", "volumes")
     environment = settings.get("environment")
     if not isinstance(environment, Mapping):
-        raise MaintenanceContractError("Grafana initializer environment is invalid.")
+        raise MaintenanceContractError("Service environment is invalid.")
     return {
         **settings,
         "environment": {
@@ -85,7 +85,7 @@ def _validate_backup_secret_transition(
     old_environment = old_service.get("environment")
     new_environment = new_service.get("environment")
     if not isinstance(old_environment, Mapping) or not isinstance(new_environment, Mapping):
-        raise MaintenanceContractError("Grafana initializer environment is invalid.")
+        raise MaintenanceContractError("Service environment is invalid.")
 
     new_file = new_environment.get(_BACKUP_SECRET_FILE_ENV)
     if (
@@ -164,14 +164,27 @@ def validate_compose_transition(previous: Mapping[str, Any], candidate: Mapping[
         ):
             raise MaintenanceContractError("The Grafana initializer script mount is invalid.")
     _validate_backup_secret_transition(old_init, new_init)
-    if _grafana_init_settings(old_init) != _grafana_init_settings(new_init):
+    if _secret_aware_service_settings(old_init) != _secret_aware_service_settings(new_init):
         raise MaintenanceContractError(
             "Grafana initialization settings changed outside the client upgrade."
         )
 
-    for name in ("redis", "minio", "loki_minio_init"):
+    for name in ("redis", "minio"):
         if _service(previous, name) != _service(candidate, name):
             raise MaintenanceContractError(f"Unrelated stateful service {name} changed.")
+
+    old_loki_init = _service(previous, "loki_minio_init")
+    new_loki_init = _service(candidate, "loki_minio_init")
+    _validate_backup_secret_transition(old_loki_init, new_loki_init)
+    if (
+        old_loki_init.get("image") != new_loki_init.get("image")
+        or old_loki_init.get("volumes") != new_loki_init.get("volumes")
+        or _secret_aware_service_settings(old_loki_init)
+        != _secret_aware_service_settings(new_loki_init)
+    ):
+        raise MaintenanceContractError(
+            "Loki initializer settings changed outside the backup-secret migration."
+        )
 
 
 def validate_live_target(
