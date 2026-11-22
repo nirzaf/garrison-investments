@@ -109,6 +109,10 @@ def test_manual_only_host_path_and_fail_closed_activation():
     assert "garrison-portal_pgdata19" in host
     assert "Maintenance actual end Asia/Qatar" in host
     assert "postgres19-maintenance" in workflow
+    assert (
+        'if release_mode in ("postgres19-maintenance", "postgres19-maintenance-retry"):'
+        in host
+    )
     assert '"$PINNED_NO_BACKUP_093" != true' in workflow
     assert '"$FORWARD_ONLY_093_TO_097" != true' in workflow
     assert '"$INCIDENT_REPLACEMENT" != true' in workflow

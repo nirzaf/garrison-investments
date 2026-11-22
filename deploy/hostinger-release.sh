@@ -864,7 +864,7 @@ with open(sys.argv[4]) as old, open(sys.argv[5]) as new:
 normalize_release_paths(before, sys.argv[1])
 normalize_release_paths(after, sys.argv[2])
 release_mode = sys.argv[3]
-if release_mode == "postgres19-maintenance":
+if release_mode in ("postgres19-maintenance", "postgres19-maintenance-retry"):
     sys.path.insert(0, str(Path(sys.argv[2]) / "deploy"))
     from postgres19_maintenance_contract import validate_compose_transition
     try:
