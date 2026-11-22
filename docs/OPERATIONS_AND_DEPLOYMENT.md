@@ -185,17 +185,34 @@ runner service/journal and system resources, then restart only that verified
 service and rerun the seven-job workflow. Do not use the production runner as a
 fallback.
 
-Grafana access is a separate infrastructure follow-up. The Cloudflare zone is
-active, but authoritative DNS has no exact record for
-`grafana.portal.garrisons.lk`. The portal A record and Hostinger production VPS
-identify ingress `187.77.156.146`. With Grafana SNI sent directly to that IP,
-the Nginx route returned `/api/health` HTTP 200 and `/api/org` HTTP 401 (auth
-required), but the served certificate SAN contained only
-`portal.garrisons.lk`; TLS hostname verification for Grafana failed. Therefore
-neither the missing DNS record nor the certificate mismatch is fixed by the
-internal Grafana health check. First install/verify a certificate covering the
-Grafana hostname and verify the SNI route; only then prepare the DNS-only A
-record to `187.77.156.146`, subject to the required production authorization.
+<a id="grafana-external-access-readiness-2026-11-22"></a>
+
+### Grafana external-access readiness — 2026-11-22
+
+**Status: not externally ready.** The following read-only checks were performed
+against the active production host and Cloudflare zone. No DNS, certificate,
+Nginx, or application changes were made.
+
+| Check | Verified result |
+| --- | --- |
+| DNS provider and records | Cloudflare is authoritative. The exact Grafana name has no A, AAAA, or CNAME record. `portal.garrisons.lk` is DNS-only A `187.77.156.146`. |
+| Ingress | Hostinger identifies the production portal VPS at `187.77.156.146`, matching the portal A record. |
+| Nginx and Grafana configuration | Runtime `GRAFANA_DOMAIN`, `GF_SERVER_DOMAIN`, and `GF_SERVER_ROOT_URL` match `grafana.portal.garrisons.lk`. The live Nginx configuration test passes and contains the Grafana TLS virtual host and proxy to `grafana:3000`. |
+| Grafana health and access | Internal Grafana 13.1.1 `/api/health` returned healthy; unauthenticated `/api/org` returned 401. Anonymous access and public sign-up are disabled. Container port 3000 has no host-published binding. |
+| Active certificate | The Nginx-mounted certificate and private key match. The trusted Let's Encrypt leaf has SAN `portal.garrisons.lk` only and expires 2027-02-09 14:49:19 UTC. A normal TLS check with Grafana SNI fails hostname verification. |
+| Portal regression | `https://portal.garrisons.lk/health/readiness` returned HTTP 200 with normal TLS verification. |
+| Renewal ownership | `certbot.timer` is enabled and active twice daily. Its current automatic lineage is for `portal.garrisons.lk` and its deploy hook copies that renewed pair to the Nginx mount and reloads Nginx. The separate daily `garrison-support-tls.timer` checks only the Super Admin certificate. Neither current path covers Grafana. |
+
+The live Nginx configuration and internal Grafana health do not make the public
+Grafana hostname usable while DNS is absent and the active certificate lacks
+its SAN. After the task-specific production authorization, prepare a trusted
+certificate covering the Grafana name, verify its chain, dates, SAN and key
+match, stage it with a recoverable copy of the active pair, run `nginx -t`,
+and verify both portal and Grafana SNI with normal TLS validation before
+publishing the Grafana A record. Use a DNS-01 challenge if needed to preserve
+the required TLS-before-A-record order. The renewal procedure and warning/urgent
+alerts must include the resulting Grafana certificate before the endpoint is
+declared complete. Do not change the Super Admin certificate or allowlist.
 
 ### Forward097 incident reconciliation (evidence review, 2026-11-21–22)
 
@@ -265,12 +282,42 @@ Those are historical subset timings, not an after-change measurement: browser
 jobs were still consuming runners and affecting queue order. Step timings show
 cached pip installation at about 1 second, npm installation at 7–8 seconds,
 browser test preparation at 9–12 seconds, backend pytest at 269–387 seconds per
-shard, and Chrome execution at 432–450 seconds per shard. Current runner API
-state is one of four `garrison-ci` runners online, so availability remains a
-limiting factor. The fast-main workflow and host verifier are local-only and
-have no comparable remote run yet; no after-change speedup is claimed. Exact
-main run `45046582618` passed on attempt 3 after two backend lint/type failures;
-the retries make it unsuitable as a clean timing comparison.
+shard, and Chrome execution at 432–450 seconds per shard. The older runner
+snapshot recorded one of four `garrison-ci` runners online; current availability
+is reported in the fast-main sample below. The exact main run `45046582618`
+passed on attempt 3 after two backend lint/type failures; the retries make it
+unsuitable as a clean timing comparison.
+
+#### Fast-main five-job sample — 2026-11-22
+
+The `fast-main-v1` workflow definition was introduced by `a7a8dab`. Only one
+successful, unretried push run with that five-job definition is available so
+far: [run `45056876940`](https://github.com/nirzaf/garrison-investments/actions/runs/45056876940)
+on exact `main` SHA `762254ce7812973731cd6b653e7c1bad10612c48`. It passed all five
+jobs in 17m47s (18:45:26–19:03:13 UTC). This is one observation, not a median or
+a before/after performance result. The earlier seven-job runs above are not
+comparable samples.
+
+| Required job | Execution | Runner | Start (UTC) |
+| --- | ---: | --- | --- |
+| Frontend lint, types, tests and build | 70 s | `garrison-ci-linux-2` (ID 24) | 18:45:29 |
+| Backend lint and types | 49 s | `garrison-ci-linux-2` (ID 24) | 18:46:42 |
+| Backend tests (1/2) | 407 s | `garrison-ci-linux-2` (ID 24) | 18:47:34 |
+| Backend tests (2/2) | 427 s | `garrison-ci-linux-2` (ID 24) | 18:55:38 |
+| Compose files are valid | 24 s | `garrison-ci-linux-2` (ID 24) | 19:02:48 |
+
+All five jobs ran sequentially on the same runner; summed execution was 977 s
+(16m17s). The first required job started three seconds after workflow creation.
+Compose began 17m22s after creation. The Actions job records do not include an
+eligibility/queued timestamp, so exact per-job queue durations and the cause of
+the Compose start gap cannot be proven from these records. A fresh GitHub runner
+API check on 2026-11-22 found zero of the four isolated `garrison-ci` runners
+online; the separate production runner was online and must remain out of CI.
+No CI workflow change is justified by this single sample. The observed
+single-run duration is 17m47s; a three-run comparable median, runner queue
+median, and the 30% speed-improvement target are **not yet verified**. Restore
+the isolated runner fleet and collect two more unretried five-job main push
+runs before choosing or claiming an optimization.
 
 On `be5f583328e9a4958f6be5738663767b8e31c56a`, exact-main run `44974005236`
 passed all seven jobs on attempt 2. The first attempt's Chrome shards failed
