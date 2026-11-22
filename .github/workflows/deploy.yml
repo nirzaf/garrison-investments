@@ -23,6 +23,10 @@ on:
         description: One-time locked PostgreSQL 18 to 19 cutover after the restore and migration are verified on the fresh volume
         type: boolean
         default: false
+      postgres19_maintenance_retry:
+        description: One-time retry after a verified pre-activation failure during the same authorized PostgreSQL 19 window
+        type: boolean
+        default: false
       ci_run_id:
         description: Successful CI run for the selected release candidate
         type: string
@@ -63,6 +67,7 @@ jobs:
           INCIDENT_REPLACEMENT: ${{ inputs.incident_replacement }}
           PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
           POSTGRES19_MAINTENANCE: ${{ inputs.postgres19_maintenance }}
+          POSTGRES19_MAINTENANCE_RETRY: ${{ inputs.postgres19_maintenance_retry }}
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
@@ -86,8 +91,14 @@ jobs:
           if [[ "$POSTGRES19_MAINTENANCE" == true ]]; then
             [[ "$GITHUB_EVENT_NAME" == workflow_dispatch &&
                "$PINNED_NO_BACKUP_093" != true && "$FORWARD_ONLY_093_TO_097" != true &&
-               "$INCIDENT_REPLACEMENT" != true ]] || exit 1
+               "$INCIDENT_REPLACEMENT" != true && "$POSTGRES19_MAINTENANCE_RETRY" != true ]] || exit 1
             release_mode=postgres19-maintenance
+          fi
+          if [[ "$POSTGRES19_MAINTENANCE_RETRY" == true ]]; then
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch &&
+               "$PINNED_NO_BACKUP_093" != true && "$FORWARD_ONLY_093_TO_097" != true &&
+               "$INCIDENT_REPLACEMENT" != true && "$POSTGRES19_MAINTENANCE" != true ]] || exit 1
+            release_mode=postgres19-maintenance-retry
           fi
           printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" |
             sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 "$release_mode"

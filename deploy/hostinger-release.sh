@@ -22,7 +22,7 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 || "$4" == incident-replacement || "$4" == postgres19-maintenance ) ]] ||
+   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 || "$4" == incident-replacement || "$4" == postgres19-maintenance || "$4" == postgres19-maintenance-retry ) ]] ||
   die 'Expected a CI run ID, full SHA, rollback-v2 and release mode.'
 run_id=$1
 sha=$2
@@ -32,9 +32,16 @@ pinned=0
 forward097=0
 incident_replacement=0
 postgres19_maintenance=0
+postgres19_retry=0
+postgres19_retry_run=
+postgres19_retry_evidence_sha=
 [[ "$release_mode" != forward-only-093-to-097 ]] || forward097=1
 [[ "$release_mode" != incident-replacement ]] || incident_replacement=1
 [[ "$release_mode" != postgres19-maintenance ]] || postgres19_maintenance=1
+if [[ "$release_mode" == postgres19-maintenance-retry ]]; then
+  postgres19_maintenance=1
+  postgres19_retry=1
+fi
 if [[ "$release_mode" == pinned-no-backup-093 ]]; then
   pinned=1
   [[ "$sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a && "$run_id" == 44163196512 ]] ||
@@ -133,7 +140,88 @@ assert_pinned_window() {
   (( $(date -u +%s) < pinned_end )) || die 'Pinned exception window expired.'
 }
 
+consume_postgres19_maintenance_retry_authorization() {
+  local authorization=$state/postgres19-maintenance.retry.permit
+  local authorization_archive=$state/postgres19-maintenance.retry.authorization
+  local consumed=$state/postgres19-maintenance.retry.used
+  local evidence=$state/postgres19-maintenance.retry-evidence
+  local prior_used=$state/postgres19-maintenance.used
+  local original_started=$state/postgres19-maintenance.started
+  local bound_run bound_sha start end prior_deploy prior_ci prior_sha prior_current evidence_sha authorization_extra
+  local used_run used_sha original_start original_end used_extra started_sha started_run started_at started_extra
+  local now actual_evidence current_sha tmp
+  [[ -f "$authorization" && ! -L "$authorization" && -O "$authorization" &&
+     "$(stat -c '%a' "$authorization")" == 600 &&
+     ! -e "$consumed" && ! -L "$consumed" &&
+     ! -e "$authorization_archive" && ! -L "$authorization_archive" ]] ||
+    die 'PostgreSQL 19 retry authorization is unavailable, unsafe, or already consumed.'
+  [[ -f "$prior_used" && ! -L "$prior_used" && -O "$prior_used" &&
+     "$(stat -c '%a' "$prior_used")" == 600 &&
+     -f "$original_started" && ! -L "$original_started" && -O "$original_started" &&
+     "$(stat -c '%a' "$original_started")" == 600 ]] ||
+    die 'The original PostgreSQL 19 maintenance evidence is missing or unsafe.'
+  [[ -f "$evidence" && ! -L "$evidence" && -O "$evidence" &&
+     "$(stat -c '%a' "$evidence")" == 600 ]] ||
+    die 'The reviewed first-attempt failure evidence is missing or unsafe.'
+  read -r bound_run bound_sha start end prior_deploy prior_ci prior_sha prior_current evidence_sha authorization_extra < "$authorization" ||
+    die 'PostgreSQL 19 retry authorization is invalid.'
+  read -r used_run used_sha original_start original_end used_extra < "$prior_used" ||
+    die 'The original PostgreSQL 19 consumed permit is invalid.'
+  read -r started_sha started_run started_at started_extra < "$original_started" ||
+    die 'The original PostgreSQL 19 maintenance start record is invalid.'
+  now=$(date -u +%s)
+  [[ "$bound_run" == "$run_id" && "$bound_sha" == "$sha" && -z "$authorization_extra" &&
+     "$bound_sha" =~ ^[a-f0-9]{40}$ && "$start" =~ ^[1-9][0-9]{9}$ &&
+     "$end" =~ ^[1-9][0-9]{9}$ && "$prior_deploy" =~ ^[1-9][0-9]*$ &&
+     "$prior_ci" =~ ^[1-9][0-9]*$ &&
+     "$prior_sha" =~ ^[a-f0-9]{40}$ && "$prior_current" =~ ^[a-f0-9]{40}$ &&
+     "$evidence_sha" =~ ^[a-f0-9]{64}$ ]] &&
+    (( start <= now && now < end && end - start <= 7200 )) ||
+    die 'PostgreSQL 19 retry candidate or bounded window does not match.'
+  [[ "$used_run" == "$prior_ci" && "$used_sha" == "$prior_sha" &&
+     "$original_end" == "$end" && -z "$used_extra" && "$started_sha" == "$prior_sha" &&
+     "$started_run" == "$used_run" && -z "$started_extra" &&
+     "$started_at" =~ ^[1-9][0-9]{9}$ ]] ||
+    die 'The retry authorization does not match the preserved first maintenance attempt.'
+  (( original_start <= started_at && started_at <= start && start <= now && now < original_end )) ||
+    die 'The retry window falls outside the original approved maintenance window.'
+  actual_evidence=$(sha256sum "$evidence" | cut -d' ' -f1)
+  [[ "$actual_evidence" == "$evidence_sha" ]] ||
+    die 'The reviewed first-attempt failure evidence digest does not match.'
+  github "actions/runs/$prior_deploy" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+if (r.get("id") != int(sys.argv[1]) or r.get("workflow_id") != 277757082
+    or r.get("head_sha") != sys.argv[2] or r.get("event") != "workflow_dispatch"
+    or r.get("status") != "completed" or r.get("conclusion") != "failure"):
+    sys.exit("The previous PostgreSQL 19 deployment was not the reviewed failed run.")
+' "$prior_deploy" "$prior_sha" || die 'The previous PostgreSQL 19 deployment failure could not be verified.'
+current_sha=$(sed -n 's/^Commit: //p' "$state/current/DEPLOYED" | head -n 1)
+[[ "$current_sha" == "$prior_current" ]] ||
+  die 'The previous successful application release changed after the first maintenance attempt.'
+local_running=$(docker ps --filter "label=com.docker.compose.project=$project" \
+  --format '{{.Label "com.docker.compose.service"}}' | sort -u)
+if [[ "$local_running" =~ (^|[[:space:]])(nginx|backend|celery_worker|celery_beat|grafana)([[:space:]]|$) ]]; then
+  die 'PostgreSQL 19 retry requires ingress and all application writers to remain stopped.'
+fi
+tmp=$(mktemp "$state/.postgres19-maintenance.retry.used.XXXXXX")
+printf '%s %s %s %s %s %s %s %s %s\nDeployment run: %s\nDeployment attempt: %s\nConsumed UTC: %s\n' \
+  "$bound_run" "$bound_sha" "$start" "$end" "$prior_deploy" "$prior_ci" "$prior_sha" \
+  "$prior_current" "$evidence_sha" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" > "$tmp"
+chmod 600 "$tmp"
+mv -T -- "$authorization" "$authorization_archive"
+mv -T -- "$tmp" "$consumed"
+postgres19_start=$started_at
+postgres19_end=$end
+postgres19_retry_run=$prior_deploy
+postgres19_retry_evidence_sha=$evidence_sha
+}
+
 consume_postgres19_maintenance_permit() {
+  if (( postgres19_retry )); then
+    consume_postgres19_maintenance_retry_authorization
+    return
+  fi
   local permit=$state/postgres19-maintenance.permit consumed=$state/postgres19-maintenance.used
   local started=$state/postgres19-maintenance.started
   local bound_run bound_sha start end permit_extra now started_sha started_run started_at started_extra
@@ -472,6 +560,12 @@ compose() {
       cmp -s - "$proxy_override" || die 'Incident Nginx override differs from the reviewed digest.'
     compose_files+=(-f "$proxy_override")
   fi
+  if [[ -n "${nginx_test_override_file:-}" ]]; then
+    [[ -f "$nginx_test_override_file" && ! -L "$nginx_test_override_file" &&
+       -O "$nginx_test_override_file" && "$(stat -c '%a' "$nginx_test_override_file")" == 600 ]] ||
+      die 'Temporary Nginx validation override is unsafe.'
+    compose_files+=(-f "$nginx_test_override_file")
+  fi
   docker compose --project-name "$project" --project-directory "$directory" \
     --env-file "$directory/.env" --env-file "$directory/.images.env" \
     "${compose_files[@]}" "$@"
@@ -481,9 +575,11 @@ phase_started=$SECONDS
 # Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
 candidate_compose_file=$(mktemp)
 network_inspect_file=
+nginx_test_override_file=
 cleanup_preflight_files() {
   [[ -z "${candidate_compose_file:-}" ]] || rm -f -- "$candidate_compose_file"
   [[ -z "${network_inspect_file:-}" ]] || rm -f -- "$network_inspect_file"
+  [[ -z "${nginx_test_override_file:-}" ]] || rm -f -- "$nginx_test_override_file"
 }
 trap cleanup_preflight_files EXIT
 if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
@@ -892,10 +988,17 @@ else:
     raise SystemExit("No collision-free static IPv4 address is available for Nginx validation.")
 PY
 ) || die 'No verified collision-free IPv4 address is available for Nginx validation.'
+nginx_test_override_file=$(mktemp "$state/.nginx-test-override.XXXXXX") ||
+  die 'Unable to create a temporary Nginx validation override.'
+printf 'services:\n  nginx:\n    extra_hosts:\n      - "backend-proxy:%s"\n      - "grafana:%s"\n' \
+  "$nginx_test_ip" \
+  "$nginx_test_ip" > "$nginx_test_override_file"
+chmod 600 "$nginx_test_override_file"
 NGINX_BACKEND_PROXY_IP="$nginx_test_ip" compose "$candidate" run --rm --no-deps -T nginx nginx -t
 cleanup_preflight_files
 candidate_compose_file=
 network_inspect_file=
+nginx_test_override_file=
 trap - EXIT
 report_duration 'Image preparation and configuration checks' "$phase_started"
 
@@ -1108,6 +1211,12 @@ Isolated restore of an independent backup set: waived, not verified.
 Original PostgreSQL 18 data volume: preserved as the pre-cutover rollback source.
 Authorization record: owner confirmation in the release conversation; no secret or codeword stored.
 EOF
+  if (( postgres19_retry )); then
+    cat >> "$candidate/RECOVERY_EXCEPTION" <<EOF
+Retry of pre-activation failure: deployment run $postgres19_retry_run.
+Failure evidence SHA-256: $postgres19_retry_evidence_sha
+EOF
+  fi
   chmod 0600 "$candidate/RECOVERY_EXCEPTION"
 else
   compose "$candidate" run --rm --no-deps --pull never -T backend \
@@ -1175,6 +1284,12 @@ Maintenance authorized end UTC: $(date -u +%FT%TZ --date="@$postgres19_end")
 Maintenance actual end UTC: $(date -u +%FT%TZ --date="@$maintenance_finished")
 Maintenance actual end Asia/Qatar: $(TZ=Asia/Qatar date +%FT%T%:z --date="@$maintenance_finished")
 EOF
+  if (( postgres19_retry )); then
+    cat >> "$candidate/DEPLOYED" <<EOF
+Retry of pre-activation deployment run: $postgres19_retry_run
+Retry failure evidence SHA-256: $postgres19_retry_evidence_sha
+EOF
+  fi
 fi
 if (( forward097 )); then mv "$candidate/DEPLOYED" "$candidate/FORWARD_ACTIVATION_PENDING"; fi
 ln -sfn "$candidate" "$state/.current-next"

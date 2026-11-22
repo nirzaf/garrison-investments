@@ -189,7 +189,9 @@ def test_incident_replacement_overrides_the_recovery_archive_proxy() -> None:
     ) in host
     assert 'incident_nginx_override="$candidate/.incident-nginx-override.yml"' in host
     assert 'compose_files+=(-f "$proxy_override")' in host
-    assert "compose \"$candidate\" run --rm --no-deps -T nginx nginx -t" in host
+    assert "nginx_test_override_file=$(mktemp \"$state/.nginx-test-override.XXXXXX\")" in host
+    assert 'extra_hosts:\\n      - "backend-proxy:%s"\\n      - "grafana:%s"' in host
+    assert 'compose "$candidate" run --rm --no-deps -T nginx nginx -t' in host
     assert "nginx version: nginx/1.30.7" in host
     assert "The previous Nginx container is still present after patched proxy activation." in host
 
@@ -428,8 +430,10 @@ date() { echo 1800000100; }
 stat() { echo 600; }
 mv() { shift 2; command mv "$@"; }
 state=$1
+project=garrison-portal
 run_id=34
 sha=$(printf 'a%.0s' {1..40})
+postgres19_retry=0
 """
             + source[start:end]
             + "\nconsume_postgres19_maintenance_permit\nassert_postgres19_window\n",
@@ -443,3 +447,113 @@ sha=$(printf 'a%.0s' {1..40})
     assert (result.returncode == 0) == (scenario == "valid"), result.stderr
     assert permit.exists() == (scenario != "valid")
     assert used.exists() == (scenario in {"valid", "replay"})
+
+
+@pytest.mark.parametrize(
+    ("scenario", "valid"),
+    [
+        ("valid", True),
+        ("prior-run-success", False),
+        ("bad-evidence", False),
+        ("active-writers", False),
+        ("changed-current", False),
+        ("expired", False),
+        ("too-long", False),
+        ("extra-field", False),
+        ("archive-exists", False),
+        ("replay", False),
+    ],
+)
+def test_postgres19_retry_authorization_is_single_use_and_failure_bound(
+    scenario: str, valid: bool, tmp_path: Path
+) -> None:
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("consume_postgres19_maintenance_retry_authorization() {")
+    end = source.index("github() {", start)
+    state = tmp_path
+    old_sha = "b" * 40
+    current_sha = "c" * 40
+    new_sha = "a" * 40
+    old_start, retry_start, now, end_time = (
+        1_799_999_900,
+        1_799_999_950,
+        1_800_000_100,
+        1_800_000_300,
+    )
+    if scenario == "expired":
+        end_time = 1_800_000_050
+    elif scenario == "too-long":
+        end_time = 1_800_008_000
+    (state / "current").mkdir()
+    observed_current_sha = "d" * 40 if scenario == "changed-current" else current_sha
+    (state / "current" / "DEPLOYED").write_text(f"Commit: {observed_current_sha}\n")
+    prior_used = state / "postgres19-maintenance.used"
+    prior_used.write_text(f"33 {old_sha} {old_start} {end_time}\n")
+    prior_used.chmod(0o600)
+    original_started = state / "postgres19-maintenance.started"
+    original_started.write_text(f"{old_sha} 33 {retry_start}\n")
+    original_started.chmod(0o600)
+    evidence = state / "postgres19-maintenance.retry-evidence"
+    evidence.write_text("Verified pre-activation Nginx configuration test failure.\n")
+    evidence.chmod(0o600)
+    evidence_sha = hashlib.sha256(evidence.read_bytes()).hexdigest()
+    if scenario == "bad-evidence":
+        evidence_sha = "d" * 64
+    authorization = state / "postgres19-maintenance.retry.permit"
+    authorization.write_text(
+        f"34 {new_sha} {retry_start} {end_time} 12 33 {old_sha} "
+        f"{current_sha} {evidence_sha}"
+        f" {'unexpected' if scenario == 'extra-field' else ''}\n"
+    )
+    authorization.chmod(0o600)
+    if scenario == "archive-exists":
+        (state / "postgres19-maintenance.retry.authorization").touch()
+    if scenario == "replay":
+        (state / "postgres19-maintenance.retry.used").touch()
+    prior_conclusion = "success" if scenario == "prior-run-success" else "failure"
+
+    script = f"""
+die() {{ echo "$1" >&2; exit 1; }}
+date() {{ if [[ "$*" == *%s* ]]; then echo {now}; else echo 2026-11-22T08:00:00Z; fi; }}
+stat() {{ echo 600; }}
+mv() {{ shift 2; command mv "$@"; }}
+github() {{
+  cat <<'JSON'
+{{"id":12,"workflow_id":277757082,"head_sha":"{old_sha}","event":"workflow_dispatch","status":"completed","conclusion":"{prior_conclusion}"}}
+JSON
+}}
+docker() {{
+  if [[ {scenario!r} == active-writers ]]; then
+    echo 'backend postgres redis'
+  else
+    echo 'postgres redis minio loki alloy'
+  fi
+}}
+state=$1
+project=garrison-portal
+run_id=34
+sha={new_sha}
+deploy_run_id=56
+deploy_attempt=1
+postgres19_retry=1
+""" + source[start:end] + """
+consume_postgres19_maintenance_permit
+printf '%s %s %s %s\\n' \\
+  "$postgres19_start" "$postgres19_end" "$postgres19_retry_run" "$postgres19_retry_evidence_sha"
+"""
+    result = subprocess.run(
+        ["bash", "-eu", "-c", script, "retry-test", str(state)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == valid, result.stderr
+    assert authorization.exists() is (not valid)
+    assert (state / "postgres19-maintenance.retry.used").exists() is valid or scenario == "replay"
+    if valid:
+        consumed = (state / "postgres19-maintenance.retry.used").read_text()
+        assert "Deployment run: 56" in consumed
+        assert "Deployment attempt: 1" in consumed
+        assert str(retry_start) in result.stdout

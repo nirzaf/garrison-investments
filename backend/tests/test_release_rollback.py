@@ -868,7 +868,12 @@ PYNETWORK
       fi ;;
     'compose --project-name')
       local location=$5
+      local nginx_test_override=
       shift 13
+      while [[ "${1:-}" == -f ]]; do
+        if [[ "$2" == *nginx-test-override* ]]; then nginx_test_override=$2; fi
+        shift 2
+      done
       case "$1" in
         config)
           python3 - "$scenario" "$location" "$base" <<'PYTHON'
@@ -959,6 +964,11 @@ PYTHON
         build|pull) : ;;
         run)
           if [[ "$*" == *'nginx -t'* ]]; then
+            [[ -n "$nginx_test_override" &&
+               "$nginx_test_override" == "$nginx_test_override_file" ]] &&
+              grep -Fq "backend-proxy:${NGINX_BACKEND_PROXY_IP:-missing}" "$nginx_test_override" &&
+              grep -Fq "grafana:${NGINX_BACKEND_PROXY_IP:-missing}" "$nginx_test_override" ||
+              return 43
             echo "nginx-config-ip=${NGINX_BACKEND_PROXY_IP:-missing}" >> "$base/events"
           elif [[ "$*" == *'--target all --skip-retention' ]]; then
             echo backup >> "$base/events"
@@ -972,6 +982,14 @@ PYTHON
       esac ;;
     *) return 43 ;;
   esac
+}
+stat() {
+  if [[ "$1" == "-c" && "$2" == "%a" ]]; then
+    python3 -c \
+      'import os, stat, sys; print(oct(stat.S_IMODE(os.lstat(sys.argv[1]).st_mode))[2:])' "$3"
+  else
+    command stat "$@"
+  fi
 }
 curl() {
   local url="${*: -1}"
