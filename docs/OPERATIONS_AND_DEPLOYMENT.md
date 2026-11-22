@@ -206,13 +206,16 @@ Nginx, or application changes were made.
 The live Nginx configuration and internal Grafana health do not make the public
 Grafana hostname usable while DNS is absent and the active certificate lacks
 its SAN. After the task-specific production authorization, prepare a trusted
-certificate covering the Grafana name, verify its chain, dates, SAN and key
-match, stage it with a recoverable copy of the active pair, run `nginx -t`,
-and verify both portal and Grafana SNI with normal TLS validation before
-publishing the Grafana A record. Use a DNS-01 challenge if needed to preserve
-the required TLS-before-A-record order. The renewal procedure and warning/urgent
-alerts must include the resulting Grafana certificate before the endpoint is
-declared complete. Do not change the Super Admin certificate or allowlist.
+certificate with SANs for both `portal.garrisons.lk` and
+`grafana.portal.garrisons.lk`; verify its chain, dates, SANs and key match;
+stage it with a recoverable copy of the active pair; run `nginx -t`; and verify
+both portal and Grafana SNI with normal TLS validation before publishing DNS.
+The prepared record is `A grafana.portal.garrisons.lk -> 187.77.156.146`,
+Cloudflare DNS-only (`proxied: false`, automatic TTL). Use a DNS-01 challenge
+if needed to preserve the required TLS-before-A-record order. The renewal
+procedure and warning/urgent alerts must include the resulting Grafana
+certificate before the endpoint is declared complete. Do not change the Super
+Admin certificate or allowlist.
 
 ### Forward097 incident reconciliation (evidence review, 2026-11-21–22)
 
