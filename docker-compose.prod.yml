@@ -293,7 +293,8 @@ services:
       GF_SMTP_PASSWORD: ${SMTP_PASSWORD}
       GF_SMTP_FROM_ADDRESS: ${SMTP_FROM_EMAIL}
       GF_SMTP_FROM_NAME: ${SMTP_FROM_NAME}
-      GRAFANA_ALERT_EMAILS: ${EXCEPTION_EMAIL_RECIPIENTS}
+      GRAFANA_ALERT_EMAILS: info@quadrate.lk
+      GRAFANA_USESEND_RECIPIENTS_JSON: '["info@quadrate.lk"]'
     volumes:
       - grafanadata:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro

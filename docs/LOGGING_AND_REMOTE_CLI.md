@@ -123,7 +123,7 @@ Request, session, user, and task IDs are JSON fields queried after `| json`. Kee
 
 [Provisioned alerts](../observability/grafana/provisioning/alerting/alerts.yml) cover unhandled failures, HTTP 5xx bursts, repeated Celery retries, sustained slow requests, and Loki/Alloy errors. The pipeline rule reads severity from Loki's logfmt records and Alloy's JSON records. Query failures enter the alerting state. Ordinary no-data periods remain healthy.
 
-The default [Grafana contact point](../observability/grafana/provisioning/alerting/contact-point.yml) uses SMTP. To use the [useSend webhook](../observability/grafana/contact-points/usesend.yml), set these values in the private deployment environment. Use the full HTTPS email API endpoint and the authorized sender:
+The production [Grafana contact point](../observability/grafana/provisioning/alerting/contact-point.yml) uses SMTP. Grafana alert notifications use the dedicated `info@quadrate.lk` recipient in both SMTP and the optional [useSend webhook](../observability/grafana/contact-points/usesend.yml). This is separate from `EXCEPTION_EMAIL_RECIPIENTS`, which remains for application exception notices. To use useSend, set these values in the private deployment environment. Use the full HTTPS email API endpoint and the authorized sender:
 
 ```dotenv
 USESEND_API_URL=https://usesend.example.com/api/v1/emails
@@ -131,7 +131,6 @@ USESEND_API_KEY=<private-key>
 SMTP_FROM_EMAIL=mailservice@garrisons.lk
 GRAFANA_SMTP_ENABLED=false
 GRAFANA_CONTACT_POINT_FILE=./observability/grafana/contact-points/usesend.yml
-GRAFANA_USESEND_RECIPIENTS_JSON='["operations@example.com"]'
 ```
 
 Recreate Grafana after the environment change. Verify firing and resolved notifications in the approved recipients' mailboxes before turning off the backend's exception emails through `EXCEPTION_EMAIL_ENABLED`.

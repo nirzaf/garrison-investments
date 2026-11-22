@@ -95,6 +95,16 @@ def test_grafana_contact_point_transports_preserve_the_operations_route() -> Non
     assert usesend_receiver["type"] == "webhook"
     assert usesend_receiver["disableResolveMessage"] is False
     assert usesend_receiver["settings"]["authorization_credentials"] == "$USESEND_API_KEY"
+    production_grafana = _compose("docker-compose.prod.yml")["services"]["grafana"]
+    assert (
+        production_grafana["environment"]["GRAFANA_ALERT_EMAILS"]
+        == "info@quadrate.lk"
+    )
+    assert (
+        production_grafana["environment"]["GRAFANA_USESEND_RECIPIENTS_JSON"]
+        == '["info@quadrate.lk"]'
+    )
+
     for filename in ("docker-compose.prod.yml", "docker-compose.staging.yml"):
         volumes = _compose(filename)["services"]["grafana"]["volumes"]
         assert any(
