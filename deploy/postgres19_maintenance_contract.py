@@ -12,6 +12,8 @@ POSTGRES_19_IMAGE = (
 POSTGRES_DATA_TARGET = "/var/lib/postgresql"
 POSTGRES_18_VOLUME = "garrison-portal_pgdata"
 POSTGRES_19_VOLUME = "garrison-portal_pgdata19"
+_LEGACY_BACKUP_SECRET_ENV = "BACKUP_ENCRYPTION_PASSWORD"
+_BACKUP_SECRET_FILE_ENV = "BACKUP_ENCRYPTION_KEY_HOST_FILE"
 
 
 class MaintenanceContractError(ValueError):
@@ -59,6 +61,53 @@ def _check_data_mount(service: Mapping[str, Any], *, source: str) -> None:
 
 def _without(value: Mapping[str, Any], *keys: str) -> dict[str, Any]:
     return {key: item for key, item in value.items() if key not in keys}
+
+
+def _grafana_init_settings(service: Mapping[str, Any]) -> dict[str, Any]:
+    """Permit only the exact production backup-secret env migration."""
+    settings = _without(service, "image", "volumes")
+    environment = settings.get("environment")
+    if not isinstance(environment, Mapping):
+        raise MaintenanceContractError("Grafana initializer environment is invalid.")
+    return {
+        **settings,
+        "environment": {
+            key: value
+            for key, value in environment.items()
+            if key not in {_LEGACY_BACKUP_SECRET_ENV, _BACKUP_SECRET_FILE_ENV}
+        },
+    }
+
+
+def _validate_backup_secret_transition(
+    old_service: Mapping[str, Any], new_service: Mapping[str, Any]
+) -> None:
+    old_environment = old_service.get("environment")
+    new_environment = new_service.get("environment")
+    if not isinstance(old_environment, Mapping) or not isinstance(new_environment, Mapping):
+        raise MaintenanceContractError("Grafana initializer environment is invalid.")
+
+    new_file = new_environment.get(_BACKUP_SECRET_FILE_ENV)
+    if (
+        not isinstance(new_file, str)
+        or not new_file.strip()
+        or _LEGACY_BACKUP_SECRET_ENV in new_environment
+    ):
+        raise MaintenanceContractError(
+            "The candidate must use only the protected backup-secret file setting."
+        )
+
+    old_legacy = old_environment.get(_LEGACY_BACKUP_SECRET_ENV)
+    old_file = old_environment.get(_BACKUP_SECRET_FILE_ENV)
+    if old_legacy is not None:
+        if old_file is not None or not str(old_legacy).strip():
+            raise MaintenanceContractError("The previous backup-secret configuration is invalid.")
+    elif not isinstance(old_file, str) or not old_file.strip():
+        raise MaintenanceContractError(
+            "The previous release has no recognized backup-secret configuration."
+        )
+    elif old_file != new_file:
+        raise MaintenanceContractError("The host backup-secret file path cannot change here.")
 
 
 def validate_compose_transition(previous: Mapping[str, Any], candidate: Mapping[str, Any]) -> None:
@@ -114,7 +163,8 @@ def validate_compose_transition(previous: Mapping[str, Any], candidate: Mapping[
             or mount.get("read_only") is not True
         ):
             raise MaintenanceContractError("The Grafana initializer script mount is invalid.")
-    if _without(old_init, "image", "volumes") != _without(new_init, "image", "volumes"):
+    _validate_backup_secret_transition(old_init, new_init)
+    if _grafana_init_settings(old_init) != _grafana_init_settings(new_init):
         raise MaintenanceContractError(
             "Grafana initialization settings changed outside the client upgrade."
         )

@@ -48,7 +48,17 @@ def compose_config(*, target: bool) -> dict:
             },
             "grafana_db_init": {
                 "image": postgres_image,
-                "environment": {"PGHOST": "postgres"},
+                "environment": (
+                    {
+                        "PGHOST": "postgres",
+                        "BACKUP_ENCRYPTION_PASSWORD": "fixture-legacy-secret",
+                    }
+                    if old
+                    else {
+                        "PGHOST": "postgres",
+                        "BACKUP_ENCRYPTION_KEY_HOST_FILE": "/run/private/backup-key",
+                    }
+                ),
                 "volumes": [
                     {
                         "type": "bind",
@@ -69,6 +79,17 @@ def test_postgres19_transition_accepts_only_new_pinned_volume_and_init_client() 
     CONTRACT.validate_compose_transition(compose_config(target=False), compose_config(target=True))
 
 
+def test_postgres19_transition_accepts_unchanged_file_based_backup_secret() -> None:
+    previous = compose_config(target=False)
+    candidate = compose_config(target=True)
+    previous["services"]["grafana_db_init"]["environment"] = {
+        "PGHOST": "postgres",
+        "BACKUP_ENCRYPTION_KEY_HOST_FILE": "/run/private/backup-key",
+    }
+
+    CONTRACT.validate_compose_transition(previous, candidate)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -79,6 +100,8 @@ def test_postgres19_transition_accepts_only_new_pinned_volume_and_init_client() 
         "change_minio",
         "change_pg_settings",
         "change_grafana_init_settings",
+        "retain_legacy_backup_secret",
+        "remove_backup_secret_file",
         "change_volume_target",
         "invalid_volume_definition",
     ],
@@ -100,6 +123,15 @@ def test_postgres19_transition_rejects_unrelated_or_unsafe_changes(mutation: str
         candidate["services"]["postgres"]["environment"]["POSTGRES_DB"] = "other"
     elif mutation == "change_grafana_init_settings":
         candidate["services"]["grafana_db_init"]["environment"]["PGHOST"] = "other"
+    elif mutation == "retain_legacy_backup_secret":
+        candidate["services"]["grafana_db_init"]["environment"] = {
+            "PGHOST": "postgres",
+            "BACKUP_ENCRYPTION_PASSWORD": "fixture-legacy-secret",
+        }
+    elif mutation == "remove_backup_secret_file":
+        candidate["services"]["grafana_db_init"]["environment"].pop(
+            "BACKUP_ENCRYPTION_KEY_HOST_FILE"
+        )
     elif mutation == "change_volume_target":
         candidate["services"]["postgres"]["volumes"][0]["target"] = "/var/lib/postgresql/data"
     elif mutation == "invalid_volume_definition":
