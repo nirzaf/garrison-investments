@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -215,3 +218,30 @@ def test_postgres19_live_target_fails_closed(changes: dict) -> None:
     args.update(deepcopy(changes))
     with pytest.raises(CONTRACT.MaintenanceContractError):
         CONTRACT.validate_live_target(**args)
+
+
+def test_release_live_target_parser_accepts_docker_formatted_json_object() -> None:
+    source = (CONTRACT_PATH.parent / "hostinger-release.sh").read_text(encoding="utf-8")
+    command_start = source.index('python3 - "$live_container"')
+    heredoc_start = source.index("<<'PYLIVE'\n", command_start) + len("<<'PYLIVE'\n")
+    heredoc_end = source.index("\nPYLIVE", heredoc_start)
+    parser = source[heredoc_start:heredoc_end]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            parser,
+            json.dumps(live_container()),
+            "1",
+            "1",
+            "190000",
+            "202605310098",
+            "202605310098",
+            "postgres redis minio loki alloy",
+            str(CONTRACT_PATH.parent),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

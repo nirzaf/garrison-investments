@@ -696,3 +696,175 @@ printf '%s %s %s %s\\n' \\
         assert "Deployment run: 57" in consumed
         assert str(followup_start) in consumed.splitlines()[0]
         assert str(original_start + 5) in result.stdout
+
+
+@pytest.mark.parametrize(
+    "scenario,valid",
+    [
+        ("valid", True),
+        ("changed-current", False),
+        ("prior-deploy-success", False),
+        ("prior-ci-failure", False),
+        ("bad-evidence", False),
+        ("overlapping-window", False),
+        ("active-writers", False),
+        ("bad-history", False),
+        ("replay", False),
+    ],
+)
+def test_postgres19_final_retry_is_single_use_and_evidence_bound(
+    scenario: str, valid: bool, tmp_path: Path
+) -> None:
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("consume_postgres19_maintenance_retry_final_authorization() {")
+    end = source.index("consume_postgres19_maintenance_permit() {", start)
+    original_sha = "b" * 40
+    current_sha = "c" * 40
+    first_retry_sha = "d" * 40
+    followup_sha = "e" * 40
+    final_sha = "f" * 40
+    original_start, original_end = 1_800_000_000, 1_800_000_300
+    first_retry_start = 1_800_000_010
+    followup_start, followup_end = 1_800_000_500, 1_800_000_600
+    final_start = 1_800_000_580 if scenario == "overlapping-window" else 1_800_000_700
+    now, final_end = 1_800_000_800, 1_800_000_850
+
+    (tmp_path / "current").mkdir()
+    receipt_sha = "a" * 40 if scenario == "changed-current" else current_sha
+    (tmp_path / "current" / "DEPLOYED").write_text(f"Commit: {receipt_sha}\n")
+    original_used = tmp_path / "postgres19-maintenance.used"
+    original_used.write_text(f"33 {original_sha} {original_start} {original_end}\n")
+    original_used.chmod(0o600)
+    original_started = tmp_path / "postgres19-maintenance.started"
+    original_started.write_text(f"{original_sha} 33 {original_start + 5}\n")
+    original_started.chmod(0o600)
+
+    first_evidence = tmp_path / "postgres19-maintenance.retry-evidence"
+    first_evidence.write_text("Verified pre-activation first retry failure.\n")
+    first_evidence.chmod(0o600)
+    first_evidence_sha = hashlib.sha256(first_evidence.read_bytes()).hexdigest()
+    first_line = (
+        f"34 {first_retry_sha} {first_retry_start} {original_end} 12 33 "
+        f"{original_sha} {current_sha} {first_evidence_sha}"
+    )
+    first_authorization = tmp_path / "postgres19-maintenance.retry.authorization"
+    first_authorization.write_text(first_line + "\n")
+    first_authorization.chmod(0o600)
+    first_used = tmp_path / "postgres19-maintenance.retry.used"
+    first_used.write_text(
+        first_line
+        + "\nDeployment run: 56\nDeployment attempt: 1\nConsumed UTC: 2026-11-22T09:00:00Z\n"
+    )
+    first_used.chmod(0o600)
+
+    followup_evidence = tmp_path / "postgres19-maintenance.retry-followup-evidence"
+    followup_evidence.write_text(
+        "Prior follow-up deployment run: 56\n"
+        "Disposition: pre-activation failure; production receipt unchanged\n"
+        f"Previous receipt SHA: {current_sha}\n"
+        f"Runner log SHA-256: {'1' * 64}\n"
+    )
+    followup_evidence.chmod(0o600)
+    followup_evidence_sha = hashlib.sha256(followup_evidence.read_bytes()).hexdigest()
+    followup_line = (
+        f"35 {followup_sha} {followup_start} {followup_end} 56 34 {first_retry_sha} "
+        f"{current_sha} {followup_evidence_sha}"
+    )
+    followup_authorization = tmp_path / "postgres19-maintenance.retry-followup.authorization"
+    followup_authorization.write_text(followup_line + "\n")
+    followup_authorization.chmod(0o600)
+    followup_used = tmp_path / "postgres19-maintenance.retry-followup.used"
+    followup_used.write_text(
+        followup_line
+        + "\nDeployment run: 57\nDeployment attempt: 1\nConsumed UTC: 2026-11-22T09:10:00Z\n"
+    )
+    followup_used.chmod(0o600)
+
+    final_evidence = tmp_path / "postgres19-maintenance.retry-final-evidence"
+    final_evidence.write_text(
+        "Prior follow-up deployment run: 57\n"
+        "Prior follow-up CI run: 35\n"
+        f"Prior follow-up source SHA: {followup_sha}\n"
+        "Failure classification: pre-activation live-target parser failure\n"
+        "Disposition: pre-activation failure; production receipt unchanged\n"
+        f"Previous receipt SHA: {current_sha}\n"
+        f"Runner log SHA-256: {'2' * 64}\n"
+    )
+    final_evidence.chmod(0o600)
+    final_evidence_sha = hashlib.sha256(final_evidence.read_bytes()).hexdigest()
+    if scenario == "bad-evidence":
+        final_evidence_sha = "9" * 64
+    final_permit = tmp_path / "postgres19-maintenance.retry-final.permit"
+    final_permit.write_text(
+        f"37 {final_sha} {final_start} {final_end} 57 35 {followup_sha} "
+        f"{current_sha} {final_evidence_sha}\n"
+    )
+    final_permit.chmod(0o600)
+    if scenario == "bad-history":
+        followup_authorization.write_text("invalid history\n")
+    if scenario == "replay":
+        (tmp_path / "postgres19-maintenance.retry-final.used").touch()
+
+    prior_deploy_conclusion = "success" if scenario == "prior-deploy-success" else "failure"
+    prior_ci_conclusion = "failure" if scenario == "prior-ci-failure" else "success"
+    script = f"""
+die() {{ echo "$1" >&2; exit 1; }}
+date() {{
+  case "$*" in
+    *"09:00:00Z"*) echo {1_800_000_020} ;;
+    *" -d "*) echo {1_800_000_550} ;;
+    *"%s"*) echo {now} ;;
+    *) echo 2026-11-22T09:20:00Z ;;
+  esac
+}}
+stat() {{ echo 600; }}
+mv() {{ shift 2; command mv "$@"; }}
+github() {{
+  case "$1" in
+    actions/runs/57)
+      cat <<'JSON'
+{{"id":57,"workflow_id":277757082,"head_sha":"{followup_sha}","event":"workflow_dispatch","status":"completed","conclusion":"{prior_deploy_conclusion}"}}
+JSON
+      ;;
+    actions/runs/35)
+      cat <<'JSON'
+{{"id":35,"workflow_id":277757081,"head_sha":"{followup_sha}","head_branch":"main","event":"push","status":"completed","conclusion":"{prior_ci_conclusion}"}}
+JSON
+      ;;
+    *) return 1 ;;
+  esac
+}}
+docker() {{
+  if [[ {scenario!r} == active-writers ]]; then echo 'backend postgres redis';
+  else echo 'postgres redis minio loki alloy'; fi
+}}
+state=$1
+project=garrison-portal
+run_id=37
+sha={final_sha}
+deploy_run_id=58
+deploy_attempt=1
+""" + source[start:end] + """
+consume_postgres19_maintenance_retry_authorization
+printf '%s %s %s\\n' "$postgres19_end" "$postgres19_retry_run" "$postgres19_retry_evidence_sha"
+"""
+    result = subprocess.run(
+        ["bash", "-eu", "-c", script, "retry-final-test", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == valid, result.stderr
+    assert final_permit.exists() is (not valid)
+    assert (tmp_path / "postgres19-maintenance.retry-final.authorization").exists() is valid
+    assert (tmp_path / "postgres19-maintenance.retry-final.used").exists() is valid or (
+        scenario == "replay"
+    )
+    assert first_used.exists() and followup_used.exists()
+    if valid:
+        consumed = (tmp_path / "postgres19-maintenance.retry-final.used").read_text()
+        assert "Deployment run: 58" in consumed
+        assert str(final_start) in consumed.splitlines()[0]
+        assert str(final_evidence_sha) in consumed

@@ -575,6 +575,17 @@ discard newer writes. At that point, stop writes and use an approved forward
 reconciliation or tested recovery plan; do not describe a volume switch as a
 no-loss rollback.
 
+A retry after a PostgreSQL 19 maintenance attempt is permitted only for a
+verified pre-activation failure with the previous release receipt unchanged.
+Keep each consumed permit, archived authorization, original incident record,
+and hashed failure evidence in place. The bounded retry sequence ends after
+one final retry: its root-owned, mode-`0600` permit must bind the exact green
+main CI run and SHA, the unchanged receipt, prior deployment/CI records, and a
+non-overlapping UTC window of at most two hours. The host verifies that chain,
+the evidence digest, and that ingress and application writers are stopped
+before it consumes the permit. Never clear a marker or reuse a permit to retry;
+any failure after this final attempt requires a new incident review.
+
 Record actual UTC start/end, downtime, source/target volume names, release and
 image IDs/digests, dump and recovery-set identities, catalog comparison results,
 Alembic heads, health checks, and the operator/reviewer. Keep the old volume and
