@@ -641,6 +641,10 @@ apply_runtime previous || exit "$?"
             "unpatched-nginx",
             "technical configuration, secret/TLS/key, or log-retention safety validation",
         ),
+        (
+            "nginx-test-ip-exhausted",
+            "No verified collision-free IPv4 address is available",
+        ),
         ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
@@ -809,6 +813,30 @@ github() {
 }
 docker() {
   case "$1 $2" in
+    'network inspect')
+      echo nginx-network-inspect >> "$base/events"
+      python3 - "$scenario" <<'PYNETWORK'
+import json, sys
+scenario = sys.argv[1]
+containers = {
+    "nginx": {"Name": "garrison-portal-nginx-1", "IPv4Address": "172.29.254.2/29"},
+    "backend": {"Name": "garrison-portal-backend-1", "IPv4Address": "172.29.254.5/29"},
+}
+if scenario == "nginx-test-ip-exhausted":
+    containers["collision"] = {
+        "Name": "temporary-nginx-check", "IPv4Address": "172.29.254.3/29"
+    }
+print(json.dumps([{
+    "Name": "garrison-portal_backend_proxy",
+    "IPAM": {"Config": [{
+        "Subnet": "172.29.254.0/29",
+        "IPRange": "172.29.254.4/30",
+        "Gateway": "172.29.254.4",
+    }]},
+    "Containers": containers,
+}]))
+PYNETWORK
+      ;;
     'ps --filter') [[ "$scenario" == quiesced-generation-change ]] || echo nginx ;;
     'image inspect') printf 'sha256:%s\n' "$asset_digest" ;;
     'exec garrison-portal-postgres-1') echo fixture-head ;;
@@ -909,16 +937,28 @@ services["nginx"] = {
     ),
     "volumes": [
         {"type": "bind", "source": f"{base}/deploy/ssl", "target": "/etc/nginx/ssl"},
-    ]
+    ],
+    "networks": {"backend_proxy": {"ipv4_address": "172.29.254.2"}},
 }
-print(json.dumps({"volumes": {"other": {}} if candidate and scenario == "stateful-change" else {},
-                  "networks": {}, "services": services}))
+print(json.dumps({
+    "volumes": {"other": {}} if candidate and scenario == "stateful-change" else {},
+    "networks": {
+        "backend_proxy": {
+            "name": "garrison-portal_backend_proxy",
+            "ipam": {"config": [{
+                "subnet": "172.29.254.0/29",
+                "ip_range": "172.29.254.4/30",
+            }]},
+        },
+    },
+    "services": services,
+}))
 PYTHON
           ;;
         build|pull) : ;;
         run)
           if [[ "$*" == *'nginx -t'* ]]; then
-            echo nginx-config >> "$base/events"
+            echo "nginx-config-ip=${NGINX_BACKEND_PROXY_IP:-missing}" >> "$base/events"
           elif [[ "$*" == *'--target all --skip-retention' ]]; then
             echo backup >> "$base/events"
             [[ "$scenario" != backup-fails ]]
@@ -996,9 +1036,15 @@ curl() {
             },
             utc(receipt["UTC"], "fixture activation"),
         )
-        assert events[:4] == ["download", "runtime-config", "nginx-config", "backup"]
-        assert events[4].startswith("activate ")
-        assert events[5].startswith("publish ")
+        assert events[:5] == [
+            "download",
+            "runtime-config",
+            "nginx-network-inspect",
+            "nginx-config-ip=172.29.254.3",
+            "backup",
+        ]
+        assert events[5].startswith("activate ")
+        assert events[6].startswith("publish ")
     else:
         assert result.returncode != 0, result.stdout
         assert error in result.stderr
@@ -1008,9 +1054,24 @@ curl() {
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
         elif scenario == "backup-fails":
-            assert events == ["download", "runtime-config", "nginx-config", "backup"]
+            assert events == [
+                "download",
+                "runtime-config",
+                "nginx-network-inspect",
+                "nginx-config-ip=172.29.254.3",
+                "backup",
+            ]
         elif scenario == "schema-change":
-            assert events == ["download", "runtime-config", "nginx-config"]
+            assert events == [
+                "download",
+                "runtime-config",
+                "nginx-network-inspect",
+                "nginx-config-ip=172.29.254.3",
+            ]
+        elif scenario == "nginx-test-ip-exhausted":
+            assert events == ["download", "runtime-config", "nginx-network-inspect"]
+            assert "backup" not in events
+            assert not any(event.startswith("activate ") for event in events)
         elif scenario in {
             "purge-enabled",
             "missing-config",

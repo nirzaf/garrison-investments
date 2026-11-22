@@ -439,6 +439,12 @@ compose() {
 phase_started=$SECONDS
 # Validate host configuration files, runtime secrets/TLS/key mounts, and log-retention safety directly.
 candidate_compose_file=$(mktemp)
+network_inspect_file=
+cleanup_preflight_files() {
+  [[ -z "${candidate_compose_file:-}" ]] || rm -f -- "$candidate_compose_file"
+  [[ -z "${network_inspect_file:-}" ]] || rm -f -- "$network_inspect_file"
+}
+trap cleanup_preflight_files EXIT
 if ! compose "$candidate" config --format json > "$candidate_compose_file" ||
    ! python3 - "$base" "$state" "$candidate" "$candidate_compose_file" "$((pinned || forward097))" "$release_mode" <<'PY'; then
 import json
@@ -692,7 +698,6 @@ PY
   rm -f "$candidate_compose_file"
   die 'Effective runtime configuration failed technical configuration, secret/TLS/key, or log-retention safety validation.'
 fi
-rm -f "$candidate_compose_file"
 # Build from the tested archive. Docker can reuse its layer cache.
 compose "$candidate" build frontend_dist
 image_heads() {
@@ -734,7 +739,113 @@ PY
   compose "$candidate" build backend
   compose "$candidate" pull --policy missing nginx grafana loki alloy
 fi
-compose "$candidate" run --rm --no-deps -T nginx nginx -t
+
+# `docker compose run` inherits the Nginx service's fixed backend_proxy IP.
+# The production Nginx container already owns that address, so validation must
+# select a temporary, unused address on the same private network. Keep the
+# original Compose configuration and all active containers unchanged.
+nginx_test_network=$(python3 - "$candidate_compose_file" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    config = json.load(stream)
+nginx = config.get("services", {}).get("nginx", {})
+attachments = nginx.get("networks", {})
+fixed = [
+    name for name, settings in attachments.items()
+    if isinstance(settings, dict) and settings.get("ipv4_address")
+]
+if len(fixed) != 1:
+    raise SystemExit("Nginx test requires exactly one fixed private IPv4 network.")
+alias = fixed[0]
+network = config.get("networks", {}).get(alias, {})
+name = network.get("name", alias)
+if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+    raise SystemExit("Nginx test network name is invalid.")
+print(name)
+PY
+) || die 'Unable to determine the Nginx private test network.'
+network_inspect_file=$(mktemp)
+docker network inspect "$nginx_test_network" > "$network_inspect_file" ||
+  die 'Unable to inspect the Nginx private test network.'
+nginx_test_ip=$(python3 - "$candidate_compose_file" "$network_inspect_file" <<'PY'
+import ipaddress
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    compose_config = json.load(stream)
+with open(sys.argv[2], encoding="utf-8") as stream:
+    inspected = json.load(stream)
+nginx = compose_config["services"]["nginx"]
+attachments = nginx.get("networks", {})
+fixed = [
+    (name, settings)
+    for name, settings in attachments.items()
+    if isinstance(settings, dict) and settings.get("ipv4_address")
+]
+if len(fixed) != 1:
+    raise SystemExit("Nginx test requires exactly one fixed private IPv4 network.")
+alias, attachment = fixed[0]
+network_config = compose_config["networks"].get(alias, {})
+network_name = network_config.get("name", alias)
+matches = [item for item in inspected if item.get("Name") == network_name]
+if len(matches) != 1:
+    raise SystemExit("Nginx private network inspection is ambiguous.")
+network = matches[0]
+expected_configs = network_config.get("ipam", {}).get("config", [])
+actual_configs = network.get("IPAM", {}).get("Config", [])
+if len(expected_configs) != 1 or len(actual_configs) != 1:
+    raise SystemExit("Nginx private network must have one explicit IPv4 subnet.")
+expected = expected_configs[0]
+actual = actual_configs[0]
+subnet = ipaddress.ip_network(expected["subnet"], strict=True)
+if subnet.version != 4 or str(subnet) != actual.get("Subnet"):
+    raise SystemExit("Rendered and live Nginx network subnets differ.")
+expected_range = expected.get("ip_range", "")
+actual_range = actual.get("IPRange", "")
+if expected_range != actual_range:
+    raise SystemExit("Rendered and live Nginx dynamic IP ranges differ.")
+expected_gateway = expected.get("gateway", "")
+actual_gateway = actual.get("Gateway", "")
+if expected_gateway and expected_gateway != actual_gateway:
+    raise SystemExit("Rendered and live Nginx gateways differ.")
+if actual_gateway and ipaddress.ip_address(actual_gateway) not in subnet:
+    raise SystemExit("Live Nginx gateway is outside its private subnet.")
+requested = ipaddress.ip_address(attachment["ipv4_address"])
+if requested not in subnet:
+    raise SystemExit("Configured Nginx address is outside its private subnet.")
+first_host = next(subnet.hosts(), None)
+excluded = {requested}
+if first_host is not None:
+    excluded.add(first_host)
+if actual_gateway:
+    excluded.add(ipaddress.ip_address(actual_gateway))
+for endpoint in network.get("Containers", {}).values():
+    address = endpoint.get("IPv4Address", "").split("/", 1)[0]
+    if address:
+        parsed = ipaddress.ip_address(address)
+        if parsed.version == 4:
+            excluded.add(parsed)
+dynamic_range = ipaddress.ip_network(actual_range, strict=True) if actual_range else None
+for candidate in subnet.hosts():
+    if candidate in excluded:
+        continue
+    if dynamic_range is not None and candidate in dynamic_range:
+        continue
+    print(candidate)
+    break
+else:
+    raise SystemExit("No collision-free static IPv4 address is available for Nginx validation.")
+PY
+) || die 'No verified collision-free IPv4 address is available for Nginx validation.'
+NGINX_BACKEND_PROXY_IP="$nginx_test_ip" compose "$candidate" run --rm --no-deps -T nginx nginx -t
+cleanup_preflight_files
+candidate_compose_file=
+network_inspect_file=
+trap - EXIT
 report_duration 'Image preparation and configuration checks' "$phase_started"
 
 backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
