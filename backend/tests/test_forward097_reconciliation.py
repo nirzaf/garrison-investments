@@ -162,6 +162,36 @@ def _make_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return state, releases, replacement, historical, identities
 
 
+def test_beat_startup_marker_is_read_from_docker_logs_stderr(monkeypatch):
+    marker = json.dumps(
+        {"logger": "celery.beat", "message": "beat: Starting..."}
+    ).encode()
+    completed = module.subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b"stdout has no marker\n", stderr=marker
+    )
+    monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    assert module._beat_started(
+        {"started_at": "2026-11-22T04:14:43.000000000Z"},
+        "garrison-portal-celery_beat-1",
+    ) is True
+
+
+def test_beat_startup_marker_missing_from_both_docker_log_streams(monkeypatch):
+    completed = module.subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=b"worker log\n", stderr=b"scheduler loading\n"
+    )
+    monkeypatch.setattr(module.subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    with pytest.raises(
+        module.ReconciliationError, match="Celery beat startup was not observed"
+    ):
+        module._beat_started(
+            {"started_at": "2026-11-22T04:14:43.000000000Z"},
+            "garrison-portal-celery_beat-1",
+        )
+
+
 def test_incident_evidence_hashes_and_timestamps_are_read_only(tmp_path, monkeypatch):
     state, _, _, historical, _ = _make_fixture(tmp_path, monkeypatch)
     before = {name: (state / name).read_bytes() for name in historical}

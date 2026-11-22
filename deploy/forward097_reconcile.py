@@ -347,7 +347,16 @@ def _container_snapshot(name: str) -> dict[str, Any]:
 
 
 def _beat_started(container: dict[str, Any], name: str) -> bool:
-    raw = _run(["docker", "logs", "--since", str(container["started_at"]), name], timeout=30)
+    command = ["docker", "logs", "--since", str(container["started_at"]), name]
+    try:
+        result = subprocess.run(command, capture_output=True, check=True, timeout=30)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise ReconciliationError(
+            f"Required read-only verification failed: {command[0]}"
+        ) from exc
+    # Docker preserves the container's stdout and stderr as separate streams.
+    # Celery's startup marker is written to stderr by the current beat command.
+    raw = result.stdout + b"\n" + result.stderr
     for line in raw.decode("utf-8", errors="replace").splitlines():
         try:
             value = json.loads(line)
