@@ -631,7 +631,7 @@ def test_postgres19_followup_retry_preserves_and_chains_failed_retry(
 
     followup_evidence = state / "postgres19-maintenance.retry-followup-evidence"
     followup_evidence.write_text(
-        "Deployment run: 56\n"
+        "Prior follow-up deployment run: 56\n"
         "Disposition: pre-activation failure; production receipt unchanged\n"
         f"Previous receipt SHA: {current_sha}\n"
         f"Runner log SHA-256: {'f' * 64}\n"

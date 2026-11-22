@@ -203,7 +203,7 @@ consume_postgres19_maintenance_retry_followup_authorization() {
   actual_evidence=$(sha256sum "$state/postgres19-maintenance.retry-followup-evidence" | cut -d' ' -f1)
   [[ "$actual_evidence" == "$evidence_sha" ]] ||
     die 'The reviewed follow-up failure evidence digest does not match.'
-  grep -Fqx "Deployment run: $prior_deploy" "$state/postgres19-maintenance.retry-followup-evidence" &&
+  grep -Fqx "Prior follow-up deployment run: $prior_deploy" "$state/postgres19-maintenance.retry-followup-evidence" &&
     grep -Fqx "Disposition: pre-activation failure; production receipt unchanged" "$state/postgres19-maintenance.retry-followup-evidence" &&
     grep -Fqx "Previous receipt SHA: $prior_current" "$state/postgres19-maintenance.retry-followup-evidence" ||
     die 'The follow-up failure evidence does not attest to a pre-activation failure.'
