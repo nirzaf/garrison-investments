@@ -474,7 +474,7 @@ def test_postgres19_retry_authorization_is_single_use_and_failure_bound(
     import subprocess
 
     source = (FILE.parent / "hostinger-release.sh").read_text()
-    start = source.index("consume_postgres19_maintenance_retry_authorization() {")
+    start = source.index("consume_postgres19_maintenance_retry_followup_authorization() {")
     end = source.index("github() {", start)
     state = tmp_path
     old_sha = "b" * 40
@@ -561,3 +561,138 @@ printf '%s %s %s %s\\n' \\
         assert "Deployment run: 56" in consumed
         assert "Deployment attempt: 1" in consumed
         assert str(retry_start) in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("scenario", "valid"),
+    [
+        ("valid", True),
+        ("prior-run-success", False),
+        ("bad-evidence", False),
+        ("active-writers", False),
+        ("changed-current", False),
+        ("expired", False),
+        ("too-long", False),
+        ("window-not-started", False),
+        ("bad-history", False),
+        ("extra-field", False),
+        ("replay", False),
+    ],
+)
+def test_postgres19_followup_retry_preserves_and_chains_failed_retry(
+    scenario: str, valid: bool, tmp_path: Path
+) -> None:
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("consume_postgres19_maintenance_retry_followup_authorization() {")
+    end = source.index("github() {", start)
+    state = tmp_path
+    original_sha = "b" * 40
+    current_sha = "c" * 40
+    first_retry_sha = "d" * 40
+    new_sha = "a" * 40
+    original_start, first_retry_start, original_end = 1_800_000_000, 1_800_000_010, 1_800_000_300
+    followup_start, now, followup_end = 1_800_000_400, 1_800_000_500, 1_800_000_600
+    if scenario == "expired":
+        followup_end = now
+    elif scenario == "too-long":
+        followup_end = followup_start + 7201
+    elif scenario == "window-not-started":
+        followup_start = now + 1
+
+    (state / "current").mkdir()
+    receipt_sha = "e" * 40 if scenario == "changed-current" else current_sha
+    (state / "current" / "DEPLOYED").write_text(f"Commit: {receipt_sha}\n")
+    original_used = state / "postgres19-maintenance.used"
+    original_used.write_text(f"33 {original_sha} {original_start} {original_end}\n")
+    original_used.chmod(0o600)
+    original_started = state / "postgres19-maintenance.started"
+    original_started.write_text(f"{original_sha} 33 {original_start + 5}\n")
+    original_started.chmod(0o600)
+
+    first_evidence = state / "postgres19-maintenance.retry-evidence"
+    first_evidence.write_text("Verified pre-activation Nginx test failure.\n")
+    first_evidence.chmod(0o600)
+    first_evidence_sha = hashlib.sha256(first_evidence.read_bytes()).hexdigest()
+    first_permit_line = (
+        f"34 {first_retry_sha} {first_retry_start} {original_end} 12 33 "
+        f"{original_sha} {current_sha} {first_evidence_sha}"
+    )
+    first_authorization = state / "postgres19-maintenance.retry.authorization"
+    first_authorization.write_text(first_permit_line + "\n")
+    first_authorization.chmod(0o600)
+    first_used = state / "postgres19-maintenance.retry.used"
+    first_used.write_text(
+        first_permit_line
+        + "\nDeployment run: 56\nDeployment attempt: 1\nConsumed UTC: 2026-11-22T08:51:20Z\n"
+    )
+    first_used.chmod(0o600)
+
+    followup_evidence = state / "postgres19-maintenance.retry-followup-evidence"
+    followup_evidence.write_text(
+        "Deployment run: 56\n"
+        "Disposition: pre-activation failure; production receipt unchanged\n"
+        f"Previous receipt SHA: {current_sha}\n"
+        f"Runner log SHA-256: {'f' * 64}\n"
+    )
+    followup_evidence.chmod(0o600)
+    followup_evidence_sha = hashlib.sha256(followup_evidence.read_bytes()).hexdigest()
+    if scenario == "bad-evidence":
+        followup_evidence_sha = "e" * 64
+    followup_permit = state / "postgres19-maintenance.retry-followup.permit"
+    followup_permit.write_text(
+        f"35 {new_sha} {followup_start} {followup_end} 56 34 {first_retry_sha} "
+        f"{current_sha} {followup_evidence_sha}"
+        f" {'unexpected' if scenario == 'extra-field' else ''}\n"
+    )
+    followup_permit.chmod(0o600)
+    if scenario == "replay":
+        (state / "postgres19-maintenance.retry-followup.used").touch()
+    if scenario == "bad-history":
+        first_authorization.write_text("invalid preserved retry history\n")
+
+    prior_conclusion = "success" if scenario == "prior-run-success" else "failure"
+    script = f"""
+die() {{ echo "$1" >&2; exit 1; }}
+date() {{ if [[ "$*" == *%s* ]]; then echo {now}; else echo 2026-11-22T09:15:00Z; fi; }}
+stat() {{ echo 600; }}
+mv() {{ shift 2; command mv "$@"; }}
+github() {{
+  cat <<'JSON'
+{{"id":56,"workflow_id":277757082,"head_sha":"{first_retry_sha}","event":"workflow_dispatch","status":"completed","conclusion":"{prior_conclusion}"}}
+JSON
+}}
+docker() {{
+  if [[ {scenario!r} == active-writers ]]; then echo 'backend postgres redis';
+  else echo 'postgres redis minio loki alloy'; fi
+}}
+state=$1
+project=garrison-portal
+run_id=35
+sha={new_sha}
+deploy_run_id=57
+deploy_attempt=1
+postgres19_retry=1
+""" + source[start:end] + """
+consume_postgres19_maintenance_permit
+printf '%s %s %s %s\\n' \\
+  "$postgres19_start" "$postgres19_end" "$postgres19_retry_run" "$postgres19_retry_evidence_sha"
+"""
+    result = subprocess.run(
+        ["bash", "-eu", "-c", script, "retry-followup-test", str(state)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == valid, result.stderr
+    assert followup_permit.exists() is (not valid)
+    assert (state / "postgres19-maintenance.retry-followup.authorization").exists() is valid
+    assert (state / "postgres19-maintenance.retry-followup.used").exists() is valid or (
+        scenario == "replay"
+    )
+    if valid:
+        consumed = (state / "postgres19-maintenance.retry-followup.used").read_text()
+        assert "Deployment run: 57" in consumed
+        assert str(followup_start) in consumed.splitlines()[0]
+        assert str(original_start + 5) in result.stdout

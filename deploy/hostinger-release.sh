@@ -140,7 +140,107 @@ assert_pinned_window() {
   (( $(date -u +%s) < pinned_end )) || die 'Pinned exception window expired.'
 }
 
+consume_postgres19_maintenance_retry_followup_authorization() {
+  local authorization=$state/postgres19-maintenance.retry-followup.permit
+  local authorization_archive=$state/postgres19-maintenance.retry-followup.authorization
+  local consumed=$state/postgres19-maintenance.retry-followup.used
+  local evidence=$state/postgres19-maintenance.retry-followup-evidence
+  local first_evidence=$state/postgres19-maintenance.retry-evidence
+  local prior_retry_used=$state/postgres19-maintenance.retry.used
+  local prior_retry_authorization=$state/postgres19-maintenance.retry.authorization
+  local prior_used=$state/postgres19-maintenance.used
+  local original_started=$state/postgres19-maintenance.started
+  local bound_run bound_sha start end prior_deploy prior_ci prior_sha prior_current evidence_sha authorization_extra
+  local retry_run retry_sha retry_start retry_end retry_prior_deploy retry_prior_ci retry_prior_sha retry_current retry_evidence_sha retry_extra
+  local archived_run archived_sha archived_start archived_end archived_prior_deploy archived_prior_ci archived_prior_sha archived_current archived_evidence_sha archived_extra
+  local original_run original_sha original_start original_end original_extra started_sha started_run started_at started_extra
+  local now actual_evidence current_sha previous_deploy previous_attempt tmp
+  [[ -f "$authorization" && ! -L "$authorization" && -O "$authorization" &&
+     "$(stat -c '%a' "$authorization")" == 600 &&
+     ! -e "$consumed" && ! -L "$consumed" &&
+     ! -e "$authorization_archive" && ! -L "$authorization_archive" ]] ||
+    die 'PostgreSQL 19 follow-up retry authorization is unavailable, unsafe, or already consumed.'
+  for file in "$prior_retry_used" "$prior_retry_authorization" "$prior_used" "$original_started" "$first_evidence" "$evidence"; do
+    [[ -f "$file" && ! -L "$file" && -O "$file" && "$(stat -c '%a' "$file")" == 600 ]] ||
+      die 'Preserved PostgreSQL 19 retry history is missing or unsafe.'
+  done
+  read -r bound_run bound_sha start end prior_deploy prior_ci prior_sha prior_current evidence_sha authorization_extra < "$authorization" ||
+    die 'PostgreSQL 19 follow-up retry authorization is invalid.'
+  read -r retry_run retry_sha retry_start retry_end retry_prior_deploy retry_prior_ci retry_prior_sha retry_current retry_evidence_sha retry_extra < "$prior_retry_used" ||
+    die 'The preserved first retry record is invalid.'
+  read -r archived_run archived_sha archived_start archived_end archived_prior_deploy archived_prior_ci archived_prior_sha archived_current archived_evidence_sha archived_extra < "$prior_retry_authorization" ||
+    die 'The preserved first retry authorization is invalid.'
+  read -r original_run original_sha original_start original_end original_extra < "$prior_used" ||
+    die 'The original PostgreSQL 19 maintenance record is invalid.'
+  read -r started_sha started_run started_at started_extra < "$original_started" ||
+    die 'The original PostgreSQL 19 maintenance start record is invalid.'
+  previous_deploy=$(sed -n 's/^Deployment run: //p' "$prior_retry_used")
+  previous_attempt=$(sed -n 's/^Deployment attempt: //p' "$prior_retry_used")
+  now=$(date -u +%s)
+  [[ "$bound_run" == "$run_id" && "$bound_sha" == "$sha" && -z "$authorization_extra" &&
+     "$bound_sha" =~ ^[a-f0-9]{40}$ && "$start" =~ ^[1-9][0-9]{9}$ &&
+     "$end" =~ ^[1-9][0-9]{9}$ && "$prior_deploy" =~ ^[1-9][0-9]*$ &&
+     "$prior_ci" =~ ^[1-9][0-9]*$ && "$prior_sha" =~ ^[a-f0-9]{40}$ &&
+     "$prior_current" =~ ^[a-f0-9]{40}$ && "$evidence_sha" =~ ^[a-f0-9]{64}$ &&
+     "$previous_deploy" == "$prior_deploy" && "$previous_attempt" =~ ^[1-9][0-9]*$ &&
+     "$retry_run" == "$archived_run" && "$retry_sha" == "$archived_sha" &&
+     "$retry_start" == "$archived_start" && "$retry_end" == "$archived_end" &&
+     "$retry_prior_deploy" == "$archived_prior_deploy" && "$retry_prior_ci" == "$archived_prior_ci" &&
+     "$retry_prior_sha" == "$archived_prior_sha" && "$retry_current" == "$archived_current" &&
+     "$retry_evidence_sha" == "$archived_evidence_sha" && -z "$retry_extra" && -z "$archived_extra" &&
+     "$prior_ci" == "$retry_run" &&
+     "$prior_sha" == "$retry_sha" && "$prior_current" == "$retry_current" &&
+     "$original_run" == "$retry_prior_ci" && "$original_sha" == "$retry_prior_sha" &&
+     "$original_end" == "$retry_end" && -z "$original_extra" &&
+     "$started_sha" == "$original_sha" && "$started_run" == "$original_run" &&
+     "$started_at" =~ ^[1-9][0-9]{9}$ && -z "$started_extra" ]] &&
+    (( start >= retry_end && start <= now && now < end && end - start <= 7200 &&
+       original_start <= started_at && started_at <= retry_start )) ||
+    die 'PostgreSQL 19 follow-up candidate, history, or bounded window does not match.'
+  actual_evidence=$(sha256sum "$first_evidence" | cut -d' ' -f1)
+  [[ "$actual_evidence" == "$retry_evidence_sha" ]] ||
+    die 'The first retry evidence digest does not match its preserved authorization.'
+  actual_evidence=$(sha256sum "$state/postgres19-maintenance.retry-followup-evidence" | cut -d' ' -f1)
+  [[ "$actual_evidence" == "$evidence_sha" ]] ||
+    die 'The reviewed follow-up failure evidence digest does not match.'
+  grep -Fqx "Deployment run: $prior_deploy" "$state/postgres19-maintenance.retry-followup-evidence" &&
+    grep -Fqx "Disposition: pre-activation failure; production receipt unchanged" "$state/postgres19-maintenance.retry-followup-evidence" &&
+    grep -Fqx "Previous receipt SHA: $prior_current" "$state/postgres19-maintenance.retry-followup-evidence" ||
+    die 'The follow-up failure evidence does not attest to a pre-activation failure.'
+  github "actions/runs/$prior_deploy" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+if (r.get("id") != int(sys.argv[1]) or r.get("workflow_id") != 277757082
+    or r.get("head_sha") != sys.argv[2] or r.get("event") != "workflow_dispatch"
+    or r.get("status") != "completed" or r.get("conclusion") != "failure"):
+    sys.exit("The prior PostgreSQL 19 retry was not the reviewed failed run.")
+' "$prior_deploy" "$prior_sha" || die 'The prior PostgreSQL 19 retry failure could not be verified.'
+  current_sha=$(sed -n 's/^Commit: //p' "$state/current/DEPLOYED" | head -n 1)
+  [[ "$current_sha" == "$prior_current" ]] ||
+    die 'The successful production receipt changed after the failed retry.'
+  local_running=$(docker ps --filter "label=com.docker.compose.project=$project" \
+    --format '{{.Label "com.docker.compose.service"}}' | sort -u)
+  if [[ "$local_running" =~ (^|[[:space:]])(nginx|backend|celery_worker|celery_beat|grafana)([[:space:]]|$) ]]; then
+    die 'PostgreSQL 19 follow-up retry requires ingress and all application writers to remain stopped.'
+  fi
+  tmp=$(mktemp "$state/.postgres19-maintenance.retry-followup.used.XXXXXX")
+  printf '%s %s %s %s %s %s %s %s %s\nDeployment run: %s\nDeployment attempt: %s\nConsumed UTC: %s\n' \
+    "$bound_run" "$bound_sha" "$start" "$end" "$prior_deploy" "$prior_ci" "$prior_sha" \
+    "$prior_current" "$evidence_sha" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" > "$tmp"
+  chmod 600 "$tmp"
+  mv -T -- "$authorization" "$authorization_archive"
+  mv -T -- "$tmp" "$consumed"
+  postgres19_start=$started_at
+  postgres19_end=$end
+  postgres19_retry_run=$prior_deploy
+  postgres19_retry_evidence_sha=$evidence_sha
+}
+
 consume_postgres19_maintenance_retry_authorization() {
+  if [[ -e "$state/postgres19-maintenance.retry.used" || -e "$state/postgres19-maintenance.retry.authorization" ]]; then
+    consume_postgres19_maintenance_retry_followup_authorization
+    return
+  fi
   local authorization=$state/postgres19-maintenance.retry.permit
   local authorization_archive=$state/postgres19-maintenance.retry.authorization
   local consumed=$state/postgres19-maintenance.retry.used
