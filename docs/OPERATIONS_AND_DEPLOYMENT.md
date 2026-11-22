@@ -14,33 +14,30 @@ Use [production CD](#production-deployments-from-github-actions) for routine rel
 
 ## Current beta release snapshot — 2026-11-22
 
-The inspected `main` tip is `4e03af324833509acef85d34d076084e6cfc473e`.
-[CI run 45046582618](https://github.com/nirzaf/garrison-investments/actions/runs/45046582618)
-passed all seven jobs on attempt 3. Its first two attempts failed at
-**Backend lint and types** before recording any job steps; the logs were
-unavailable, so the runner failure cause remains unconfirmed. The CI run was
-created at 16:56:14 UTC and completed at 17:45:52 UTC after those retries.
-The five-job fast-CI change described below is committed locally but has not
-been pushed to `origin/main`; this remote CI run used the seven-job workflow
-currently on `main`.
+**Primary goal: COMPLETED — Automatic Production Deployment Operational.**
+The exact `main` tip is `762254ce7812973731cd6b653e7c1bad10612c48`.
+[Fast CI run 45056876940](https://github.com/nirzaf/garrison-investments/actions/runs/45056876940)
+passed all five required push-gate jobs for that SHA: backend lint/types and
+OpenAPI, frontend lint/types/tests/build, Compose validation, and both backend
+test shards. It ran from 18:45:26 to 19:03:13 UTC (17m47s).
 
-GitHub reports both `CI` and `Deploy production` workflows as active. Following
-the successful CI run, [deployment run 45051269314](https://github.com/nirzaf/garrison-investments/actions/runs/45051269314)
-started automatically from the `workflow_run` event and completed successfully
-at 17:47:19 UTC. Its deployment log reports the exact `4e03af3` SHA from CI run
-45046582618 and successful frontend asset verification. A read-only request to
-`https://portal.garrisons.lk/health/readiness` at 17:50 UTC returned
-`{"status":"ready","database":"connected"}`. The successful workflow and
-readiness response establish an automatic deployment for that existing `main`
-commit; they do not independently establish the final host receipt, running
-PostgreSQL version, or Alembic revision. Treat those runtime details as
-unverified until the active host state is read back.
+[Deployment run 45058527452](https://github.com/nirzaf/garrison-investments/actions/runs/45058527452)
+then succeeded automatically from `workflow_run`, using that same tested SHA.
+The deployment job ran for about 57 seconds. The active host `DEPLOYED` receipt,
+created at 19:04:12 UTC, records the same SHA, CI/deployment run IDs, backend
+image `sha256:192129ad7d9f1b8f7d30bf258a179b76c31f5789ab5080d9122e17310073d04e`,
+frontend image `sha256:016d56451a5bf3bf2e251a95d328dac018548efe90b1927a8638e2a51dc20445`,
+PostgreSQL 19, Alembic revision `202605310098`, and `Routine migration: not
+needed`. Its `Deployed — Formal Acceptance Pending` label describes optional
+formal acceptance; it does not mean deployment failed. The `Deploy production`
+workflow is active. A live HTTPS readiness request during this verification returned
+`{"status":"ready","database":"connected"}`; the portal returned HTTP 200.
 
-The workflow run completed 51m05s after the CI run was created, including two
-zero-step runner failures and a third attempt. The deployment job took 1m19s
-from its recorded start to completion. These are observations for this single
-retried run, not a comparable before/after median or proof of a timing gain.
-The incident tables below retain earlier observations and failed attempts.
+The primary automatic-deployment goal is complete. The cancelled supplementary
+full-regression run, current CI runner outage, Grafana hostname, and the separate
+30% speed target remain independent follow-ups and do not invalidate this
+release. See the sections below for their measured state. The incident tables
+retain earlier observations and failed attempts.
 
 ## Environment and configuration
 
@@ -95,28 +92,26 @@ Compose defaults to digest-pinned Silo and its S3 client for new installations. 
 
 ## Production deployments from GitHub Actions
 
-[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The integration matrix allows up to three jobs at once; GitHub schedules only on online `garrison-ci` runners, and CI never uses the dedicated `garrison-production` runner. At the latest read-only runner check, one of four CI runners was online. Persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; CI never uses that runner. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
+[CI](../.github/workflows/ci.yml) uses isolated self-hosted Linux x64 runners tagged `garrison-ci` for pull requests and pushes to `main`. Test databases, Redis and object storage run in disposable Docker-in-Docker environments; CI receives no production credentials, production Docker socket or production volumes. The integration matrix allows up to three jobs at once; GitHub schedules only on online `garrison-ci` runners, and CI never uses the dedicated `garrison-production` runner. At the latest read-only runner check on 2026-11-22, all four registered CI runners were offline. Persistent pip/npm caches avoid repeated dependency downloads. [Deploy production](../.github/workflows/deploy.yml) remains a separate workflow in the `Production` environment. It runs only on the dedicated self-hosted Hostinger runner labeled `garrison-production`; that runner was online and idle at the check and is reserved for deployment. GitHub concurrency (`garrison-portal-production`) and a host file lock (`deploy.lock`) serialize releases. Formal business approvals (`D-27` through `D-33`) do not block automated deployment and remain tracked separately under [post-release actions](POST_RELEASE_ACTIONS.md).
 
-As of 2026-11-22, GitHub reports [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) as active. This enables the automatic trigger; it does not establish that a compatible release has successfully deployed automatically. The existing host verifier, schema compatibility, backup-key, and readiness checks remain in force. Independently verify the next successful automatic rollout using its exact CI run, deployment run, and active release receipt.
+As of 2026-11-22, GitHub reports [Deploy production](https://github.com/nirzaf/garrison-investments/actions/workflows/deploy.yml) as active, and run 45058527452 demonstrates the automatic trigger and deployment for the exact tested `main` SHA. The existing host verifier, schema compatibility, backup-key, and readiness checks remain in force. For later releases, verify the exact CI run, deployment run, and active release receipt.
 
 The deployment workflow token is limited to `actions: read`, `contents: read`, and `deployments: read`. The last permission is required for the host's read-only check of predecessor deployment history; the host does not create GitHub deployment records.
 
-The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, the applicable required CI job set, and the current `main` tip before fetching the tested archive. The local verifier derives five versus seven required jobs from a marker in the exact tested workflow file; historical workflows without that marker retain the seven-job contract. This verifier change is not installed on the production host.
+The automatic job passes the triggering CI run's tested SHA to the host. For a manual retry, dispatch `deploy.yml` from `main` with `ci_run_id` set to a successful CI run for the current tip. The host checks both invocations against GitHub's CI metadata, the applicable required CI job set, and the current `main` tip before fetching the tested archive. The `fast-main-v1` marker in the exact tested workflow selects five required jobs for a `main` push and seven for pull-request/manual full regression runs; historical workflows without the marker retain the seven-job contract. On 2026-11-22 the installed root-owned `/usr/local/sbin/garrison-deploy` entrypoint (mode `0755`) was SHA-256 verified against the reviewed repository script (`a4720bf31c8a7bb65a7c514ef479781e38ff1cb95f73e9cb4d772674bf37ceee`).
 
-The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, all pinned candidate environment values in the effective `backend`/`celery_worker`/`celery_beat` environments, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It checks stateful Compose resources and Alembic heads and builds from the tested source. The legacy routine path refuses a schema mismatch and takes encrypted application and Grafana database backups before activation; the separately prepared fast path below changes those two steps only after installation and verification. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
+The installed [host release script](../deploy/hostinger-release.sh) checks root ownership and safe permissions on host directories and secrets, verifies the CI run/attempt, required CI jobs, deployment workflow run, and current `main` tip, extracts the tested tarball, and runs self-contained validation against `docker compose config --format json` (requiring `production.env` mode `0600`, byte equality with candidate `.env`, `LOG_PURGE_ENABLED=false`, all pinned candidate environment values in the effective `backend`/`celery_worker`/`celery_beat` environments, non-symlink safe bind mounts inside the portal root, mounted TLS `fullchain.pem`/`privkey.pem`, and mounted JWT signing keys). It checks stateful Compose resources and Alembic heads and builds from the tested source. The routine path applies the tested fast-beta migration checks without an inline backup; scheduled backup configuration, backup-key validation, and incident controls remain in place. Finally, it swaps the frontend index atomically and checks running images, public readiness, and served HTML, JavaScript, and service-worker hashes. Success advances `current` and writes `DEPLOYED` with `Status: Deployed — Formal Acceptance Pending` (recording the commit, CI/deploy runs and attempts, UTC timestamp, frontend asset/service-worker hashes, image IDs, and schema heads, without `PREDEPLOY.json` or `PREDEPLOY_MANIFEST.json`). Failed activations follow the [rollback procedure](#rollback). Optional post-release formal acceptance follows [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md#operational-and-final-acceptance-gates).
 
+<a id="fast-beta-release-path"></a>
 <a id="fast-beta-release-path-prepared-not-yet-verified-live"></a>
 
-### Fast beta release path (local candidate; not yet published to `origin/main` or verified live)
+### Fast beta release path (verified and deployed)
 
-The local working tree contains a candidate fast-main CI policy and matching
-release verifier. The exact remote `main` SHA recorded above still has the
-seven-job workflow, and the launcher candidate has not been pushed or installed.
-Until the candidate is reviewed, pushed, and installed using the existing
-[host replacement procedure](#host-bootstrap-and-runner-maintenance), the
-installed launcher may still require seven jobs, a matching live schema, and
-a synchronous backup. Do not publish the five-job workflow on its own and assume
-an older launcher can activate it.
+The five-job push gate, matching host verifier, and fast-beta routine release
+path are present on `main` and were exercised by the successful automatic
+deployment above. The successful release needed no routine Alembic migration;
+it recorded PostgreSQL 19 and schema `202605310098`. The current release status
+is therefore verified, not a local-only candidate.
 
 - A push to `main` runs backend lint/types and OpenAPI, frontend lint/types/tests/build,
   Compose validation, and both backend integration shards. Open the **CI**
@@ -148,7 +143,7 @@ an older launcher can activate it.
   partial effects before resuming forward recovery. A successful release records
   the migration outcome, before/after revisions and duration when upgraded.
 
-Observed seven-job baseline for three recent successful main pushes (seconds):
+Observed historical seven-job baseline for three successful `main` pushes (seconds):
 
 | CI run | First-job queue | Seven-job wall | Latest of the five retained jobs in that run |
 | --- | ---: | ---: | ---: |
@@ -156,21 +151,55 @@ Observed seven-job baseline for three recent successful main pushes (seconds):
 | `45008220436` | 3 | 1,236 | 1,236 |
 | `45012746159` | 25 | 1,001 | 441 |
 
-Median baseline CI wall time was 1,001 seconds. In the observed runs, individual
-backend shards took 306–425 seconds and their combined dependency/storage setup
-steps 3–4 seconds per shard. Existing persistent pip/npm caches and runner
-isolation are unchanged. The retained-job timestamps are historical, not
-post-change results. Measure actual five-job wall time, deploy queue/execution,
-migration time and push-to-healthy after rollout; the 30% end-to-end target is
-not yet demonstrated. Last successful manual deployment `45014487799` spent
-5 seconds queuing its runner job and 88 seconds executing. At the later
-runner inventory check, the Hostinger deployment runner and only one of four CI
-runners were online. Do not infer sustained three-runner availability from older
-runs; investigate offline CI runners before raising any concurrency cap.
+Median historical seven-job wall time was 1,001 seconds. The first successful
+five-job push run, `45056876940`, took 1,067 seconds (17m47s); deployment took
+about 57 seconds, and push-to-receipt took 1,126 seconds (18m46s). This is one
+five-job observation versus a seven-job historical baseline, so it does not
+establish the requested 30% improvement or a comparable current median. In that
+push run, all five jobs used runner ID 24; Compose began 17m22s after workflow
+creation, showing a material queue/capacity delay. Measure at least three
+comparable five-job pushes before claiming a speed change. Preserve all required
+checks when tuning.
+
+The supplementary full-regression run [45058989806](https://github.com/nirzaf/garrison-investments/actions/runs/45058989806)
+was cancelled on the same SHA. Backend lint/Ruff completed, but Mypy was still
+in progress when the run was cancelled; the other six jobs did not complete.
+It is not a failed test result and is not evidence that the full matrix passed.
+Afterward, both checked-in Chrome shard selections completed locally against
+disposable PostgreSQL 19, Redis, and object-storage services. Playwright's final
+`.last-run.json` reported `status: passed` with no failed tests; discovery listed
+83 tests in 15 files. The terminal reporter's individual pass/skip totals were
+not retained, so this local result is not stated as 83 passes. It is supplemental
+evidence only: the local environment used macOS arm64, Node 26, and Chrome
+158.0.8127.37, not the GitHub CI runners' Linux x64/Node 24 environment. It does
+not replace a successful seven-job GitHub regression on this SHA.
+At the current runner inventory check, `garrison-ci-desktop` (22),
+`garrison-ci-linux` (23), `garrison-ci-linux-2` (24), and
+`garrison-ci-linux-3` (25) are all offline; the separate production runner is
+online and idle and must not execute CI. Hostinger's visible VPS inventory does
+not identify a dedicated `garrison-ci` host, and this checkout has no SSH config
+or key files for one. Runner service/system logs, resource pressure, Docker
+health, and the failure cause therefore remain unverified; no runner was
+restarted. Restore access to the isolated runner host, inspect its existing
+runner service/journal and system resources, then restart only that verified
+service and rerun the seven-job workflow. Do not use the production runner as a
+fallback.
+
+Grafana access is a separate infrastructure follow-up. The Cloudflare zone is
+active, but authoritative DNS has no exact record for
+`grafana.portal.garrisons.lk`. The portal A record and Hostinger production VPS
+identify ingress `187.77.156.146`. With Grafana SNI sent directly to that IP,
+the Nginx route returned `/api/health` HTTP 200 and `/api/org` HTTP 401 (auth
+required), but the served certificate SAN contained only
+`portal.garrisons.lk`; TLS hostname verification for Grafana failed. Therefore
+neither the missing DNS record nor the certificate mismatch is fixed by the
+internal Grafana health check. First install/verify a certificate covering the
+Grafana hostname and verify the SNI route; only then prepare the DNS-only A
+record to `187.77.156.146`, subject to the required production authorization.
 
 ### Forward097 incident reconciliation (evidence review, 2026-11-21–22)
 
-The initial incident review was read-only. On 2026-11-21 and 2026-11-22, the deployment workflow was temporarily enabled for exact incident-replacement dispatches, then returned to `disabled_manually`. A later same-schema replacement activated successfully and wrote the reconciliation receipt, but the first read-only verifier rejected its `Schema heads` value because the host receipt has a trailing delimiter. A focused, CI-tested parser correction is on `main`. The attempted manual tool-install workflow run verified the exact candidate CI, then the production runner denied `sudo env ... /usr/bin/bash -s`; the runner is authorized only for the exact `/usr/local/sbin/garrison-deploy` command. No privileged host command ran, and no production files, incident records, containers, or schema were changed by that attempt. The unsupported workflow mode has been removed. The existing reconciliation receipt still requires verification with the corrected helper through the documented root-operator procedure. PostgreSQL remains on schema `097`; Nginx was last verified at patched `1.30.7`; preserve the original incident evidence.
+**Current disposition (2026-11-22): reconciled for forward operation; historical evidence preserved.** The original `60be439` activation remains classified **UNATTESTED** because its authorization was not established. The later same-schema replacement and the corrected read-only reconciliation verifier succeeded; the original `forward097.attempt` remains present (SHA-256 `ab32230bb12aff52ee0e01b730c8a482ff938f278722a37b88619124f61d528`), and the separate reconciliation receipt remains present (SHA-256 `76dfedede625fca65941dd65f8f3a58f65853d1bb47fbaabf7d7f59fdc18537b`). Neither record retroactively authorizes `60be439`. The production release subsequently deployed from green CI as `762254ce7812973731cd6b653e7c1bad10612c48`, with PostgreSQL 19/schema `202605310098`; no routine migration was needed for that release. The initial review and failed tool-install attempt below are historical: the attempted command was denied before a privileged host command ran, and its original evidence remains retained. The old schema-097 observations in the timeline below describe the incident period, not current production state.
 
 | UTC observation | Evidence and interpretation |
 | --- | --- |

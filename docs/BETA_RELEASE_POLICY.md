@@ -15,12 +15,30 @@ integrity, migration, incident-response, or production authorization controls.
 For a change that does not alter persistent data or stateful infrastructure:
 
 1. Keep the change focused and review the affected behavior.
-2. Run focused regressions and require all existing CI jobs to pass for the
-   exact candidate SHA.
+2. Run focused regressions and require the CI job set for the triggering event
+   to pass for the exact candidate SHA, as specified below.
 3. Use the existing production workflow and its host-side configuration,
-   schema-compatibility, backup, and readiness checks.
+   schema/migration, backup-key, and readiness checks.
 4. Check the deployed receipt and the user flow affected by the change. Record
    known limitations as beta follow-up work.
+
+## CI job contracts
+
+The checked-in [CI workflow](../.github/workflows/ci.yml) uses two deliberate
+job sets:
+
+- A push to `main` runs the five-job release gate: backend lint/types/OpenAPI,
+  frontend lint/types/tests/build, Compose validation, and backend test shards
+  1 and 2. Successful CI for that exact push is the event that can trigger
+  automatic production deployment.
+- Pull requests and `workflow_dispatch` run the seven-job full matrix: the same
+  five jobs plus Chrome browser regression shards 1 and 2. A manual full run is
+  supplementary verification; it does not itself deploy production.
+
+The host release verifier reads the policy marker from the exact tested workflow
+file and requires the corresponding job set. A workflow without the fast-main
+marker retains the seven-job contract. Do not remove or skip required checks to
+meet a timing target.
 
 The literal receipt status `Deployed — Formal Acceptance Pending` records that
 the optional formal-acceptance bundle was not completed. It does not mean the
@@ -55,7 +73,8 @@ operations continue to use the technical checks and maintenance process in the
 [operations runbook](OPERATIONS_AND_DEPLOYMENT.md). Keep evidence, receipts,
 backups, and rollback material truthful and preserve historical records.
 
-The existing Chrome CI suite is the routine browser gate. Additional browser,
+Chrome browser regression runs in the pull-request and manual full-regression
+job set. It is not part of the five-job push gate. Additional browser,
 physical-device, independent-recovery, monitoring, business-template, or extended
 UAT evidence is collected when the changed risk or an owner-requested
 acceptance exercise calls for it; it is not a universal beta release gate.
