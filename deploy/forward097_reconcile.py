@@ -607,7 +607,10 @@ def _verify_reconciliation_record(
     if (
         source != replacement.get("sha")
         or fields.get("Commit") != replacement.get("sha")
-        or fields.get("Schema heads") != SCHEMA
+        # DEPLOYED is written from `tr '\\n' ' '` and therefore has one trailing
+        # separator after the final head. Validate the semantic list, as the
+        # receipt parser already does, instead of comparing that formatting byte.
+        or fields.get("Schema heads", "").split() != [SCHEMA]
         or fields.get("Backend image") != replacement.get("backend_image_id")
         or fields.get("CI run") != replacement.get("ci_run")
         or fields.get("CI attempt") != replacement.get("ci_attempt")

@@ -103,8 +103,8 @@ jobs:
       CI_TEST_S3_CONTAINER: garrison-ci-s3-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
-      # Keep two independent test shards active on the isolated runner pool.
-      max-parallel: 2
+      # Use the three online isolated CI runners; keep production out of this pool.
+      max-parallel: 3
       matrix:
         include:
           - suite: backend

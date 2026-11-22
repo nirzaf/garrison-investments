@@ -127,7 +127,9 @@ def _make_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "Frontend asset: /assets/index-test_1.js\n"
         f"Asset SHA-256: {ASSET_HASH}\nService worker SHA-256: {WORKER_HASH}\n"
         f"Backend image: {BACKEND_ID}\nFrontend image: {FRONTEND_ID}\n"
-        f"Schema heads: {module.SCHEMA}\n"
+        # The host release script serializes heads with `tr '\\n' ' '`, leaving
+        # a trailing separator for a single head.
+        f"Schema heads: {module.SCHEMA} \n"
     ).encode()
     _write(replacement / "DEPLOYED", receipt)
     (state / "current").symlink_to(replacement)
