@@ -19,6 +19,10 @@ on:
         description: One-time replacement with the fixed green 65308a2 release for the open forward097 incident
         type: boolean
         default: false
+      postgres19_maintenance:
+        description: One-time locked PostgreSQL 18 to 19 cutover after the restore and migration are verified on the fresh volume
+        type: boolean
+        default: false
       ci_run_id:
         description: Successful CI run for the selected release candidate
         type: string
@@ -58,6 +62,7 @@ jobs:
           FORWARD_ONLY_093_TO_097: ${{ inputs.forward_only_093_to_097 }}
           INCIDENT_REPLACEMENT: ${{ inputs.incident_replacement }}
           PINNED_NO_BACKUP_093: ${{ inputs.pinned_no_backup_093 }}
+          POSTGRES19_MAINTENANCE: ${{ inputs.postgres19_maintenance }}
           GH_TOKEN: ${{ github.token }}
           CI_RUN_ID: ${{ inputs.ci_run_id || github.event.workflow_run.id }}
           RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
@@ -77,6 +82,12 @@ jobs:
             [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$CI_RUN_ID" == 44163196512 && "$FORWARD_ONLY_093_TO_097" != true && "$INCIDENT_REPLACEMENT" != true ]] || exit 1
             RELEASE_SHA=0d581001bd294f79a47021c7e30f75a1bf291d2a
             release_mode=pinned-no-backup-093
+          fi
+          if [[ "$POSTGRES19_MAINTENANCE" == true ]]; then
+            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch &&
+               "$PINNED_NO_BACKUP_093" != true && "$FORWARD_ONLY_093_TO_097" != true &&
+               "$INCIDENT_REPLACEMENT" != true ]] || exit 1
+            release_mode=postgres19-maintenance
           fi
           printf '%s\n' "$GH_TOKEN" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" |
             sudo -n /usr/local/sbin/garrison-deploy "$CI_RUN_ID" "$RELEASE_SHA" rollback-v2 "$release_mode"

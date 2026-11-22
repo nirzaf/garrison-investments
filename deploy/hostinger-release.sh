@@ -10,6 +10,7 @@ portal=https://portal.garrisons.lk
 project=garrison-portal
 frontend_volume=garrison-portal_frontend_dist
 patched_nginx_image='nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3'
+postgres19_image='postgres:19.0-alpine3.24@sha256:8b0ff4cdf221f0c53d7fcda681d3b461be725c492cd881c5ec9c0ad25023f188'
 
 die() {
   printf '%s\n' "$*" >&2
@@ -21,7 +22,7 @@ report_duration() {
 }
 
 [[ $# == 4 && "$1" =~ ^[0-9]+$ && "$2" =~ ^[0-9a-f]{40}$ &&
-   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 || "$4" == incident-replacement ) ]] ||
+   "$3" == rollback-v2 && ( "$4" == technical-checks-v1 || "$4" == pinned-no-backup-093 || "$4" == forward-only-093-to-097 || "$4" == incident-replacement || "$4" == postgres19-maintenance ) ]] ||
   die 'Expected a CI run ID, full SHA, rollback-v2 and release mode.'
 run_id=$1
 sha=$2
@@ -30,8 +31,10 @@ expected_main=$sha
 pinned=0
 forward097=0
 incident_replacement=0
+postgres19_maintenance=0
 [[ "$release_mode" != forward-only-093-to-097 ]] || forward097=1
 [[ "$release_mode" != incident-replacement ]] || incident_replacement=1
+[[ "$release_mode" != postgres19-maintenance ]] || postgres19_maintenance=1
 if [[ "$release_mode" == pinned-no-backup-093 ]]; then
   pinned=1
   [[ "$sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a && "$run_id" == 44163196512 ]] ||
@@ -128,6 +131,39 @@ consume_pinned_exception() {
 
 assert_pinned_window() {
   (( $(date -u +%s) < pinned_end )) || die 'Pinned exception window expired.'
+}
+
+consume_postgres19_maintenance_permit() {
+  local permit=$state/postgres19-maintenance.permit consumed=$state/postgres19-maintenance.used
+  local started=$state/postgres19-maintenance.started
+  local bound_run bound_sha start end permit_extra now started_sha started_run started_at started_extra
+  [[ -f "$permit" && ! -L "$permit" && -O "$permit" &&
+     ! -e "$consumed" && ! -L "$consumed" && "$(stat -c '%a' "$permit")" == 600 ]] ||
+    die 'PostgreSQL 19 maintenance permit is unavailable, unsafe, or already consumed.'
+  [[ -f "$started" && ! -L "$started" && -O "$started" &&
+     "$(stat -c '%a' "$started")" == 600 ]] ||
+    die 'PostgreSQL 19 maintenance start record is unavailable or unsafe.'
+  read -r bound_run bound_sha start end permit_extra < "$permit" ||
+    die 'PostgreSQL 19 maintenance permit is invalid.'
+  read -r started_sha started_run started_at started_extra < "$started" ||
+    die 'PostgreSQL 19 maintenance start record is invalid.'
+  now=$(date -u +%s)
+  [[ "$bound_run" == "$run_id" && "$bound_sha" == "$sha" && -z "$permit_extra" &&
+     "$bound_sha" =~ ^[a-f0-9]{40}$ && "$start" =~ ^[1-9][0-9]{9}$ &&
+     "$end" =~ ^[1-9][0-9]{9}$ ]] &&
+    (( start <= now && now < end && end - start <= 7200 )) ||
+    die 'PostgreSQL 19 maintenance candidate or bounded window does not match.'
+  [[ "$started_sha" == "$sha" && "$started_run" == "$run_id" && -z "$started_extra" &&
+     "$started_at" =~ ^[1-9][0-9]{9}$ ]] &&
+    (( start <= started_at && started_at <= now && now < end )) ||
+    die 'PostgreSQL 19 maintenance start record does not match the authorized window.'
+  mv -T -- "$permit" "$consumed"
+  postgres19_start=$started_at
+  postgres19_end=$end
+}
+
+assert_postgres19_window() {
+  (( $(date -u +%s) < postgres19_end )) || die 'PostgreSQL 19 maintenance window expired.'
 }
 
 github() {
@@ -255,7 +291,7 @@ if not valid:
     sys.exit("The production deployment run does not match this invocation.")
 print(main_sha if sys.argv[5] == "incident" else sys.argv[4])
 ' "$deploy_run_id" "$deploy_attempt" "$repository" "$expected_main" \
-    "$(if (( ${incident_replacement:-0} )); then echo incident; elif (( pinned || forward097 )); then echo manual; else echo automatic; fi)"
+    "$(if (( ${incident_replacement:-0} )); then echo incident; elif (( pinned || forward097 || postgres19_maintenance )); then echo manual; else echo automatic; fi)"
 }
 if (( pinned )); then
   consume_pinned_exception
@@ -287,6 +323,11 @@ print(valid[0]["id"])
 fi
 [[ "$deployment_main_sha" == "$expected_main" ]] || die 'Deployment workflow main SHA does not match the verified main tip.'
 verify_main
+if (( postgres19_maintenance )); then
+  [[ "$deployment_main_sha" == "$sha" && "$run_id" =~ ^[0-9]+$ ]] ||
+    die 'PostgreSQL 19 maintenance requires a manual deployment of the exact CI candidate.'
+  consume_postgres19_maintenance_permit
+fi
 if (( incident_replacement )); then
   github "actions/runs/44726033272" | python3 -c '
 import json,sys
@@ -707,10 +748,11 @@ image_heads() {
 
 if (( runtime_changed )); then
   # These services and data resources require a separate maintenance procedure.
-  python3 - "$previous" "$candidate" \
+  python3 - "$previous" "$candidate" "$release_mode" \
     <(compose "$previous" config --format json) <(compose "$candidate" config --format json) <<'PY'
 import json
 import sys
+from pathlib import Path
 
 def normalize_release_paths(config, root):
     for name in ("grafana_db_init", "loki_minio_init"):
@@ -721,16 +763,25 @@ def normalize_release_paths(config, root):
         for env_file in service.get("env_file", []):
             env_file["path"] = env_file["path"].removeprefix(root + "/")
 
-with open(sys.argv[3]) as old, open(sys.argv[4]) as new:
+with open(sys.argv[4]) as old, open(sys.argv[5]) as new:
     before, after = json.load(old), json.load(new)
 normalize_release_paths(before, sys.argv[1])
 normalize_release_paths(after, sys.argv[2])
-for key in ("volumes", "networks"):
-    if before[key] != after[key]:
-        sys.exit(f"Production {key} changed. Prepare a maintenance rollout first.")
-for name in ("postgres", "redis", "minio", "grafana_db_init", "loki_minio_init"):
-    if before["services"][name] != after["services"][name]:
-        sys.exit(f"Production service {name} changed. Prepare a maintenance rollout first.")
+release_mode = sys.argv[3]
+if release_mode == "postgres19-maintenance":
+    sys.path.insert(0, str(Path(sys.argv[2]) / "deploy"))
+    from postgres19_maintenance_contract import validate_compose_transition
+    try:
+        validate_compose_transition(before, after)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+else:
+    for key in ("volumes", "networks"):
+        if before[key] != after[key]:
+            sys.exit(f"Production {key} changed. Prepare a maintenance rollout first.")
+    for name in ("postgres", "redis", "minio", "grafana_db_init", "loki_minio_init"):
+        if before["services"][name] != after["services"][name]:
+            sys.exit(f"Production service {name} changed. Prepare a maintenance rollout first.")
 PY
   for file in observability/postgres/init-grafana-db.sh observability/minio/loki-policy.json; do
     cmp -s "$previous/$file" "$candidate/$file" ||
@@ -863,6 +914,49 @@ elif (( incident_replacement )); then
   [[ "$current" == 202605310097 && "$heads" == "$current" && "$runtime_changed" == 1 &&
      "$backend_image" == "garrison-portal-release-backend:$sha" ]] ||
     die 'Incident replacement requires an exact 097 schema match and a freshly built candidate image.'
+elif (( postgres19_maintenance )); then
+  [[ "$heads" == 202605310098 && "$current" == "$heads" && "$runtime_changed" == 1 &&
+     "$backend_image" == "garrison-portal-release-backend:$sha" ]] ||
+    die 'PostgreSQL 19 maintenance requires the exact 098 schema on a fresh candidate runtime.'
+  live_container=$(docker inspect --format \
+    '{"Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},"State":{"Running":{{.State.Running}}},"Mounts":{{json .Mounts}}}' \
+    "$project-postgres-1") || die 'The PostgreSQL 19 container is unavailable.'
+  server_version_num=$(docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SHOW server_version_num"')
+  [[ -n "$server_version_num" ]] || die 'Unable to read the active PostgreSQL version.'
+  source_volume_exists=0
+  target_volume_exists=0
+  docker volume inspect garrison-portal_pgdata >/dev/null 2>&1 && source_volume_exists=1
+  docker volume inspect garrison-portal_pgdata19 >/dev/null 2>&1 && target_volume_exists=1
+  running_services=$(docker ps --filter "label=com.docker.compose.project=$project" \
+    --format '{{.Label "com.docker.compose.service"}}' | sort -u)
+  python3 - "$live_container" "$source_volume_exists" "$target_volume_exists" \
+    "$server_version_num" "$current" "$heads" "$running_services" "$candidate/deploy" <<'PYLIVE'
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[8])
+from postgres19_maintenance_contract import validate_live_target
+
+container = json.loads(sys.argv[1])[0]
+services = set(sys.argv[7].split())
+try:
+    validate_live_target(
+        container=container,
+        source_volume_exists=sys.argv[2] == "1",
+        target_volume_exists=sys.argv[3] == "1",
+        server_version_num=sys.argv[4],
+        schema_head=sys.argv[5],
+        candidate_heads=sys.argv[6],
+        running_services=services,
+    )
+except ValueError as error:
+    raise SystemExit(str(error)) from error
+PYLIVE
+  remaining_clients=$(docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = '\''client backend'\''"')
+  [[ "$remaining_clients" == 0 ]] || die 'PostgreSQL 19 maintenance requires all application database clients drained.'
 else
   [[ -n "$heads" && "$heads" == "$current" ]] ||
     die 'Pending database migrations require the reviewed maintenance procedure.'
@@ -1003,6 +1097,18 @@ elif (( pinned )); then
   current=$(docker exec "$project-postgres-1" sh -ec \
     'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
   [[ "$current" == "$heads" ]] || die 'Pinned production migration did not reach the authorized head.'
+elif (( postgres19_maintenance )); then
+  assert_postgres19_window
+  cat > "$candidate/RECOVERY_EXCEPTION" <<EOF
+Owner-authorized recovery exception for the exact PostgreSQL 19 maintenance release.
+Candidate SHA: $sha
+CI run: $run_id
+Independent off-host database-and-object backup: waived, not verified.
+Isolated restore of an independent backup set: waived, not verified.
+Original PostgreSQL 18 data volume: preserved as the pre-cutover rollback source.
+Authorization record: owner confirmation in the release conversation; no secret or codeword stored.
+EOF
+  chmod 0600 "$candidate/RECOVERY_EXCEPTION"
 else
   compose "$candidate" run --rm --no-deps --pull never -T backend \
     python -m scripts.backup --target all --skip-retention
@@ -1013,6 +1119,9 @@ unset token
 phase_started=$SECONDS
 if (( pinned )); then
   assert_pinned_window
+fi
+if (( postgres19_maintenance )); then
+  assert_postgres19_window
 fi
 if (( runtime_changed && ! forward097 )); then
   runtime_attempted=1
@@ -1046,11 +1155,27 @@ curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/health/readin
 check_readiness < "$candidate/READINESS.json"
 report_duration 'Live image and readiness verification' "$phase_started"
 cat "$candidate/READINESS.json"
+if (( postgres19_maintenance )); then
+  assert_postgres19_window
+fi
+maintenance_finished=$(date -u +%s)
 
 printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nUTC: %s\nFrontend asset: %s\nAsset SHA-256: %s\nService worker SHA-256: %s\nBackend image: %s\nFrontend image: %s\nSchema heads: %s\n' \
   "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
+if (( postgres19_maintenance )); then
+  cat >> "$candidate/DEPLOYED" <<EOF
+PostgreSQL image: $postgres19_image
+Recovery exception: Owner-authorized; independent off-host database/object backup and isolated restore were not verified.
+Preserved source volume: garrison-portal_pgdata
+Maintenance actual start UTC: $(date -u +%FT%TZ --date="@$postgres19_start")
+Maintenance actual start Asia/Qatar: $(TZ=Asia/Qatar date +%FT%T%:z --date="@$postgres19_start")
+Maintenance authorized end UTC: $(date -u +%FT%TZ --date="@$postgres19_end")
+Maintenance actual end UTC: $(date -u +%FT%TZ --date="@$maintenance_finished")
+Maintenance actual end Asia/Qatar: $(TZ=Asia/Qatar date +%FT%T%:z --date="@$maintenance_finished")
+EOF
+fi
 if (( forward097 )); then mv "$candidate/DEPLOYED" "$candidate/FORWARD_ACTIVATION_PENDING"; fi
 ln -sfn "$candidate" "$state/.current-next"
 mv -Tf "$state/.current-next" "$state/current"

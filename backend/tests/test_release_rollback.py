@@ -278,6 +278,7 @@ def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
 set -euo pipefail
 run_id=123
 forward097=0
+postgres19_maintenance=0
 sha={sha}
 repository={repository}
 candidate={shlex.quote(str(tmp_path))}

@@ -92,13 +92,26 @@ def test_manual_only_host_path_and_fail_closed_activation():
     assert (
         '"$GITHUB_EVENT_NAME" == workflow_dispatch && "$PINNED_NO_BACKUP_093" != true' in workflow
     )
-    assert "echo incident; elif (( pinned || forward097 )); then echo manual" in host
+    assert (
+        "echo incident; elif (( pinned || forward097 || postgres19_maintenance )); then echo manual"
+        in host
+    )
     assert host.index("Forward runtime installation is not protected") < host.index(
         "candidate=$(mktemp"
     )
     assert '[[ "$current" == 202605310061 && "$heads" == 202605310093' in host
     assert "Pending database migrations require the reviewed maintenance procedure." in host
     assert "python -m scripts.backup --target all --skip-retention" in host
+    assert "consume_postgres19_maintenance_permit" in host
+    assert "postgres19-maintenance.started" in host
+    assert "validate_compose_transition" in host
+    assert '"$heads" == 202605310098' in host
+    assert "garrison-portal_pgdata19" in host
+    assert "Maintenance actual end Asia/Qatar" in host
+    assert "postgres19-maintenance" in workflow
+    assert '"$PINNED_NO_BACKUP_093" != true' in workflow
+    assert '"$FORWARD_ONLY_093_TO_097" != true' in workflow
+    assert '"$INCIDENT_REPLACEMENT" != true' in workflow
     assert 'sha" == 0d581001bd294f79a47021c7e30f75a1bf291d2a' in host
     assert "RELEASE_SHA=65308a2af263cd59e90276b3a771d4ed6ecbf842" in workflow
     assert 'CI_RUN_ID" == 44734573582' in workflow
@@ -355,3 +368,78 @@ def test_marker_is_preserved_and_only_verified_reconciliation_reopens_normal_dep
     )
     assert result.returncode == 71
     assert marker.read_text() == "migration-intent: process disappeared"
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "valid",
+        "expired",
+        "future",
+        "too-long",
+        "wrong-run",
+        "wrong-sha",
+        "replay",
+        "missing-start",
+        "wrong-start-sha",
+        "future-start",
+    ],
+)
+def test_postgres19_maintenance_permit_is_one_use_sha_bound_and_time_bounded(
+    scenario: str, tmp_path: Path
+) -> None:
+    import subprocess
+
+    source = (FILE.parent / "hostinger-release.sh").read_text()
+    start = source.index("consume_postgres19_maintenance_permit() {")
+    end = source.index("github() {", start)
+    permit = tmp_path / "postgres19-maintenance.permit"
+    started = tmp_path / "postgres19-maintenance.started"
+    used = tmp_path / "postgres19-maintenance.used"
+    start_time, end_time = 1_800_000_000, 1_800_000_300
+    run, sha = "34", "a" * 40
+    if scenario == "expired":
+        end_time = 1_800_000_100
+    elif scenario == "future":
+        start_time = 1_800_000_200
+    elif scenario == "too-long":
+        end_time = 1_800_008_000
+    elif scenario == "wrong-run":
+        run = "35"
+    elif scenario == "wrong-sha":
+        sha = "b" * 40
+    elif scenario == "replay":
+        used.touch()
+    permit.write_text(f"{run} {sha} {start_time} {end_time}\n")
+    permit.chmod(0o600)
+    if scenario != "missing-start":
+        started_sha = "b" * 40 if scenario == "wrong-start-sha" else "a" * 40
+        started_at = 1_800_000_200 if scenario == "future-start" else 1_800_000_050
+        started.write_text(f"{started_sha} 34 {started_at}\n")
+        started.chmod(0o600)
+    result = subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-c",
+            """
+die() { echo "$1" >&2; exit 1; }
+date() { echo 1800000100; }
+stat() { echo 600; }
+mv() { shift 2; command mv "$@"; }
+state=$1
+run_id=34
+sha=$(printf 'a%.0s' {1..40})
+"""
+            + source[start:end]
+            + "\nconsume_postgres19_maintenance_permit\nassert_postgres19_window\n",
+            "permit-test",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == (scenario == "valid"), result.stderr
+    assert permit.exists() == (scenario != "valid")
+    assert used.exists() == (scenario in {"valid", "replay"})

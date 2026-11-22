@@ -500,6 +500,17 @@ stop condition.
    set. A database dump in the portal's own object store is not independent
    recovery evidence. Preserve the backup set and the original PostgreSQL 18
    volume; no cleanup is part of this procedure.
+   The owner has explicitly waived the independent recovery-set and isolated-
+   restore gates for the current release. This is recorded as an exception and
+   does not establish recovery readiness or change the default for later
+   releases. The production entrypoint accepts this cutover only through the
+   manually dispatched `postgres19-maintenance` mode, with a root-owned
+   one-use permit bound to the exact green CI run, candidate SHA, and a maximum
+   two-hour UTC window. The consumed permit and the release receipt record the
+   waiver; a root-only `postgres19-maintenance.started` record binds the
+   actual start to the same CI run/SHA, and the final receipt records actual
+   start/end in UTC and Asia/Qatar. The PostgreSQL 18 volume remains preserved.
+   Do not use this exception mode for another candidate or maintenance operation.
 3. Rehearse the candidate's PostgreSQL 19 image, logical restore, catalog checks,
    and rollback using a disposable copy with matching data volume and extensions.
    Capture dump checksums, exact catalog/count comparison output, restore duration,
