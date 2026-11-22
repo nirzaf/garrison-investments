@@ -256,7 +256,8 @@ consume_postgres19_maintenance_retry_final_authorization() {
   local first_run first_sha first_start first_end first_prior_deploy first_original_ci first_original_sha
   local first_current first_evidence_sha first_extra first_retry_deploy original_run original_sha2
   local original_start original_end original_extra started_sha started_run started_at started_extra
-  local now consumed_epoch actual_evidence current_sha local_running tmp
+  local now consumed_epoch prior_deploy_finished prior_deploy_finished_epoch
+  local actual_evidence current_sha local_running tmp
   [[ -f "$authorization" && ! -L "$authorization" && -O "$authorization" &&
      "$(stat -c '%a' "$authorization")" == 600 &&
      ! -e "$consumed" && ! -L "$consumed" &&
@@ -326,7 +327,7 @@ consume_postgres19_maintenance_retry_final_authorization() {
      original_start <= started_at && started_at <= first_start &&
      first_start <= first_consumed_epoch && first_consumed_epoch < first_end &&
      first_end <= followup_start && followup_start <= consumed_epoch && consumed_epoch < followup_end &&
-     followup_end <= start )) ||
+     consumed_epoch <= start )) ||
     die 'The final PostgreSQL 19 retry window or maintenance chronology is invalid.'
   actual_evidence=$(sha256sum "$first_retry_evidence" | cut -d' ' -f1)
   [[ "$actual_evidence" == "$first_evidence_sha" ]] ||
@@ -348,14 +349,21 @@ consume_postgres19_maintenance_retry_final_authorization() {
     grep -Fqx "Previous receipt SHA: $prior_current" "$evidence" &&
     grep -Eq '^Runner log SHA-256: [a-f0-9]{64}$' "$evidence" ||
     die 'The final retry evidence does not attest to the exact prior failure and unchanged receipt.'
-  github "actions/runs/$prior_deploy" | python3 -c '
+  prior_deploy_finished=$(github "actions/runs/$prior_deploy" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 if (r.get("id") != int(sys.argv[1]) or r.get("workflow_id") != 277757082
     or r.get("head_sha") != sys.argv[2] or r.get("event") != "workflow_dispatch"
     or r.get("status") != "completed" or r.get("conclusion") != "failure"):
     sys.exit("The prior PostgreSQL 19 follow-up failure could not be verified.")
-' "$prior_deploy" "$prior_sha" || die 'The prior PostgreSQL 19 follow-up deployment failure could not be verified.'
+print(r.get("updated_at") or "")
+' "$prior_deploy" "$prior_sha") || die 'The prior PostgreSQL 19 follow-up deployment failure could not be verified.'
+  [[ "$prior_deploy_finished" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+    die 'The completed prior PostgreSQL 19 deployment timestamp is invalid.'
+  prior_deploy_finished_epoch=$(date -u -d "$prior_deploy_finished" +%s) ||
+    die 'The completed prior PostgreSQL 19 deployment timestamp is invalid.'
+  (( prior_deploy_finished_epoch <= start )) ||
+    die 'The final PostgreSQL 19 retry window starts before the prior deployment completed.'
   github "actions/runs/$prior_ci" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)

@@ -706,7 +706,9 @@ printf '%s %s %s %s\\n' \\
         ("prior-deploy-success", False),
         ("prior-ci-failure", False),
         ("bad-evidence", False),
-        ("overlapping-window", False),
+        ("consumed-window-tail", True),
+        ("before-followup-consumption", False),
+        ("before-prior-deploy-completion", False),
         ("active-writers", False),
         ("bad-history", False),
         ("replay", False),
@@ -728,7 +730,11 @@ def test_postgres19_final_retry_is_single_use_and_evidence_bound(
     original_start, original_end = 1_800_000_000, 1_800_000_300
     first_retry_start = 1_800_000_010
     followup_start, followup_end = 1_800_000_500, 1_800_000_600
-    final_start = 1_800_000_580 if scenario == "overlapping-window" else 1_800_000_700
+    final_start = {
+        "consumed-window-tail": 1_800_000_580,
+        "before-followup-consumption": 1_800_000_540,
+        "before-prior-deploy-completion": 1_800_000_555,
+    }.get(scenario, 1_800_000_700)
     now, final_end = 1_800_000_800, 1_800_000_850
 
     (tmp_path / "current").mkdir()
@@ -814,6 +820,8 @@ die() {{ echo "$1" >&2; exit 1; }}
 date() {{
   case "$*" in
     *"09:00:00Z"*) echo {1_800_000_020} ;;
+    *"09:10:10Z"*) echo {1_800_000_560} ;;
+    *"09:10:00Z"*) echo {1_800_000_550} ;;
     *" -d "*) echo {1_800_000_550} ;;
     *"%s"*) echo {now} ;;
     *) echo 2026-11-22T09:20:00Z ;;
@@ -825,7 +833,7 @@ github() {{
   case "$1" in
     actions/runs/57)
       cat <<'JSON'
-{{"id":57,"workflow_id":277757082,"head_sha":"{followup_sha}","event":"workflow_dispatch","status":"completed","conclusion":"{prior_deploy_conclusion}"}}
+{{"id":57,"workflow_id":277757082,"head_sha":"{followup_sha}","event":"workflow_dispatch","status":"completed","conclusion":"{prior_deploy_conclusion}","updated_at":"2026-11-22T09:10:10Z"}}
 JSON
       ;;
     actions/runs/35)
