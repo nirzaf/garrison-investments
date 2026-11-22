@@ -1,15 +1,21 @@
 # Garrisons Construction Internal Portal
 
+**Lifecycle: Internal beta.** The project uses fast, risk-based iterations. The
+[beta release policy](docs/BETA_RELEASE_POLICY.md) explains the small routine
+release gate and the technical safeguards that remain mandatory.
+
 The portal connects daily site reporting with project oversight, document control, inventory, supplier compliance, finance, and management reporting. It gives site teams a mobile-friendly way to capture work and gives office teams a shared record of approvals, stock movements, payments, and audit events.
 
 [Production portal](https://portal.garrisons.lk) · [Release notes](https://github.com/nirzaf/garrison-investments/releases) · [Documentation index](docs/README.md)
 
 ## Implemented features
 
-This is a source-code feature inventory. A feature listed here may still need a
-pending database migration, approved configuration, an authorized account, or
-acceptance evidence before it is available in production. See the [release ledger](docs/POST_RELEASE_ACTIONS.md)
-for the verified production and acceptance state.
+This is a source-code feature inventory, not a promise that every feature is
+enabled for every account. Pending migrations, configuration, account grants,
+and workflow-specific defects still affect the relevant feature; optional
+formal-acceptance evidence does not block unrelated beta iterations. See the
+[operations runbook](docs/OPERATIONS_AND_DEPLOYMENT.md) for current deployment
+evidence and the [optional follow-up ledger](docs/POST_RELEASE_ACTIONS.md).
 
 | Area | What the portal supports |
 | --- | --- |
@@ -103,7 +109,7 @@ flowchart TB
     grafana -->|"Firing and resolved alerts"| mail["useSend or SMTP"]
 ```
 
-Grafana uses its configured virtual host when DNS and TLS are in place. Business audit records and application-side operational events are stored in PostgreSQL. Authorized users can search or stream them through the [remote log CLI](docs/LOGGING_AND_REMOTE_CLI.md) and its API. The [runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup--restore) covers log retention, encrypted backups, and isolated restores.
+Grafana uses its configured virtual host when DNS and TLS are in place. Business audit records and application-side operational events are stored in PostgreSQL. Authorized users can search or stream them through the [remote log CLI](docs/LOGGING_AND_REMOTE_CLI.md) and its API. The [runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#3-operations-backup-restore) covers log retention, encrypted backups, and isolated restores.
 
 ### CI and production deployment
 
@@ -121,7 +127,7 @@ flowchart TB
 
 [CI](.github/workflows/ci.yml) runs on isolated self-hosted Linux x64 runners tagged `garrison-ci`, with persistent dependency caches and disposable PostgreSQL, Redis, and object-storage fixtures. CI does not receive production secrets, production Docker access, or the Hostinger production runner. The [production workflow](.github/workflows/deploy.yml), when enabled, runs after successful CI for the current `main` commit (or via manual `workflow_dispatch` with an explicit successful `ci_run_id`) on the separate Hostinger runner. The [host release script](deploy/hostinger-release.sh) verifies the upstream CI run and attempt, all seven required CI jobs, current `main` commit, host file ownership/permissions, effective runtime configuration (including mounted TLS/JWT key files, stateful Compose baseline, and `LOG_PURGE_ENABLED=false`), and compatible Alembic heads, takes encrypted database backups before activation, publishes the frontend, verifies the public readiness endpoint and served asset hashes, and records `Deployed — Formal Acceptance Pending`. Pending database migrations and changes to stateful services require the reviewed maintenance procedure in the [deployment runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions).
 
-Formal acceptance items are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md), and the [formal acceptance guide](docs/OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) covers post-release approval, backup and restore evidence, and desktop Chrome acceptance. Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
+The [beta release policy](docs/BETA_RELEASE_POLICY.md) defines routine release checks. Optional formal-acceptance evidence and owner decisions are tracked in [post-release actions](docs/POST_RELEASE_ACTIONS.md); they are not universal deployment blockers. Stateful migrations and production operations still follow the [maintenance runbook](docs/OPERATIONS_AND_DEPLOYMENT.md#production-maintenance). Staging is not an active release target; see the [retirement notice](STAGING_DEPLOYMENT.md).
 
 ## Getting started
 

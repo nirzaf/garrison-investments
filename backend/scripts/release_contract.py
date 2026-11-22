@@ -2238,6 +2238,27 @@ def verify_host_deployment_receipt(
         expected["Predeploy verdict SHA-256"] = predeploy_verdict_sha256
     if predeploy_manifest_sha256 is not None:
         expected["Predeploy manifest SHA-256"] = predeploy_manifest_sha256
+    # New routine launchers attest migration separately from the schema identity.
+    # Legacy receipts remain valid and still reject unknown or partial fields.
+    migration = host.get("Routine migration")
+    if migration is not None:
+        require(migration in {"not needed", "upgraded"}, "Invalid routine migration outcome.")
+        expected["Routine migration"] = migration
+        if migration == "upgraded":
+            source = host.get("Migration from", "")
+            target = host.get("Migration to", "")
+            seconds = host.get("Migration seconds", "")
+            require(
+                bool(re.fullmatch(r"[A-Za-z0-9_]{1,32}", source))
+                and bool(re.fullmatch(r"[A-Za-z0-9_]{1,32}", target))
+                and source != target
+                and [target] == identity["schema_heads"]
+                and bool(re.fullmatch(r"[0-9]+", seconds)),
+                "Invalid routine migration receipt evidence.",
+            )
+            expected.update({
+                "Migration from": source, "Migration to": target, "Migration seconds": seconds,
+            })
     require(
         host.keys() == expected.keys() | {"UTC", "Schema heads", "Frontend asset"},
         "Invalid host deployment receipt fields.",

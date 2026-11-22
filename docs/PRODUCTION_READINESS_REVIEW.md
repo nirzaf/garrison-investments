@@ -1,6 +1,6 @@
 # Production Readiness Review
 
-**Historical review dated July 27, 2026.** This page records the scope and staging findings of that review. Current release evidence belongs in the [deployment and sign-off runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off).
+**Historical review dated July 27, 2026.** This page records the scope and staging findings of that review, not current beta blockers. Apply the [beta release policy](BETA_RELEASE_POLICY.md) and use the [operations runbook](OPERATIONS_AND_DEPLOYMENT.md) for current technical release evidence.
 
 [Documentation index](README.md) · [Current architecture](ARCHITECTURE.md) · [Production deployments](OPERATIONS_AND_DEPLOYMENT.md#production-deployments-from-github-actions)
 
@@ -17,7 +17,7 @@ The review covered the portal's browser and API architecture, role and project a
 
 | Topic | Where to look |
 | --- | --- |
-| Release gates, host activation, migrations, and recovery | [Operations and deployment guide](OPERATIONS_AND_DEPLOYMENT.md) |
+| Technical deployment, maintenance, and recovery checks | [Operations and deployment guide](OPERATIONS_AND_DEPLOYMENT.md) |
 | Environment-specific configuration and staging acceptance | [Staging deployment](../STAGING_DEPLOYMENT.md) |
 | API and UI access rules | [Roles and permissions](ROLES_AND_PERMISSIONS.md) |
 | Audit search, container diagnostics, and alerts | [Logging and remote CLI](LOGGING_AND_REMOTE_CLI.md) |

@@ -1,6 +1,6 @@
 # Garrisons portal release scope
 
-This inventory defines the release scope for the Garrisons Construction Internal Portal (`launch_readiness_only`, `G-01` excluded). It is an unsigned scope baseline: authenticated business-sponsor approval of its frozen digest and formal release acceptance remain pending as described in [POST_RELEASE_ACTIONS.md](POST_RELEASE_ACTIONS.md) and the [operations runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off).
+This inventory defines the working beta scope for the Garrisons Construction Internal Portal (`launch_readiness_only`, `G-01` excluded). It is an unsigned scope baseline, not a release authorization; its unsigned state does not block unrelated beta iterations. See the [beta release policy](BETA_RELEASE_POLICY.md) and the [optional acceptance ledger](POST_RELEASE_ACTIONS.md).
 
 | Area | Release scope | Source |
 | --- | --- | --- |
@@ -14,6 +14,6 @@ This inventory defines the release scope for the Garrisons Construction Internal
 | Analytics and import | Scoped dashboards, filtered XLSX/PDF exports, and approved-format data and metadata imports | [Analytics routes](../backend/app/api/v1/analytics.py), [import templates](import_templates/README.md) |
 | Guidance and operations | Role manuals, notifications, security and audit views, and Launch readiness at the existing management-only `/delivery` route | [Portal manuals](../frontend/src/pages/manual/), [Launch readiness](../frontend/src/pages/delivery/DeliveryPlanPage.tsx), [operations runbook](OPERATIONS_AND_DEPLOYMENT.md) |
 
-The selected release scope is `launch_readiness_only`; formal authenticated approval bound to the frozen scope digest remains outstanding. Logistics scheduling, fleet and vehicle management, delivery booking, dispatch and routing, and stock posting from a delivery workflow require a separately approved product increment. Inventory receipts and stock movements remain within the existing stores workflow.
+The working scope is `launch_readiness_only`. Logistics scheduling, fleet and vehicle management, delivery booking, dispatch and routing, and stock posting from a delivery workflow require a separately approved product increment. Inventory receipts and stock movements remain within the existing stores workflow.
 
-G-01, mandatory password-change enforcement, is excluded. Existing voluntary password change, password reset, and authentication remain in scope. Configured monitoring, recovery, retention, and deployment components require executed operational evidence for the specific release and environment.
+G-01, mandatory password-change enforcement, is excluded. Existing voluntary password change, password reset, and authentication remain in scope. Verify monitoring, recovery, retention, and deployment components when a change touches them or the applicable technical runbook requires it; comprehensive operational acceptance is not a gate for every beta feature release.

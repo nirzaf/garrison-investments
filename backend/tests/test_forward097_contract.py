@@ -100,7 +100,8 @@ def test_manual_only_host_path_and_fail_closed_activation():
         "candidate=$(mktemp"
     )
     assert '[[ "$current" == 202605310061 && "$heads" == 202605310093' in host
-    assert "Pending database migrations require the reviewed maintenance procedure." in host
+    assert 'elif (( incident_replacement )); then\n  compose "$candidate" run' in host
+    assert 'Routine migration requires verified PostgreSQL 19' in host
     assert "python -m scripts.backup --target all --skip-retention" in host
     assert "consume_postgres19_maintenance_permit" in host
     assert "postgres19-maintenance.started" in host

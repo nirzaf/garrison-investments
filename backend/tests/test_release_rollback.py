@@ -1,8 +1,11 @@
+import base64
 import io
 import json
+import re
 import runpy
 import shlex
 import subprocess
+import sys
 import tarfile
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -254,6 +257,12 @@ def test_deployment_receipt_records_only_the_ci_attempt_that_passed(
     receipt_end = source.index("\nln -sfn", receipt_start)
     sha = "a" * 40
     repository = "nirzaf/garrison-investments"
+    encoded_workflow = base64.b64encode(b"name: CI").decode()
+    workflow_content = json.dumps({
+        "path": ".github/workflows/ci.yml",
+        "encoding": "base64",
+        "content": f"{encoded_workflow[:4]}\n{encoded_workflow[4:]}",
+    })
     run = json.dumps({
         "id": 123, "path": ".github/workflows/ci.yml", "event": "push",
         "status": "completed", "conclusion": "success", "head_branch": "main",
@@ -294,6 +303,7 @@ github() {{
   case "$1" in
     actions/runs/123) printf '%s\n' {shlex.quote(run)} ;;
     'actions/runs/123/attempts/2/jobs?per_page=100') printf '%s\n' {shlex.quote(jobs)} ;;
+    'contents/.github/workflows/ci.yml?ref='*) printf '%s\n' {shlex.quote(workflow_content)} ;;
     *) return 2 ;;
   esac
 }}
@@ -625,7 +635,24 @@ apply_runtime previous || exit "$?"
         ("quiesced-generation-change", ""),
         ("purge-enabled", "mismatched keys: LOG_PURGE_ENABLED"),
         ("stateful-change", "Production volumes changed"),
-        ("schema-change", "Pending database migrations"),
+        ("schema-change", "no valid forward Alembic path"),
+        ("migration-success", ""),
+        ("migration-fails", "recover forward"),
+        ("migration-wrong-revision", "did not reach the candidate head"),
+        ("migration-client-present", "clients drained"),
+        ("migration-readiness-fails", "connected database"),
+        ("migration-image-mismatch", "image differs from the candidate"),
+        ("migration-pg18", "requires verified PostgreSQL 19"),
+        ("migration-held", "unfinished routine database migration"),
+        ("migration-empty", "Cannot determine"),
+        ("migration-multiple-heads", "exactly one live revision and one candidate head"),
+        ("migration-receipt-failure", "recover forward"),
+        ("migration-duplicate", ""),
+        ("fast-ci", ""),
+        ("fast-unattested", "missing a passed required job"),
+        ("fast-failed-job", "missing a passed required job"),
+        ("fast-main-seven-jobs", "missing a passed required job"),
+        ("manual-ci-candidate", "successful CI push to main"),
         (
             "missing-config",
             "technical configuration, secret/TLS/key, or log-retention safety validation",
@@ -646,7 +673,6 @@ apply_runtime previous || exit "$?"
             "nginx-test-ip-exhausted",
             "No verified collision-free IPv4 address is available",
         ),
-        ("backup-fails", ""),
         ("readiness-fails", "connected database"),
         ("asset-mismatch", "served JavaScript differs"),
     ],
@@ -661,6 +687,8 @@ def test_release_entrypoint_uses_technical_checks(
     state.mkdir()
     previous.mkdir(parents=True)
     (state / "current").symlink_to(previous)
+    if scenario == "migration-held":
+        (state / "routine-migration.pending").write_text("prior incomplete migration")
     (state / "production.env").write_text(
         "LOG_PURGE_ENABLED=false\n"
         "JWT_PRIVATE_KEY_PATH=/run/secrets/jwt_private_key\n"
@@ -696,7 +724,7 @@ def test_release_entrypoint_uses_technical_checks(
     (previous / ".images.env").write_text(
         "GARRISON_BACKEND_IMAGE=old-backend\nGARRISON_FRONTEND_IMAGE=old-frontend\n"
     )
-    (previous / "SOURCE_COMMIT").write_text("b" * 40)
+    (previous / "SOURCE_COMMIT").write_text(sha if scenario == "migration-duplicate" else "b" * 40)
     (previous / "deploy").mkdir()
     (previous / "deploy/rollback-generation").write_text("1\n")
     (previous / "docker-compose.prod.yml").write_text("old")
@@ -712,7 +740,7 @@ def test_release_entrypoint_uses_technical_checks(
     ci = {
         "id": 12,
         "path": ".github/workflows/ci.yml",
-        "event": "push",
+        "event": "workflow_dispatch" if scenario == "manual-ci-candidate" else "push",
         "status": "completed",
         "conclusion": "failure" if scenario == "failed-ci" else "success",
         "head_branch": "main",
@@ -746,6 +774,8 @@ def test_release_entrypoint_uses_technical_checks(
     ]
     if scenario == "missing-job":
         names.pop()
+    if scenario.startswith("fast-") and scenario != "fast-main-seven-jobs":
+        names = names[:5]
     jobs = [
         {
             "name": name,
@@ -757,12 +787,27 @@ def test_release_entrypoint_uses_technical_checks(
         }
         for name in names
     ]
-    if scenario == "failed-job":
+    if scenario in {"failed-job", "fast-failed-job"}:
         jobs[0]["conclusion"] = "failure"
     if scenario == "wrong-job-attempt":
         jobs[0]["run_attempt"] = 1
     for name, payload in {
         "ci": ci,
+        "ci-policy": {
+            "path": ".github/workflows/ci.yml",
+            "encoding": "base64",
+            "content": base64.b64encode(
+                (
+                    b"name: CI\n# garrison-ci-policy: fast-main-v1"
+                    if scenario in {
+                        "fast-ci",
+                        "fast-failed-job",
+                        "fast-main-seven-jobs",
+                    }
+                    else b"name: CI"
+                ).strip()
+            ).decode(),
+        },
         "jobs": {"total_count": len(jobs), "jobs": jobs},
         "deploy-run": deploy_run,
         "main": {"object": {"sha": "c" * 40 if scenario == "stale-main" else sha}},
@@ -806,6 +851,7 @@ github() {
   case "$1" in
     actions/runs/12) cat "$base/ci" ;;
     actions/runs/12/attempts/2/jobs*) cat "$base/jobs" ;;
+    contents/.github/workflows/ci.yml?ref=*) cat "$base/ci-policy" ;;
     actions/runs/34/attempts/1) cat "$base/deploy-run" ;;
     git/ref/heads/main) cat "$base/main" ;;
     tarball/*) echo download >> "$base/events"; cat "$base/archive.tgz" ;;
@@ -840,7 +886,18 @@ PYNETWORK
       ;;
     'ps --filter') [[ "$scenario" == quiesced-generation-change ]] || echo nginx ;;
     'image inspect') printf 'sha256:%s\n' "$asset_digest" ;;
-    'exec garrison-portal-postgres-1') echo fixture-head ;;
+    'exec garrison-portal-postgres-1')
+      case "$*" in
+        *server_version_num*) [[ "$scenario" == migration-pg18 ]] && echo 180006 || echo 190000 ;;
+        *pg_stat_activity*) [[ "$scenario" == migration-client-present ]] && echo 1 || echo 0 ;;
+        *) if [[ "$scenario" == migration-empty ]]; then
+             :
+           elif [[ -f "$base/migrated" ]]; then
+             echo candidate_head
+           else
+             echo fixture_head
+           fi ;;
+      esac ;;
     'exec garrison-portal-nginx-1')
       if [[ "$*" == *'nginx -v'* ]]; then
         printf '%s\n' 'nginx version: nginx/1.30.7'
@@ -852,15 +909,27 @@ PYNETWORK
       elif [[ "$*" == *'{{.Id}}'* ]]; then
         printf '%s\n' 'fixture-nginx-container-id'
       else
-        printf 'sha256:%s\n' "$asset_digest"
+        if [[ "$scenario" == migration-image-mismatch ]]; then
+          printf 'sha256:wrong-image\n'
+        else
+          printf 'sha256:%s\n' "$asset_digest"
+        fi
       fi ;;
     'run --rm')
-      if [[ "$*" == *alembic* ]]; then
-        if [[ "$scenario" == schema-change && "$*" != *old-backend* ]]; then
-          echo candidate-head
+      if [[ "$*" == *'--entrypoint alembic'* ]]; then
+        if [[ ( "$scenario" == schema-change || "$scenario" == migration-* ) &&
+              "$*" != *old-backend* ]]; then
+          if [[ "$scenario" == migration-multiple-heads ]]; then
+            printf 'candidate_head_a\ncandidate_head_b\n'
+          else
+            echo candidate_head
+          fi
         else
-          echo fixture-head
+          echo fixture_head
         fi
+      elif [[ "$*" == *'--entrypoint python'* ]]; then
+        echo migration-path >> "$base/events"
+        [[ "$scenario" != schema-change ]]
       elif [[ "$*" == *'/site'* ]]; then
         echo "publish ${7}" >> "$base/events"
       else
@@ -972,11 +1041,25 @@ PYTHON
             echo "nginx-config-ip=${NGINX_BACKEND_PROXY_IP:-missing}" >> "$base/events"
           elif [[ "$*" == *'--target all --skip-retention' ]]; then
             echo backup >> "$base/events"
-            [[ "$scenario" != backup-fails ]]
+          elif [[ "$*" == *'alembic upgrade head'* ]]; then
+            echo migration >> "$base/events"
+            if [[ "$scenario" == migration-fails ]]; then
+              echo 'synthetic migration error' >&2
+              return 21
+            fi
+            [[ "$scenario" == migration-wrong-revision ]] || touch "$base/migrated"
           else
             return 43
           fi ;;
-        up) echo "activate ${location##*/}" >> "$base/events" ;;
+        up)
+          if [[ "$*" == *" 150 nginx" ]]; then
+            echo "open ingress" >> "$base/events"
+          elif [[ "$*" == *' 150 backend celery_worker celery_beat grafana loki alloy' ]]; then
+            echo "activate private" >> "$base/events"
+          else
+            echo "activate ${location##*/}" >> "$base/events"
+          fi ;;
+        stop) echo "stop ${location##*/}" >> "$base/events" ;;
         ps) echo fixture-container ;;
         *) return 43 ;;
       esac ;;
@@ -994,7 +1077,7 @@ stat() {
 curl() {
   local url="${*: -1}"
   if [[ "$url" == */health/readiness ]]; then
-    if [[ "$scenario" == readiness-fails ]]; then
+    if [[ "$scenario" == readiness-fails || "$scenario" == migration-readiness-fails ]]; then
       echo '{"status":"not_ready","database":"disconnected"}'
     else
       echo '{"status":"ready","database":"connected"}'
@@ -1015,6 +1098,20 @@ curl() {
         'mv -Tf "$state/.current-next" "$state/current"',
         'python3 -c "import os, sys; os.replace(*sys.argv[1:])" '
         '"$state/.current-next" "$state/current"',
+    ).replace(
+        'mv -Tf "$state/.current-rollback" "$state/current"',
+        'python3 -c "import os, sys; os.replace(*sys.argv[1:])" '
+        '"$state/.current-rollback" "$state/current"',
+    ).replace(
+        'mv -T -- "$candidate/DEPLOYED" "$candidate/FAILED_DEPLOYMENT_RECEIPT"',
+        'python3 -c "import os, sys; os.replace(*sys.argv[1:])" '
+        '"$candidate/DEPLOYED" "$candidate/FAILED_DEPLOYMENT_RECEIPT"',
+    )
+    source = source.replace(
+        'mv -T -- "$routine_migration_pending" "$candidate/ROUTINE_MIGRATION"',
+        'if [[ "$scenario" == migration-receipt-failure ]]; then exit 51; fi; '
+        'python3 -c "import os, sys; os.replace(*sys.argv[1:])" '
+        '"$routine_migration_pending" "$candidate/ROUTINE_MIGRATION"',
     )
     script = tmp_path / "entrypoint.sh"
     script.write_text(source)
@@ -1033,7 +1130,13 @@ curl() {
     current = (state / "current").resolve()
     events_path = tmp_path / "events"
     events = events_path.read_text().splitlines() if events_path.exists() else []
-    if scenario in {"success", "manual", "quiesced-generation-change"}:
+    upgraded = scenario == "migration-success"
+    if scenario == "migration-duplicate":
+        assert result.returncode == 0, result.stderr
+        assert "is already deployed" in result.stdout
+        assert not events
+        return
+    if scenario in {"success", "manual", "quiesced-generation-change", "fast-ci"} or upgraded:
         assert result.returncode == 0, result.stderr
         assert current != previous
         assert not (current / "PREDEPLOY.json").exists()
@@ -1051,19 +1154,28 @@ curl() {
                 "frontend_sha256": asset_digest,
                 "service_worker_sha256": asset_digest,
                 "image_digests": {"backend": image, "frontend": image},
-                "schema_heads": ["fixture-head"],
+                "schema_heads": ["candidate_head" if upgraded else "fixture_head"],
             },
             utc(receipt["UTC"], "fixture activation"),
         )
-        assert events[:5] == [
-            "download",
-            "runtime-config",
-            "nginx-network-inspect",
-            "nginx-config-ip=172.29.254.3",
-            "backup",
+        assert "backup" not in events
+        assert events[:4] == [
+            "download", "runtime-config", "nginx-network-inspect", "nginx-config-ip=172.29.254.3",
         ]
-        assert events[5].startswith("activate ")
-        assert events[6].startswith("publish ")
+        assert not (state / "routine-migration.pending").exists()
+        if upgraded:
+            assert events[4:7] == ["migration-path", "stop previous", "migration"]
+            assert events[7] == "activate private"
+            assert events[8].startswith("publish ")
+            assert events[9] == "open ingress"
+            assert receipt["Routine migration"] == "upgraded"
+            assert receipt["Migration from"] == "fixture_head"
+            assert receipt["Migration to"] == "candidate_head"
+            assert (current / "ROUTINE_MIGRATION").is_file()
+        else:
+            assert events[4].startswith("activate ")
+            assert events[5].startswith("publish ")
+            assert receipt["Routine migration"] == "not needed"
     else:
         assert result.returncode != 0, result.stdout
         assert error in result.stderr
@@ -1072,21 +1184,28 @@ curl() {
         if scenario in {"readiness-fails", "asset-mismatch"}:
             assert "activate previous" in events
             assert events[-1] == "publish old-frontend"
-        elif scenario == "backup-fails":
-            assert events == [
-                "download",
-                "runtime-config",
-                "nginx-network-inspect",
-                "nginx-config-ip=172.29.254.3",
-                "backup",
-            ]
-        elif scenario == "schema-change":
-            assert events == [
-                "download",
-                "runtime-config",
-                "nginx-network-inspect",
-                "nginx-config-ip=172.29.254.3",
-            ]
+        elif scenario in {
+            "migration-fails", "migration-wrong-revision", "migration-client-present",
+            "migration-readiness-fails", "migration-receipt-failure", "migration-image-mismatch",
+        }:
+            assert (state / "routine-migration.pending").is_file()
+            assert "stop previous" in events
+            assert events[-1].startswith("stop ")
+            assert "activate previous" not in events
+            assert "backup" not in events
+            if scenario in {"migration-readiness-fails", "migration-receipt-failure"}:
+                assert "open ingress" in events
+            else:
+                assert "open ingress" not in events
+                if scenario != "migration-image-mismatch":
+                    assert not any(event.startswith("activate ") for event in events)
+            assert events.count("migration") == (0 if scenario == "migration-client-present" else 1)
+        elif scenario in {
+            "schema-change", "migration-pg18", "migration-empty", "migration-multiple-heads",
+        }:
+            assert not (state / "routine-migration.pending").exists()
+            assert not any(event.startswith(("activate ", "stop ")) for event in events)
+            assert "migration" not in events
         elif scenario == "nginx-test-ip-exhausted":
             assert events == ["download", "runtime-config", "nginx-network-inspect"]
             assert "backup" not in events
@@ -1104,6 +1223,39 @@ curl() {
             assert events == ["download"]
         else:
             assert not events
+
+
+@pytest.mark.parametrize(
+    ("start", "target", "expected"),
+    [
+        ("rev_one", "rev_two", 0),
+        ("rev_one", "rev_three", 0),
+        ("rev_three", "rev_two", 1),
+        ("not_found", "rev_three", 1),
+    ],
+)
+def test_routine_alembic_path_uses_the_candidate_revision_graph(
+    tmp_path: Path, start: str, target: str, expected: int
+) -> None:
+    versions = tmp_path / "alembic" / "versions"
+    versions.mkdir(parents=True)
+    (tmp_path / "alembic.ini").write_text("[alembic]\nscript_location = alembic\n")
+    previous = None
+    for revision in ("rev_one", "rev_two", "rev_three"):
+        (versions / f"{revision}.py").write_text(
+            f"revision = {revision!r}\ndown_revision = {previous!r}\n"
+        )
+        previous = revision
+    source = SCRIPT.read_text()
+    function = source.index("verify_routine_migration_path()")
+    begin = source.index(" \"$backend_image\" -c '", function)
+    end = source.index("\n' \"$current\" \"$heads\"", begin)
+    python_code = source[begin + len(" \"$backend_image\" -c '"):end]
+    result = subprocess.run(
+        [sys.executable, "-c", python_code, start, target],
+        cwd=tmp_path, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == expected, result.stderr
 
 
 def test_host_release_does_not_depend_on_formal_approval_validator() -> None:
@@ -1154,6 +1306,30 @@ def test_production_workflow_can_read_deployment_history_with_minimal_scope() ->
     assert "contents: read" in permissions
     assert "deployments: read" in permissions
     assert "deployments: write" not in permissions
+
+
+def test_ci_selects_fast_main_and_full_browser_job_sets() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    assert workflow.splitlines().count("# garrison-ci-policy: fast-main-v1") == 1
+    assert "pull_request:" in workflow and "workflow_dispatch:" in workflow
+    matrix = workflow.split("matrix: >-", 1)[1].split("\n    defaults:", 1)[0]
+    assert "fromJSON(github.event_name == 'push'" in matrix
+    payloads = re.findall(r"'(\{\"include\":\[.*?\]\})'", matrix)
+    assert len(payloads) == 2
+    fast, full = [json.loads(payload)["include"] for payload in payloads]
+    assert {job["name"] for job in fast} == {
+        "Backend tests (1/2)",
+        "Backend tests (2/2)",
+    }
+    assert {job["name"] for job in full} == {
+        "Backend tests (1/2)",
+        "Backend tests (2/2)",
+        "Browser regressions (1/2)",
+        "Browser regressions (2/2)",
+    }
+    assert all(job["suite"] == "backend" for job in fast)
+    assert {job["suite"] for job in full} == {"backend", "browser"}
 
 
 @pytest.mark.parametrize(

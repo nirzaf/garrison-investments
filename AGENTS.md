@@ -2,6 +2,9 @@
 
 Use the [documentation map](docs/README.md) to find the guide and code for the task.
 The [root README](README.md) covers features, architecture diagrams, local setup, and verification.
+Garrisons is an internal beta; apply the [beta release policy](docs/BETA_RELEASE_POLICY.md)
+when classifying acceptance work. Optional formal-acceptance artifacts do not
+block unrelated beta iterations.
 Read [system architecture](docs/ARCHITECTURE.md) and [backend architecture](backend/ARCHITECTURE.md) before changing cross-cutting flows.
 Check the linked code, migrations, or workflows before updating a behavior claim. Keep changes in
 the guide that owns the topic, link to it from related pages, and verify relative Markdown links and anchors after editing docs.
@@ -19,13 +22,13 @@ On every release iteration, review the [CI and deployment timings](docs/OPERATIO
 | CLI administration | [CLI administration](docs/CLI_ADMINISTRATION.md) | [garrisonctl](backend/scripts/garrisonctl.py) |
 | Logging and monitoring | [Logging and remote CLI](docs/LOGGING_AND_REMOTE_CLI.md) | [Log routes](backend/app/api/v1/logs.py), [observability config](observability/) |
 | Production CD and rollback | [Operations and deployment](docs/OPERATIONS_AND_DEPLOYMENT.md) | [Deploy workflow](.github/workflows/deploy.yml), [host release script](deploy/hostinger-release.sh), [Prod Compose](docker-compose.prod.yml) |
-| Post-release formal acceptance | [Post-release actions](docs/POST_RELEASE_ACTIONS.md) | [Release contract validator](backend/scripts/release_contract.py), [launch evidence](backend/scripts/launch_evidence.py), [templates](docs/templates/release-closure/) |
+| Optional post-release acceptance | [Post-release actions](docs/POST_RELEASE_ACTIONS.md) | [Beta release policy](docs/BETA_RELEASE_POLICY.md), [launch evidence](backend/scripts/launch_evidence.py), [templates](docs/templates/release-closure/) |
 
 ## Engineering and safety guardrails
 
 - **Authorization and transaction boundaries:** Route dependencies enforce baseline permissions; domain services under [backend/app/services/](backend/app/services/) enforce project scoping, record ownership, state transitions, and transactional consistency.
 - **API contract synchronization:** Whenever FastAPI routes ([backend/app/api/v1/](backend/app/api/v1/)) or Pydantic schemas ([backend/app/schemas/](backend/app/schemas/)) change, regenerate both [docs/openapi.json](docs/openapi.json) (`cd backend && .venv/bin/python scripts/export_openapi.py`) and [frontend/src/api/schema.d.ts](frontend/src/api/schema.d.ts) (`cd frontend && npm run api:types`).
-- **Database migrations and stateful changes:** Keep models, Alembic revisions, and [schema docs](docs/schema/README.md) in sync. Pending migrations and changes to PostgreSQL, Redis, S3/MinIO, networks, or volumes are blocked by automated CD and require the [production maintenance procedure](docs/OPERATIONS_AND_DEPLOYMENT.md#production-maintenance).
+- **Database migrations and stateful changes:** Keep models, Alembic revisions, and [schema docs](docs/schema/README.md) in sync. Until the reviewed launcher is installed and verified, treat the [routine migration path](docs/OPERATIONS_AND_DEPLOYMENT.md#fast-beta-release-path-prepared-not-yet-verified-live) as local-only and use the installed launcher's existing restrictions. PostgreSQL major upgrades, rollback-generation changes, and other stateful changes to PostgreSQL, Redis, S3/MinIO, networks, or volumes still require the [production maintenance procedure](docs/OPERATIONS_AND_DEPLOYMENT.md#production-maintenance).
 - **Security and audit retention:** Keep `LOG_PURGE_ENABLED=false` (retain-only audit mode). Never commit secrets, signing keys, TLS certificates, or non-sanitized evidence; commit only unsigned templates under [docs/templates/release-closure/](docs/templates/release-closure/).
 - **Production CD vs. formal acceptance:** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) and [deploy/hostinger-release.sh](deploy/hostinger-release.sh) execute technical-only safety checks after passing CI on `main` and record `Status: Deployed — Formal Acceptance Pending`. The six governance workstreams (`D-27` through `D-33`) and strict closure scripts ([release_contract.py](backend/scripts/release_contract.py), [launch_evidence.py](backend/scripts/launch_evidence.py)) are optional post-release acceptance tooling, not deployment prerequisites. Staging is retired ([STAGING_DEPLOYMENT.md](STAGING_DEPLOYMENT.md)).
 

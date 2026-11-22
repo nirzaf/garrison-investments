@@ -1,5 +1,7 @@
 # Documentation map
 
+**Lifecycle: internal beta.** Follow the [beta release policy](BETA_RELEASE_POLICY.md): fast iteration is expected, optional formal-acceptance paperwork is not a universal release blocker, and technical security/data-integrity safeguards remain in force.
+
 Start with the [project README](../README.md) for implemented features, roles, runtime diagrams, setup, and verification. Use this page to find the detailed guide and the code that defines each behavior.
 
 ## Find the right guide
@@ -7,8 +9,9 @@ Start with the [project README](../README.md) for implemented features, roles, r
 | Question | Guide | Source to verify |
 | --- | --- | --- |
 | What does the portal implement? | [Features and roles](../README.md#implemented-features) | [Frontend routes](../frontend/src/App.tsx) and [API routers](../backend/app/api/v1/) |
-| Which features are in the release scope? | [Scope inventory (`launch_readiness_only`, `G-01` excluded)](ACCEPTED_SCOPE.md) | [Launch readiness route](../frontend/src/pages/delivery/DeliveryPlanPage.tsx) and [post-release backlog](POST_RELEASE_ACTIONS.md) |
-| What post-release governance items remain open? | [Post-release actions (`D-27` through `D-33`)](POST_RELEASE_ACTIONS.md) | [Operations runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) and [release templates](templates/release-closure/README.md) |
+| What release checks apply to the internal beta? | [Beta release policy](BETA_RELEASE_POLICY.md) | [CI workflow](../.github/workflows/ci.yml) and [operations runbook](OPERATIONS_AND_DEPLOYMENT.md) |
+| Which features are in the working release scope? | [Scope inventory (`launch_readiness_only`, `G-01` excluded)](ACCEPTED_SCOPE.md) | [Launch readiness route](../frontend/src/pages/delivery/DeliveryPlanPage.tsx) and [optional post-release follow-up](POST_RELEASE_ACTIONS.md) |
+| What optional post-release acceptance items are tracked? | [Post-release actions (`D-27` through `D-33`)](POST_RELEASE_ACTIONS.md) | [Operations runbook](OPERATIONS_AND_DEPLOYMENT.md#5-launch-evidence-capture--sign-off) and [optional evidence templates](templates/release-closure/README.md) |
 | How do a request, a background task, and a protected file move through the system? | [System architecture](ARCHITECTURE.md) and [backend guide](../backend/ARCHITECTURE.md) | [FastAPI entry point](../backend/app/main.py), [Celery configuration](../backend/app/tasks/celery_app.py), [production Compose](../docker-compose.prod.yml), and [Nginx](../nginx/) |
 | Who can read, submit, or approve a record? | [Roles and permissions](ROLES_AND_PERMISSIONS.md) | [Permission definitions](../backend/app/utils/permissions.py), route dependencies, and [domain services](../backend/app/services/) |
 | What source matrix and non-source role decisions are being applied? | [Business role decisions](BUSINESS-ROLE-DECISIONS.md) | [Independent source fixture](../backend/tests/business_role_matrix.json) and the policy tests |

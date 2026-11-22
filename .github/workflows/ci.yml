@@ -1,5 +1,7 @@
 name: CI
 
+# garrison-ci-policy: fast-main-v1
+
 on:
   pull_request:
   workflow_dispatch:
@@ -103,26 +105,13 @@ jobs:
       CI_TEST_S3_CONTAINER: garrison-ci-s3-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
-      # Use the three online isolated CI runners; keep production out of this pool.
+      # Allow up to three isolated CI jobs; GitHub queues when fewer runners are online.
+      # Keep production out of this pool.
       max-parallel: 3
-      matrix:
-        include:
-          - suite: backend
-            shard: 1
-            name: Backend tests (1/2)
-            database: garrison_portal
-          - suite: backend
-            shard: 2
-            name: Backend tests (2/2)
-            database: garrison_portal
-          - suite: browser
-            shard: 1
-            name: Browser regressions (1/2)
-            database: garrison_browser_test
-          - suite: browser
-            shard: 2
-            name: Browser regressions (2/2)
-            database: garrison_browser_test
+      matrix: >-
+        ${{ fromJSON(github.event_name == 'push'
+          && '{"include":[{"suite":"backend","shard":1,"name":"Backend tests (1/2)","database":"garrison_portal"},{"suite":"backend","shard":2,"name":"Backend tests (2/2)","database":"garrison_portal"}]}'
+          || '{"include":[{"suite":"backend","shard":1,"name":"Backend tests (1/2)","database":"garrison_portal"},{"suite":"backend","shard":2,"name":"Backend tests (2/2)","database":"garrison_portal"},{"suite":"browser","shard":1,"name":"Browser regressions (1/2)","database":"garrison_browser_test"},{"suite":"browser","shard":2,"name":"Browser regressions (2/2)","database":"garrison_browser_test"}]}') }}
     defaults:
       run:
         working-directory: backend

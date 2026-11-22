@@ -1,17 +1,23 @@
-# Release Closure and Formal Acceptance
+# Optional Post-Release Acceptance and Evidence Ledger
 
-Production deployment and formal acceptance are separate states. Technical production deployments run automatically from `main` after passing CI and host safety checks and record `Status: Deployed — Formal Acceptance Pending`. This repository has a deployed production baseline, but deployment, a passing CI run, and a healthy readiness endpoint do not by themselves satisfy the attached formal acceptance specification. Until the records and evidence below are present, independently reviewed, and accepted by the optional strict validator ([release_contract.py](../backend/scripts/release_contract.py) / [launch_evidence.py](../backend/scripts/launch_evidence.py)), report status as **Deployed — Formal Acceptance Pending**.
+This is an optional follow-up ledger for the internal beta, not a release authorization checklist. Routine beta deployments rely on exact-candidate CI and the technical host checks in the [operations runbook](OPERATIONS_AND_DEPLOYMENT.md) and [beta release policy](BETA_RELEASE_POLICY.md). A host receipt may retain the literal status `Deployed — Formal Acceptance Pending`; that status records that this optional ledger was not completed and does not block further beta iterations.
+
+Use the decision records and strict validators below only when the business owner requests a formal acceptance exercise. A passing deployment does not imply business sign-off, and an open optional acceptance item does not imply that the technical release failed.
+
+The release and production facts in this ledger are point-in-time snapshots. For current deployment status, use the active `DEPLOYED` receipt and the dated snapshot in the [operations runbook](OPERATIONS_AND_DEPLOYMENT.md#current-beta-release-snapshot). Preserve older evidence as historical; do not rewrite it to match a later release.
 
 ## Confirmed scope and operating boundaries
 
 - **Product scope:** `launch_readiness_only`; logistics scheduling, dispatch, fleet management, and delivery stock posting are not included.
 - **Excluded requirement:** `G-01` remains excluded.
 - **Audit retention:** Owner direction selects `retain_only` for this release. Keep destructive audit deletion disabled. The signed policy, class definitions, legacy inventory, and runtime proof still need to be recorded; no purge is authorized by this direction.
-- **UAT platform scope:** Desktop Chrome only, per the user's latest instruction. Other browsers and physical iOS/Android targets are out of scope. This does not waive the required desktop scenarios, role coverage, degraded-network checks, or QA sign-off.
+- **UAT platform scope:** Desktop Chrome is the routine automated browser target. Other browsers and physical iOS/Android targets are not universal release gates. Run additional scenarios when the change or a requested acceptance exercise calls for them.
 - **Environment:** Production is the acceptance target. Staging has been abandoned and is not part of the acceptance evidence.
 - **Data and personal evidence:** Keep real approvals, assignment exports, business samples, production receipts, and customer evidence in the approved restricted evidence store. Commit only blank templates and sanitized documentation.
 
-## Current HR recruitment release reconciliation
+<a id="current-hr-recruitment-release-reconciliation"></a>
+
+## Historical HR recruitment release snapshot — 2026-11-15
 
 As of 2026-11-15, `main` and `origin/main` point to
 `f322d81059a679b982e72527e212e735b4ccc5de`. The commit contains HR-008/HR-010
@@ -34,7 +40,7 @@ production Alembic query, so the current live SHA/schema are **last verified as*
 `be61f5b` / `202605310013`, not independently re-read. Do not describe
 `202605310014` as deployed or accepted. Its production maintenance and post-
 deployment verification remain open; authenticated HR UAT and business
-acceptance are separate release gates.
+acceptance are separate from technical deployment and are optional beta follow-up.
 
 The documentation inventory, per-file disposition, and source-backed findings
 are recorded in the local [documentation audit](DOCUMENTATION_AUDIT.md). It
@@ -42,7 +48,9 @@ covers the 59 Markdown files tracked at baseline `f322d81`; the audit artifact
 itself is additional. This is a source/documentation review, not production
 verification, release acceptance, or business sign-off.
 
-## Six owner decisions
+<a id="six-owner-decisions"></a>
+
+## Optional owner decision register
 
 | ID | Required owner | Required decision and evidence | Current closure state |
 | --- | --- | --- | --- |
@@ -55,9 +63,11 @@ verification, release acceptance, or business sign-off.
 
 Every decision record needs an authenticated approval artifact bound to the canonical digest of its decision JSON (excluding `approval_ref`). An independent reviewer must verify the approval provenance. A chat message, name in a JSON field, or GitHub actor does not replace the signed artifact or independent verification.
 
-## Operational and final acceptance gates
+<a id="operational-and-final-acceptance-gates"></a>
 
-The decision signatures do not substitute for execution evidence. The closure bundle still needs, at minimum:
+## Optional operational and final acceptance checklist
+
+When a formal acceptance exercise is requested, decision signatures do not substitute for execution evidence. The closure bundle for that exercise should include:
 
 - Read-only Hostinger verification on 2026-11-15 calculated the production configuration digest `e8e5a2e4096f3053037d1e9d0add587d704435fd0ac5dfaa4cec2dac51be706a` for live SHA `1399710589f8f2d82bac2e79326bc9b88bbb888d` from 20 protected files. This is a measured value for that release. Recompute the profile for the frozen acceptance candidate and obtain independent approval.
 

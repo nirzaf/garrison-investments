@@ -77,6 +77,9 @@ mode=$(stat -c '%a' "$state/production.env")
 
 exec 9>"$state/deploy.lock"
 flock -w 60 9 || die 'Another production deployment is running.'
+routine_migration_pending=$state/routine-migration.pending
+[[ ! -e "$routine_migration_pending" && ! -L "$routine_migration_pending" ]] ||
+  die 'An unfinished routine database migration requires operator recovery before another release.'
 
 assert_forward_maintenance_clear() {
   local marker=$state/forward097.attempt reconciled=$state/forward097.reconciled.json
@@ -564,7 +567,7 @@ if json.load(sys.stdin)["object"]["sha"] != sys.argv[1]:
 }
 
 verify_ci() {
-  local attempt checked_run=${1:-$run_id} checked_sha=${2:-$sha}
+  local attempt jobs ci_policy checked_run=${1:-$run_id} checked_sha=${2:-$sha}
   attempt=$(github "actions/runs/$checked_run" | python3 -c '
 import json, sys
 
@@ -584,19 +587,54 @@ if not (
     sys.exit("The candidate does not match a successful CI push to main.")
 print(attempt)
 ' "$checked_run" "$repository" "$checked_sha") || return
-  github "actions/runs/$checked_run/attempts/$attempt/jobs?per_page=100" | python3 -c '
+  jobs=$(github "actions/runs/$checked_run/attempts/$attempt/jobs?per_page=100") || return
+  # Derive the required job set from the exact tested workflow, not the job
+  # count returned by Actions. Historical commits without the marker retain
+  # the seven-job contract; an opted-in fast workflow must produce exactly its
+  # five required jobs.
+  ci_policy=$(github "contents/.github/workflows/ci.yml?ref=$checked_sha" | python3 -c '
+import base64, json, sys
+
+content = json.load(sys.stdin)
+if content.get("path") != ".github/workflows/ci.yml" or content.get("encoding") != "base64":
+    sys.exit("The exact candidate CI policy could not be verified.")
+try:
+    encoded = content["content"]
+    if not isinstance(encoded, str):
+        raise TypeError("workflow content is not text")
+    normalized = "".join(encoded.split())
+    workflow = base64.b64decode(normalized, validate=True).decode("utf-8")
+except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+    sys.exit("The exact candidate CI policy could not be verified.")
+markers = [
+    line.strip()
+    for line in workflow.splitlines()
+    if line.strip().startswith("# garrison-ci-policy:")
+]
+if len(markers) > 1:
+    sys.exit("The exact candidate CI policy is ambiguous.")
+if not markers:
+    print("full")
+elif markers[0] == "# garrison-ci-policy: fast-main-v1":
+    print("fast")
+else:
+    sys.exit("The exact candidate CI policy is not recognized.")
+') || return
+  python3 -c '
 import json, sys
 
 required = {
     "Backend lint and types", "Frontend lint, types, tests and build",
     "Compose files are valid", "Backend tests (1/2)", "Backend tests (2/2)",
-    "Browser regressions (1/2)", "Browser regressions (2/2)",
 }
+if sys.argv[4] == "full":
+    required.update({"Browser regressions (1/2)", "Browser regressions (2/2)"})
 response = json.load(sys.stdin)
 jobs = response["jobs"]
 names = [job.get("name") for job in jobs if job.get("name") in required]
 if (
     response["total_count"] != len(jobs)
+    or len(jobs) != len(required)
     or set(names) != required
     or len(names) != len(required)
     or any(
@@ -609,7 +647,7 @@ if (
     )
 ):
     sys.exit("The successful CI attempt is missing a passed required job.")
-' "$checked_run" "$checked_sha" "$attempt" || return
+' "$checked_run" "$checked_sha" "$attempt" "$ci_policy" <<< "$jobs" || return
   printf '%s\n' "$attempt"
 }
 
@@ -740,7 +778,7 @@ fi
 phase_started=$SECONDS
 candidate=$(mktemp -d "$base/releases/$sha.XXXXXX")
 github "tarball/$sha" | (umask 022; tar -xzf - --strip-components=1 --no-same-owner --no-same-permissions -C "$candidate")
-for reserved in .env .images.env .incident-nginx-override.yml SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED READINESS.json FORWARD_NGINX.conf FORWARD_COMPOSE.json; do
+for reserved in .env .images.env .incident-nginx-override.yml SOURCE_COMMIT DEPLOYED ACTIVATION_FAILED FAILED_DEPLOYMENT_RECEIPT ROUTINE_MIGRATION READINESS.json FORWARD_NGINX.conf FORWARD_COMPOSE.json; do
   [[ ! -e "$candidate/$reserved" && ! -L "$candidate/$reserved" ]] ||
     die 'The source archive contains a reserved release file.'
 done
@@ -1271,9 +1309,37 @@ report_duration 'Image preparation and configuration checks' "$phase_started"
 
 backend_id=$(docker image inspect --format '{{.Id}}' "$backend_image")
 frontend_id=$(docker image inspect --format '{{.Id}}' "$frontend_image")
+read_live_revision() {
+  docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' |
+    sort
+}
+
+verify_routine_migration_path() {
+  docker run --rm --network none --entrypoint python "$backend_image" -c '
+import sys
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+start, target = sys.argv[1:]
+scripts = ScriptDirectory.from_config(Config("alembic.ini"))
+try:
+    pending = list(scripts.iterate_revisions(target, start, implicit_base=False))
+except Exception as exc:
+    raise SystemExit("No valid forward Alembic path from the live revision.") from exc
+if not pending or pending[0].revision != target:
+    raise SystemExit("No valid forward Alembic path from the live revision.")
+' "$current" "$heads"
+}
+
 heads=$(image_heads "$backend_image")
-current=$(docker exec "$project-postgres-1" sh -ec \
-  'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"' | sort)
+current=$(read_live_revision)
+routine_migration_required=0
+routine_migration_started=0
+routine_migration_result=not-needed
+routine_migration_seconds=0
+routine_migration_from=$current
 if (( forward097 )); then
   [[ "$current" == 202605310093 && "$heads" == 202605310097 && "$runtime_changed" == 1 ]] ||
     die 'Forward exception requires exact093 to097 and candidate runtime.'
@@ -1328,8 +1394,20 @@ PYLIVE
     'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND backend_type = '\''client backend'\''"')
   [[ "$remaining_clients" == 0 ]] || die 'PostgreSQL 19 maintenance requires all application database clients drained.'
 else
-  [[ -n "$heads" && "$heads" == "$current" ]] ||
-    die 'Pending database migrations require the reviewed maintenance procedure.'
+  [[ -n "$heads" && -n "$current" ]] || die 'Cannot determine the candidate or live database revision.'
+  if [[ "$heads" != "$current" ]]; then
+    [[ "$heads" =~ ^[A-Za-z0-9_]{1,32}$ && "$current" =~ ^[A-Za-z0-9_]{1,32}$ ]] ||
+      die 'Routine migration requires exactly one live revision and one candidate head.'
+    (( runtime_changed )) || die 'Pending database migrations require a built candidate backend image.'
+    [[ "$generation" == "$previous_generation" ]] ||
+      die 'A rollback generation change still requires the reviewed maintenance procedure.'
+    server_version_num=$(docker exec "$project-postgres-1" sh -ec \
+      'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SHOW server_version_num"')
+    [[ "$server_version_num" =~ ^19[0-9]{4}$ ]] ||
+      die 'Routine migration requires verified PostgreSQL 19; use the major-version maintenance procedure.'
+    verify_routine_migration_path || die 'Pending database migrations have no valid forward Alembic path.'
+    routine_migration_required=1
+  fi
 fi
 
 verify_main
@@ -1377,8 +1455,17 @@ publish_frontend() {
 }
 
 apply_runtime() {
+  local scope=${2:-all}
+  local -a services
+  case "$scope" in
+    all) services=(backend celery_worker celery_beat grafana loki alloy nginx) ;;
+    private) services=(backend celery_worker celery_beat grafana loki alloy) ;;
+    ingress) services=(nginx) ;;
+    *) return 1 ;;
+  esac
   compose "$1" up --detach --no-build --pull never --no-deps --wait --wait-timeout 150 \
-    backend celery_worker celery_beat grafana loki alloy nginx || return
+    "${services[@]}" || return
+  [[ "$scope" != private ]] || return 0
   local actual_nginx_image nginx_version
   actual_nginx_image=$(docker inspect --format '{{.Config.Image}}' "$project-nginx-1") || return
   [[ "$actual_nginx_image" == "$patched_nginx_image" ]] || return 1
@@ -1412,9 +1499,25 @@ fi
 
 rollback() {
   local result=$?
-  if (( result && (runtime_attempted || frontend_attempted) )); then
+  if (( result && (runtime_attempted || frontend_attempted || ${routine_migration_started:-0}) )); then
     set +e
-    if (( forward097 )); then
+    if (( ${routine_migration_started:-0} )); then
+      printf 'Routine migration or activation failed. Keep ingress and writers stopped; recover forward.\n' >&2
+      printf 'Commit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nPhase: %s\nExit: %s\n' \
+        "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$routine_migration_result" "$result" \
+        > "$candidate/ACTIVATION_FAILED"
+      compose "$candidate" stop nginx celery_beat celery_worker backend ||
+        printf 'Automatic containment failed. Stop portal ingress and writers from the host.\n' >&2
+      if (( pointer_advanced )); then
+        ln -sfn "$previous" "$state/.current-rollback" &&
+          mv -Tf "$state/.current-rollback" "$state/current" ||
+          printf 'Release pointer cleanup failed. Keep writers stopped and recover forward.\n' >&2
+      fi
+      if [[ -f "$candidate/DEPLOYED" ]]; then
+        mv -T -- "$candidate/DEPLOYED" "$candidate/FAILED_DEPLOYMENT_RECEIPT" ||
+          printf 'Incomplete receipt cleanup failed. Do not treat it as a success.\n' >&2
+      fi
+    elif (( forward097 )); then
       forward_contain || printf 'Forward containment incomplete; operator intervention required.\n' >&2
     elif (( rollback_compatible )); then
       printf 'Activation failed. Restoring the previous compatible application release.\n' >&2
@@ -1432,7 +1535,7 @@ rollback() {
       compose "$candidate" stop nginx celery_beat celery_worker backend ||
         printf 'Automatic containment failed. Stop portal ingress and writers from the host.\n' >&2
     fi
-    if (( pointer_advanced && rollback_compatible )); then
+    if (( pointer_advanced && rollback_compatible && ! ${routine_migration_started:-0} )); then
       ln -sfn "$previous" "$state/.current-rollback" &&
         mv -Tf "$state/.current-rollback" "$state/current" ||
         printf 'Release pointer rollback failed. Keep CD disabled and reconcile the host state.\n' >&2
@@ -1485,12 +1588,53 @@ Failure evidence SHA-256: $postgres19_retry_evidence_sha
 EOF
   fi
   chmod 0600 "$candidate/RECOVERY_EXCEPTION"
-else
+elif (( incident_replacement )); then
   compose "$candidate" run --rm --no-deps --pull never -T backend \
     python -m scripts.backup --target all --skip-retention
   report_duration 'Pre-activation backup' "$phase_started"
+elif (( routine_migration_required )); then
+  verify_main
+  [[ "$(read_live_revision)" == "$routine_migration_from" ]] ||
+    die 'Live revision changed after migration preflight.'
+  # Install a recovery hold before stopping any writer; the deploy lock serializes
+  # this with verification and activation. Never resume the old app on an unknown schema.
+  ( set -o noclobber
+    printf 'Commit: %s\nCI run: %s\nCI attempt: %s\nDeploy run: %s\nDeploy attempt: %s\nFrom: %s\nTo: %s\nUTC: %s\n' \
+      "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" \
+      "$routine_migration_from" "$heads" "$(date -u +%FT%TZ)" > "$routine_migration_pending"
+  ) || die 'Could not record the routine migration recovery hold.'
+  python3 - "$routine_migration_pending" <<'PYHOLD'
+import os
+import sys
+from pathlib import Path
+
+hold = Path(sys.argv[1])
+for path in (hold, hold.parent):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+PYHOLD
+  routine_migration_started=1
+  routine_migration_result=quiescing
+  rollback_compatible=0
+  compose "$previous" stop nginx celery_beat celery_worker backend
+  remaining_clients=$(docker exec "$project-postgres-1" sh -ec \
+    'psql -XAt -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = '\''client backend'\''"')
+  [[ "$remaining_clients" == 0 ]] || die 'Routine migration requires all application database clients drained.'
+  routine_migration_result=upgrading
+  migration_started_at=$SECONDS
+  compose "$candidate" run --rm --no-deps --pull never -T backend alembic upgrade head
+  current=$(read_live_revision)
+  [[ "$current" == "$heads" ]] || die 'Routine migration did not reach the candidate head.'
+  routine_migration_seconds=$((SECONDS - migration_started_at))
+  report_duration 'Routine Alembic upgrade and schema verification' "$migration_started_at"
+  routine_migration_result=activation
 fi
-verify_main
+# Once an upgrade ran, recover forward using the verified candidate even if a newer
+# push arrived. The lock precludes a newer release having activated in the meantime.
+if (( ! routine_migration_started )); then verify_main; fi
 unset token
 phase_started=$SECONDS
 if (( pinned )); then
@@ -1501,7 +1645,11 @@ if (( postgres19_maintenance )); then
 fi
 if (( runtime_changed && ! forward097 )); then
   runtime_attempted=1
-  apply_runtime "$candidate"
+  if (( routine_migration_started )); then
+    apply_runtime "$candidate" private
+  else
+    apply_runtime "$candidate"
+  fi
   if (( incident_replacement )) && [[ "$previous_nginx_image" != "$patched_nginx_image" ]] &&
      docker inspect "$previous_nginx_id" >/dev/null 2>&1; then
     die 'The previous Nginx container is still present after patched proxy activation.'
@@ -1521,6 +1669,11 @@ for service in $verification_services; do
   [[ -n "$container" && "$(docker inspect --format '{{.Image}}' "$container")" == "$backend_id" ]] ||
     die "The active $service image differs from the candidate backend build."
 done
+if (( routine_migration_started )); then
+  # Only reopen ingress after the candidate bundle and all application images
+  # match. Public probes below then prove what is served through that ingress.
+  apply_runtime "$candidate" ingress
+fi
 actual=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal/login" | hash)
 [[ "$expected" == "$actual" ]] || die 'The served sign-in page differs from the release image.'
 actual_asset=$(curl --fail --silent --show-error --retry 4 --max-time 12 "$portal$asset" | hash)
@@ -1540,6 +1693,14 @@ printf 'Status: Deployed — Formal Acceptance Pending\nCommit: %s\nCI run: %s\n
   "$sha" "$run_id" "$ci_attempt" "$deploy_run_id" "$deploy_attempt" "$(date -u +%FT%TZ)" \
   "$asset" "$expected_asset" "$expected_worker" \
   "$backend_id" "$frontend_id" "$(tr '\n' ' ' <<< "$current")" > "$candidate/DEPLOYED"
+if [[ "${release_mode:-}" == technical-checks-v1 ]]; then
+  if (( routine_migration_started )); then
+    printf 'Routine migration: upgraded\nMigration from: %s\nMigration to: %s\nMigration seconds: %s\n' \
+      "$routine_migration_from" "$current" "$routine_migration_seconds" >> "$candidate/DEPLOYED"
+  else
+    printf 'Routine migration: not needed\n' >> "$candidate/DEPLOYED"
+  fi
+fi
 if (( postgres19_maintenance )); then
   cat >> "$candidate/DEPLOYED" <<EOF
 PostgreSQL image: $postgres19_image
@@ -1590,6 +1751,9 @@ if (( incident_replacement )); then
     --sha "$sha" --ci-run "$run_id" --ci-attempt "$ci_attempt" \
     --main-sha "$expected_main" --main-ci-run "$main_ci_run_id" --main-ci-attempt "$main_ci_attempt" \
     --deploy-run "$deploy_run_id" --deploy-attempt "$deploy_attempt"
+fi
+if (( routine_migration_started )); then
+  mv -T -- "$routine_migration_pending" "$candidate/ROUTINE_MIGRATION"
 fi
 trap - EXIT INT TERM
 printf '\nDeployed %s from CI run %s. Frontend asset %s verified.\n' "$sha" "$run_id" "$asset"

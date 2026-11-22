@@ -7,7 +7,11 @@
 This is a source and documentation review. It is not a production inspection,
 runtime test, deployment approval, business decision, or formal acceptance
 record. The [post-release ledger](POST_RELEASE_ACTIONS.md) remains the only
-release-status ledger.
+release-status ledger for the 2026-11-15 snapshot. The audit's historical
+"release gate" classifications describe that baseline; use the current
+[beta release policy](BETA_RELEASE_POLICY.md) and active receipt for present
+decisions. Do not update this historical audit to imply that it inspected a
+later release.
 
 ## Method and limits
 
@@ -60,9 +64,9 @@ records disposition, not a claim that runtime behavior was exercised.
 
 | File | Owner/use and lifecycle | Review depth | Source pointer | Audit disposition / change |
 | --- | --- | --- | --- | --- |
-| [.kilo/agents/architect.md](../.kilo/agents/architect.md) | Kilo architect agent; Instruction | Classification-only; content not source-checked | Agent configuration | Retain; no change. |
-| [.kilo/agents/test-engineer.md](../.kilo/agents/test-engineer.md) | Kilo test-engineer agent; Instruction | Classification-only; content not source-checked | Agent configuration | Retain; no change. |
-| [.trae/skills/graphify/SKILL.md](../.trae/skills/graphify/SKILL.md) | Trae Graphify tool; Instruction | Classification-only; content not source-checked | Graphify skill definition | Retain; no change. |
+| `.kilo/agents/architect.md` (local-only path) | Kilo architect agent; Instruction | Classification-only; content not source-checked | Agent configuration | Retain; no change. |
+| `.kilo/agents/test-engineer.md` (local-only path) | Kilo test-engineer agent; Instruction | Classification-only; content not source-checked | Agent configuration | Retain; no change. |
+| `.trae/skills/graphify/SKILL.md` (local-only path) | Trae Graphify tool; Instruction | Classification-only; content not source-checked | Graphify skill definition | Retain; no change. |
 | [AGENTS.md](../AGENTS.md) | Repository maintainers and agents; Current instruction | Instruction content reviewed; no executable behavior inferred | Source maps, CI/deploy workflows, and runbooks linked in the file | Retain; no change. |
 
 ### Product, role, and operations guides
