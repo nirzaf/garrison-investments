@@ -175,6 +175,64 @@ def test_incident_evidence_hashes_and_timestamps_are_read_only(tmp_path, monkeyp
     assert {name: (state / name).read_bytes() for name in historical} == before
 
 
+def test_runtime_snapshot_accepts_actual_celery_beat_compose_identity(monkeypatch):
+    backend_ref = f"garrison-portal-release-backend:{REPLACEMENT_SHA}"
+    frontend_ref = f"garrison-portal-release-frontend:{REPLACEMENT_SHA}"
+    images = (
+        f"GARRISON_BACKEND_IMAGE={backend_ref}\n"
+        f"GARRISON_FRONTEND_IMAGE={frontend_ref}\n"
+    ).encode()
+    services = {
+        "garrison-portal-backend-1": "backend",
+        "garrison-portal-celery_worker-1": "celery_worker",
+        "garrison-portal-celery_beat-1": "celery_beat",
+        "garrison-portal-nginx-1": "nginx",
+    }
+
+    monkeypatch.setattr(module, "_secure_read", lambda *_args: images)
+    monkeypatch.setattr(
+        module,
+        "_container_snapshot",
+        lambda name: {
+            "service": services[name],
+            "image_id": BACKEND_ID,
+            "image_ref": backend_ref,
+            "healthy": "healthy",
+            "started_at": "2026-11-22T03:00:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "_run",
+        lambda args, **_kwargs: (
+            BACKEND_ID if backend_ref in args else FRONTEND_ID
+        ).encode(),
+    )
+    monkeypatch.setattr(module, "_schema_head", lambda: module.SCHEMA)
+    monkeypatch.setattr(module, "_worker_ping", lambda _name: 1)
+    monkeypatch.setattr(module, "_beat_started", lambda _container, _name: True)
+    responses = {
+        f"{module.PORTAL}/health/readiness": b'{"status":"ready","database":"connected"}',
+        f"{module.PORTAL}/login": b"login",
+        f"{module.PORTAL}/assets/index-test_1.js": b"asset",
+        f"{module.PORTAL}/sw.js": b"worker",
+    }
+    monkeypatch.setattr(module, "_http", lambda url: responses[url])
+
+    fields = {
+        "Backend image": BACKEND_ID,
+        "Frontend image": FRONTEND_ID,
+        "Frontend asset": "/assets/index-test_1.js",
+        "Asset SHA-256": hashlib.sha256(b"asset").hexdigest(),
+        "Service worker SHA-256": hashlib.sha256(b"worker").hexdigest(),
+    }
+
+    result = module._runtime_snapshot(Path("/unused"), fields, REPLACEMENT_SHA)
+
+    assert result["services"]["beat"]["service"] == "celery_beat"
+    assert result["beat_started"] is True
+
+
 def test_predecessor_is_only_classified_unattested_without_receipt(tmp_path, monkeypatch):
     _, releases, _, _, _ = _make_fixture(tmp_path, monkeypatch)
     predecessor = releases / module.UNATTESTED_SHA

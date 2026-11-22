@@ -441,10 +441,13 @@ def _runtime_snapshot(
             raise ReconciliationError(f"Active {label} image is not the verified replacement image")
     if backend["healthy"] != "healthy":
         raise ReconciliationError("Backend health check is not healthy")
+    expected_services = {
+        "worker": "celery_worker",
+        "beat": "celery_beat",
+        "nginx": "nginx",
+    }
     for label, container in (("worker", worker), ("beat", beat), ("nginx", nginx)):
-        if container["service"] != (
-            "celery_worker" if label == "worker" else label if label != "nginx" else "nginx"
-        ):
+        if container["service"] != expected_services[label]:
             raise ReconciliationError(f"Unexpected Compose service identity for {label}")
 
     schema = _schema_head()

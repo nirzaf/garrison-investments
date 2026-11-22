@@ -101,7 +101,7 @@ for path in (base.parent.parent.parent,base.parent.parent,base.parent,base):
 path=pathlib.Path(sys.argv[1]);info=path.lstat()
 if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022:
  raise SystemExit('Forward reconciliation helper is not root-controlled')
-if hashlib.sha256(path.read_bytes()).hexdigest()!='3ac4db8f436b77f4b1208af24b714e05f0c2b0350f0d63e07447e65069b3c98c':
+if hashlib.sha256(path.read_bytes()).hexdigest()!='d800ea1543999f99bc70fc31a1c0032ee0b52e0381b74ac0597f96f104f9c9ea':
  raise SystemExit('Forward reconciliation helper bytes differ from the reviewed entrypoint')
 PYRECONCILE
 }
