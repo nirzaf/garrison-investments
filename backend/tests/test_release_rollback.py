@@ -1066,6 +1066,16 @@ def test_production_workflow_triggers_without_predeploy_gate_variable() -> None:
     assert "sudo -n /usr/local/sbin/garrison-deploy" in deploy_source
 
 
+def test_production_workflow_can_read_deployment_history_with_minimal_scope() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
+    permissions = deploy_source.split("permissions:\n", 1)[1].split("\n\n", 1)[0]
+    assert "actions: read" in permissions
+    assert "contents: read" in permissions
+    assert "deployments: read" in permissions
+    assert "deployments: write" not in permissions
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_error"),
     [
