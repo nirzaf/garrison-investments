@@ -1,7 +1,7 @@
 import re
 import secrets
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from hashlib import sha256
 from typing import Any
 from uuid import UUID
@@ -9,53 +9,13 @@ from uuid import UUID
 import bcrypt
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import JWTError, jwt
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.utils.exceptions import AppException, ErrorDetail
 
-# Environments where the embedded development key pair must never be used.
-HARDENED_ENVS = frozenset({"production", "staging"})
-
-_dev_private_pem = """-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDAthkEzasri5OW
-a54Xb1kAFDuvacVLfpwrBFMVVIj1l/lsSvp4fHi0vx+ZKvhWBGZDb+/lx8fiErZK
-xsFsjrDybqnxUOnaWo/xzllzhlb9ddJcjfkz7x6EPjO5oJX2NTda8fY0u2YBqCfo
-DCZMIUQPhfy1bKxZlnb5LHQVTJDSzSUEje5xNEmx2K79kyO+0RWxHhAtVVmmKp+4
-NDTiIivYbThIS/NIPRC9Yny8tGqFpk8CjJ85AXsdjAIuEwIXQvxv3Pijf2Xves6x
-waS49FbGXdTsurhMlYrTolSDzLbj7dKqaOL6DGdphBEmpRuY0KZoLgTgAdndjufY
-RAq2oFBpAgMBAAECggEAEasweIsF2GB79+TmkgX8vj/cqAzV0MHrPhtvpatCQmg8
-b2QhelYJOCM02bWBnttY5/J1p5btWeo2yfzWo6YijZu9W5l8U2+NtpEhjPDCfYsl
-riQ7NrqEDQJp+ilBzpja+izokrWi2OCKxiEFCuJa6+RwQs8Tr0QXJOnhO8mxFo6d
-SY08uxwSsSV/nA0HNRQQks70lBbCvhnounQ0SViJqNU22rIrr/zXsUGtFQ0167sQ
-gVKw6LH1ta04RU5BIkqPcQZg3zpoQYbhreouBZqBAC8eHV0DIlXx18/iH8Qzgskh
-rUgjDbCbvUZ/Ysp21BLaBQUTUddFRMlneiierPl6vQKBgQDkIssm4mb7zZAQxQ9y
-G3CDXPtkU8v8/XoySndRf06lPafSAqCG7Y9NqiP7WcgHpTP4YmKUn4gaXVjsvfns
-5H0zmyfHMKkH3o19FjQGsA1tW7MZIWzAwNwiy6BSrVUa9QU3f4c04z1XsR3U0Kk3
-O+uce8SCyBkNNGqUBoCy8YOaVQKBgQDYP6u9XweCsNHmdx2tTy3YLG1BXlTDX6tP
-v/I4B0mKRiny6d3O3tY1FKfc1odqJ2pvk0zJQnh6BSW4BAUVIeoKrC1f0a85pxds
-sQVvQ6RTvSpipR1l3babsGHI7trokZaE+WeCBadTNfoOT4knJ46JdHnwZmz5sPaP
-FGG7dedZxQKBgHQrM3+NchtuxZmEfyT/y/9Ybbrc4NbmzD6npLKfPRDvoHFUXSHX
-/kzyAniPc0hRW3Fzx/cedVPXjNygsI9smkSZEVxg7vHO5gV4NO3i4DN7qmt1lcdh
-bbdaMT1ofhnIAuwLyHGp9SaeTi58Qm6Z2JRKgfqGohsTQeI2nXqBeR4xAoGAaCZi
-RJacO2mF7oW4GVxlLBRZmn4gPOi6zXIY6rs3xAz+7yuL1LKmYHJOVqJMHehV7t72
-wIfvFnWcMQBeokrvOayrPdbzmcTMF2E6yNe/MUWOQGxduE4MQPe2YNwJOrHD2M91
-9r1aVU1N3c6Ys+7tS255vDrYiXmdhlO+rlae0jECgYAxFCG0WCn07TbZakx8fEhu
-9n5rRxnK/zo5VJv9V3GqFRH69nShtzKhFRCoG3ecJyYv+0mP/MF5YIk4FTdhpL2R
-5FnAC0zJzd/9rl9gfI/BRcqe1ZcuuMs2AEjuyYmHiZ4Jy+s7VK6b0S0C1We/1x5v
-EVNElSGB90F/tPpCCtBl9Q==
------END PRIVATE KEY-----
-"""
-_dev_public_pem = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwLYZBM2rK4uTlmueF29Z
-ABQ7r2nFS36cKwRTFVSI9Zf5bEr6eHx4tL8fmSr4VgRmQ2/v5cfH4hK2SsbBbI6w
-8m6p8VDp2lqP8c5Zc4ZW/XXSXI35M+8ehD4zuaCV9jU3WvH2NLtmAagn6AwmTCFE
-D4X8tWysWZZ2+Sx0FUyQ0s0lBI3ucTRJsdiu/ZMjvtEVsR4QLVVZpiqfuDQ04iIr
-2G04SEvzSD0QvWJ8vLRqhaZPAoyfOQF7HYwCLhMCF0L8b9z4o39l73rOscGkuPRW
-xl3U7Lq4TJWK06JUg8y24+3Sqmji+gxnaYQRJqUbmNCmaC4E4AHZ3Y7n2EQKtqBQ
-aQIDAQAB
------END PUBLIC KEY-----
-"""
+_DISPOSABLE_JWT_ENVS = frozenset({"development", "test", "local"})
 
 
 def utc_now() -> datetime:
@@ -111,66 +71,73 @@ def validate_password_policy(password: str) -> None:
         )
 
 
-def _read_key_file(path: str | None) -> str | None:
+def _load_jwt_key(path: str | None, label: str) -> str:
     if not path:
-        return None
+        raise RuntimeError(f"{label} must be set when using configured JWT signing keys.")
     try:
-        return open(path, encoding="utf-8").read()
-    except OSError:
-        return None
+        with open(path, encoding="utf-8") as stream:
+            pem = stream.read()
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"{label} points to a missing or unreadable JWT key.") from exc
+    if not pem.strip():
+        raise RuntimeError(f"{label} points to an empty JWT key.")
+    return pem
+
+
+def _uses_ephemeral_jwt_keys(settings: Settings) -> bool:
+    return (
+        settings.app_env.lower() in _DISPOSABLE_JWT_ENVS
+        and not settings.jwt_private_key_path
+        and not settings.jwt_public_key_path
+    )
+
+
+@cache
+def _ephemeral_jwt_key_pair() -> tuple[str, str]:
+    # Only used in disposable single-process environments. Never shared or persisted.
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return (
+        private.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode("ascii"),
+        private.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode("ascii"),
+    )
 
 
 def _jwt_private_key() -> str:
     settings = get_settings()
-    return _load_jwt_key(settings.jwt_private_key_path, "JWT_PRIVATE_KEY_PATH", _dev_private_pem)
+    if _uses_ephemeral_jwt_keys(settings):
+        return _ephemeral_jwt_key_pair()[0]
+    return _load_jwt_key(settings.jwt_private_key_path, "JWT_PRIVATE_KEY_PATH")
 
 
 def _jwt_public_key() -> str:
     settings = get_settings()
-    return _load_jwt_key(settings.jwt_public_key_path, "JWT_PUBLIC_KEY_PATH", _dev_public_pem)
-
-
-def _load_jwt_key(path: str | None, label: str, fallback: str) -> str:
-    pem = _read_key_file(path)
-    if pem and pem.strip():
-        return pem
-    if get_settings().app_env.lower() in HARDENED_ENVS:
-        raise RuntimeError(f"{label} points to a missing, unreadable, or empty JWT key.")
-    return fallback
+    if _uses_ephemeral_jwt_keys(settings):
+        return _ephemeral_jwt_key_pair()[1]
+    return _load_jwt_key(settings.jwt_public_key_path, "JWT_PUBLIC_KEY_PATH")
 
 
 def validate_signing_keys() -> None:
-    """Refuse to start a hardened deployment without real, parseable JWT signing keys.
-
-    The embedded fallback pair is published in this repository, so anyone can mint valid
-    access tokens with it. A missing or corrupt key file must stop startup rather than
-    silently degrade into a forgeable API.
-    """
-    settings = get_settings()
-    if settings.app_env.lower() not in HARDENED_ENVS:
-        return
-    checks: tuple[tuple[str, str | None, Callable[[bytes], object]], ...] = (
-        (
-            "JWT_PRIVATE_KEY_PATH",
-            settings.jwt_private_key_path,
-            lambda data: serialization.load_pem_private_key(data, password=None),
-        ),
-        (
-            "JWT_PUBLIC_KEY_PATH",
-            settings.jwt_public_key_path,
-            lambda data: serialization.load_pem_public_key(data),
-        ),
-    )
-    for label, path, load in checks:
-        if not path:
-            raise RuntimeError(f"{label} must be set when APP_ENV is production or staging.")
-        pem = _read_key_file(path)
-        if pem is None:
-            raise RuntimeError(f"{label} points to a missing or unreadable file: {path}")
-        try:
-            load(pem.encode("utf-8"))
-        except (ValueError, TypeError, UnsupportedAlgorithm) as exc:
-            raise RuntimeError(f"{label} is not a valid PEM key: {path}") from exc
+    """Require an RSA key pair; only disposable environments may generate one."""
+    private_pem = _jwt_private_key()
+    public_pem = _jwt_public_key()
+    try:
+        private = serialization.load_pem_private_key(private_pem.encode("utf-8"), password=None)
+    except (ValueError, TypeError, UnsupportedAlgorithm) as exc:
+        raise RuntimeError("JWT_PRIVATE_KEY_PATH is not a valid PEM key.") from exc
+    try:
+        public = serialization.load_pem_public_key(public_pem.encode("utf-8"))
+    except (ValueError, TypeError, UnsupportedAlgorithm) as exc:
+        raise RuntimeError("JWT_PUBLIC_KEY_PATH is not a valid PEM key.") from exc
+    if not isinstance(private, rsa.RSAPrivateKey) or not isinstance(public, rsa.RSAPublicKey):
+        raise RuntimeError("JWT signing keys must be RSA keys.")
+    if private.public_key().public_numbers() != public.public_numbers():
+        raise RuntimeError("JWT public and private keys do not match.")
 
 
 def create_access_token(

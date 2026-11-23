@@ -142,6 +142,14 @@ docker compose run --rm --no-deps --build backend alembic upgrade head
 docker compose up -d --build
 ```
 
+Local development uses a fresh in-memory JWT signing pair when both signing key paths
+are empty. Restarting the API invalidates existing local access tokens. To keep tokens
+valid across restarts or share them across API workers, configure both
+`JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` to a matching RSA pair kept outside Git
+(and mount them read-only if using containers). If an older local `.env` sets the
+`/run/secrets/` paths without mounting keys, clear both paths for local development only.
+Production always requires its existing mounted signing keys.
+
 | Local service | URL |
 | --- | --- |
 | Vite frontend | [localhost:3000](http://localhost:3000) |

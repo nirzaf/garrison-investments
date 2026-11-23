@@ -1,4 +1,4 @@
-"""C2 — a hardened deployment must never fall back to the published development keys."""
+"""JWT key loading for configured and disposable runtimes."""
 
 from pathlib import Path
 from uuid import uuid4
@@ -41,7 +41,7 @@ def use_settings(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
     monkeypatch.setattr("app.utils.security.get_settings", lambda: settings)
 
 
-@pytest.mark.parametrize("app_env", ["production", "staging", "PRODUCTION"])
+@pytest.mark.parametrize("app_env", ["production", "staging", "PRODUCTION", "prod", "unknown"])
 def test_hardened_env_without_key_paths_refuses_to_start(
     monkeypatch: pytest.MonkeyPatch, app_env: str
 ) -> None:
@@ -125,7 +125,7 @@ def test_hardened_env_with_real_keys_starts_and_signs(
 
 
 @pytest.mark.parametrize("app_env", ["development", "test", "local"])
-def test_dev_env_without_keys_uses_the_embedded_fallback(
+def test_dev_env_without_keys_uses_a_process_local_pair(
     monkeypatch: pytest.MonkeyPatch, app_env: str
 ) -> None:
     use_settings(monkeypatch, Settings(app_env=app_env))
@@ -136,7 +136,7 @@ def test_dev_env_without_keys_uses_the_embedded_fallback(
     assert decode_access_token(token)["sub"] == str(user_id)
 
 
-def test_dev_env_with_unreadable_key_path_still_falls_back(
+def test_dev_env_with_unreadable_key_path_fails_closed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     use_settings(
@@ -148,9 +148,40 @@ def test_dev_env_with_unreadable_key_path_still_falls_back(
         ),
     )
 
-    validate_signing_keys()
-    token, _ = create_access_token(uuid4(), "managing_director")
-    assert decode_access_token(token)["type"] == "access"
+    with pytest.raises(RuntimeError, match="JWT_PRIVATE_KEY_PATH"):
+        validate_signing_keys()
+
+
+def test_dev_env_with_only_one_key_path_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, key_pair: tuple[Path, Path]
+) -> None:
+    use_settings(
+        monkeypatch, Settings(app_env="development", jwt_private_key_path=str(key_pair[0]))
+    )
+    with pytest.raises(RuntimeError, match="JWT_PUBLIC_KEY_PATH"):
+        validate_signing_keys()
+
+
+def test_configured_pair_must_match(
+    monkeypatch: pytest.MonkeyPatch, key_pair: tuple[Path, Path], tmp_path: Path
+) -> None:
+    unrelated = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_path = tmp_path / "unrelated.pem"
+    public_path.write_bytes(
+        unrelated.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+    )
+    use_settings(
+        monkeypatch,
+        Settings(
+            app_env="production",
+            jwt_private_key_path=str(key_pair[0]),
+            jwt_public_key_path=str(public_path),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="do not match"):
+        validate_signing_keys()
 
 
 def test_hardened_env_never_falls_back_after_key_files_disappear(
