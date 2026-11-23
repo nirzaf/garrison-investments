@@ -1332,6 +1332,19 @@ def test_ci_selects_fast_main_and_full_browser_job_sets() -> None:
     assert {job["suite"] for job in full} == {"backend", "browser"}
 
 
+def test_ci_uses_github_hosted_runners_and_production_stays_isolated() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    ci_source = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    deploy_source = (repo_root / ".github" / "workflows" / "deploy.yml").read_text()
+
+    assert ci_source.count("runs-on: ubuntu-24.04") == 4
+    assert "runs-on: [self-hosted" not in ci_source
+    assert "cache-dependency-path: backend/requirements.txt" in ci_source
+    assert "cache-dependency-path: frontend/package-lock.json" in ci_source
+    assert "max-parallel: 4" in ci_source
+    assert "runs-on: [self-hosted, linux, x64, garrison-production]" in deploy_source
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_error"),
     [
